@@ -80,6 +80,7 @@ async fn handle(
 
 ///|
 async fn serve(config : Config) -> Unit {
+  @signal.set_global_cancellation_signals([@signal.SIGINT, @signal.SIGTERM])
   let root_module = @moonback.Module(fn(ctx) {
     ctx.get("/", async fn(req, res) { handle(config, req, res) }) catch {
       _ => ()
