@@ -1,0 +1,20 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub"
+
+// Values
+
+// Errors
+
+// Types and methods
+type CommitInfo
+
+type Config
+
+type RepoId
+
+type TreeEntry
+
+// Type aliases
+
+// Traits
+

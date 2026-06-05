@@ -1,6 +1,12 @@
 import {
+  "moonbitlang/core/argparse",
   "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "hackwaly/moonback",
 }
+
+supported_targets = "native"
 
 options(
   is_main: true,
