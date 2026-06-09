@@ -21,6 +21,10 @@ You can browse and install extra skills here:
   the order of each block is irrelevant. In some refactorings, you can process
   block by block independently.
 
+- Do not add thin helpers that do not change behavior. A helper must reduce
+  meaningful duplication, isolate a likely point of change, or encode a clear
+  policy. Otherwise, call the underlying API directly.
+
 - Try to keep deprecated blocks in file called `deprecated.mbt` in each
   directory.
 

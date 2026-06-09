@@ -28,15 +28,13 @@ fn parse_config() -> Config raise {
     "moonhub",
     about="Serve bare Git repositories from user_or_org/repo.git directories.",
     options=[
-      @argparse.OptionArg("host", long="host", about="Bind host.", default_values=[
+      OptionArg("host", long="host", about="Bind host.", default_values=[
         "127.0.0.1",
       ]),
-      @argparse.OptionArg("port", long="port", about="Bind port.", default_values=[
-        "8080",
-      ]),
+      OptionArg("port", long="port", about="Bind port.", default_values=["8080"]),
     ],
     positionals=[
-      @argparse.PositionArg(
+      PositionArg(
         "root",
         about="Repository root containing user_or_org/repo.git directories.",
       ),
@@ -48,7 +46,7 @@ fn parse_config() -> Config raise {
   let port_text = single_value(matches, "port").unwrap_or("8080")
   let port = match parse_port(port_text) {
     Some(port) => port
-    None => abort("invalid --port: " + port_text)
+    None => abort("invalid --port: \{port_text}")
   }
   { root: trim_trailing_slash(root), host, port }
 }
@@ -57,10 +55,10 @@ fn parse_config() -> Config raise {
 async fn main {
   let config = parse_config()
   if !@fs.exists(config.root) {
-    abort("repo root does not exist: " + config.root)
+    abort("repo root does not exist: \{config.root}")
   }
   if !is_directory(config.root) {
-    abort("repo root is not a directory: " + config.root)
+    abort("repo root is not a directory: \{config.root}")
   }
   serve(config)
 }

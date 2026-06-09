@@ -1,6 +1,6 @@
 ///|
 async fn run_git(git_dir : String, args : Array[String]) -> String {
-  let full_args = ["--no-pager", "--git-dir=" + git_dir]
+  let full_args = ["--no-pager", "--git-dir=\{git_dir}"]
   for arg in args {
     full_args.push(arg)
   }
@@ -12,7 +12,7 @@ async fn run_git(git_dir : String, args : Array[String]) -> String {
 
 ///|
 async fn repo_exists(root : String, repo : RepoId) -> Bool {
-  @fs.exists(repo.git_dir(root) + "/HEAD")
+  @fs.exists("\{repo.git_dir(root)}/HEAD")
 }
 
 ///|
@@ -48,15 +48,14 @@ async fn list_repositories(root : String) -> Array[RepoId] {
   let owners = @fs.readdir(root, sort=true) catch { _ => [] }
   owners.sort()
   for owner in owners {
-    let owner_dir = trim_trailing_slash(root) + "/" + owner
+    let owner_dir = "\{trim_trailing_slash(root)}/\{owner}"
     if valid_segment(owner) && is_directory(owner_dir) {
       let names = @fs.readdir(owner_dir, sort=true) catch { _ => [] }
       names.sort()
       for dir in names {
         match strip_git_suffix(dir) {
           Some(name) =>
-            if valid_segment(name) &&
-              @fs.exists(owner_dir + "/" + dir + "/HEAD") {
+            if valid_segment(name) && @fs.exists("\{owner_dir}/\{dir}/HEAD") {
               repos.push({ owner, name })
             }
           _ => ()
@@ -97,7 +96,7 @@ async fn list_tree(
   rev : String,
   path : String,
 ) -> Array[TreeEntry] {
-  let spec = if path.is_empty() { rev } else { rev + ":" + path }
+  let spec = if path.is_empty() { rev } else { "\{rev}:\{path}" }
   let out = run_git(git_dir, ["ls-tree", "-l", spec])
   let entries : Array[TreeEntry] = []
   for line in split_lines(out) {
@@ -111,7 +110,7 @@ async fn list_tree(
 
 ///|
 async fn read_blob(git_dir : String, rev : String, path : String) -> String {
-  run_git(git_dir, ["show", rev + ":" + path])
+  run_git(git_dir, ["show", "\{rev}:\{path}"])
 }
 
 ///|

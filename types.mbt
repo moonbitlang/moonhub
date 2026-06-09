@@ -13,12 +13,12 @@ struct RepoId {
 
 ///|
 fn RepoId::path(self : RepoId) -> String {
-  self.owner + "/" + self.name
+  "\{self.owner}/\{self.name}"
 }
 
 ///|
 fn RepoId::git_dir(self : RepoId, root : String) -> String {
-  trim_trailing_slash(root) + "/" + self.owner + "/" + self.name + ".git"
+  "\{trim_trailing_slash(root)}/\{self.owner}/\{self.name}.git"
 }
 
 ///|

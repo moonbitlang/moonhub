@@ -2,6 +2,7 @@ import {
   "moonbitlang/core/argparse",
   "moonbitlang/async",
   "moonbitlang/async/fs",
+  "moonbitlang/async/http",
   "moonbitlang/async/process",
   "moonbitlang/async/signal",
   "hackwaly/moonback",
