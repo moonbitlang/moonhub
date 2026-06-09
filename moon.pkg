@@ -3,8 +3,11 @@ import {
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/http",
+  "moonbitlang/async/os_error",
   "moonbitlang/async/process",
   "moonbitlang/async/signal",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
   "hackwaly/moonback",
 }
 

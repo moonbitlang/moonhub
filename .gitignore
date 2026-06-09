@@ -1,7 +1,11 @@
 .DS_Store
+.tmp/
 _build/
 target/
 target
 .mooncakes/
 .moonagent/
 .repos/
+
+node_modules/
+*.tsbuildinfo

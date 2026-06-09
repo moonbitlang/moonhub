@@ -1,9 +1,15 @@
 ///|
-async fn run_git(git_dir : String, args : Array[String]) -> String {
+fn git_args(git_dir : String, args : Array[String]) -> Array[String] {
   let full_args = ["--no-pager", "--git-dir=\{git_dir}"]
   for arg in args {
     full_args.push(arg)
   }
+  full_args
+}
+
+///|
+async fn run_git(git_dir : String, args : Array[String]) -> String {
+  let full_args = git_args(git_dir, args)
   let (_, output) = @process.collect_output_merged("git", full_args)
   output.text() catch {
     _ => output.binary().to_unchecked_string()
@@ -49,7 +55,7 @@ async fn list_repositories(root : String) -> Array[RepoId] {
   owners.sort()
   for owner in owners {
     let owner_dir = "\{trim_trailing_slash(root)}/\{owner}"
-    if valid_segment(owner) && is_directory(owner_dir) {
+    if valid_repo_owner(owner) && is_directory(owner_dir) {
       let names = @fs.readdir(owner_dir, sort=true) catch { _ => [] }
       names.sort()
       for dir in names {
@@ -140,8 +146,3 @@ async fn list_commits(git_dir : String, rev : String) -> Array[CommitInfo] {
 }
 
 ///|
-async fn commit_detail(git_dir : String, commit : String) -> String {
-  run_git(git_dir, [
-    "show", "--stat", "--patch", "--find-renames", "--date=short", commit,
-  ])
-}

@@ -21,6 +21,14 @@ fn valid_segment(s : String) -> Bool {
 }
 
 ///|
+let public_assets_owner : String = "assets"
+
+///|
+fn valid_repo_owner(s : String) -> Bool {
+  valid_segment(s) && s != public_assets_owner
+}
+
+///|
 fn url_escape_path(s : String) -> String {
   s
   .replace_all(old=" ", new="%20")

@@ -1,6 +1,7 @@
 ///|
 struct Config {
   root : String
+  assets_root : String
   host : String
   port : UInt16
 }

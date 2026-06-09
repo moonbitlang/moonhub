@@ -1,6 +1,7 @@
 ///|
 extenum @moonback.TypedBox += {
   RepoRoot(String)
+  AssetsRoot(String)
 }
 
 ///|
@@ -16,9 +17,28 @@ let config_root : @moonback.TypedKey[String] = TypedKey(
 )
 
 ///|
+let config_assets_root : @moonback.TypedKey[String] = TypedKey(
+  name="moonhub.assets_root",
+  box=root => AssetsRoot(root),
+  unbox=err => {
+    match err {
+      AssetsRoot(root) => Some(root)
+      _ => None
+    }
+  },
+)
+
+///|
 let app_module : @moonback.Module = Module(ctx => {
+  let assets_app = @moonback.App(assets_module, config=ctx.config())
+  ctx.mount("/\{public_assets_owner}", assets_app)
   ctx.use_(index_module)
   ctx.use_(repo_browser_module)
+})
+
+///|
+let assets_module : @moonback.Module = Module(ctx => {
+  ctx.add_middleware(static_assets(root=assets_root(ctx)))
 })
 
 ///|
@@ -26,6 +46,14 @@ fn repo_root(ctx : @moonback.ModuleContext) -> String {
   match ctx.config().get_custom(config_root) {
     Some(root) => root
     None => abort("missing moonhub root")
+  }
+}
+
+///|
+fn assets_root(ctx : @moonback.ModuleContext) -> String {
+  match ctx.config().get_custom(config_assets_root) {
+    Some(root) => root
+    None => abort("missing moonhub assets root")
   }
 }
 
@@ -38,6 +66,7 @@ let index_module : @moonback.Module = Module(ctx => {
 ///|
 let repo_browser_module : @moonback.Module = Module(ctx => {
   let root = repo_root(ctx)
+  let assets_root = assets_root(ctx)
   ctx.get("/:owner/:repo", async fn(req, res) {
     match repo_from_params(req) {
       None =>
@@ -135,7 +164,7 @@ let repo_browser_module : @moonback.Module = Module(ctx => {
           if path.is_empty() {
             res.send_html(render_error(404, "file not found"), status=404)
           } else {
-            res.send_html(render_blob(root, repo, rev, path))
+            res.send_html(render_blob(root, assets_root, repo, rev, path))
           }
         }
     }
@@ -175,7 +204,7 @@ let repo_browser_module : @moonback.Module = Module(ctx => {
         } else {
           let commit = param_value(req, "commit")
           if valid_segment(commit) {
-            res.send_html(render_commit(root, repo, commit))
+            res.send_html(render_commit(root, assets_root, repo, commit))
           } else {
             res.send_html(render_error(404, "commit not found"), status=404)
           }
@@ -210,7 +239,7 @@ fn param_value(req : @moonback.Request, name : String) -> String {
 fn repo_from_params(req : @moonback.Request) -> RepoId? {
   let owner = param_value(req, "owner")
   let name = param_value(req, "repo")
-  if valid_segment(owner) && valid_segment(name) {
+  if valid_repo_owner(owner) && valid_segment(name) {
     Some({ owner, name })
   } else {
     None

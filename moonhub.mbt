@@ -32,6 +32,12 @@ fn parse_config() -> Config raise {
         "127.0.0.1",
       ]),
       OptionArg("port", long="port", about="Bind port.", default_values=["8080"]),
+      OptionArg(
+        "assets",
+        long="assets",
+        about="Assets directory containing the Vite manifest and browser bundles.",
+        required=true,
+      ),
     ],
     positionals=[
       PositionArg(
@@ -42,23 +48,45 @@ fn parse_config() -> Config raise {
   )
   let matches = cmd.parse()
   let root = single_value(matches, "root").unwrap_or("")
+  let assets_root = single_value(matches, "assets").unwrap_or("")
   let host = single_value(matches, "host").unwrap_or("127.0.0.1")
   let port_text = single_value(matches, "port").unwrap_or("8080")
   let port = match parse_port(port_text) {
     Some(port) => port
     None => abort("invalid --port: \{port_text}")
   }
-  { root: trim_trailing_slash(root), host, port }
+  {
+    root: trim_trailing_slash(root),
+    assets_root: trim_trailing_slash(assets_root),
+    host,
+    port,
+  }
+}
+
+///|
+async fn normalize_config(config : Config) -> Config {
+  {
+    ..config,
+    root: trim_trailing_slash(@fs.realpath(config.root)),
+    assets_root: trim_trailing_slash(@fs.realpath(config.assets_root)),
+  }
 }
 
 ///|
 async fn main {
-  let config = parse_config()
-  if !@fs.exists(config.root) {
-    abort("repo root does not exist: \{config.root}")
+  let raw_config = parse_config()
+  if !@fs.exists(raw_config.root) {
+    abort("repo root does not exist: \{raw_config.root}")
   }
-  if !is_directory(config.root) {
-    abort("repo root is not a directory: \{config.root}")
+  if !is_directory(raw_config.root) {
+    abort("repo root is not a directory: \{raw_config.root}")
   }
+  if !@fs.exists(raw_config.assets_root) {
+    abort("assets root does not exist: \{raw_config.assets_root}")
+  }
+  if !is_directory(raw_config.assets_root) {
+    abort("assets root is not a directory: \{raw_config.assets_root}")
+  }
+  let config = normalize_config(raw_config)
   serve(config)
 }

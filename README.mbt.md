@@ -1,11 +1,31 @@
 # hackwaly/moonhub
 
+## Browser Assets
+
+The rich code views are built from the JavaScript project under `js/` and
+emitted into the repository `assets/` directory:
+
+```sh
+cd js
+npm install
+npm run build
+```
+
+Run the build again after changing files under `js/src/`. The MoonBit server
+reads the configured assets directory's `.vite/manifest.json` to load the hashed
+`custom-elements` bundle. The manifest is required; public files served from
+`/assets/` are treated as immutable build artifacts, and `.vite/manifest.json`
+is not served publicly.
+
+The top-level owner name `assets` is reserved for browser assets, so repositories
+under `assets/*.git` are intentionally ignored by the repository browser.
+
 ## Manual Testing
 
 Use the tracked test fixture under `testdata/repos`:
 
 ```sh
-moon run . -- testdata/repos --host 127.0.0.1 --port 8080
+moon run . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080
 ```
 
 Then open these pages in a browser:
