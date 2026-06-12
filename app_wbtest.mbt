@@ -93,6 +93,44 @@ async fn http_head(port : Int, path : String) -> @http.Response {
 }
 
 ///|
+async fn http_get_path(port : Int, path : String) -> (@http.Response, String) {
+  let client = @http.Client("http://127.0.0.1:\{port}")
+  defer client.close()
+  let response = client..request(Get, path).end_request()
+  (response, client.read_all().text())
+}
+
+///|
+async test "invalid route params return bad request" {
+  let app = @moonback.App(app_module, config=test_app_config())
+  defer app.close()
+  @async.with_task_group(group => {
+    let server = @moonback.listen(port=0)
+    let task = group.spawn(() => app.serve(server))
+    defer task.cancel()
+    let port = server.addr.port()
+    let (response, body) = http_get_path(port, "/alice/demo/tree/.")
+    assert_eq(response.code, 400)
+    assert_true(body.contains("invalid revision"))
+  })
+}
+
+///|
+async test "missing repositories return not found" {
+  let app = @moonback.App(app_module, config=test_app_config())
+  defer app.close()
+  @async.with_task_group(group => {
+    let server = @moonback.listen(port=0)
+    let task = group.spawn(() => app.serve(server))
+    defer task.cancel()
+    let port = server.addr.port()
+    let (response, body) = http_get_path(port, "/alice/missing")
+    assert_eq(response.code, 404)
+    assert_true(body.contains("repository not found"))
+  })
+}
+
+///|
 async test "serves browser assets from mounted assets app" {
   let app = @moonback.App(app_module, config=test_app_config())
   defer app.close()

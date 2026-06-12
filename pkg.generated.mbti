@@ -4,6 +4,7 @@ package "hackwaly/moonhub"
 // Values
 
 // Errors
+type AppError
 
 // Types and methods
 type CommitInfo
