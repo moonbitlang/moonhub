@@ -102,7 +102,10 @@ async fn render_tree(
   path : String,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
-  let entries = list_tree(git_dir, rev, path)
+  let entries = list_tree(git_dir, rev, path) catch {
+    GitCommandFailed(_) => raise NotFound(message="tree not found")
+    err => raise err
+  }
   let base = "\{repo_link(repo)}/tree/\{url_escape_path(rev)}"
   layout(
     repo.path(),
@@ -143,7 +146,10 @@ async fn render_blob(
   rev : String,
   path : String,
 ) -> @moonback.Html {
-  let content = read_blob(repo.git_dir(root), rev, path)
+  let content = read_blob(repo.git_dir(root), rev, path) catch {
+    GitCommandFailed(_) => raise NotFound(message="file not found")
+    err => raise err
+  }
   layout(
     "\{repo.path()}:\{path}",
     @moonback.Html(b => {
@@ -161,7 +167,10 @@ async fn render_commits(
   repo : RepoId,
   rev : String,
 ) -> @moonback.Html {
-  let commits = list_commits(repo.git_dir(root), rev)
+  let commits = list_commits(repo.git_dir(root), rev) catch {
+    GitCommandFailed(_) => raise NotFound(message="commit not found")
+    err => raise err
+  }
   layout(
     "\{repo.path()} commits",
     @moonback.Html(b => {
@@ -187,6 +196,10 @@ async fn render_commit(
   commit : String,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
+  let _ = run_git(git_dir, ["cat-file", "-e", "\{commit}^{commit}"]) catch {
+    GitCommandFailed(_) => raise NotFound(message="commit not found")
+    err => raise err
+  }
   layout(
     "\{repo.path()} \{commit}",
     @moonback.Html(b => {

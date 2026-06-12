@@ -131,6 +131,33 @@ async test "missing repositories return not found" {
 }
 
 ///|
+async test "missing git resources return not found" {
+  let app = @moonback.App(app_module, config=test_app_config())
+  defer app.close()
+  @async.with_task_group(group => {
+    let server = @moonback.listen(port=0)
+    let task = group.spawn(() => app.serve(server))
+    defer task.cancel()
+    let port = server.addr.port()
+    let (blob_response, blob_body) = http_get_path(
+      port, "/alice/demo/blob/master/missing.mbt",
+    )
+    assert_eq(blob_response.code, 404)
+    assert_true(blob_body.contains("file not found"))
+    let (tree_response, tree_body) = http_get_path(
+      port, "/alice/demo/tree/master/missing",
+    )
+    assert_eq(tree_response.code, 404)
+    assert_true(tree_body.contains("tree not found"))
+    let (commit_response, commit_body) = http_get_path(
+      port, "/alice/demo/commit/not-a-real-commit",
+    )
+    assert_eq(commit_response.code, 404)
+    assert_true(commit_body.contains("commit not found"))
+  })
+}
+
+///|
 async test "serves browser assets from mounted assets app" {
   let app = @moonback.App(app_module, config=test_app_config())
   defer app.close()

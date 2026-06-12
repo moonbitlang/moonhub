@@ -24,3 +24,18 @@ async test "browse repository fixture" {
   assert_eq(commits[0].author, "Test")
   assert_eq(commits[0].date, "2024-01-02")
 }
+
+///|
+async test "git command failures raise" {
+  try
+    read_blob("testdata/repos/alice/demo.git", "master", "missing.mbt")
+  catch {
+    GitCommandFailed(code~, output~) => {
+      assert_eq(code, 128)
+      assert_true(output.contains("missing.mbt"))
+    }
+    err => raise err
+  } noraise {
+    _ => fail("expected missing blob to raise")
+  }
+}

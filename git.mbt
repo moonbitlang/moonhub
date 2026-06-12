@@ -8,12 +8,19 @@ fn git_args(git_dir : String, args : Array[String]) -> Array[String] {
 }
 
 ///|
+priv suberror GitError {
+  GitCommandFailed(code~ : Int, output~ : String)
+}
+
+///|
 async fn run_git(git_dir : String, args : Array[String]) -> String {
   let full_args = git_args(git_dir, args)
-  let (_, output) = @process.collect_output_merged("git", full_args)
-  output.text() catch {
+  let (code, output) = @process.collect_output_merged("git", full_args)
+  let output = output.text() catch {
     _ => output.binary().to_unchecked_string()
   }
+  guard code == 0 else { raise GitCommandFailed(code~, output~) }
+  output
 }
 
 ///|
