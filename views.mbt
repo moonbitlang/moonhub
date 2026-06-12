@@ -107,7 +107,7 @@ async fn render_tree(
   layout(
     repo.path(),
     @moonback.Html(b => {
-      b.write(render_repo_nav(repo, rev))
+      b <+ "\{render_repo_nav(repo, rev)}"
       b <+
         "<h2 class=\"path\">/\{path}</h2><table><thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody>"
       if !path.is_empty() {
@@ -147,7 +147,7 @@ async fn render_blob(
   layout(
     "\{repo.path()}:\{path}",
     @moonback.Html(b => {
-      b.write(render_repo_nav(repo, rev))
+      b <+ "\{render_repo_nav(repo, rev)}"
       b <+
         "<h2 class=\"path\">\{path}</h2><moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
     }),
@@ -165,7 +165,7 @@ async fn render_commits(
   layout(
     "\{repo.path()} commits",
     @moonback.Html(b => {
-      b.write(render_repo_nav(repo, rev))
+      b <+ "\{render_repo_nav(repo, rev)}"
       b <+
         "<h2>Commits</h2><table><thead><tr><th>Commit</th><th>Subject</th><th>Author</th><th>Date</th></tr></thead><tbody>"
       for commit in commits {
@@ -190,7 +190,7 @@ async fn render_commit(
   layout(
     "\{repo.path()} \{commit}",
     @moonback.Html(b => {
-      b.write(render_repo_nav(repo, commit))
+      b <+ "\{render_repo_nav(repo, commit)}"
       b <+ "<h2 class=\"path\">\{commit}</h2>"
       stream_commit_detail(b, git_dir, commit)
     }),
