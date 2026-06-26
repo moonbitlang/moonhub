@@ -24,7 +24,18 @@ async test "initializes app module" {
 ///|
 test "assets is a reserved repository owner" {
   assert_true(valid_repo_owner("alice"))
-  assert_true(!valid_repo_owner(public_assets_owner))
+  assert_true(!valid_repo_owner(PUBLIC_ASSETS_OWNER))
+}
+
+///|
+async test "loads entry asset path map from vite manifest" {
+  let asset_path_map = load_entry_to_asset_path_map(test_assets_root)
+  assert_true(asset_path_map["src/app.css"].has_prefix("/assets/app_styles-"))
+  assert_true(
+    asset_path_map["src/custom-elements.tsx"].has_prefix(
+      "/assets/custom-elements-",
+    ),
+  )
 }
 
 ///|
@@ -167,6 +178,18 @@ async test "serves browser assets from mounted assets app" {
     defer task.cancel()
     let port = server.addr.port()
     let html = rendered_commit_page(port)
+    let stylesheet_path = extract_attr(
+      html, "<link rel=\"stylesheet\"", "href=\"",
+    )
+    let (stylesheet_response, stylesheet_body) = @http.get(
+      "http://127.0.0.1:\{port}\{stylesheet_path}",
+    )
+    assert_eq(stylesheet_response.code, 200)
+    assert_true(
+      stylesheet_response.headers.get("content-type")
+      is Some("text/css; charset=utf-8"),
+    )
+    assert_true(stylesheet_body.text().contains(".site-header"))
     let asset_path = extract_attr(html, "<script type=\"module\"", "src=\"")
     let (response, body) = @http.get("http://127.0.0.1:\{port}\{asset_path}")
     assert_eq(response.code, 200)

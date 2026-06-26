@@ -1,23 +1,14 @@
 ///|
 fn layout(
   title : String,
+  asset_path_map : Map[String, String],
   body : @moonback.Html,
   head_end? : @moonback.Html = @moonback.Html::raw(""),
 ) -> @moonback.Html {
-  @moonback.Html(b => {
+  let stylesheet_head = app_styles_head(asset_path_map)
+  Html(b => {
     b <+
-      $|<!doctype html><html><head><meta charset="utf-8"><title>\{title}</title><style>
-      $|body{font:14px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;margin:0;color:#1f2328;background:#fff}
-      $|header{border-bottom:1px solid #d8dee4;padding:12px 24px;background:#f6f8fa}
-      $|main{max-width:1100px;margin:0 auto;padding:24px}
-      $|a{color:#0969da;text-decoration:none}a:hover{text-decoration:underline}
-      $|table{width:100%;border-collapse:collapse}td,th{padding:8px 10px;border-bottom:1px solid #d8dee4;text-align:left}
-      $|.muted{color:#57606a}.path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-      $|pre{overflow:auto;border:1px solid #d8dee4;border-radius:6px;padding:16px;background:#f6f8fa}
-      $|moonhub-commit-diff,moonhub-file-view{display:block;margin-top:16px}
-      $|moonhub-commit-diff pre[hidden],moonhub-file-view pre[hidden],moonhub-file-view [hidden]{display:none}
-      $|.tabs a{margin-right:14px}.err{color:#cf222e}
-      $|</style>\{head_end}</head><body><header><a href="/">moonhub</a></header><main>\{body}</main></body></html>
+      $|<!doctype html><html><head><meta charset="utf-8"><title>\{title}</title>\{stylesheet_head}\{head_end}</head><body><header class="site-header"><div class="site-header__inner"><a class="brand" href="/">moonhub</a></div></header><main class="page">\{body}</main></body></html>
   })
 }
 
@@ -27,21 +18,27 @@ fn repo_link(repo : RepoId) -> String {
 }
 
 ///|
-async fn render_index(root : String) -> @moonback.Html {
+async fn render_index(
+  root~ : String,
+  asset_path_map~ : Map[String, String],
+) -> @moonback.Html {
   let repos = list_repositories(root)
   layout(
     "moonhub",
-    @moonback.Html(b => {
-      b <+ "<h1>Repositories</h1>"
+    asset_path_map,
+    Html(b => {
+      b <+ "<div class=\"page-heading\"><h1>Repositories</h1></div>"
       if repos.is_empty() {
-        b <+ "<p class=\"muted\">No repositories found under \{(root)}.</p>"
+        b <+
+          "<div class=\"empty-state\"><p class=\"muted\">No repositories found under \{(root)}.</p></div>"
       } else {
-        b <+ "<table><thead><tr><th>Repository</th></tr></thead><tbody>"
+        b <+
+          "<div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Repository</th></tr></thead><tbody>"
         for repo in repos {
           b <+
-            "<tr><td><a href=\"\{repo_link(repo)}\">\{repo.path()}</a></td></tr>"
+            "<tr><td><a class=\"repo-name\" href=\"\{repo_link(repo)}\">\{repo.path()}</a></td></tr>"
         }
-        b <+ "</tbody></table>"
+        b <+ "</tbody></table></div></div>"
       }
     }),
   )
@@ -49,10 +46,10 @@ async fn render_index(root : String) -> @moonback.Html {
 
 ///|
 fn render_repo_nav(repo : RepoId, rev : String) -> @moonback.Html {
-  @moonback.Html(b => {
+  Html(b => {
     let base = repo_link(repo)
     b <+
-      "<h1 class=\"path\">\{repo.path()}</h1><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{rev}\">Commits</a></p>"
+      "<div class=\"repo-header\"><h1 class=\"path repo-title\">\{repo.path()}</h1><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{rev}\">Commits</a></p></div>"
   })
 }
 
@@ -96,10 +93,11 @@ async fn stream_commit_detail(
 
 ///|
 async fn render_tree(
-  root : String,
-  repo : RepoId,
-  rev : String,
-  path : String,
+  root~ : String,
+  asset_path_map~ : Map[String, String],
+  repo~ : RepoId,
+  rev~ : String,
+  path~ : String,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let entries = list_tree(git_dir, rev, path) catch {
@@ -109,10 +107,11 @@ async fn render_tree(
   let base = "\{repo_link(repo)}/tree/\{url_escape_path(rev)}"
   layout(
     repo.path(),
-    @moonback.Html(b => {
+    asset_path_map,
+    Html(b => {
       b <+ "\{render_repo_nav(repo, rev)}"
       b <+
-        "<h2 class=\"path\">/\{path}</h2><table><thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody>"
+        "<div class=\"content-stack\"><h2 class=\"path\">/\{path}</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody>"
       if !path.is_empty() {
         b <+
           "<tr><td><a href=\"\{base}\">..</a></td><td class=\"muted\">parent</td><td></td></tr>"
@@ -133,18 +132,18 @@ async fn render_tree(
         b <+
           "<tr><td><a class=\"path\" href=\"\{href}\">\{entry.name}</a></td><td>\{entry.kind}</td><td class=\"muted\">\{entry_size}</td></tr>"
       }
-      b <+ "</tbody></table>"
+      b <+ "</tbody></table></div></div></div>"
     }),
   )
 }
 
 ///|
 async fn render_blob(
-  root : String,
-  assets_root : String,
-  repo : RepoId,
-  rev : String,
-  path : String,
+  root~ : String,
+  asset_path_map~ : Map[String, String],
+  repo~ : RepoId,
+  rev~ : String,
+  path~ : String,
 ) -> @moonback.Html {
   let content = read_blob(repo.git_dir(root), rev, path) catch {
     GitCommandFailed(_) => raise NotFound(message="file not found")
@@ -152,20 +151,22 @@ async fn render_blob(
   }
   layout(
     "\{repo.path()}:\{path}",
-    @moonback.Html(b => {
+    asset_path_map,
+    Html(b => {
       b <+ "\{render_repo_nav(repo, rev)}"
       b <+
         "<h2 class=\"path\">\{path}</h2><moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
     }),
-    head_end=custom_elements_head(assets_root),
+    head_end=custom_elements_head(asset_path_map),
   )
 }
 
 ///|
 async fn render_commits(
-  root : String,
-  repo : RepoId,
-  rev : String,
+  root~ : String,
+  asset_path_map~ : Map[String, String],
+  repo~ : RepoId,
+  rev~ : String,
 ) -> @moonback.Html {
   let commits = list_commits(repo.git_dir(root), rev) catch {
     GitCommandFailed(_) => raise NotFound(message="commit not found")
@@ -173,27 +174,28 @@ async fn render_commits(
   }
   layout(
     "\{repo.path()} commits",
-    @moonback.Html(b => {
+    asset_path_map,
+    Html(b => {
       b <+ "\{render_repo_nav(repo, rev)}"
       b <+
-        "<h2>Commits</h2><table><thead><tr><th>Commit</th><th>Subject</th><th>Author</th><th>Date</th></tr></thead><tbody>"
+        "<div class=\"content-stack\"><h2>Commits</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Commit</th><th>Subject</th><th>Author</th><th>Date</th></tr></thead><tbody>"
       for commit in commits {
         let href = "\{repo_link(repo)}/commit/\{commit.hash}"
         let short_hash = commit.hash[:12].to_owned()
         b <+
           "<tr><td><a class=\"path\" href=\"\{href}\">\{short_hash}</a></td><td>\{commit.subject}</td><td>\{commit.author}</td><td class=\"muted\">\{commit.date}</td></tr>"
       }
-      b <+ "</tbody></table>"
+      b <+ "</tbody></table></div></div></div>"
     }),
   )
 }
 
 ///|
 async fn render_commit(
-  root : String,
-  assets_root : String,
-  repo : RepoId,
-  commit : String,
+  root~ : String,
+  asset_path_map~ : Map[String, String],
+  repo~ : RepoId,
+  commit~ : String,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let _ = run_git(git_dir, ["cat-file", "-e", "\{commit}^{commit}"]) catch {
@@ -202,19 +204,29 @@ async fn render_commit(
   }
   layout(
     "\{repo.path()} \{commit}",
-    @moonback.Html(b => {
+    asset_path_map,
+    Html(b => {
       b <+ "\{render_repo_nav(repo, commit)}"
       b <+ "<h2 class=\"path\">\{commit}</h2>"
       stream_commit_detail(b, git_dir, commit)
     }),
-    head_end=custom_elements_head(assets_root),
+    head_end=custom_elements_head(asset_path_map),
   )
 }
 
 ///|
-fn render_error(status : Int, message : String) -> @moonback.Html {
+fn render_error(
+  status : Int,
+  message : String,
+  asset_path_map : Map[String, String],
+) -> @moonback.Html {
+  let status_text = status.to_string()
   layout(
     "\{status} \{message}",
-    @moonback.Html(b => b <+ "<h1 class=\"err\">\{message}</h1>"),
+    asset_path_map,
+    Html(b => {
+      b <+
+        "<section class=\"error-page\"><p class=\"error-code\">\{status_text}</p><h1 class=\"err\">\{message}</h1></section>"
+    }),
   )
 }

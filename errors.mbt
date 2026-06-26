@@ -5,14 +5,16 @@ suberror AppError {
 }
 
 ///|
-fn app_error_middleware() -> @moonback.Middleware {
+fn app_error_middleware(
+  asset_path_map : Map[String, String],
+) -> @moonback.Middleware {
   Middleware(next => {
     (req, res) => {
       next(req, res) catch {
         BadRequest(message~) =>
-          res.send_html(render_error(400, message), status=400)
+          res.send_html(render_error(400, message, asset_path_map), status=400)
         NotFound(message~) =>
-          res.send_html(render_error(404, message), status=404)
+          res.send_html(render_error(404, message, asset_path_map), status=404)
         err => raise err
       }
     }

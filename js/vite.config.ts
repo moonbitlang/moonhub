@@ -17,6 +17,7 @@ export default defineConfig({
     manifest: true,
     rollupOptions: {
       input: {
+        app_styles: resolve(__dirname, "src/app.css"),
         "custom-elements": resolve(__dirname, "src/custom-elements.tsx"),
       },
       output: {

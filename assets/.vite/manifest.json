@@ -2174,6 +2174,15 @@
     "src": "node_modules/shiki/dist/wasm.mjs",
     "isDynamicEntry": true
   },
+  "src/app.css": {
+    "file": "app_styles-CQjETv05.css",
+    "name": "app_styles",
+    "names": [
+      "app_styles.css"
+    ],
+    "src": "src/app.css",
+    "isEntry": true
+  },
   "src/custom-elements.tsx": {
     "file": "custom-elements-BqZJkPKJ.mjs",
     "name": "custom-elements",

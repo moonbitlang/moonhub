@@ -21,11 +21,11 @@ fn valid_segment(s : String) -> Bool {
 }
 
 ///|
-let public_assets_owner : String = "assets"
+const PUBLIC_ASSETS_OWNER : String = "assets"
 
 ///|
 fn valid_repo_owner(s : String) -> Bool {
-  valid_segment(s) && s != public_assets_owner
+  valid_segment(s) && s != PUBLIC_ASSETS_OWNER
 }
 
 ///|
