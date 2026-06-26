@@ -17,7 +17,7 @@ description = ""
 
 import {
   "moonbitlang/async@0.19.2",
-  "hackwaly/moonback@0.6.3",
+  "hackwaly/moonback@0.7.0",
 }
 
 preferred_target = "native"
