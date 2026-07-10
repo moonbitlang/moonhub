@@ -38,6 +38,18 @@ fn parse_config() -> Config raise {
         about="Assets directory containing the Vite manifest and browser bundles.",
         required=true,
       ),
+      OptionArg(
+        "root-user",
+        long="root-user",
+        about="Root user name_key created through an invitation.",
+        default_values=["root"],
+      ),
+      OptionArg(
+        "root-password",
+        long="root-password",
+        about="Initial one-time password for the root invitation.",
+        required=true,
+      ),
     ],
     positionals=[
       PositionArg(
@@ -51,15 +63,29 @@ fn parse_config() -> Config raise {
   let assets_root = single_value(matches, "assets").unwrap_or("")
   let host = single_value(matches, "host").unwrap_or("127.0.0.1")
   let port_text = single_value(matches, "port").unwrap_or("8080")
+  let root_user_name_key = single_value(matches, "root-user").unwrap_or("root")
+  let root_user_initial_password = single_value(matches, "root-password").unwrap_or(
+    "",
+  )
   let port = match parse_port(port_text) {
     Some(port) => port
     None => abort("invalid --port: \{port_text}")
+  }
+  if !valid_name_key(root_user_name_key) {
+    abort("invalid --root-user: \{root_user_name_key}")
+  }
+  if root_user_initial_password.is_empty() {
+    abort("--root-password must not be empty")
   }
   {
     root: trim_trailing_slash(root),
     assets_root: trim_trailing_slash(assets_root),
     host,
     port,
+    root_user: {
+      name_key: root_user_name_key,
+      initial_password: root_user_initial_password,
+    },
   }
 }
 
@@ -87,6 +113,7 @@ async fn main {
   if !is_directory(raw_config.assets_root) {
     abort("assets root is not a directory: \{raw_config.assets_root}")
   }
+  load_dotenv(".env")
   let config = normalize_config(raw_config)
   serve(config)
 }

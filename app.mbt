@@ -38,10 +38,17 @@ let app_module : @moonback.Module = Module(ctx => {
 ///|
 let app_main_module : @moonback.Module = Module(ctx => {
   let asset_path_map = load_entry_to_asset_path_map(assets_root(ctx))
+  let pool = db_pool(ctx)
   ctx.add_middleware(app_error_middleware(asset_path_map))
+  ctx.add_middleware(auth_middleware(pool))
+  ctx.add_middleware(require_login_middleware())
+  ctx.use_(auth_module(asset_path_map))
   ctx.use_(index_module(asset_path_map))
+  ctx.use_(teams_module(asset_path_map))
   ctx.use_(repo_browser_module(asset_path_map))
 })
+
+///|
 
 ///|
 let assets_module : @moonback.Module = Module(ctx => {
@@ -68,8 +75,14 @@ fn assets_root(ctx : @moonback.ModuleContext) -> String {
 fn index_module(asset_path_map : Map[String, String]) -> @moonback.Module {
   Module(ctx => {
     let root = repo_root(ctx)
-    ctx.get("/", async fn(_req, res) {
-      res.send_html(render_index(root~, asset_path_map~))
+    ctx.get("/", async fn(req, res) {
+      res.send_html(
+        render_index(
+          root~,
+          asset_path_map~,
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
   })
 }
@@ -84,26 +97,62 @@ fn repo_browser_module(
       let repo = resolve_repo(root, req.repo_param())
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, req.query_rev())
-      res.send_html(render_tree(root~, asset_path_map~, repo~, rev~, path=""))
+      res.send_html(
+        render_tree(
+          root~,
+          asset_path_map~,
+          repo~,
+          rev~,
+          path="",
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/tree", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, None)
-      res.send_html(render_tree(root~, asset_path_map~, repo~, rev~, path=""))
+      res.send_html(
+        render_tree(
+          root~,
+          asset_path_map~,
+          repo~,
+          rev~,
+          path="",
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/tree/:rev", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, Some(req.rev_param()))
-      res.send_html(render_tree(root~, asset_path_map~, repo~, rev~, path=""))
+      res.send_html(
+        render_tree(
+          root~,
+          asset_path_map~,
+          repo~,
+          rev~,
+          path="",
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/tree/:rev/*path", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, Some(req.rev_param()))
       let path = req.path_param()
-      res.send_html(render_tree(root~, asset_path_map~, repo~, rev~, path~))
+      res.send_html(
+        render_tree(
+          root~,
+          asset_path_map~,
+          repo~,
+          rev~,
+          path~,
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/blob", async fn(req, _res) {
       let _ = resolve_repo(root, req.repo_param())
@@ -121,13 +170,30 @@ fn repo_browser_module(
       if path.is_empty() {
         raise NotFound(message="file not found")
       } else {
-        res.send_html(render_blob(root~, asset_path_map~, repo~, rev~, path~))
+        res.send_html(
+          render_blob(
+            root~,
+            asset_path_map~,
+            repo~,
+            rev~,
+            path~,
+            current_user=current_user_from_request(req),
+          ),
+        )
       }
     })
     ctx.get("/:owner/:repo/commits", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let rev = resolve_ref(repo.git_dir(root), req.query_rev())
-      res.send_html(render_commits(root~, asset_path_map~, repo~, rev~))
+      res.send_html(
+        render_commits(
+          root~,
+          asset_path_map~,
+          repo~,
+          rev~,
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/commit", async fn(req, _res) {
       let _ = resolve_repo(root, req.repo_param())
@@ -136,7 +202,15 @@ fn repo_browser_module(
     ctx.get("/:owner/:repo/commit/:commit", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let commit = req.commit_param()
-      res.send_html(render_commit(root~, asset_path_map~, repo~, commit~))
+      res.send_html(
+        render_commit(
+          root~,
+          asset_path_map~,
+          repo~,
+          commit~,
+          current_user=current_user_from_request(req),
+        ),
+      )
     })
     ctx.get("/:owner/:repo/*path", async fn(req, _res) {
       let _ = resolve_repo(root, req.repo_param())

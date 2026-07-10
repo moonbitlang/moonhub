@@ -25,7 +25,7 @@ under `assets/*.git` are intentionally ignored by the repository browser.
 Use the tracked test fixture under `testdata/repos`:
 
 ```sh
-moon run . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080
+moon run . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
 ```
 
 Then open these pages in a browser:
@@ -50,3 +50,30 @@ http://127.0.0.1:8080/alice/demo/commit/<commit-hash>
 ```
 
 Press `Ctrl-C` in the terminal running `moon run` to stop the server.
+
+## Email Delivery
+
+Invitation emails are queued in `email_outbox` and delivered by the background
+mail worker. The default development transport writes `.eml` files to
+`_build/mail_outbox`:
+
+```sh
+MAIL_TRANSPORT=file
+MAIL_OUTBOX_DIR=_build/mail_outbox
+```
+
+Set `MAIL_TRANSPORT=smtp` to send through SMTP:
+
+```sh
+MAIL_TRANSPORT=smtp
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_AUTH=plain
+SMTP_USERNAME=mailer@example.com
+SMTP_PASSWORD=app-password
+SMTP_FROM=noreply@example.com
+```
+
+`SMTP_SECURITY` supports `plain`, `starttls`, and `tls`. `SMTP_AUTH` supports
+`none`, `plain`, `login`, and `xoauth2`.

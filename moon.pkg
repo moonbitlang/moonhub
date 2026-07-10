@@ -6,10 +6,20 @@ import {
   "moonbitlang/async/os_error",
   "moonbitlang/async/process",
   "moonbitlang/async/signal",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
   "hackwaly/moonback",
+  "moonbit-community/postgres/client",
+  "moonbit-community/postgres/pgpool",
+  "nexacodes/email/core",
+  "nexacodes/email/transport",
 }
+
+import {
+  "moonbitlang/async/socket",
+} for "wbtest"
 
 supported_targets = "native"
 
