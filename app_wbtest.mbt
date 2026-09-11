@@ -202,7 +202,7 @@ async test "smtp transport delivers queued email through smtp" {
       reuse_addr=true,
     )
     let port = server.addr.port()
-    let transcript : TestSmtpTranscript = { lines: [], data: "" }
+    let transcript : TestSmtpTranscript = { lines: [], data: "", }
     group.spawn_bg(() => run_one_message_smtp_server(server, transcript))
     let config = @transport.SmtpConfig::new(
       "127.0.0.1",

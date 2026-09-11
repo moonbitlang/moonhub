@@ -69,7 +69,7 @@ async fn list_repositories(root : String) -> Array[RepoId] {
         match strip_git_suffix(dir) {
           Some(name) =>
             if valid_segment(name) && @fs.exists("\{owner_dir}/\{dir}/HEAD") {
-              repos.push({ owner, name })
+              repos.push({ owner, name, })
             }
           _ => ()
         }
@@ -94,7 +94,7 @@ fn parse_tree_entry(line : String) -> TreeEntry? {
         } else {
           None
         }
-        Some({ kind: meta_parts[1], size, name: name_view.to_owned() })
+        Some({ kind: meta_parts[1], size, name: name_view.to_owned(), })
       } else {
         None
       }
@@ -130,7 +130,12 @@ async fn read_blob(git_dir : String, rev : String, path : String) -> String {
 fn parse_commit_line(line : String) -> CommitInfo? {
   let parts = line.split("\u{1f}").map(v => v.to_owned()).collect()
   if parts.length() >= 4 {
-    Some({ hash: parts[0], subject: parts[1], author: parts[2], date: parts[3] })
+    Some({
+      hash: parts[0],
+      subject: parts[1],
+      author: parts[2],
+      date: parts[3],
+    })
   } else {
     None
   }

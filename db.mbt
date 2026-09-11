@@ -118,7 +118,7 @@ async fn authenticate_user(
           }
           let token = create_session_token(tx, user.id)
           let _ = user
-          Some({ token, invitation: None })
+          Some({ token, invitation: None, })
         }
         None => {
           let invitation_sql =
@@ -133,9 +133,9 @@ async fn authenticate_user(
           match tx.query_opt(invitation_sql, params=[name_key, password]) {
             None => None
             Some(row) => {
-              let invitation : InvitationLogin = { id: row.get_name("id") }
+              let invitation : InvitationLogin = { id: row.get_name("id"), }
               let token = create_invitation_session_token(tx, invitation.id)
-              Some({ token, invitation: Some(invitation) })
+              Some({ token, invitation: Some(invitation), })
             }
           }
         }
@@ -352,7 +352,7 @@ async fn accept_invitation(
           )
           let token = create_session_token(tx, user.id)
           let _ = user
-          Some({ token, invitation: None })
+          Some({ token, invitation: None, })
         }
       }
     })

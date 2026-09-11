@@ -27,7 +27,7 @@ fn @moonback.Request::repo_param(
   guard valid_segment(name) else {
     raise BadRequest(message="invalid repository name")
   }
-  { owner, name }
+  { owner, name, }
 }
 
 ///|
