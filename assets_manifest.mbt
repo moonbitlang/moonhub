@@ -2,7 +2,7 @@
 async fn load_entry_to_asset_path_map(
   assets_root : String,
 ) -> Map[String, String] {
-  let map = {}
+  let map = Map([])
 
   try {
     let text = @fs.read_file(

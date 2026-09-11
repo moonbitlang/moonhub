@@ -3,7 +3,7 @@ let session_cookie_name : String = "moonhub_session"
 
 ///|
 fn parse_form(body : String) -> Map[String, String] {
-  let values : Map[String, String] = {}
+  let values : Map[String, String] = Map([])
   for parsed = 0 {
     let pair_end = if body[parsed:].find("&") is Some(pair_end) {
       parsed + pair_end
