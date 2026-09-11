@@ -99,6 +99,12 @@ async fn normalize_config(config : Config) -> Config {
 }
 
 ///|
+fn report_startup_error(message : String) -> Unit {
+  println("moonhub: \{message}")
+  @sys.exit(1)
+}
+
+///|
 async fn main {
   let raw_config = parse_config()
   if !@fs.exists(raw_config.root) {
@@ -115,5 +121,10 @@ async fn main {
   }
   load_dotenv(".env")
   let config = normalize_config(raw_config)
-  serve(config)
+  serve(config) catch {
+    BadRequest(message~) => report_startup_error(message)
+    Unauthorized(message~) => report_startup_error(message)
+    NotFound(message~) => report_startup_error(message)
+    err => raise err
+  }
 }

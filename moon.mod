@@ -17,6 +17,7 @@ description = ""
 
 import {
   "moonbitlang/async@0.21.3",
+  "moonbitlang/x@0.5.1",
   "moonbitlang/moonback@0.7.0",
   "moonbit-community/postgres@0.0.6",
   "nexacodes/email@0.1.0",

@@ -22,6 +22,17 @@ under `assets/*.git` are intentionally ignored by the repository browser.
 
 ## Manual Testing
 
+The server requires PostgreSQL. Create a local database and role, then copy
+the example environment file before starting the server:
+
+```sh
+cp .env.example .env
+# Edit .env if your PostgreSQL connection differs from the example.
+```
+
+Make sure the database named in `PG_URL` is running and reachable. The server
+creates its schema automatically on first start.
+
 Use the tracked test fixture under `testdata/repos`:
 
 ```sh

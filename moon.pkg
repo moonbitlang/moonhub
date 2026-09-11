@@ -10,6 +10,7 @@ import {
   "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
+  "moonbitlang/x/sys",
   "moonbitlang/moonback",
   "moonbit-community/postgres/client",
   "moonbit-community/postgres/pgpool",
