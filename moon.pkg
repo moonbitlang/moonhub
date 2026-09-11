@@ -11,9 +11,11 @@ import {
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
   "moonbitlang/x/sys",
+  "moonbitlang/x/bcrypt",
+  "moonbitlang/x/crypto",
   "moonbitlang/moonback",
-  "moonbit-community/postgres/client",
-  "moonbit-community/postgres/pgpool",
+  "Lfan-ke/moondb",
+  "Lfan-ke/moon-sqlite" @sqlite,
   "nexacodes/email/core",
   "nexacodes/email/transport",
 }

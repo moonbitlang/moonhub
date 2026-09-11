@@ -151,7 +151,7 @@ async fn run_one_message_smtp_server(
   transcript : TestSmtpTranscript,
 ) -> Unit {
   defer server.close()
-  match @async.with_timeout_opt(1000, () => server.accept()) {
+  match @async.with_timeout_opt(5000, () => server.accept()) {
     Some((conn, _)) => {
       defer conn.close()
       conn.write("220 moonhub test smtp\r\n")
@@ -343,7 +343,7 @@ async fn login_test_user(
 }
 
 ///|
-async fn reset_auth_test_data(pool : @pgpool.Pool) -> Unit {
+fn reset_auth_test_data(pool : Database) -> Unit raise {
   pool.with_client(client => {
     let _ = client.execute(
       (
@@ -374,72 +374,45 @@ async fn reset_auth_test_data(pool : @pgpool.Pool) -> Unit {
 
 ///|
 async fn with_production_test_app(
-  f : async (@moonback.App, Int, @pgpool.Pool) -> Unit,
+  f : async (@moonback.App, Int, Database) -> Unit,
 ) -> Unit {
-  match @env.get_env_var("TEST_PG_URL") {
-    None => ()
-    Some(test_pg_url) =>
-      @async.with_task_group(group => {
-        let pool = new_db_pool(parse_pg_url(test_pg_url), group)
-        defer pool.close()
-        let database_ready = try {
-          initialize_db(pool)
-          true
-        } catch {
-          @client.ClientError::Database(err) =>
-            if err.code == Some("28P01") {
-              false
-            } else {
-              abort(
-                "database initialization failed: \{err.code.unwrap_or("")} \{err.message}",
-              )
-            }
-          err => raise err
-        }
-        if database_ready {
-          reset_auth_test_data(pool) catch {
-            @client.ClientError::Database(err) =>
-              abort(
-                "reset auth test data failed: \{err.code.unwrap_or("")} \{err.message}",
-              )
-            err => raise err
-          }
-          ensure_root_invitation(pool, {
-            name_key: test_auth_name_key,
-            initial_password: test_auth_password,
-          }) catch {
-            @client.ClientError::Database(err) =>
-              abort(
-                "ensure root invitation failed: \{err.code.unwrap_or("")} \{err.message}",
-              )
-            err => raise err
-          }
-          let app = @moonback.App(
-            app_module,
-            config=Config(custom=[
-              @moonback.Config::custom(config_root, test_repo_root),
-              @moonback.Config::custom(config_assets_root, test_assets_root),
-              @moonback.Config::custom(config_db_pool, pool),
-            ]),
-          )
-          defer app.close()
-          let server = @moonback.listen(port=0)
-          let task = group.spawn(() => app.serve(server))
-          defer task.cancel()
-          f(app, server.addr.port(), pool) catch {
-            @client.ClientError::Database(err) =>
-              abort(
-                "production app test failed: \{err.code.unwrap_or("")} \{err.message}",
-              )
-            err => raise err
-          }
-        }
-      })
-  }
+  @async.with_task_group(group => {
+    let pool = new_db_pool({ path: ":memory:", }, group) catch {
+      err => abort("database open failed: \{err}")
+    }
+    defer pool.close()
+    initialize_db(pool) catch {
+      err => abort("database initialization failed: \{err}")
+    }
+    reset_auth_test_data(pool) catch {
+      err => abort("reset auth test data failed: \{err}")
+    }
+    ensure_root_invitation(pool, {
+      name_key: test_auth_name_key,
+      initial_password: test_auth_password,
+    }) catch {
+      err => abort("ensure root invitation failed: \{err}")
+    }
+    let app = @moonback.App(
+      app_module,
+      config=Config(custom=[
+        @moonback.Config::custom(config_root, test_repo_root),
+        @moonback.Config::custom(config_assets_root, test_assets_root),
+        @moonback.Config::custom(config_db_pool, pool),
+      ]),
+    )
+    defer app.close()
+    let server = @moonback.listen(port=0)
+    let task = group.spawn(() => app.serve(server))
+    defer task.cancel()
+    f(app, server.addr.port(), pool) catch {
+      err => abort("production app test failed: \{err}")
+    }
+  })
 }
 
 ///|
-async fn invited_admin_password_from_outbox(pool : @pgpool.Pool) -> String {
+fn invited_admin_password_from_outbox(pool : Database) -> String raise {
   let body : String = pool.with_client(client => {
     let row = client.query_one(
       (
@@ -462,7 +435,7 @@ async fn invited_admin_password_from_outbox(pool : @pgpool.Pool) -> String {
 }
 
 ///|
-async fn latest_invited_admin_outbox_id(pool : @pgpool.Pool) -> Int64 {
+fn latest_invited_admin_outbox_id(pool : Database) -> Int64 raise {
   pool.with_client(client => {
     let row = client.query_one(
       (
@@ -548,10 +521,10 @@ async test "root invitation creates team and revoked team invitation cannot sign
         (
           #|SELECT
           #|  invitation_id,
-          #|  status::text AS status,
+          #|  status AS status,
           #|  provider_message_id
           #|FROM email_outbox
-          #|WHERE id = $1
+          #|WHERE id = ?
         ),
         params=[outbox_id],
       )
@@ -567,7 +540,7 @@ async test "root invitation creates team and revoked team invitation cannot sign
     let invitation_row = pool.with_client(client => {
       client.query_one(
         (
-          #|SELECT id, status::text AS status
+          #|SELECT id, status AS status
           #|FROM invitation
           #|WHERE email = 'invited-admin@example.com'
           #|ORDER BY id DESC
@@ -585,7 +558,7 @@ async test "root invitation creates team and revoked team invitation cannot sign
           #|SET status = 'failed',
           #|    attempt_count = 10,
           #|    last_error = 'test delivery failure'
-          #|WHERE id = $1
+          #|WHERE id = ?
         ),
         params=[outbox_id],
       )
@@ -605,13 +578,13 @@ async test "root invitation creates team and revoked team invitation cannot sign
       client.query_one(
         (
           #|SELECT
-          #|  status::text AS status,
+          #|  status AS status,
           #|  attempt_count,
           #|  last_error,
           #|  provider_message_id,
-          #|  sent_at::text AS sent_at
+          #|  sent_at AS sent_at
           #|FROM email_outbox
-          #|WHERE id = $1
+          #|WHERE id = ?
         ),
         params=[outbox_id],
       )
@@ -644,9 +617,9 @@ async test "root invitation creates team and revoked team invitation cannot sign
     let revoked_row = pool.with_client(client => {
       client.query_one(
         (
-          #|SELECT status::text AS status
+          #|SELECT status AS status
           #|FROM invitation
-          #|WHERE id = $1
+          #|WHERE id = ?
         ),
         params=[invitation_id],
       )

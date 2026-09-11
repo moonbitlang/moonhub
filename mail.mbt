@@ -186,7 +186,7 @@ fn required_env_value(name : String) -> String raise MailConfigError {
 
 ///|
 async fn start_mail_worker(
-  pool : @pgpool.Pool,
+  pool : Database,
   group : @async.TaskGroup[Unit],
 ) -> Unit {
   let worker_id = mail_worker_id()
@@ -206,7 +206,7 @@ async fn start_mail_worker(
 
 ///|
 async fn run_mail_worker(
-  pool : @pgpool.Pool,
+  pool : Database,
   worker_id : String,
   transport : MailTransportConfig,
 ) -> Unit {
@@ -225,7 +225,7 @@ async fn run_mail_worker(
 
 ///|
 async fn deliver_next_email(
-  pool : @pgpool.Pool,
+  pool : Database,
   worker_id : String,
   transport : MailTransportConfig,
 ) -> Bool {
@@ -260,42 +260,49 @@ async fn deliver_email(
 }
 
 ///|
-async fn claim_next_email(
-  pool : @pgpool.Pool,
+fn claim_next_email(
+  pool : Database,
   worker_id : String,
-) -> EmailOutboxMessage? {
+) -> EmailOutboxMessage? raise {
   pool.with_client(client => {
-    let sql =
-      #|WITH picked AS (
-      #|  SELECT id
-      #|  FROM email_outbox
-      #|  WHERE status = 'pending'
-      #|    AND next_attempt_at <= now()
-      #|  ORDER BY next_attempt_at, id
-      #|  FOR UPDATE SKIP LOCKED
-      #|  LIMIT 1
-      #|)
-      #|UPDATE email_outbox
-      #|SET locked_at = now(),
-      #|    locked_by = $1,
-      #|    attempt_count = attempt_count + 1
-      #|FROM picked
-      #|WHERE email_outbox.id = picked.id
-      #|RETURNING
-      #|  email_outbox.id,
-      #|  email_outbox.to_email,
-      #|  email_outbox.subject,
-      #|  email_outbox.body
-    match client.query_opt(sql, params=[worker_id]) {
-      None => None
-      Some(row) =>
-        Some({
-          id: row.get_name("id"),
-          to_email: row.get_name("to_email"),
-          subject: row.get_name("subject"),
-          body: row.get_name("body"),
-        })
-    }
+    client.with_transaction(tx => {
+      let picked = tx.query_opt(
+        (
+          #|SELECT id, to_email, subject, body
+          #|FROM email_outbox
+          #|WHERE status = 'pending'
+          #|  AND next_attempt_at <= datetime('now')
+          #|ORDER BY next_attempt_at, id
+          #|LIMIT 1
+        ),
+      )
+      match picked {
+        None => None
+        Some(row) => {
+          let id : Int64 = row.get_name("id")
+          let changed = tx.execute(
+            (
+              #|UPDATE email_outbox
+              #|SET locked_at = datetime('now'),
+              #|    locked_by = ?,
+              #|    attempt_count = attempt_count + 1
+              #|WHERE id = ? AND status = 'pending'
+            ),
+            params=[worker_id, id],
+          )
+          if changed == 1 {
+            Some({
+              id,
+              to_email: row.get_name("to_email"),
+              subject: row.get_name("subject"),
+              body: row.get_name("body"),
+            })
+          } else {
+            None
+          }
+        }
+      }
+    })
   })
 }
 
@@ -383,49 +390,49 @@ fn message_or_raise(
 }
 
 ///|
-async fn mark_email_delivered(
-  pool : @pgpool.Pool,
+fn mark_email_delivered(
+  pool : Database,
   message_id : Int64,
   provider_message_id : String,
-) -> Unit {
+) -> Unit raise {
   pool.with_client(client => {
     let _ = client.execute(
       (
         #|UPDATE email_outbox
         #|SET status = 'sent',
-        #|    sent_at = now(),
-        #|    provider_message_id = $2,
+        #|    sent_at = datetime('now'),
+        #|    provider_message_id = ?,
         #|    locked_at = NULL,
         #|    locked_by = NULL,
         #|    last_error = NULL
-        #|WHERE id = $1
+        #|WHERE id = ?
       ),
-      params=[message_id, provider_message_id],
+      params=[provider_message_id, message_id],
     )
   })
 }
 
 ///|
-async fn mark_email_failed(
-  pool : @pgpool.Pool,
+fn mark_email_failed(
+  pool : Database,
   message_id : Int64,
   message : String,
-) -> Unit {
+) -> Unit raise {
   pool.with_client(client => {
     let _ = client.execute(
       (
         #|UPDATE email_outbox
         #|SET status = CASE
-        #|      WHEN attempt_count >= 10 THEN 'failed'::email_outbox_status
-        #|      ELSE 'pending'::email_outbox_status
+        #|      WHEN attempt_count >= 10 THEN 'failed'
+        #|      ELSE 'pending'
         #|    END,
-        #|    next_attempt_at = now() + (interval '1 minute' * LEAST(attempt_count, 10)),
+        #|    next_attempt_at = datetime('now', '+' || MIN(attempt_count, 10) || ' minutes'),
         #|    locked_at = NULL,
         #|    locked_by = NULL,
-        #|    last_error = $2
-        #|WHERE id = $1
+        #|    last_error = ?
+        #|WHERE id = ?
       ),
-      params=[message_id, message],
+      params=[message, message_id],
     )
   })
 }

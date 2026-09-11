@@ -5,7 +5,7 @@ name = "hackwaly/moonhub"
 
 version = "0.1.0"
 
-readme = "README.mbt.md"
+readme = "README.md"
 
 repository = ""
 
@@ -17,9 +17,10 @@ description = ""
 
 import {
   "moonbitlang/async@0.21.3",
-  "moonbitlang/x@0.5.1",
+  "moonbitlang/x@0.5.5",
   "moonbitlang/moonback@0.7.0",
-  "moonbit-community/postgres@0.0.6",
+  "Lfan-ke/moondb@0.1.7",
+  "Lfan-ke/moon-sqlite@0.2.2",
   "nexacodes/email@0.1.0",
   "moonbitlang/moonback@0.8.2",
 }

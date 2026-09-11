@@ -2,6 +2,7 @@
 package "hackwaly/moonhub"
 
 import {
+  "Lfan-ke/moondb",
   "moonbitlang/core/debug",
 }
 
@@ -21,7 +22,15 @@ type Config
 
 type CurrentUser
 
+type Database
+
+type DbClient
+
 type DbConfig
+
+type DbRow
+
+type DbTransaction
 
 type EmailOutboxMessage
 
@@ -48,3 +57,6 @@ type TreeEntry
 // Type aliases
 
 // Traits
+trait DbFromValue
+
+trait DbParam

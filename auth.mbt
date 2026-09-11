@@ -148,7 +148,7 @@ let invitation_session_key : @moonback.TypedKey[InvitationSession] = TypedKey(
 )
 
 ///|
-fn auth_middleware(pool : @pgpool.Pool) -> @moonback.Middleware {
+fn auth_middleware(pool : Database) -> @moonback.Middleware {
   Middleware(next => {
     (req, res) => {
       match req.cookie().get(session_cookie_name) {
@@ -303,7 +303,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
 
 ///|
 async fn render_password_error(
-  pool : @pgpool.Pool,
+  pool : Database,
   req : @moonback.Request,
   res : @moonback.Responder,
   asset_path_map : Map[String, String],

@@ -9,12 +9,7 @@ struct Config {
 
 ///|
 struct DbConfig {
-  host : String
-  port : Int
-  user : String
-  name : String
-  password : String?
-  pool_size : Int
+  path : String
 }
 
 ///|

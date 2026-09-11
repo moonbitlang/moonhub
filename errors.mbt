@@ -18,6 +18,26 @@ fn app_error_middleware(
           res.send_html(render_error(401, message, asset_path_map), status=401)
         NotFound(message~) =>
           res.send_html(render_error(404, message, asset_path_map), status=404)
+        @moondb.ConnectError(err) =>
+          res.send_html(
+            render_error(500, "database error: \{err}", asset_path_map),
+            status=500,
+          )
+        @moondb.QueryError(err) =>
+          res.send_html(
+            render_error(500, "database error: \{err}", asset_path_map),
+            status=500,
+          )
+        @moondb.TypeError(err) =>
+          res.send_html(
+            render_error(500, "database error: \{err}", asset_path_map),
+            status=500,
+          )
+        @moondb.Closed =>
+          res.send_html(
+            render_error(500, "database connection is closed", asset_path_map),
+            status=500,
+          )
         err => raise err
       }
     }

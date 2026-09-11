@@ -16,10 +16,10 @@ fn require_invitation_id(req : @moonback.Request) -> Int64 raise AppError {
 }
 
 ///|
-async fn require_team_by_request(
-  pool : @pgpool.Pool,
+fn require_team_by_request(
+  pool : Database,
   req : @moonback.Request,
-) -> TeamSummary {
+) -> TeamSummary raise {
   let name_key = require_team_name_key(req)
   match get_team_by_name_key(pool, name_key) {
     Some(team) => team
@@ -28,11 +28,11 @@ async fn require_team_by_request(
 }
 
 ///|
-async fn require_team_member_access(
-  pool : @pgpool.Pool,
+fn require_team_member_access(
+  pool : Database,
   actor : CurrentUser,
   team : TeamSummary,
-) -> Unit {
+) -> Unit raise {
   if actor.is_site_admin {
     ()
   } else {

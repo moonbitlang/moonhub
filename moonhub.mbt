@@ -125,6 +125,13 @@ async fn main {
     BadRequest(message~) => report_startup_error(message)
     Unauthorized(message~) => report_startup_error(message)
     NotFound(message~) => report_startup_error(message)
+    @moondb.ConnectError(message) =>
+      report_startup_error("database error: \{message}")
+    @moondb.QueryError(message) =>
+      report_startup_error("database error: \{message}")
+    @moondb.TypeError(message) =>
+      report_startup_error("database error: \{message}")
+    @moondb.Closed => report_startup_error("database connection is closed")
     err => raise err
   }
 }
