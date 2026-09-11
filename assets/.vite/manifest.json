@@ -173,26 +173,62 @@
       "_rolldown-runtime-QTnfLwEv.mjs"
     ]
   },
+  "node_modules/@pierre/theme/dist/pierre-dark-protanopia-deuteranopia.mjs": {
+    "file": "pierre-dark-protanopia-deuteranopia-B35FxJx-.mjs",
+    "name": "pierre-dark-protanopia-deuteranopia",
+    "src": "node_modules/@pierre/theme/dist/pierre-dark-protanopia-deuteranopia.mjs",
+    "isDynamicEntry": true
+  },
   "node_modules/@pierre/theme/dist/pierre-dark-soft.mjs": {
-    "file": "pierre-dark-soft-HXgun5vs.mjs",
+    "file": "pierre-dark-soft-kZQmAZld.mjs",
     "name": "pierre-dark-soft",
     "src": "node_modules/@pierre/theme/dist/pierre-dark-soft.mjs",
     "isDynamicEntry": true
   },
+  "node_modules/@pierre/theme/dist/pierre-dark-tritanopia.mjs": {
+    "file": "pierre-dark-tritanopia-CpjhbsIL.mjs",
+    "name": "pierre-dark-tritanopia",
+    "src": "node_modules/@pierre/theme/dist/pierre-dark-tritanopia.mjs",
+    "isDynamicEntry": true
+  },
+  "node_modules/@pierre/theme/dist/pierre-dark-vibrant.mjs": {
+    "file": "pierre-dark-vibrant-CpQYzh95.mjs",
+    "name": "pierre-dark-vibrant",
+    "src": "node_modules/@pierre/theme/dist/pierre-dark-vibrant.mjs",
+    "isDynamicEntry": true
+  },
   "node_modules/@pierre/theme/dist/pierre-dark.mjs": {
-    "file": "pierre-dark-sU4Zdns8.mjs",
+    "file": "pierre-dark-CpLgRqie.mjs",
     "name": "pierre-dark",
     "src": "node_modules/@pierre/theme/dist/pierre-dark.mjs",
     "isDynamicEntry": true
   },
+  "node_modules/@pierre/theme/dist/pierre-light-protanopia-deuteranopia.mjs": {
+    "file": "pierre-light-protanopia-deuteranopia-0fSaH845.mjs",
+    "name": "pierre-light-protanopia-deuteranopia",
+    "src": "node_modules/@pierre/theme/dist/pierre-light-protanopia-deuteranopia.mjs",
+    "isDynamicEntry": true
+  },
   "node_modules/@pierre/theme/dist/pierre-light-soft.mjs": {
-    "file": "pierre-light-soft-CodEzPxf.mjs",
+    "file": "pierre-light-soft-lWLdNTOI.mjs",
     "name": "pierre-light-soft",
     "src": "node_modules/@pierre/theme/dist/pierre-light-soft.mjs",
     "isDynamicEntry": true
   },
+  "node_modules/@pierre/theme/dist/pierre-light-tritanopia.mjs": {
+    "file": "pierre-light-tritanopia-CEbqgOJL.mjs",
+    "name": "pierre-light-tritanopia",
+    "src": "node_modules/@pierre/theme/dist/pierre-light-tritanopia.mjs",
+    "isDynamicEntry": true
+  },
+  "node_modules/@pierre/theme/dist/pierre-light-vibrant.mjs": {
+    "file": "pierre-light-vibrant-D80Fkn33.mjs",
+    "name": "pierre-light-vibrant",
+    "src": "node_modules/@pierre/theme/dist/pierre-light-vibrant.mjs",
+    "isDynamicEntry": true
+  },
   "node_modules/@pierre/theme/dist/pierre-light.mjs": {
-    "file": "pierre-light-DWBk51d8.mjs",
+    "file": "pierre-light-CoaEpmwp.mjs",
     "name": "pierre-light",
     "src": "node_modules/@pierre/theme/dist/pierre-light.mjs",
     "isDynamicEntry": true
@@ -2184,7 +2220,7 @@
     "isEntry": true
   },
   "src/custom-elements.tsx": {
-    "file": "custom-elements-BqZJkPKJ.mjs",
+    "file": "custom-elements-C8p4h6zr.mjs",
     "name": "custom-elements",
     "src": "src/custom-elements.tsx",
     "isEntry": true,
@@ -2495,8 +2531,14 @@
       "node_modules/shiki/dist/wasm.mjs",
       "node_modules/@pierre/theme/dist/pierre-dark.mjs",
       "node_modules/@pierre/theme/dist/pierre-dark-soft.mjs",
+      "node_modules/@pierre/theme/dist/pierre-dark-vibrant.mjs",
+      "node_modules/@pierre/theme/dist/pierre-dark-protanopia-deuteranopia.mjs",
+      "node_modules/@pierre/theme/dist/pierre-dark-tritanopia.mjs",
       "node_modules/@pierre/theme/dist/pierre-light.mjs",
-      "node_modules/@pierre/theme/dist/pierre-light-soft.mjs"
+      "node_modules/@pierre/theme/dist/pierre-light-soft.mjs",
+      "node_modules/@pierre/theme/dist/pierre-light-vibrant.mjs",
+      "node_modules/@pierre/theme/dist/pierre-light-protanopia-deuteranopia.mjs",
+      "node_modules/@pierre/theme/dist/pierre-light-tritanopia.mjs"
     ]
   }
 }

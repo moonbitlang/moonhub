@@ -165,7 +165,7 @@ const moonhubCodeViewStyles = `
 setCustomExtension("mbt", "moonbit");
 setCustomExtension("mbti", "moonbit");
 
-function renderCodeView(mount: HTMLElement, items: CodeViewItem[]): Root {
+function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[]): Root {
   ensureMoonhubCodeViewStyles();
   const root = createRoot(mount);
   root.render(
@@ -182,8 +182,8 @@ function renderCodeView(mount: HTMLElement, items: CodeViewItem[]): Root {
   return root;
 }
 
-function MoonhubCodeView({ items }: { items: CodeViewItem[] }) {
-  const viewerRef = useRef<CodeViewHandle<undefined> | null>(null);
+function MoonhubCodeView({ items }: { items: CodeViewItem<undefined>[] }) {
+  const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
   const anyLargeDiffs = useMemo(
     () =>
       items.some(
@@ -326,7 +326,7 @@ function ensureMoonhubCodeViewStyles() {
   document.head.append(style);
 }
 
-function getNextItemVersion(item: CodeViewItem): number {
+function getNextItemVersion(item: CodeViewItem<undefined>): number {
   return typeof item.version === "number" ? item.version + 1 : 1;
 }
 
@@ -352,7 +352,7 @@ function moonBitLanguageForDiff(
   );
 }
 
-function patchToItems(patch: string): CodeViewItem[] {
+function patchToItems(patch: string): CodeViewItem<undefined>[] {
   return parsePatchFiles(patch, "moonhub", true).flatMap(
     (parsedPatch, patchIndex) =>
       parsedPatch.files.map((fileDiff, fileIndex) => {
@@ -368,7 +368,7 @@ function patchToItems(patch: string): CodeViewItem[] {
   );
 }
 
-function fileToItems(name: string, contents: string): CodeViewItem[] {
+function fileToItems(name: string, contents: string): CodeViewItem<undefined>[] {
   const lang = moonBitLanguageForPath(name);
   return [
     {
