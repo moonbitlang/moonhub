@@ -41,9 +41,37 @@ async fn default_ref(git_dir : String) -> String {
 ///|
 async fn resolve_ref(git_dir : String, rev : String?) -> String {
   match rev {
-    Some(v) if valid_segment(v) => v
+    Some(v) if valid_repo_path(v) => v
     _ => default_ref(git_dir)
   }
+}
+
+///|
+async fn resolve_ref_path(
+  git_dir : String,
+  rev : String,
+  path : String,
+) -> (String, String) {
+  let combined = "\{rev}/\{path}"
+  let refs = run_git(git_dir, [
+    "for-each-ref", "--format=%(refname:strip=2)", "refs/heads/", "refs/tags/",
+  ])
+  let mut matched_ref = rev
+  let mut matched_path = path
+  // URL segments do not mark where a slash-containing ref ends. Prefer the
+  // longest named ref; otherwise preserve single-segment revisions such as HEAD.
+  for candidate in split_lines(refs) {
+    if candidate.length() > matched_ref.length() {
+      if combined == candidate {
+        matched_ref = candidate
+        matched_path = ""
+      } else if combined.has_prefix("\{candidate}/") {
+        matched_ref = candidate
+        matched_path = combined[candidate.length() + 1:].to_owned()
+      }
+    }
+  }
+  (matched_ref, matched_path)
 }
 
 ///|

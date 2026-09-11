@@ -35,7 +35,9 @@ fn @moonback.Request::rev_param(
   self : @moonback.Request,
 ) -> String raise AppError {
   let rev = self.required_param("rev", "revision")
-  guard valid_segment(rev) else { raise BadRequest(message="invalid revision") }
+  guard valid_repo_path(rev) else {
+    raise BadRequest(message="invalid revision")
+  }
   rev
 }
 

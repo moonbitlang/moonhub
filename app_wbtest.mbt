@@ -254,6 +254,80 @@ async test "serves repository paths from route params" {
 }
 
 ///|
+async test "serves slash branches and tags in repository URLs" {
+  with_git_test_repo(async fn(root, git_dir) {
+    let branch = "yuxiang/regex-states-overflow-fallback"
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/\{branch}", "master"]))
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/release", "master"]))
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/release/v1", "master"]))
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/releases/v2", "master"]))
+    let commit = run_git(git_dir, ["rev-parse", "master"]).trim().to_owned()
+    let app = @moonback.App(
+      browser_app_module,
+      config=test_app_config(repo_root=root),
+    )
+    defer app.close()
+    @async.with_task_group(group => {
+      let server = @moonback.listen(port=0)
+      let task = group.spawn(() => app.serve(server))
+      defer task.cancel()
+      let port = server.addr.port()
+      for rev in [branch, "release/v1", "releases/v2", "master", "HEAD", commit] {
+        let (response, body) = http_get_path(
+          port,
+          "/alice/demo/blob/\{rev}/src/main.mbt",
+        )
+        assert_eq(response.code, 200, msg=body)
+        assert_true(
+          body.contains("<span data-file-name hidden>src/main.mbt</span>"),
+        )
+        assert_true(body.contains("println(&quot;hi&quot;)"))
+        let (response, body) = http_get_path(port, "/alice/demo/tree/\{rev}")
+        assert_eq(response.code, 200, msg=body)
+        assert_true(body.contains("/alice/demo/tree/\{rev}/src"))
+        let (response, body) = http_get_path(
+          port,
+          "/alice/demo/tree/\{rev}/src",
+        )
+        assert_eq(response.code, 200, msg=body)
+        assert_true(body.contains("/alice/demo/blob/\{rev}/src/main.mbt"))
+      }
+      let (response, body) = http_get_path(port, "/alice/demo?rev=\{branch}")
+      assert_eq(response.code, 200, msg=body)
+      assert_true(body.contains("/alice/demo/blob/\{branch}/README.md"))
+      let (response, body) = http_get_path(
+        port,
+        "/alice/demo/commits?rev=\{branch}",
+      )
+      assert_eq(response.code, 200, msg=body)
+      assert_true(body.contains("initial fixture commit"))
+      let (response, _) = http_get_path(port, "/alice/demo?rev=missing/branch")
+      assert_eq(response.code, 404)
+      let (response, _) = http_get_path(
+        port,
+        "/alice/demo/blob/\{branch}/missing.mbt",
+      )
+      assert_eq(response.code, 404)
+      let (response, _) = http_get_path(port, "/alice/demo/blob/\{branch}")
+      assert_eq(response.code, 404)
+      let (response, _) = http_get_path(
+        port,
+        "/alice/demo/blob/\{branch}/../README.md",
+      )
+      assert_eq(response.code, 400)
+      let (response, _) = http_get_path(
+        port, "/alice/demo/blob/releases/v20/src/main.mbt",
+      )
+      assert_eq(response.code, 404)
+      ignore(run_git(git_dir, ["symbolic-ref", "HEAD", "refs/heads/\{branch}"]))
+      let (response, body) = http_get_path(port, "/alice/demo")
+      assert_eq(response.code, 200, msg=body)
+      assert_true(body.contains("/alice/demo/blob/\{branch}/README.md"))
+    })
+  })
+}
+
+///|
 fn extract_attr(html : String, marker : String, attr : String) -> String {
   match html.find(marker) {
     Some(marker_start) => {

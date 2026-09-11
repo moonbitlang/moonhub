@@ -1,8 +1,31 @@
 ///|
+async fn with_git_test_repo(f : async (String, String) -> Unit) -> Unit {
+  let root = @fs.tmpdir(prefix="moonhub-git-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.mkdir("\{root}/alice")
+  let source = @fs.realpath("testdata/repos/alice/demo.git")
+  let git_dir = "\{root}/alice/demo.git"
+  let (code, output) = @process.collect_output_merged("git", [
+    "clone", "--bare", "--no-hardlinks", "--quiet", source, git_dir,
+  ])
+  assert_eq(code, 0, msg=output.text())
+  f(root, git_dir)
+}
+
+///|
 async test "list repository fixtures" {
-  let repos = list_repositories("testdata/repos")
-  assert_eq(repos.length(), 1)
-  assert_eq(repos[0].path(), "alice/demo")
+  with_git_test_repo(async fn(root, git_dir) {
+    let repos = list_repositories(root)
+    assert_eq(repos.length(), 1)
+    assert_eq(repos[0].path(), "alice/demo")
+    @fs.mkdir("\{root}/dii")
+    @fs.symlink(target=git_dir, "\{root}/dii/ideas.git")
+    let repos = list_repositories(root)
+    assert_eq(repos.length(), 2)
+    let paths = repos.map(repo => repo.path())
+    assert_true(paths.contains("alice/demo"))
+    assert_true(paths.contains("dii/ideas"))
+  })
 }
 
 ///|

@@ -141,8 +141,11 @@ fn repo_browser_module(
     ctx.get("/:owner/:repo/tree/:rev/*path", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
       let git_dir = repo.git_dir(root)
-      let rev = resolve_ref(git_dir, Some(req.rev_param()))
-      let path = req.path_param()
+      let (rev, path) = resolve_ref_path(
+        git_dir,
+        req.rev_param(),
+        req.path_param(),
+      )
       res.send_html(
         render_tree(
           root~,
@@ -165,8 +168,11 @@ fn repo_browser_module(
     })
     ctx.get("/:owner/:repo/blob/:rev/*path", async fn(req, res) {
       let repo = resolve_repo(root, req.repo_param())
-      let rev = resolve_ref(repo.git_dir(root), Some(req.rev_param()))
-      let path = req.path_param()
+      let (rev, path) = resolve_ref_path(
+        repo.git_dir(root),
+        req.rev_param(),
+        req.path_param(),
+      )
       if path.is_empty() {
         raise NotFound(message="file not found")
       } else {
