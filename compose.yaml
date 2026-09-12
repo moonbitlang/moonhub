@@ -1,0 +1,60 @@
+services:
+  web:
+    image: moonhub:local
+    build:
+      context: .
+      args:
+        MOONBIT_VERSION: ${MOONBIT_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${MOONHUB_HTTP_BIND:-127.0.0.1}:${MOONHUB_HTTP_PORT:-8080}:8080"
+    environment:
+      MOONHUB_ROOT_USER: ${MOONHUB_ROOT_USER:-root}
+      MOONHUB_ROOT_PASSWORD_FILE: /run/secrets/root_password
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-file}
+      MAIL_OUTBOX_DIR: /data/mail_outbox
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_AUTH: ${SMTP_AUTH:-none}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - data:/data
+    secrets:
+      - root_password
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/login"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+
+  ssh:
+    image: moonhub:local
+    command: ["ssh"]
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "${MOONHUB_SSH_BIND:-0.0.0.0}:${MOONHUB_SSH_PORT:-2222}:2222"
+    volumes:
+      - data:/data
+      - ssh-host-keys:/var/lib/moonhub/ssh
+    healthcheck:
+      test: ["CMD-SHELL", "ssh-keyscan -t ed25519 -T 3 -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 30s
+
+volumes:
+  data:
+  ssh-host-keys:
+
+secrets:
+  root_password:
+    file: ./deploy/secrets/root_password

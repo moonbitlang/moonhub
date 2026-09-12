@@ -41,12 +41,11 @@ fn repo_link(repo : RepoId) -> String {
 }
 
 ///|
-async fn render_index(
-  root~ : String,
+fn render_index(
+  repos~ : Array[RepoId],
   asset_path_map~ : Map[String, String],
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
-  let repos = list_repositories(root)
   layout(
     "moonhub",
     asset_path_map,
@@ -54,7 +53,7 @@ async fn render_index(
       b <+ "<div class=\"page-heading\"><h1>Repositories</h1></div>"
       if repos.is_empty() {
         b <+
-          "<div class=\"empty-state\"><p class=\"muted\">No repositories found under \{(root)}.</p></div>"
+          "<div class=\"empty-state\"><p class=\"muted\">No repositories available.</p></div>"
       } else {
         b <+
           "<div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Repository</th></tr></thead><tbody>"
@@ -127,7 +126,12 @@ async fn render_tree(
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let entries = list_tree(git_dir, rev, path) catch {
-    GitCommandFailed(_) => raise NotFound(message="tree not found")
+    GitCommandFailed(_) =>
+      if path.is_empty() && is_unborn_default_ref(git_dir, rev) {
+        []
+      } else {
+        raise NotFound(message="tree not found")
+      }
     err => raise err
   }
   let base = "\{repo_link(repo)}/tree/\{url_escape_path(rev)}"
@@ -157,6 +161,9 @@ async fn render_tree(
         let entry_size = entry.size.unwrap_or("")
         b <+
           "<tr><td><a class=\"path\" href=\"\{href}\">\{entry.name}</a></td><td>\{entry.kind}</td><td class=\"muted\">\{entry_size}</td></tr>"
+      }
+      if entries.is_empty() {
+        b <+ "<tr><td colspan=\"3\" class=\"muted\">No files.</td></tr>"
       }
       b <+ "</tbody></table></div></div></div>"
     }),
@@ -199,7 +206,12 @@ async fn render_commits(
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
   let commits = list_commits(repo.git_dir(root), rev) catch {
-    GitCommandFailed(_) => raise NotFound(message="commit not found")
+    GitCommandFailed(_) =>
+      if is_unborn_default_ref(repo.git_dir(root), rev) {
+        []
+      } else {
+        raise NotFound(message="commit not found")
+      }
     err => raise err
   }
   layout(
@@ -214,6 +226,9 @@ async fn render_commits(
         let short_hash = commit.hash[:12].to_owned()
         b <+
           "<tr><td><a class=\"path\" href=\"\{href}\">\{short_hash}</a></td><td>\{commit.subject}</td><td>\{commit.author}</td><td class=\"muted\">\{commit.date}</td></tr>"
+      }
+      if commits.is_empty() {
+        b <+ "<tr><td colspan=\"4\" class=\"muted\">No commits.</td></tr>"
       }
       b <+ "</tbody></table></div></div></div>"
     }),

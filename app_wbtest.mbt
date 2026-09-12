@@ -22,9 +22,10 @@ let browser_app_module : @moonback.Module = Module(ctx => {
     App(
       Module(ctx => {
         let asset_path_map = load_entry_to_asset_path_map(assets_root(ctx))
+        let root = repo_root(ctx)
         ctx.add_middleware(app_error_middleware(asset_path_map))
-        ctx.use_(index_module(asset_path_map))
-        ctx.use_(repo_browser_module(asset_path_map))
+        ctx.use_(index_module(asset_path_map, _ => list_repositories(root)))
+        ctx.use_(repo_browser_module(asset_path_map, (_, _) => ()))
       }),
       config~,
     ),

@@ -24,11 +24,6 @@ async fn run_git(git_dir : String, args : Array[String]) -> String {
 }
 
 ///|
-async fn repo_exists(root : String, repo : RepoId) -> Bool {
-  @fs.exists("\{repo.git_dir(root)}/HEAD")
-}
-
-///|
 async fn default_ref(git_dir : String) -> String {
   let out = run_git(git_dir, ["symbolic-ref", "--short", "HEAD"])
   let lines = split_lines(out)
@@ -36,6 +31,12 @@ async fn default_ref(git_dir : String) -> String {
     Some(line) => line
     None => "HEAD"
   }
+}
+
+///|
+async fn is_unborn_default_ref(git_dir : String, rev : String) -> Bool {
+  rev == default_ref(git_dir) &&
+  run_git(git_dir, ["for-each-ref", "--count=1", "--format=%(refname)"]).is_empty()
 }
 
 ///|

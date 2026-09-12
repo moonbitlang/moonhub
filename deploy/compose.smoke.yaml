@@ -1,0 +1,14 @@
+services:
+  web:
+    ports: !override
+      - "127.0.0.1::8080"
+    environment:
+      MOONHUB_ROOT_USER: root
+      MAIL_TRANSPORT: file
+  ssh:
+    ports: !override
+      - "127.0.0.1::2222"
+
+secrets:
+  root_password:
+    file: ${MOONHUB_SMOKE_SECRET:?Run scripts/docker-smoke.sh}

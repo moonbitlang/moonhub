@@ -1,0 +1,27 @@
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /var/lib/moonhub/ssh/ssh_host_ed25519_key
+PidFile /run/sshd.pid
+AllowUsers git
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+UsePAM no
+AuthorizedKeysFile none
+AuthorizedKeysCommand /usr/bin/env DB_PATH=/data/moonhub.db /usr/local/bin/moonhub ssh-authorized-key %u %t %k
+AuthorizedKeysCommandUser git
+PermitUserEnvironment no
+PermitUserRC no
+PermitTTY no
+DisableForwarding yes
+X11Forwarding no
+PermitTunnel no
+MaxAuthTries 3
+MaxSessions 4
+MaxStartups 10:30:60
+LoginGraceTime 30
+AcceptEnv GIT_PROTOCOL
+SetEnv DB_PATH=/data/moonhub.db MOONHUB_REPO_ROOT=/data/repos MOONHUB_GIT=/usr/bin/git
+LogLevel VERBOSE

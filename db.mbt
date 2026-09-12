@@ -24,12 +24,16 @@ fn db_pool(ctx : @moonback.ModuleContext) -> Database {
 }
 
 ///|
-fn new_db_pool(
+fn[T] new_db_pool(
   config : DbConfig,
-  group : @async.TaskGroup[Unit],
+  group : @async.TaskGroup[T],
 ) -> Database raise @moondb.DbError {
   ignore(group)
-  { driver: @sqlite.SqliteDriver::open(config.path), }
+  let driver = @sqlite.SqliteDriver::open(config.path)
+  errdefer driver.close()
+  let _ = driver.execute("PRAGMA foreign_keys = ON", [])
+  let _ = driver.execute("PRAGMA busy_timeout = 5000", [])
+  { driver, }
 }
 
 ///|
@@ -48,6 +52,22 @@ async fn initialize_db(pool : Database) -> Unit {
     let sql = @fs.read_file("db/base.sql").text()
     pool.with_client(client => client.batch_execute(sql))
   }
+  let migration = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
+  pool.with_client(client => {
+    client.with_transaction(tx => {
+      let row = tx.query_one("PRAGMA user_version")
+      let version : Int64 = row.get_name("user_version")
+      guard version <= 1L else {
+        raise BadRequest(
+          message="database schema is newer than this moonhub version",
+        )
+      }
+      if version == 0L {
+        tx.driver.exec_script(migration)
+        let _ = tx.execute("PRAGMA user_version = 1")
+      }
+    })
+  })
 }
 
 ///|

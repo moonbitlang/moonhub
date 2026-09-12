@@ -46,7 +46,13 @@ type MailTransportConfig
 
 type RepoId
 
+type RepoOperation derive(Eq, @debug.Debug)
+
 type RootUserConfig
+
+type SshPublicKey
+
+type SshRequest
 
 type TeamMemberSummary
 

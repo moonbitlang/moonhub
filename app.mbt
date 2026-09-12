@@ -43,9 +43,18 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.add_middleware(auth_middleware(pool))
   ctx.add_middleware(require_login_middleware())
   ctx.use_(auth_module(asset_path_map))
-  ctx.use_(index_module(asset_path_map))
+  let root = repo_root(ctx)
+  ctx.use_(
+    index_module(asset_path_map, req => {
+      visible_repositories(pool, root, require_current_user(req))
+    }),
+  )
   ctx.use_(teams_module(asset_path_map))
-  ctx.use_(repo_browser_module(asset_path_map))
+  ctx.use_(
+    repo_browser_module(asset_path_map, (req, repo) => {
+      authorize_repository(pool, require_current_user(req), repo, Read)
+    }),
+  )
 })
 
 ///|
@@ -72,13 +81,15 @@ fn assets_root(ctx : @moonback.ModuleContext) -> String {
 }
 
 ///|
-fn index_module(asset_path_map : Map[String, String]) -> @moonback.Module {
+fn index_module(
+  asset_path_map : Map[String, String],
+  repositories : async (@moonback.Request) -> Array[RepoId],
+) -> @moonback.Module {
   Module(ctx => {
-    let root = repo_root(ctx)
     ctx.get("/", async fn(req, res) {
       res.send_html(
         render_index(
-          root~,
+          repos=repositories(req),
           asset_path_map~,
           current_user=current_user_from_request(req),
         ),
@@ -90,11 +101,12 @@ fn index_module(asset_path_map : Map[String, String]) -> @moonback.Module {
 ///|
 fn repo_browser_module(
   asset_path_map : Map[String, String],
+  authorize : (@moonback.Request, RepoId) -> Unit raise,
 ) -> @moonback.Module {
   Module(ctx => {
     let root = repo_root(ctx)
     ctx.get("/:owner/:repo", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, req.query_rev())
       res.send_html(
@@ -109,7 +121,7 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/tree", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, None)
       res.send_html(
@@ -124,7 +136,7 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/tree/:rev", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let git_dir = repo.git_dir(root)
       let rev = resolve_ref(git_dir, Some(req.rev_param()))
       res.send_html(
@@ -139,7 +151,7 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/tree/:rev/*path", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let git_dir = repo.git_dir(root)
       let (rev, path) = resolve_ref_path(
         git_dir,
@@ -158,16 +170,16 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/blob", async fn(req, _res) {
-      let _ = resolve_repo(root, req.repo_param())
+      let _ = resolve_repo(root, req, authorize)
       raise NotFound(message="file not found")
     })
     ctx.get("/:owner/:repo/blob/:rev", async fn(req, _res) {
-      let _ = resolve_repo(root, req.repo_param())
+      let _ = resolve_repo(root, req, authorize)
       let _ = req.rev_param()
       raise NotFound(message="file not found")
     })
     ctx.get("/:owner/:repo/blob/:rev/*path", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let (rev, path) = resolve_ref_path(
         repo.git_dir(root),
         req.rev_param(),
@@ -189,7 +201,7 @@ fn repo_browser_module(
       }
     })
     ctx.get("/:owner/:repo/commits", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let rev = resolve_ref(repo.git_dir(root), req.query_rev())
       res.send_html(
         render_commits(
@@ -202,11 +214,11 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/commit", async fn(req, _res) {
-      let _ = resolve_repo(root, req.repo_param())
+      let _ = resolve_repo(root, req, authorize)
       raise NotFound(message="commit not found")
     })
     ctx.get("/:owner/:repo/commit/:commit", async fn(req, res) {
-      let repo = resolve_repo(root, req.repo_param())
+      let repo = resolve_repo(root, req, authorize)
       let commit = req.commit_param()
       res.send_html(
         render_commit(
@@ -219,16 +231,20 @@ fn repo_browser_module(
       )
     })
     ctx.get("/:owner/:repo/*path", async fn(req, _res) {
-      let _ = resolve_repo(root, req.repo_param())
+      let _ = resolve_repo(root, req, authorize)
       raise NotFound(message="not found")
     })
   })
 }
 
 ///|
-async fn resolve_repo(root : String, repo : RepoId) -> RepoId {
-  guard repo_exists(root, repo) else {
-    raise NotFound(message="repository not found")
-  }
+async fn resolve_repo(
+  root : String,
+  req : @moonback.Request,
+  authorize : (@moonback.Request, RepoId) -> Unit raise,
+) -> RepoId {
+  let repo = req.repo_param()
+  authorize(req, repo)
+  let _ = resolve_repository_dir(root, repo)
   repo
 }

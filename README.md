@@ -1,5 +1,14 @@
 # hackwaly/moonhub
 
+## Docker and Git SSH
+
+Run HTTP and Git-over-SSH services with Docker Compose. See
+[Docker deployment](deploy/README.md) for bootstrap secrets, key registration,
+repository creation/import, persistence, and the end-to-end smoke test.
+
+Repositories must be registered in the database before authenticated users can
+access them. The same repository permissions apply to SSH and browser access.
+
 ## Browser Assets
 
 The rich code views are built from the JavaScript project under `js/` and
@@ -36,6 +45,12 @@ Use the tracked test fixture under `testdata/repos`:
 
 ```sh
 moon run . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
+```
+
+After activating the root account, create an `alice` team and register the fixture:
+
+```sh
+moon run . -- repo-create alice/demo --root testdata/repos --import
 ```
 
 Then open these pages in a browser:
