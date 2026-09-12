@@ -8,6 +8,8 @@ repository creation/import, persistence, and the end-to-end smoke test.
 
 Repositories must be registered in the database before authenticated users can
 access them. The same repository permissions apply to SSH and browser access.
+Signed-in users can add, inspect, and revoke their own SSH keys from the
+**SSH keys** link in the site header (`/settings/ssh-keys`).
 
 ## Browser Assets
 

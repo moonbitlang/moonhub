@@ -2,6 +2,7 @@
 suberror AppError {
   BadRequest(message~ : String)
   Unauthorized(message~ : String)
+  Forbidden(message~ : String)
   NotFound(message~ : String)
 }
 
@@ -16,6 +17,8 @@ fn app_error_middleware(
           res.send_html(render_error(400, message, asset_path_map), status=400)
         Unauthorized(message~) =>
           res.send_html(render_error(401, message, asset_path_map), status=401)
+        Forbidden(message~) =>
+          res.send_html(render_error(403, message, asset_path_map), status=403)
         NotFound(message~) =>
           res.send_html(render_error(404, message, asset_path_map), status=404)
         @moondb.ConnectError(err) =>

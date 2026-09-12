@@ -28,7 +28,7 @@ fn render_site_header(current_user : CurrentUser?) -> @moonback.Html {
     match current_user {
       Some(user) =>
         b <+
-          "<div class=\"site-header__actions\"><a class=\"header-link\" href=\"/teams\">Teams</a><span class=\"user-chip\">\{user.display_name}</span><form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\">Sign out</button></form></div>"
+          "<div class=\"site-header__actions\"><a class=\"header-link\" href=\"/teams\">Teams</a><a class=\"header-link\" href=\"/settings/ssh-keys\">SSH keys</a><span class=\"user-chip\">\{user.display_name}</span><form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\">Sign out</button></form></div>"
       None => ()
     }
     b <+ "</div></header>"

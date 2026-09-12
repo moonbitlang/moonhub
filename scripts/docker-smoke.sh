@@ -37,6 +37,30 @@ refresh_endpoints() {
     -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$tmp/known_hosts")
 }
 
+settings_value() {
+  python3 -c '
+import sys
+from html.parser import HTMLParser
+
+class SettingsParser(HTMLParser):
+    value = None
+    def handle_starttag(self, tag, attributes):
+        attributes = dict(attributes)
+        if sys.argv[1] == "csrf" and tag == "input" and attributes.get("name") == "csrf_token":
+            self.value = attributes.get("value")
+        if sys.argv[1] == "revoke" and tag == "a":
+            href = attributes.get("href", "")
+            if href.startswith("/settings/ssh-keys/") and href.endswith("/revoke"):
+                self.value = href
+
+parser = SettingsParser()
+parser.feed(sys.stdin.read())
+if not parser.value:
+    raise SystemExit("missing SSH settings form value")
+print(parser.value)
+' "$1"
+}
+
 if [ "${MOONHUB_SMOKE_SKIP_BUILD:-0}" != 1 ]; then
   "${compose[@]}" build web
 fi
@@ -52,8 +76,14 @@ status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http
 test "$status" = 303
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp/key"
-binding=$("${compose[@]}" exec -T --user git web moonhub ssh-key-add root --title Smoke < "$tmp/key.pub")
-key_id=${binding%%$'\t'*}
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys/new" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" --data-urlencode 'title=Smoke' \
+  --data-urlencode "public_key@$tmp/key.pub" "$http/settings/ssh-keys")
+test "$status" = 303
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys" > "$tmp/settings"
+revoke_path=$(settings_value revoke < "$tmp/settings")
 "${compose[@]}" exec -T --user git web moonhub repo-create root/demo
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
 grep -q 'No files.' "$tmp/response"
@@ -115,7 +145,11 @@ curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > /dev/nul
 
 # Revocation must also reject a new channel on an already authenticated connection.
 ssh "${ssh_opts[@]}" -M -S "$tmp/control" -fN git@127.0.0.1
-"${compose[@]}" exec -T --user git web moonhub ssh-key-revoke "$key_id"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http$revoke_path" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" "$http$revoke_path")
+test "$status" = 303
 if ssh "${ssh_opts[@]}" -S "$tmp/control" git@127.0.0.1 "git-upload-pack 'root/demo.git'" > "$tmp/denied" 2>&1; then
   printf '%s\n' 'Revoked key opened a new channel on an existing connection' >&2
   exit 1
@@ -124,4 +158,4 @@ if git ls-remote "$url" > "$tmp/denied" 2>&1; then
   printf '%s\n' 'Revoked key authenticated a new connection' >&2
   exit 1
 fi
-printf '%s\n' 'Docker SSH smoke test passed: push, clone, fetch, binary data, restrictions, persistence, revocation.'
+printf '%s\n' 'Docker SSH smoke test passed: web key management, push, clone, fetch, binary data, restrictions, persistence, revocation.'

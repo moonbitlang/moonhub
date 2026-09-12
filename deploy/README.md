@@ -13,7 +13,7 @@ the SSH server identity. Neither volume is replaced by an image rebuild.
 
 Requirements: Docker Engine/Desktop with Docker Compose v2 or later. The optional
 smoke test requires Compose 2.24.4 or later for its port overrides, plus Bash,
-curl, Git, and OpenSSH client tools on the host.
+Python 3, curl, Git, and OpenSSH client tools on the host.
 
 From the repository root, create a bootstrap secret **once**:
 
@@ -42,8 +42,16 @@ its default is `latest`.
 
 The first version accepts OpenSSH **Ed25519** user keys. Private keys remain on
 the client. Users must have activated their account by accepting their invitation
-before a key can be registered. Key administration is currently operator-only
-through the container CLI; there is no SSH-key settings page yet.
+before a key can be registered.
+
+Signed-in users can open **SSH keys** in the site header (or visit
+`/settings/ssh-keys`) to add and revoke their own keys. The page shows each key's
+SHA256 fingerprint, creation time, last use, and revocation status. Revoking a key
+requires confirmation. These pages never expose another user's keys, including
+when the signed-in user is a site administrator. Mutations require a session-bound
+CSRF token.
+
+Operators can still administer keys through the container CLI:
 
 ```sh
 docker compose exec -T --user git web moonhub ssh-key-add root \
@@ -163,8 +171,8 @@ bash scripts/docker-smoke.sh
 
 The smoke test builds the image and uses a uniquely named Compose project,
 temporary bootstrap secret, dynamic loopback ports, and disposable volumes. It
-checks activation, key binding, push/clone/fetch with binary data, forbidden
+checks activation, self-service web key binding, push/clone/fetch with binary data, forbidden
 commands and forwarding, unknown keys, restart persistence, and revocation on
-both new and existing SSH connections. Its cleanup removes only its own test
+both new and existing SSH connections after web revocation. Its cleanup removes only its own test
 containers and volumes. Set `MOONHUB_SMOKE_SKIP_BUILD=1` to test an already built
 `moonhub:local` image.
