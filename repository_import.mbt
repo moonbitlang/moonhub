@@ -3,6 +3,8 @@ struct SshImportSource {
   url : String
   host : String
   port : UInt16
+  user : String
+  path : String
 }
 
 ///|
@@ -109,17 +111,10 @@ fn parse_ssh_import_source(value : String) -> SshImportSource raise {
       raise BadRequest(message="invalid SSH username")
     }
   }
-  let (host, port) = if explicit_port &&
-    server.split_once(":") is Some((host, port)) {
-    guard port.length() <= 5 && parse_port(port.to_owned()) is Some(port) else {
-      raise BadRequest(message="invalid SSH port")
-    }
-    (host.to_owned(), port)
+  let endpoint = if explicit_port {
+    SshEndpoint::from_authority(server.to_owned())
   } else {
-    (server.to_owned(), 22U.to_uint16())
-  }
-  guard valid_ssh_host(host) else {
-    raise BadRequest(message="invalid SSH hostname")
+    SshEndpoint::from_fields(server.to_owned(), "22")
   }
   guard !path.is_empty() && !path.has_prefix("/") else {
     raise BadRequest(message="invalid remote repository path")
@@ -141,15 +136,16 @@ fn parse_ssh_import_source(value : String) -> SshImportSource raise {
       }
     }
   }
-  let host = host.to_lower()
   {
     url: if explicit_port {
-      "ssh://\{user}@\{host}:\{port}/\{path}"
+      "ssh://\{user}@\{endpoint.authority()}/\{path}"
     } else {
-      "\{user}@\{host}:\{path}"
+      "\{user}@\{endpoint.host}:\{path}"
     },
-    host,
-    port,
+    host: endpoint.host,
+    port: endpoint.port,
+    user: user.to_owned(),
+    path,
   }
 }
 
@@ -196,7 +192,8 @@ fn authorize_import_source(
   credentials : TeamImportCredentials,
   source : SshImportSource,
 ) -> Unit raise {
-  guard credentials.allowed_hosts.contains("\{source.host}:\{source.port}") else {
+  let endpoint : SshEndpoint = { host: source.host, port: source.port, }
+  guard credentials.allowed_hosts.contains(endpoint.authority()) else {
     raise BadRequest(
       message="this SSH source host and port are not allowed for the team",
     )

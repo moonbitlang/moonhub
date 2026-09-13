@@ -37,7 +37,7 @@ fn[T] new_db_pool(
 }
 
 ///|
-let database_schema_version : Int64 = 2L
+let database_schema_version : Int64 = 3L
 
 ///|
 async fn initialize_db(pool : Database) -> Unit {
@@ -59,6 +59,7 @@ async fn initialize_db(pool : Database) -> Unit {
   let repository_migration = @fs.read_file(
     "db/migrations/002_repository_jobs.sql",
   ).text()
+  let address_migration = @fs.read_file("db/migrations/003_ssh_addresses.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -74,7 +75,10 @@ async fn initialize_db(pool : Database) -> Unit {
       if version < 2L {
         tx.driver.exec_script(repository_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 2")
+      if version < 3L {
+        tx.driver.exec_script(address_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 3")
     })
   })
 }

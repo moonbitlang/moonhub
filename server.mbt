@@ -8,11 +8,13 @@ async fn serve(config : Config) -> Unit {
     ensure_root_invitation(pool, config.root_user)
     start_mail_worker(pool, group)
     let import_config = repo_import_config_from_env()
-    start_repository_worker(pool, config.root, import_config, group)
+    let addresses = ssh_address_config_from_env()
+    start_repository_worker(pool, config.root, import_config, group, addresses~)
     let custom = [
       @moonback.Config::custom(config_root, config.root),
       @moonback.Config::custom(config_assets_root, config.assets_root),
       @moonback.Config::custom(config_db_pool, pool),
+      @moonback.Config::custom(config_ssh_addresses, addresses),
     ]
     if import_config is Some(config) {
       custom.push(@moonback.Config::custom(config_repo_import, config))

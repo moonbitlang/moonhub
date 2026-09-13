@@ -296,6 +296,170 @@ h2 {
   font-size: 24px;
 }
 
+.repo-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.repo-clone {
+  position: relative;
+}
+
+.repo-clone summary {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  padding: 7px 12px;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.repo-clone summary::-webkit-details-marker {
+  display: none;
+}
+
+.repo-clone summary:hover {
+  background: var(--color-accent-hover);
+}
+
+.repo-clone [data-clone-icon] {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.repo-clone[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.repo-clone-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(460px, calc(100vw - 32px));
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.repo-clone-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.repo-clone-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.repo-clone-field input {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.repo-copy-button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+
+.repo-copy-button:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.repo-clone-status {
+  min-height: 20px;
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.repo-clone :is(summary, button):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.ssh-address-settings {
+  max-width: 680px;
+}
+
+.ssh-address-fields {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.ssh-address-fields legend {
+  margin-bottom: 16px;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ssh-address-fields:disabled input {
+  background: var(--color-surface-subtle);
+  color: var(--color-muted);
+}
+
+.ssh-address-details {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+
+.ssh-address-details dt {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.ssh-address-details dd {
+  margin: 4px 0 0;
+}
+
+.ssh-address-settings button {
+  justify-self: start;
+}
+
+.ssh-internal-address {
+  margin-top: 32px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 24px;
+}
+
+.ssh-internal-address h2 {
+  margin-bottom: 16px;
+}
+
+.settings-notice {
+  color: var(--color-muted);
+}
+
+.settings-success {
+  color: var(--color-success);
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -756,14 +920,18 @@ button:disabled {
     grid-column: 2;
   }
 
+  .site-header__actions > .header-link:nth-child(3) {
+    grid-column: 3;
+  }
+
   .logout-form {
-    grid-row: 2;
+    grid-row: 1;
     grid-column: 3;
   }
 
   .user-chip {
     grid-row: 1;
-    grid-column: 2 / 4;
+    grid-column: 2;
     justify-self: end;
     max-width: 100%;
   }

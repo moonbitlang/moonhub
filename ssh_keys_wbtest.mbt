@@ -1,6 +1,7 @@
 ///|
 async fn with_ssh_settings_app(
   f : async (Int, Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit,
+  addresses? : SshAddressConfig = no_ssh_address_config,
 ) -> Unit {
   with_ssh_test_db(pool => {
     let cookies = pool.with_client(client => {
@@ -14,6 +15,7 @@ async fn with_ssh_settings_app(
         @moonback.Config::custom(config_root, test_repo_root),
         @moonback.Config::custom(config_assets_root, test_assets_root),
         @moonback.Config::custom(config_db_pool, pool),
+        @moonback.Config::custom(config_ssh_addresses, addresses),
       ]),
     )
     defer app.close()

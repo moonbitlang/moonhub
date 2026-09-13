@@ -108,6 +108,12 @@ status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http
 test "$status" = 303
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp/key"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/admin/settings/ssh" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'host=127.0.0.1' \
+  --data-urlencode "port=$ssh_port" "$http/admin/settings/ssh")
+test "$status" = 303
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys/new" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
@@ -119,6 +125,11 @@ revoke_path=$(settings_value revoke < "$tmp/settings")
 "${compose[@]}" exec -T --user git web moonhub repo-create root/demo
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
 grep -q 'No files.' "$tmp/response"
+grep -Fq "$url" "$tmp/response"
+if grep -Fq 'ssh://git@ssh:2222' "$tmp/response"; then
+  printf '%s\n' 'Clone UI exposed a container-internal endpoint' >&2
+  exit 1
+fi
 ssh-keyscan -t ed25519 -T 5 -p "$ssh_port" 127.0.0.1 > "$tmp/known_hosts" 2>/dev/null
 export GIT_SSH_COMMAND="ssh -F /dev/null -i '$tmp/key' -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$tmp/known_hosts'"
 ssh "${ssh_opts[@]}" -T git@127.0.0.1
@@ -184,7 +195,7 @@ status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http
 test "$status" = 400
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=imported&visibility=private' \
-  --data-urlencode 'source_url=ssh://git@ssh:2222/root/demo.git' "$http/teams/smoke-team/repositories/import")
+  --data-urlencode "source_url=$url" "$http/teams/smoke-team/repositories/import")
 test "$status" = 303
 wait_repository_operation imported Failed
 grep -Eq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' "$tmp/operation"

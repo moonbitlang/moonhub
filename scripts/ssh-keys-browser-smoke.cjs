@@ -45,8 +45,9 @@ async function capture(page, state) {
     await page.evaluate(() => document.fonts.ready);
     const overflow = await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
-      const controls = [...document.querySelectorAll('a, button, textarea, input:not([type=hidden])')]
-        .filter(element => element.getClientRects().length);
+      const panel = document.querySelector('.repo-clone[open] .repo-clone-panel');
+      const controls = [...(panel || document).querySelectorAll('a, button, summary, textarea, input:not([type=hidden])')]
+        .filter(element => element.checkVisibility());
       const overlaps = [];
       for (let i = 0; i < controls.length; i++) {
         for (let j = i + 1; j < controls.length; j++) {
@@ -83,6 +84,8 @@ async function main() {
     MAIL_OUTBOX_DIR: path.join(temp, 'mail') };
   delete env.MOONHUB_ROOT_PASSWORD;
   delete env.MOONHUB_ROOT_PASSWORD_FILE;
+  delete env.MOONHUB_SSH_PUBLIC_URL;
+  env.MOONHUB_SSH_INTERNAL_URL = 'ssh://git@ssh:2222';
   const log = fs.openSync(path.join(output, 'server.log'), 'w', 0o600);
   server = spawn(process.env.MOONHUB_BINARY || path.join(repo, '_build/native/debug/build/moonhub.exe'), [
     path.join(temp, 'repos'), '--assets', path.join(repo, 'assets'),
@@ -100,6 +103,7 @@ async function main() {
   assert(ready, 'preview server did not start');
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto(`${url}/login`);
@@ -159,6 +163,39 @@ async function main() {
   await page.getByRole('button', { name: 'Create repository', exact: true }).click();
   await page.waitForURL(`${url}/workshop/example`, { timeout: 15000 });
   await page.getByText('No files.', { exact: true }).waitFor();
+  await page.locator('.repo-clone summary').click();
+  await page.getByText('SSH clone address is not configured.', { exact: true }).waitFor();
+  await capture(page, 'clone-unconfigured');
+  await page.getByRole('link', { name: 'Site settings', exact: true }).click();
+  await page.getByRole('heading', { name: 'SSH access', exact: true }).waitFor();
+  await page.getByLabel('Hostname or IP address', { exact: true }).fill('Git.Example.com');
+  await page.getByLabel('Port', { exact: true }).fill('12222');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByText('SSH settings saved.', { exact: true }).waitFor();
+  assert.equal(await page.getByLabel('Hostname or IP address', { exact: true }).inputValue(), 'git.example.com');
+  assert.equal(await page.locator('[data-ssh-address-preview]').textContent(), 'ssh://git@git.example.com:12222/team/repository.git');
+  await capture(page, 'ssh-address-settings');
+  await page.goto(`${url}/workshop/example`);
+  await page.locator('.repo-clone summary').click();
+  const cloneUrl = 'ssh://git@git.example.com:12222/workshop/example.git';
+  assert.equal(await page.locator('[data-clone-url]').inputValue(), cloneUrl);
+  await page.locator('[data-clone-copy]:enabled').click();
+  await page.getByText('SSH URL copied.', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), cloneUrl);
+  await capture(page, 'clone-copied');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.repo-clone').getAttribute('open'), null);
+  assert(await page.locator('.repo-clone summary').evaluate(element => element === document.activeElement));
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    navigator.clipboard.writeText = async () => { throw new DOMException('Permission denied', 'NotAllowedError'); };
+  });
+  await page.locator('[data-clone-copy]').click();
+  await page.getByText('Clipboard unavailable. Address selected.', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-clone-url]').evaluate(element => element.selectionEnd - element.selectionStart), cloneUrl.length);
+  await capture(page, 'clone-clipboard-denied');
+  await page.locator('h1').click();
+  assert.equal(await page.locator('.repo-clone').getAttribute('open'), null);
   await page.goto(`${url}/teams/workshop`);
   await page.getByRole('link', { name: 'example', exact: true }).waitFor();
   await capture(page, 'team-repositories');
@@ -176,7 +213,7 @@ async function main() {
     console.log(`Preview: ${url}/teams/workshop`);
     console.log(`Login details: ${path.join(output, 'preview.json')}`);
   }
-  console.log('Browser smoke test passed: SSH keys, team repository creation, import configuration states; desktop and mobile layouts.');
+  console.log('Browser smoke test passed: SSH keys, team repositories, site SSH settings, clone URL copying, clipboard denial and keyboard controls; desktop and mobile layouts.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

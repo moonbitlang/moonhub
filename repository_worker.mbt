@@ -107,6 +107,7 @@ async fn provision_repository(
   config : RepoImportConfig?,
   job : RepositoryJob,
   stage : String,
+  addresses : SshAddressConfig,
 ) -> Unit {
   let actor = repository_job_actor(pool, job)
   guard get_team_by_name_key(pool, job.repo.owner) is Some(team) else {
@@ -116,6 +117,8 @@ async fn provision_repository(
     raise NotFound(message="repository team no longer matches")
   }
   require_repository_manager(pool, actor, team)
+  let job = pin_legacy_repository_source(pool, actor, job, addresses)
+  let source = repository_job_source(pool, actor, job, addresses)
   let checked = parse_transport_repo("\{job.repo.path()}.git")
   guard checked.path() == job.repo.path() else {
     raise BadRequest(message="invalid repository identity")
@@ -167,7 +170,7 @@ async fn provision_repository(
       guard config is Some(config) else {
         raise BadRequest(message="SSH imports are not configured")
       }
-      let source = parse_ssh_import_source(job.source_url)
+      let source = source.unwrap()
       let credentials = team_import_credentials(config, job.repo.owner)
       authorize_import_source(credentials, source)
       environment["GIT_SSH"] = config.ssh_wrapper
@@ -198,6 +201,9 @@ async fn provision_repository(
         environment,
       )
     }
+    let actor = repository_job_actor(pool, job)
+    require_repository_manager(pool, actor, team)
+    ignore(repository_job_source(pool, actor, job, addresses))
     @fs.write_file(
       "\{stage}/moonhub-provisioned",
       job.id.to_string(),
@@ -206,6 +212,9 @@ async fn provision_repository(
     @fs.rename(stage, destination, replace=false)
   }
   let branch = default_ref(destination)
+  let actor = repository_job_actor(pool, job)
+  require_repository_manager(pool, actor, team)
+  ignore(repository_job_source(pool, actor, job, addresses))
   pool.with_client(client => {
     client.with_transaction(tx => {
       let _ = tx.execute(
@@ -225,6 +234,7 @@ async fn run_next_repository_job(
   pool : Database,
   root : String,
   config : RepoImportConfig?,
+  addresses? : SshAddressConfig = no_ssh_address_config,
 ) -> Bool {
   let exists = pool.with_client(client => {
     client.query_opt(
@@ -271,7 +281,7 @@ async fn run_next_repository_job(
     }
     @async.with_timeout(
       timeout,
-      () => provision_repository(pool, root, config, job, stage),
+      () => provision_repository(pool, root, config, job, stage, addresses),
       error=BadRequest(message="repository operation timed out"),
     )
   } catch {
@@ -307,10 +317,11 @@ fn start_repository_worker(
   root : String,
   config : RepoImportConfig?,
   group : @async.TaskGroup[Unit],
+  addresses? : SshAddressConfig = no_ssh_address_config,
 ) -> Unit {
   group.spawn_bg(no_wait=true, () => {
     for ;; {
-      let processed = run_next_repository_job(pool, root, config) catch {
+      let processed = run_next_repository_job(pool, root, config, addresses~) catch {
         err if @async.is_cancellation_error(err) => raise err
         err => {
           println("repository worker error: \{err}")

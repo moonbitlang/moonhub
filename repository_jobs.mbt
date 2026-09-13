@@ -17,13 +17,15 @@ struct RepositoryJob {
   stage_token : String
   last_error : String?
   attempt_count : Int64
+  source_kind : String
+  source_repository_id : Int64?
 }
 
 ///|
 let repository_job_select : String =
   #|SELECT r.id, r.team_id, t.name_key AS owner, r.name,
   #|  j.requested_by_user_id, j.source_url, j.status, j.stage_token,
-  #|  j.last_error, j.attempt_count
+  #|  j.last_error, j.attempt_count, j.source_kind, j.source_repository_id
   #|FROM repository_job AS j
   #|JOIN repository AS r ON r.id = j.repository_id
   #|JOIN team AS t ON t.id = r.team_id
@@ -40,6 +42,8 @@ fn RepositoryJob::from_row(row : DbRow) -> RepositoryJob raise {
     stage_token: row.get_name("stage_token"),
     last_error: row.get_name("last_error"),
     attempt_count: row.get_name("attempt_count"),
+    source_kind: row.get_name("source_kind"),
+    source_repository_id: row.get_name("source_repository_id"),
   }
 }
 
@@ -107,14 +111,16 @@ async fn enqueue_repository(
   name : String,
   visibility : String,
   source_url : String,
+  addresses? : SshAddressConfig = no_ssh_address_config,
 ) -> RepoId {
   require_repository_manager(pool, actor, team)
   let repo = parse_transport_repo("\{team.name_key}/\{name}")
-  let source_url = if source_url.is_empty() {
-    ""
+  let source = if source_url.is_empty() {
+    None
   } else {
-    parse_ssh_import_source(source_url).url
+    Some(resolve_repository_import_source(pool, actor, source_url, addresses))
   }
+  let source_url = source.map(value => value.submitted_url).unwrap_or("")
   guard visibility == "private" || visibility == "public" else {
     raise BadRequest(message="visibility must be public or private")
   }
@@ -134,10 +140,20 @@ async fn enqueue_repository(
         raise BadRequest(message="repository name is already taken")
       }
       let id : Int64 = row.get_name("id")
-      let _ = tx.execute(
-        "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url) VALUES (?, ?, ?)",
-        params=[id, actor.id, source_url],
-      )
+      match source {
+        Some({ local_id: Some(source_id), .. }) => {
+          let _ = tx.execute(
+            "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind, source_repository_id) VALUES (?, ?, ?, 'local', ?)",
+            params=[id, actor.id, source_url, source_id],
+          )
+        }
+        _ => {
+          let _ = tx.execute(
+            "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind) VALUES (?, ?, ?, 'external')",
+            params=[id, actor.id, source_url],
+          )
+        }
+      }
     })
   })
   repo

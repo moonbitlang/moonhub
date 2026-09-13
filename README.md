@@ -10,6 +10,10 @@ Repositories must be registered in the database before authenticated users can
 access them. The same repository permissions apply to SSH and browser access.
 Signed-in users can add, inspect, and revoke their own SSH keys from the
 **SSH keys** link in the site header (`/settings/ssh-keys`).
+Site administrators configure the client-facing hostname and port in
+**Settings > SSH access** (`/admin/settings/ssh`). Repository pages provide a
+**Clone** menu with the public SSH URL and a copy button; container-internal
+transport addresses remain separate.
 Team owners and admins can create repositories or import them over SSH from the
 team page. Creation runs in the background, with status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)

@@ -7,10 +7,11 @@
   "dependencies": {
     "@pierre/diffs": "1.4.2",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "lucide": "1.45.0",
     "react": "latest",
     "react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@types/node": "latest",

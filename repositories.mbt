@@ -31,6 +31,7 @@ async fn handle_repository_create(
   config : RepoImportConfig?,
   assets : Map[String, String],
   importing : Bool,
+  addresses : SshAddressConfig,
 ) -> Unit {
   let actor = require_current_user(req)
   let team = require_team_by_request(pool, req)
@@ -47,16 +48,27 @@ async fn handle_repository_create(
   let available = ssh_import_available(config, team.name_key)
   let repo = try {
     if importing {
-      let source = parse_ssh_import_source(source_url)
+      let source = resolve_repository_import_source(
+        pool, actor, source_url, addresses,
+      )
       guard available && config is Some(config) else {
         raise BadRequest(message="SSH imports are not configured for this team")
       }
       authorize_import_source(
         team_import_credentials(config, team.name_key),
-        source,
+        source.transport,
       )
     }
-    enqueue_repository(pool, root, actor, team, name, visibility, source_url)
+    enqueue_repository(
+      pool,
+      root,
+      actor,
+      team,
+      name,
+      visibility,
+      source_url,
+      addresses~,
+    )
   } catch {
     BadRequest(message~) => {
       res.send_html(
@@ -93,6 +105,10 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
     let pool = db_pool(ctx)
     let root = repo_root(ctx)
     let config = ctx.config().get_custom(config_repo_import)
+    let addresses = ctx
+      .config()
+      .get_custom(config_ssh_addresses)
+      .unwrap_or(no_ssh_address_config)
     ctx.get("/teams/:team/repositories/new", async fn(req, res) {
       let actor = require_current_user(req)
       let team = require_team_by_request(pool, req)
@@ -134,10 +150,14 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
       )
     })
     ctx.post("/teams/:team/repositories", async fn(req, res) {
-      handle_repository_create(req, res, pool, root, config, assets, false)
+      handle_repository_create(
+        req, res, pool, root, config, assets, false, addresses,
+      )
     })
     ctx.post("/teams/:team/repositories/import", async fn(req, res) {
-      handle_repository_create(req, res, pool, root, config, assets, true)
+      handle_repository_create(
+        req, res, pool, root, config, assets, true, addresses,
+      )
     })
     ctx.get("/teams/:team/repositories/:repo/status", async fn(req, res) {
       let actor = require_current_user(req)

@@ -44,6 +44,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.add_middleware(require_login_middleware())
   ctx.use_(auth_module(asset_path_map))
   ctx.use_(ssh_keys_module(asset_path_map))
+  ctx.use_(site_settings_module(asset_path_map))
   let root = repo_root(ctx)
   ctx.use_(
     index_module(asset_path_map, req => {
@@ -53,9 +54,21 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(teams_module(asset_path_map))
   ctx.use_(repositories_module(asset_path_map))
   ctx.use_(
-    repo_browser_module(asset_path_map, (req, repo) => {
-      authorize_repository(pool, require_current_user(req), repo, Read)
-    }),
+    repo_browser_module(
+      asset_path_map,
+      (req, repo) => {
+        authorize_repository(pool, require_current_user(req), repo, Read)
+      },
+      clone_url=repo => {
+        effective_ssh_endpoint(
+          pool,
+          ctx
+          .config()
+          .get_custom(config_ssh_addresses)
+          .unwrap_or(no_ssh_address_config),
+        ).map(endpoint => endpoint.clone_url(repo))
+      },
+    ),
   )
 })
 
@@ -104,6 +117,7 @@ fn index_module(
 fn repo_browser_module(
   asset_path_map : Map[String, String],
   authorize : (@moonback.Request, RepoId) -> Unit raise,
+  clone_url? : (RepoId) -> String? raise = _ => None,
 ) -> @moonback.Module {
   Module(ctx => {
     let root = repo_root(ctx)
@@ -118,6 +132,7 @@ fn repo_browser_module(
           repo~,
           rev~,
           path="",
+          clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
         ),
       )
@@ -133,6 +148,7 @@ fn repo_browser_module(
           repo~,
           rev~,
           path="",
+          clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
         ),
       )
@@ -148,6 +164,7 @@ fn repo_browser_module(
           repo~,
           rev~,
           path="",
+          clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
         ),
       )
@@ -167,6 +184,7 @@ fn repo_browser_module(
           repo~,
           rev~,
           path~,
+          clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
         ),
       )
@@ -197,6 +215,7 @@ fn repo_browser_module(
             repo~,
             rev~,
             path~,
+            clone_url=clone_url(repo),
             current_user=current_user_from_request(req),
           ),
         )
@@ -212,6 +231,7 @@ fn repo_browser_module(
           repo~,
           rev~,
           current_user=current_user_from_request(req),
+          clone_url=clone_url(repo),
         ),
       )
     })
@@ -228,6 +248,7 @@ fn repo_browser_module(
           asset_path_map~,
           repo~,
           commit~,
+          clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
         ),
       )

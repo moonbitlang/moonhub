@@ -75,3 +75,17 @@ fn custom_elements_head(
     $|<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Code+Latin:wght@400;500;700&amp;display=swap"><link rel="modulepreload" href="\{url}"><script type="module" blocking="render" fetchpriority="high" src="\{url}"></script>
   @moonback.Html::raw(raw)
 }
+
+///|
+fn repository_assets_head(
+  assets : Map[String, String],
+  code_view? : Bool = false,
+) -> @moonback.Html {
+  let script = vite_manifest_entry_path(assets, "src/repo-clone.ts")
+  @moonback.Html(b => {
+    if code_view {
+      b <+ "\{custom_elements_head(assets)}"
+    }
+    b <+ "<script type=\"module\" src=\"\{script}\"></script>"
+  })
+}

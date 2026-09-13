@@ -52,7 +52,13 @@ type RepoOperation derive(Eq, @debug.Debug)
 
 type RepositoryJob
 
+type ResolvedRepoImport
+
 type RootUserConfig
+
+type SshAddressConfig
+
+type SshEndpoint derive(Eq, @debug.Debug)
 
 type SshImportSource
 

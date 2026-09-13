@@ -21,6 +21,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       MOONHUB_IMPORT_TIMEOUT_SECONDS: ${MOONHUB_IMPORT_TIMEOUT_SECONDS:-300}
+      MOONHUB_SSH_PUBLIC_URL: ${MOONHUB_SSH_PUBLIC_URL:-}
+      MOONHUB_SSH_INTERNAL_URL: ${MOONHUB_SSH_INTERNAL_URL:-ssh://git@ssh:2222}
     volumes:
       - data:/data
       - ${MOONHUB_SSH_IMPORT_DIR:-./deploy/ssh-import}:/run/secrets/ssh-import:ro

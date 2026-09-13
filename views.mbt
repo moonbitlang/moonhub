@@ -26,9 +26,16 @@ fn render_site_header(current_user : CurrentUser?) -> @moonback.Html {
     b <+
       #|<header class="site-header"><div class="site-header__inner"><a class="brand" href="/">moonhub</a>
     match current_user {
-      Some(user) =>
+      Some(user) => {
         b <+
-          "<div class=\"site-header__actions\"><a class=\"header-link\" href=\"/teams\">Teams</a><a class=\"header-link\" href=\"/settings/ssh-keys\">SSH keys</a><span class=\"user-chip\">\{user.display_name}</span><form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\">Sign out</button></form></div>"
+          "<div class=\"site-header__actions\"><a class=\"header-link\" href=\"/teams\">Teams</a><a class=\"header-link\" href=\"/settings/ssh-keys\">SSH keys</a>"
+        if user.is_site_admin {
+          b <+
+            "<a class=\"header-link\" href=\"/admin/settings/ssh\" aria-label=\"Site settings\" title=\"Site settings\">Settings</a>"
+        }
+        b <+
+          "<span class=\"user-chip\">\{user.display_name}</span><form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\">Sign out</button></form></div>"
+      }
       None => ()
     }
     b <+ "</div></header>"
@@ -69,11 +76,23 @@ fn render_index(
 }
 
 ///|
-fn render_repo_nav(repo : RepoId, rev : String) -> @moonback.Html {
+fn render_repo_nav(
+  repo : RepoId,
+  rev : String,
+  clone_url : String?,
+) -> @moonback.Html {
   Html(b => {
     let base = repo_link(repo)
     b <+
-      "<div class=\"repo-header\"><h1 class=\"path repo-title\">\{repo.path()}</h1><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{rev}\">Commits</a></p></div>"
+      "<div class=\"repo-header\"><div class=\"repo-heading\"><h1 class=\"path repo-title\">\{repo.path()}</h1><details class=\"repo-clone\"><summary>Clone<span data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
+    match clone_url {
+      Some(url) =>
+        b <+
+          "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
+      None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
+    }
+    b <+
+      "</div></details></div><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{url_escape_path(rev)}\">Commits</a></p></div>"
   })
 }
 
@@ -122,6 +141,7 @@ async fn render_tree(
   repo~ : RepoId,
   rev~ : String,
   path~ : String,
+  clone_url? : String? = None,
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
@@ -139,7 +159,7 @@ async fn render_tree(
     repo.path(),
     asset_path_map,
     Html(b => {
-      b <+ "\{render_repo_nav(repo, rev)}"
+      b <+ "\{render_repo_nav(repo, rev, clone_url)}"
       b <+
         "<div class=\"content-stack\"><h2 class=\"path\">/\{path}</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody>"
       if !path.is_empty() {
@@ -167,6 +187,7 @@ async fn render_tree(
       }
       b <+ "</tbody></table></div></div></div>"
     }),
+    head_end=repository_assets_head(asset_path_map),
     current_user~,
   )
 }
@@ -178,6 +199,7 @@ async fn render_blob(
   repo~ : RepoId,
   rev~ : String,
   path~ : String,
+  clone_url? : String? = None,
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
   let content = read_blob(repo.git_dir(root), rev, path) catch {
@@ -188,11 +210,11 @@ async fn render_blob(
     "\{repo.path()}:\{path}",
     asset_path_map,
     Html(b => {
-      b <+ "\{render_repo_nav(repo, rev)}"
+      b <+ "\{render_repo_nav(repo, rev, clone_url)}"
       b <+
         "<h2 class=\"path\">\{path}</h2><moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
     }),
-    head_end=custom_elements_head(asset_path_map),
+    head_end=repository_assets_head(asset_path_map, code_view=true),
     current_user~,
   )
 }
@@ -203,6 +225,7 @@ async fn render_commits(
   asset_path_map~ : Map[String, String],
   repo~ : RepoId,
   rev~ : String,
+  clone_url? : String? = None,
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
   let commits = list_commits(repo.git_dir(root), rev) catch {
@@ -218,7 +241,7 @@ async fn render_commits(
     "\{repo.path()} commits",
     asset_path_map,
     Html(b => {
-      b <+ "\{render_repo_nav(repo, rev)}"
+      b <+ "\{render_repo_nav(repo, rev, clone_url)}"
       b <+
         "<div class=\"content-stack\"><h2>Commits</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Commit</th><th>Subject</th><th>Author</th><th>Date</th></tr></thead><tbody>"
       for commit in commits {
@@ -232,6 +255,7 @@ async fn render_commits(
       }
       b <+ "</tbody></table></div></div></div>"
     }),
+    head_end=repository_assets_head(asset_path_map),
     current_user~,
   )
 }
@@ -242,6 +266,7 @@ async fn render_commit(
   asset_path_map~ : Map[String, String],
   repo~ : RepoId,
   commit~ : String,
+  clone_url? : String? = None,
   current_user? : CurrentUser? = None,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
@@ -253,11 +278,11 @@ async fn render_commit(
     "\{repo.path()} \{commit}",
     asset_path_map,
     Html(b => {
-      b <+ "\{render_repo_nav(repo, commit)}"
+      b <+ "\{render_repo_nav(repo, commit, clone_url)}"
       b <+ "<h2 class=\"path\">\{commit}</h2>"
       stream_commit_detail(b, git_dir, commit)
     }),
-    head_end=custom_elements_head(asset_path_map),
+    head_end=repository_assets_head(asset_path_map, code_view=true),
     current_user~,
   )
 }

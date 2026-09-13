@@ -24,10 +24,11 @@ docker compose --env-file /dev/null -f compose.yaml -f deploy/compose.preview.ya
 
 The prepared `Workshop` team contains `empty` and `example`. The latter was
 imported from the sample source repository. To try another import in this team,
-use `ssh://git@ssh:2222/preview/source.git` in the SSH import form. The hostname
-`ssh` is the source service inside this Compose network, not a host-side address.
-Host clients can clone `ssh://git@localhost:12222/workshop/example.git` after
-registering their public key in the preview account.
+use `ssh://git@127.0.0.1:12222/preview/source.git` in the SSH import form. The
+server maps this instance's public address to `ssh:2222` inside the Compose
+network. Host clients can use the same public address after registering their
+public key in the preview account. In **Settings > SSH access**, the prepared
+preview uses hostname `127.0.0.1` and port `12222`.
 
 The overlay requires the provisioned preview password and credential directory
 under `deploy/secrets`; these are deliberately not committed. It does not use
@@ -181,7 +182,7 @@ docker compose up -d --build --wait
 
 Enter a source such as `git@git.example.com:group/repo.git` or
 `ssh://git@git.example.com:2222/group/repo.git` in the team's import form. DNS
-hostnames and IPv4 addresses are supported. Usernames and repository path
+hostnames, IPv4, and bracketed IPv6 URI addresses are supported. Usernames and repository path
 segments must use ASCII letters, digits, dots, underscores, and hyphens (the SSH
 username does not accept dots); spaces, URL passwords, shell expressions,
 parent-directory segments, and other transport protocols are rejected.
@@ -191,6 +192,20 @@ parent-directory segments, and other transport protocols are rejected.
 hosts are not supported. A non-default port also requires a corresponding
 `[hostname]:port` entry in `known_hosts`. This allowlist controls outbound network
 access, including access to any internal Git servers you explicitly allow.
+IPv6 allowlist entries use `[address]:port`.
+
+When a source's normalized host and port exactly match this instance's configured
+public or internal SSH endpoint, Moonhub treats it as a local repository import.
+The requester must be able to read the source and manage the destination team.
+The queued job records the source repository ID, then connects using
+`MOONHUB_SSH_INTERNAL_URL`. The destination team's credentials, `allowed_hosts`,
+and `known_hosts` must authorize that **internal** host and port, such as
+`ssh:2222` and `[ssh]:2222`. This does not bypass SSH authentication or host-key
+verification. Source permission is checked again before cloning and publishing.
+Deleting a source fails the job even if another repository later reuses its name.
+Changing the public address does not redirect already queued local or external
+jobs. Legacy jobs are classified when first resumed. Other source endpoints are
+used unchanged; configure the canonical address rather than unconfigured aliases.
 
 Compose mounts `${MOONHUB_SSH_IMPORT_DIR:-./deploy/ssh-import}` read-only. At web
 startup, the three files are copied into a private runtime directory owned by the
@@ -226,10 +241,31 @@ Set Compose interpolation variables in your shell or in the project's `.env`:
 MOONHUB_HTTP_PORT=8090 MOONHUB_SSH_PORT=2223 docker compose up -d --wait
 ```
 
+### Public SSH Address
+
+Site administrators can open **Settings > SSH access** (`/admin/settings/ssh`)
+and save the hostname/IP and port that clients can reach. The SSH username is
+fixed to `git`. Repository pages expose this address in a **Clone** menu with a
+copy button. Without a configured public address, the menu reports that it is
+not configured; it never guesses from HTTP headers or exposes a container name.
+
+The effective endpoint uses `MOONHUB_SSH_PUBLIC_URL` when nonempty, otherwise the
+database setting. An environment override must be a complete endpoint such as
+`ssh://git@git.example.com:2222` (no repository path). It makes the admin form
+read-only; removing it restores the saved database setting. Database edits apply
+on the next request. Environment changes require recreating the web container.
+
+The deployment-only `MOONHUB_SSH_INTERNAL_URL` defaults in Compose to
+`ssh://git@ssh:2222`. It is shown read-only to administrators and is used only
+for same-instance imports. It is separate from the public address and from
+`MOONHUB_SSH_BIND` / `MOONHUB_SSH_PORT`, which control Docker port publishing.
+Editing the website setting does not change listeners, DNS, firewall rules, or
+Docker port mappings. For host-side preview use `127.0.0.1:12222`; remote clients
+need a reachable domain/IP instead of loopback.
+
 Use a TLS reverse proxy for public HTTP access and publish only the intended SSH
-port through the host firewall. Replace `localhost` and the port in clone URLs
-with your deployment's external hostname and SSH port. Port 22 also permits the
-usual `git@host:owner/repository.git` form.
+port through the host firewall. Port 22 also permits the usual
+`git@host:owner/repository.git` form.
 
 Verify the server fingerprint through the deployment's trusted console before
 accepting it on a client:
