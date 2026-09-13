@@ -13,6 +13,8 @@ assets
 **/*.db
 **/*.db-*
 deploy/secrets
+deploy/ssh-import
+**/id_ed25519
 testdata/repos/*
 !testdata/repos/alice
 testdata/repos/alice/*

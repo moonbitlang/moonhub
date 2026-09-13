@@ -6,6 +6,8 @@ repo=$PWD
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/moonhub-smoke.XXXXXXXX")
 project="moonhub-smoke-$(date +%s)-$$"
 export MOONHUB_SMOKE_SECRET="$tmp/root_password"
+export MOONHUB_SSH_IMPORT_DIR="$tmp/ssh-import"
+mkdir -p "$MOONHUB_SSH_IMPORT_DIR"
 printf '%s\n' 'bootstrapSmokePassword123' > "$MOONHUB_SMOKE_SECRET"
 chmod 600 "$MOONHUB_SMOKE_SECRET"
 compose=(docker compose --env-file /dev/null --project-name "$project"
@@ -44,6 +46,7 @@ from html.parser import HTMLParser
 
 class SettingsParser(HTMLParser):
     value = None
+    in_status = False
     def handle_starttag(self, tag, attributes):
         attributes = dict(attributes)
         if sys.argv[1] == "csrf" and tag == "input" and attributes.get("name") == "csrf_token":
@@ -52,6 +55,14 @@ class SettingsParser(HTMLParser):
             href = attributes.get("href", "")
             if href.startswith("/settings/ssh-keys/") and href.endswith("/revoke"):
                 self.value = href
+        if sys.argv[1] == "status" and tag == "p" and "repository-job-state" in attributes.get("class", ""):
+            self.in_status = True
+    def handle_endtag(self, tag):
+        if tag == "p":
+            self.in_status = False
+    def handle_data(self, data):
+        if self.in_status:
+            self.value = data
 
 parser = SettingsParser()
 parser.feed(sys.stdin.read())
@@ -59,6 +70,27 @@ if not parser.value:
     raise SystemExit("missing SSH settings form value")
 print(parser.value)
 ' "$1"
+}
+
+wait_repository_operation() {
+  local name=$1 expected=$2 code state
+  for _ in $(seq 1 60); do
+    code=$(curl --silent --show-error --output "$tmp/operation" --write-out '%{http_code}' \
+      -b "$tmp/cookies" "$http/teams/smoke-team/repositories/$name/status")
+    if [ "$code" = 303 ] && [ "$expected" = Ready ]; then return; fi
+    if [ "$code" = 200 ]; then
+      state=$(settings_value status < "$tmp/operation")
+      if [ "$state" = "$expected" ]; then return; fi
+      if [ "$state" = Failed ]; then
+        printf 'Repository operation failed: %s\n' "$name" >&2
+        cat "$tmp/operation" >&2
+        return 1
+      fi
+    fi
+    sleep 1
+  done
+  printf 'Repository operation did not reach %s: %s\n' "$expected" "$name" >&2
+  return 1
 }
 
 if [ "${MOONHUB_SMOKE_SKIP_BUILD:-0}" != 1 ]; then
@@ -112,6 +144,75 @@ test "$(git -C "$tmp/source" rev-parse HEAD)" = "$(git -C "$tmp/clone" rev-parse
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
 grep -q 'README.md' "$tmp/response"
 
+# Team creation and an empty repository are exercised through their web forms.
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" -d 'name_key=smoke-team&display_name=Smoke%20Team' "$http/teams")
+test "$status" = 303
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/new" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=empty&visibility=private' \
+  "$http/teams/smoke-team/repositories")
+test "$status" = 303
+wait_repository_operation empty Ready
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/empty" > "$tmp/response"
+grep -q 'No files.' "$tmp/response"
+
+git -C "$tmp/source" branch feature/import
+git -C "$tmp/source" tag import-v1
+git -C "$tmp/source" push origin feature/import import-v1
+ssh-keygen -q -t ed25519 -N '' -f "$tmp/import-key"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys/new" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" --data-urlencode 'title=Import source access' \
+  --data-urlencode "public_key@$tmp/import-key.pub" "$http/settings/ssh-keys")
+test "$status" = 303
+mkdir -p "$MOONHUB_SSH_IMPORT_DIR/smoke-team"
+cp "$tmp/import-key" "$MOONHUB_SSH_IMPORT_DIR/smoke-team/id_ed25519"
+printf '%s\n' 'ssh:2222' > "$MOONHUB_SSH_IMPORT_DIR/smoke-team/allowed_hosts"
+# Deliberately pin the wrong public key first; importing must fail closed.
+awk '{print "[ssh]:2222 " $1 " " $2}' "$tmp/import-key.pub" > "$MOONHUB_SSH_IMPORT_DIR/smoke-team/known_hosts"
+"${compose[@]}" restart web
+"${compose[@]}" up --no-build -d --wait --wait-timeout 180
+refresh_endpoints
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/import" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=blocked&source_url=git@unlisted.example:repo.git' \
+  "$http/teams/smoke-team/repositories/import")
+test "$status" = 400
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=imported&visibility=private' \
+  --data-urlencode 'source_url=ssh://git@ssh:2222/root/demo.git' "$http/teams/smoke-team/repositories/import")
+test "$status" = 303
+wait_repository_operation imported Failed
+grep -Eq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' "$tmp/operation"
+if git ls-remote "ssh://git@127.0.0.1:$ssh_port/smoke-team/imported.git" > "$tmp/denied" 2>&1; then
+  printf '%s\n' 'An incomplete import was exposed over SSH' >&2
+  exit 1
+fi
+# Read the source host key through its trusted container console, not TOFU.
+"${compose[@]}" exec -T ssh cat /var/lib/moonhub/ssh/ssh_host_ed25519_key.pub > "$tmp/source-host.pub"
+awk '{print "[ssh]:2222 " $1 " " $2}' "$tmp/source-host.pub" > "$MOONHUB_SSH_IMPORT_DIR/smoke-team/known_hosts"
+"${compose[@]}" restart web
+"${compose[@]}" up --no-build -d --wait --wait-timeout 180
+refresh_endpoints
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/imported/status" > "$tmp/settings"
+csrf=$(settings_value csrf < "$tmp/settings")
+status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" "$http/teams/smoke-team/repositories/imported/retry")
+test "$status" = 303
+wait_repository_operation imported Ready
+import_url="ssh://git@127.0.0.1:$ssh_port/smoke-team/imported.git"
+git ls-remote "$url" > "$tmp/source-refs"
+git ls-remote "$import_url" > "$tmp/imported-refs"
+cmp "$tmp/source-refs" "$tmp/imported-refs"
+git clone --quiet "$import_url" "$tmp/imported"
+cmp "$tmp/source/binary.dat" "$tmp/imported/binary.dat"
+test "$(git -C "$tmp/imported" symbolic-ref --short HEAD)" = main
+test -z "$("${compose[@]}" exec -T --user git web git --git-dir=/data/repos/smoke-team/imported.git remote)"
+
 for command in "id" "git-upload-pack '../demo.git'" "git-upload-pack 'root/demo.git'; id"; do
   # Pass deliberately invalid remote commands to the forced-command parser.
   # shellcheck disable=SC2029
@@ -158,4 +259,4 @@ if git ls-remote "$url" > "$tmp/denied" 2>&1; then
   printf '%s\n' 'Revoked key authenticated a new connection' >&2
   exit 1
 fi
-printf '%s\n' 'Docker SSH smoke test passed: web key management, push, clone, fetch, binary data, restrictions, persistence, revocation.'
+printf '%s\n' 'Docker SSH smoke test passed: web key management, team repositories, SSH import, host verification, retry, refs, persistence, revocation.'

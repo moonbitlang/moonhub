@@ -20,7 +20,7 @@ fn can_access_repository(
         #|JOIN "user" AS actor ON actor.id = ? AND actor.status = 'active'
         #|LEFT JOIN team_member ON team_member.team_id = team.id
         #|  AND team_member.user_id = actor.id
-        #|WHERE team.name_key = ? AND repository.name = ?
+        #|WHERE team.name_key = ? AND repository.name = ? AND repository.ready = 1
       ),
       params=[actor.id, repo.owner, repo.name],
     )

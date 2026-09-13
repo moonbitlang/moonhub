@@ -79,87 +79,6 @@ fn revoke_own_ssh_key(
 }
 
 ///|
-fn ssh_key_csrf_token(session : String) -> String {
-  // The opaque login token is already a random per-session secret. Domain
-  // separation keeps the form token distinct from the stored login-token hash.
-  @crypto.bytes_to_hex_string(
-    @crypto.hmac(
-      @crypto.SHA256::new(),
-      @utf8.encode(session),
-      b"moonhub:ssh-key-settings:csrf:v1",
-    ),
-  )
-}
-
-///|
-fn ssh_key_request_token(req : @moonback.Request) -> String raise AppError {
-  guard req.cookie().get(session_cookie_name) is Some(session) else {
-    raise Unauthorized(message="login required")
-  }
-  ssh_key_csrf_token(session)
-}
-
-///|
-fn valid_ssh_key_csrf_token(expected : String, supplied : String) -> Bool {
-  guard expected.length() == 64 && supplied.length() == 64 else { return false }
-  let mut difference = 0
-  for i = 0; i < expected.length(); i = i + 1 {
-    difference = difference | (expected[i].to_int() ^ supplied[i].to_int())
-  }
-  difference == 0
-}
-
-///|
-async fn ssh_key_form(req : @moonback.Request) -> Map[String, String] {
-  guard req.headers.get("Sec-Fetch-Site") != Some("cross-site") else {
-    raise Forbidden(message="cross-site request rejected")
-  }
-  // Stop reading before an authenticated client can buffer an unbounded body.
-  let bytes = FixedArray::make(65537, b'\x00')
-  let reader = req.body.reader(no_buffer=true)
-  let mut length = 0
-  while length < bytes.length() {
-    let count = reader.read(
-      bytes,
-      offset=length,
-      max_len=bytes.length() - length,
-    )
-    if count == 0 {
-      break
-    }
-    length = length + count
-  }
-  guard length <= 65536 else { raise BadRequest(message="form is too large") }
-  let body = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
-    _ => raise BadRequest(message="invalid form encoding")
-  }
-  let form = parse_form(body)
-  guard valid_ssh_key_csrf_token(
-    ssh_key_request_token(req),
-    form.get("csrf_token").unwrap_or(""),
-  ) else {
-    raise Forbidden(
-      message="invalid request token; reload the page and try again",
-    )
-  }
-  form
-}
-
-///|
-fn ssh_key_page_headers(location? : String) -> @moonback.Headers {
-  let headers = @moonback.MutHeaders::from({
-    "cache-control": "no-store",
-    "content-security-policy": "frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
-    "x-frame-options": "DENY",
-    "referrer-policy": "same-origin",
-  })
-  if location is Some(location) {
-    headers.set("location", location)
-  }
-  headers.to_immut()
-}
-
-///|
 fn requested_ssh_key_id(req : @moonback.Request) -> Int64 raise AppError {
   let id = @string.parse_int64(req.required_param("key", "SSH key")) catch {
     _ => raise NotFound(message="SSH key not found")
@@ -176,7 +95,7 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       let user = require_current_user(req)
       res.send_html(
         render_user_ssh_keys(asset_path_map, user, user_ssh_keys(pool, user)),
-        headers=ssh_key_page_headers(),
+        headers=private_page_headers(),
       )
     })
     ctx.get("/settings/ssh-keys/new", async fn(req, res) {
@@ -185,17 +104,17 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         render_new_ssh_key(
           asset_path_map,
           user,
-          ssh_key_request_token(req),
+          request_form_token(req, "ssh-key-settings"),
           "",
           "",
           None,
         ),
-        headers=ssh_key_page_headers(),
+        headers=private_page_headers(),
       )
     })
     ctx.post("/settings/ssh-keys", async fn(req, res) {
       let user = require_current_user(req)
-      let form = ssh_key_form(req)
+      let form = protected_form(req, "ssh-key-settings")
       let title = form.get("title").unwrap_or("").trim().to_owned()
       let public_key = form.get("public_key").unwrap_or("")
       try {
@@ -212,7 +131,7 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
             render_new_ssh_key(
               asset_path_map,
               user,
-              ssh_key_request_token(req),
+              request_form_token(req, "ssh-key-settings"),
               title,
               if public_key.contains("PRIVATE KEY") {
                 ""
@@ -222,7 +141,7 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
               Some(message),
             ),
             status=400,
-            headers=ssh_key_page_headers(),
+            headers=private_page_headers(),
           )
           return
         }
@@ -230,7 +149,7 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       }
       res.send_void(
         status=303,
-        headers=ssh_key_page_headers(location="/settings/ssh-keys"),
+        headers=private_page_headers(location="/settings/ssh-keys"),
       )
     })
     ctx.get("/settings/ssh-keys/:key/revoke", async fn(req, res) {
@@ -240,19 +159,19 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         render_revoke_ssh_key(
           asset_path_map,
           user,
-          ssh_key_request_token(req),
+          request_form_token(req, "ssh-key-settings"),
           key,
         ),
-        headers=ssh_key_page_headers(),
+        headers=private_page_headers(),
       )
     })
     ctx.post("/settings/ssh-keys/:key/revoke", async fn(req, res) {
       let user = require_current_user(req)
-      let _ = ssh_key_form(req)
+      let _ = protected_form(req, "ssh-key-settings")
       revoke_own_ssh_key(pool, user, requested_ssh_key_id(req))
       res.send_void(
         status=303,
-        headers=ssh_key_page_headers(location="/settings/ssh-keys"),
+        headers=private_page_headers(location="/settings/ssh-keys"),
       )
     })
   })

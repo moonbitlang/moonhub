@@ -166,7 +166,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
       }
       row.get_name("user_version")
     })
-    guard version == 1L else {
+    guard version == database_schema_version else {
       raise BadRequest(
         message="database requires migration; start the matching web service first",
       )

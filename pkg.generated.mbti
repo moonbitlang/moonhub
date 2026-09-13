@@ -46,15 +46,25 @@ type MailTransportConfig
 
 type RepoId
 
+type RepoImportConfig
+
 type RepoOperation derive(Eq, @debug.Debug)
 
+type RepositoryJob
+
 type RootUserConfig
+
+type SshImportSource
 
 type SshPublicKey
 
 type SshRequest
 
+type TeamImportCredentials
+
 type TeamMemberSummary
+
+type TeamRepository
 
 type TeamSummary
 

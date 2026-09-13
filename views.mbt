@@ -433,6 +433,7 @@ fn render_team_detail(
   team : TeamSummary,
   members : Array[TeamMemberSummary],
   invitations : Array[InvitationSummary],
+  repositories~ : Array[TeamRepository],
   can_manage~ : Bool,
   message : String?,
 ) -> @moonback.Html {
@@ -447,6 +448,7 @@ fn render_team_detail(
         None => ()
       }
       b <+ "<div class=\"content-stack\">"
+      b <+ "\{render_team_repositories(team, repositories, can_manage)}"
       b <+
         "<section><h2 class=\"section-title\">Members</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead><tbody>"
       if members.is_empty() {

@@ -10,6 +10,10 @@ Repositories must be registered in the database before authenticated users can
 access them. The same repository permissions apply to SSH and browser access.
 Signed-in users can add, inspect, and revoke their own SSH keys from the
 **SSH keys** link in the site header (`/settings/ssh-keys`).
+Team owners and admins can create repositories or import them over SSH from the
+team page. Creation runs in the background, with status and retry controls;
+[configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
+before importing private repositories.
 
 ## Browser Assets
 

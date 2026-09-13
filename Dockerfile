@@ -36,8 +36,10 @@ COPY --from=assets /src/assets/ /app/assets/
 COPY db/ /app/db/
 COPY deploy/sshd_config /etc/ssh/moonhub_sshd_config
 COPY --chmod=755 deploy/entrypoint.sh /usr/local/bin/moonhub-entrypoint
+COPY --chmod=755 deploy/import-ssh.sh /usr/local/bin/moonhub-import-ssh
 ENV DB_PATH=/data/moonhub.db \
     MOONHUB_REPO_ROOT=/data/repos \
+    MOONHUB_SSH_IMPORT_ROOT=/run/moonhub/ssh-import \
     MAIL_TRANSPORT=file \
     MAIL_OUTBOX_DIR=/data/mail_outbox
 WORKDIR /app

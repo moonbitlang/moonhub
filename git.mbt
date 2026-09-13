@@ -25,7 +25,10 @@ async fn run_git(git_dir : String, args : Array[String]) -> String {
 
 ///|
 async fn default_ref(git_dir : String) -> String {
-  let out = run_git(git_dir, ["symbolic-ref", "--short", "HEAD"])
+  let out = run_git(git_dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]) catch {
+    GitCommandFailed(code=1, ..) => return "HEAD"
+    err => raise err
+  }
   let lines = split_lines(out)
   match lines.get(0) {
     Some(line) => line

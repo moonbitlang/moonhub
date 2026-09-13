@@ -37,6 +37,9 @@ fn[T] new_db_pool(
 }
 
 ///|
+let database_schema_version : Int64 = 2L
+
+///|
 async fn initialize_db(pool : Database) -> Unit {
   pool.with_client(client => {
     let _ = client.execute("PRAGMA foreign_keys = ON", params=[])
@@ -52,20 +55,26 @@ async fn initialize_db(pool : Database) -> Unit {
     let sql = @fs.read_file("db/base.sql").text()
     pool.with_client(client => client.batch_execute(sql))
   }
-  let migration = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
+  let ssh_migration = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
+  let repository_migration = @fs.read_file(
+    "db/migrations/002_repository_jobs.sql",
+  ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
       let version : Int64 = row.get_name("user_version")
-      guard version <= 1L else {
+      guard version <= database_schema_version else {
         raise BadRequest(
           message="database schema is newer than this moonhub version",
         )
       }
       if version == 0L {
-        tx.driver.exec_script(migration)
-        let _ = tx.execute("PRAGMA user_version = 1")
+        tx.driver.exec_script(ssh_migration)
       }
+      if version < 2L {
+        tx.driver.exec_script(repository_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 2")
     })
   })
 }

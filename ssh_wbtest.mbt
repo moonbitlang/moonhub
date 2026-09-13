@@ -111,7 +111,7 @@ async test "SSH migration upgrades existing databases and is repeatable" {
       )
       let row = client.query_opt("PRAGMA user_version").unwrap()
       let version : Int64 = row.get_name("user_version")
-      assert_eq(version, 1L)
+      assert_eq(version, database_schema_version)
     })
   })
 }

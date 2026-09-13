@@ -20,8 +20,10 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      MOONHUB_IMPORT_TIMEOUT_SECONDS: ${MOONHUB_IMPORT_TIMEOUT_SECONDS:-300}
     volumes:
       - data:/data
+      - ${MOONHUB_SSH_IMPORT_DIR:-./deploy/ssh-import}:/run/secrets/ssh-import:ro
     secrets:
       - root_password
     healthcheck:

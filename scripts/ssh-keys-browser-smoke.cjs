@@ -11,7 +11,10 @@ const repo = path.resolve(__dirname, '..');
 const output = path.join(repo, '_build', 'ssh-keys-browser');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ssh-keys-ui-'));
 const username = 'preview';
-const password = randomBytes(24).toString('base64url');
+const previousPreview = path.join(output, 'preview.json');
+const password = process.env.MOONHUB_KEEP_PREVIEW === '1' && fs.existsSync(previousPreview)
+  ? JSON.parse(fs.readFileSync(previousPreview, 'utf8')).password
+  : randomBytes(24).toString('base64url');
 const key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB';
 const secondKey = 'ssh-ed25519 ' + Buffer.concat([
   Buffer.from('0000000b7373682d6564323535313900000020', 'hex'),
@@ -142,16 +145,38 @@ async function main() {
   await page.getByText('1 active', { exact: true }).waitFor();
   await page.getByText('Revoked', { exact: true }).first().waitFor();
   assert.equal(await page.getByRole('link', { name: 'Revoke Work laptop', exact: true }).count(), 0);
+
+  await page.getByRole('link', { name: 'Teams', exact: true }).click();
+  await page.getByRole('link', { name: 'New team', exact: true }).click();
+  await page.locator('[name=name_key]').fill('workshop');
+  await page.locator('[name=display_name]').fill('Workshop');
+  await page.getByRole('button', { name: 'Create team', exact: true }).click();
+  await page.waitForURL(`${url}/teams/workshop`);
+  await page.getByRole('link', { name: 'New repository', exact: true }).click();
+  await page.getByLabel('Repository name', { exact: true }).fill('example');
+  await page.getByLabel('Visibility', { exact: true }).selectOption('private');
+  await capture(page, 'repository-new');
+  await page.getByRole('button', { name: 'Create repository', exact: true }).click();
+  await page.waitForURL(`${url}/workshop/example`, { timeout: 15000 });
+  await page.getByText('No files.', { exact: true }).waitFor();
+  await page.goto(`${url}/teams/workshop`);
+  await page.getByRole('link', { name: 'example', exact: true }).waitFor();
+  await capture(page, 'team-repositories');
+  await page.getByRole('link', { name: 'Import via SSH', exact: true }).click();
+  await page.getByText('SSH imports are not configured for this team.', { exact: true }).waitFor();
+  assert(await page.getByRole('button', { name: 'Import repository', exact: true }).isDisabled());
+  await capture(page, 'repository-import');
+  await page.goto(`${url}/teams/workshop`);
   assert.deepEqual(pageErrors, []);
   succeeded = true;
   if (process.env.MOONHUB_KEEP_PREVIEW === '1') {
     fs.writeFileSync(path.join(output, 'preview.json'), JSON.stringify({
-      url: `${url}/settings/ssh-keys`, username, password, pid: server.pid, data: temp,
+      url: `${url}/teams/workshop`, username, password, pid: server.pid, data: temp,
     }, null, 2) + '\n', { mode: 0o600 });
-    console.log(`Preview: ${url}/settings/ssh-keys`);
+    console.log(`Preview: ${url}/teams/workshop`);
     console.log(`Login details: ${path.join(output, 'preview.json')}`);
   }
-  console.log('Browser smoke test passed: self-service add, validation, list, cancel, revoke; desktop and mobile layouts.');
+  console.log('Browser smoke test passed: SSH keys, team repository creation, import configuration states; desktop and mobile layouts.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

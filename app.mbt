@@ -51,6 +51,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
     }),
   )
   ctx.use_(teams_module(asset_path_map))
+  ctx.use_(repositories_module(asset_path_map))
   ctx.use_(
     repo_browser_module(asset_path_map, (req, repo) => {
       authorize_repository(pool, require_current_user(req), repo, Read)

@@ -9,6 +9,30 @@ The `data` volume contains repositories, SQLite (including its WAL files), and
 file-transport invitation emails. The separate `ssh-host-keys` volume contains
 the SSH server identity. Neither volume is replaced by an image rebuild.
 
+## Prepared Local Preview
+
+The local preview uses `deploy/compose.preview.yaml`, project `moonhub-preview`,
+and separate persistent volumes. It binds only to loopback: HTTP on port `18080`
+and Git SSH on port `12222`. Its `preview` account password is stored in the
+Git-ignored `deploy/secrets/preview_password` file.
+
+Start or resume the prepared environment with:
+
+```sh
+docker compose --env-file /dev/null -f compose.yaml -f deploy/compose.preview.yaml up -d --wait
+```
+
+The prepared `Workshop` team contains `empty` and `example`. The latter was
+imported from the sample source repository. To try another import in this team,
+use `ssh://git@ssh:2222/preview/source.git` in the SSH import form. The hostname
+`ssh` is the source service inside this Compose network, not a host-side address.
+Host clients can clone `ssh://git@localhost:12222/workshop/example.git` after
+registering their public key in the preview account.
+
+The overlay requires the provisioned preview password and credential directory
+under `deploy/secrets`; these are deliberately not committed. It does not use
+the production database or repository volumes.
+
 ## Start
 
 Requirements: Docker Engine/Desktop with Docker Compose v2 or later. The optional
@@ -73,6 +97,14 @@ a newly generated key rather than reusing a revoked one.
 
 ## Create or Import a Repository
 
+On a team page, **New repository** creates an empty repository and **Import via
+SSH** copies a remote repository. Team owners/admins and site administrators may
+create repositories; ordinary members may access existing repositories but not
+create them. Names are reserved immediately, and a background worker prepares the
+Git data before making it available through the browser or SSH. The status page
+refreshes while work is queued or running. Failed operations can be retried or
+discarded to release their reserved name.
+
 Create a private bare repository in an existing namespace:
 
 ```sh
@@ -116,6 +148,68 @@ repositories must be explicitly registered and associated with a team before
 they are available through either the web UI or SSH. Database schema migrations
 run automatically in `web` before the server becomes healthy. SSH waits for that
 initialization and never runs migrations from an authentication request.
+
+## SSH Import
+
+An import is a one-time mirror of Git refs and objects, including branches and
+tags. It preserves Git's cloned default branch and does not keep synchronizing
+with the source. The upstream remote is removed after cloning. Submodule
+repositories and Git LFS object storage are not imported.
+
+Incoming user keys and outbound import identities are separate. Configure one
+read-only import identity per team, using the team's `name_key` as the directory
+name. For a team named `acme`:
+
+```sh
+mkdir -p deploy/ssh-import/acme
+ssh-keygen -t ed25519 -N '' -f deploy/ssh-import/acme/id_ed25519
+printf '%s\n' 'git.example.com:22' > deploy/ssh-import/acme/allowed_hosts
+ssh-keyscan -t ed25519 git.example.com > deploy/ssh-import/acme/known_hosts.candidate
+ssh-keygen -lf deploy/ssh-import/acme/known_hosts.candidate
+```
+
+Verify the candidate host-key fingerprint against the source server's trusted
+console or administrator before renaming `known_hosts.candidate` to `known_hosts`.
+Do not trust a key solely because `ssh-keyscan` returned it. Add
+`id_ed25519.pub` to the source repository as a **read-only deploy key**, then run:
+
+```sh
+mv deploy/ssh-import/acme/known_hosts.candidate deploy/ssh-import/acme/known_hosts
+chmod 600 deploy/ssh-import/acme/id_ed25519 deploy/ssh-import/acme/known_hosts deploy/ssh-import/acme/allowed_hosts
+docker compose up -d --build --wait
+```
+
+Enter a source such as `git@git.example.com:group/repo.git` or
+`ssh://git@git.example.com:2222/group/repo.git` in the team's import form. DNS
+hostnames and IPv4 addresses are supported. Usernames and repository path
+segments must use ASCII letters, digits, dots, underscores, and hyphens (the SSH
+username does not accept dots); spaces, URL passwords, shell expressions,
+parent-directory segments, and other transport protocols are rejected.
+
+`allowed_hosts` contains one exact, lowercase `hostname:port` per line, including
+`:22` for the default port. Blank lines and `#` comments are ignored; wildcard
+hosts are not supported. A non-default port also requires a corresponding
+`[hostname]:port` entry in `known_hosts`. This allowlist controls outbound network
+access, including access to any internal Git servers you explicitly allow.
+
+Compose mounts `${MOONHUB_SSH_IMPORT_DIR:-./deploy/ssh-import}` read-only. At web
+startup, the three files are copied into a private runtime directory owned by the
+unprivileged service user. Symlink credentials are rejected. Private import keys
+are never uploaded through the web UI, stored in Git, or included in the Docker
+build context. Keep custom credential directories outside the checkout. Back up
+this directory separately and protect it as a secret.
+After changing credentials or host pins, run `docker compose restart web` and
+retry a failed operation. User login keys are never used implicitly for imports.
+
+Imports use strict host-key verification, no SSH agent or forwarding, and only
+the selected team's identity. One repository operation runs at a time per shared
+repository root. The timeout defaults to 300 seconds; set
+`MOONHUB_IMPORT_TIMEOUT_SECONDS` to a value from 1 to 3600 if needed. Use volume
+quotas when untrusted team administrators can import large repositories. Git
+diagnostics are bounded, and failed attempts are cleaned out of staging. A shared
+filesystem lock and publication marker let interrupted jobs recover after a
+restart without exposing partially cloned repositories or replacing existing
+repository data.
 
 ## Network and Operations
 
@@ -171,8 +265,10 @@ bash scripts/docker-smoke.sh
 
 The smoke test builds the image and uses a uniquely named Compose project,
 temporary bootstrap secret, dynamic loopback ports, and disposable volumes. It
-checks activation, self-service web key binding, push/clone/fetch with binary data, forbidden
-commands and forwarding, unknown keys, restart persistence, and revocation on
+checks activation, self-service web key binding, team repository creation,
+SSH import with a rejected host key followed by a successful retry, branch/tag
+preservation, push/clone/fetch with binary data, forbidden commands and forwarding,
+unknown keys, restart persistence, and revocation on
 both new and existing SSH connections after web revocation. Its cleanup removes only its own test
 containers and volumes. Set `MOONHUB_SMOKE_SKIP_BUILD=1` to test an already built
 `moonhub:local` image.

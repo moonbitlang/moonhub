@@ -5,6 +5,24 @@ umask 077
 case "${1:-web}" in
   web)
     install -d -o git -g git -m 0750 /data /data/repos /data/mail_outbox
+    install -d -m 0700 -o git -g git /run/moonhub /run/moonhub/ssh-import
+    for directory in /run/secrets/ssh-import/*; do
+      [ -d "$directory" ] || continue
+      [ ! -L "$directory" ] || { printf '%s\n' 'SSH import directories must not be symlinks' >&2; exit 1; }
+      team=${directory##*/}
+      case "$team" in
+        ''|*[!a-z0-9_-]*|[_-]*) printf '%s\n' 'Invalid SSH import team name' >&2; exit 1 ;;
+      esac
+      [ "${#team}" -le 63 ] || { printf '%s\n' 'SSH import team name is too long' >&2; exit 1; }
+      install -d -m 0700 -o git -g git "/run/moonhub/ssh-import/$team"
+      for file in id_ed25519 known_hosts allowed_hosts; do
+        if [ ! -f "$directory/$file" ] || [ -L "$directory/$file" ]; then
+          printf 'Missing or invalid SSH import file: %s/%s\n' "$team" "$file" >&2
+          exit 1
+        fi
+        install -m 0600 -o git -g git "$directory/$file" "/run/moonhub/ssh-import/$team/$file"
+      done
+    done
     if [ -n "${MOONHUB_ROOT_PASSWORD_FILE:-}" ]; then
       install -d -m 0700 -o git -g git /run/moonhub
       install -m 0600 -o git -g git "$MOONHUB_ROOT_PASSWORD_FILE" /run/moonhub/root_password
