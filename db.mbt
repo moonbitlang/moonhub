@@ -378,7 +378,7 @@ fn accept_invitation(
               #|    accepted_user_id = ?
               #|WHERE id = ?
             ),
-            params=[invitation_session.id, user.id],
+            params=[user.id, invitation_session.id],
           )
           let _ = tx.execute(
             (
