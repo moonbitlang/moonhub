@@ -6,7 +6,6 @@ services:
       - "127.0.0.1::8080"
     environment:
       MOONHUB_ROOT_USER: root
-      MAIL_TRANSPORT: file
   ssh:
     healthcheck:
       interval: 1s

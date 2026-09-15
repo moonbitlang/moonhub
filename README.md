@@ -100,26 +100,24 @@ users' permanent passwords are never shown. Details are fetched only on an
 explicit, CSRF-protected action and are returned with `Cache-Control: no-store`.
 
 Invitation emails are queued in `email_outbox` and delivered by the background
-mail worker. The default development transport writes `.eml` files to
-`_build/mail_outbox`:
+mail worker. The default transport writes `.eml` files to `_build/mail_outbox`:
 
 ```sh
-MAIL_TRANSPORT=file
 MAIL_OUTBOX_DIR=_build/mail_outbox
 ```
 
-Set `MAIL_TRANSPORT=smtp` to send through SMTP:
+To send real email, open **Settings > Email delivery** as a site administrator
+and select **SMTP**. Configure the host, port, security mode, authentication,
+credentials, and sender address there. The password is stored in the database,
+is never rendered back into the form, and can be retained by leaving the
+password field blank when saving changes.
 
-```sh
-MAIL_TRANSPORT=smtp
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURITY=starttls
-SMTP_AUTH=plain
-SMTP_USERNAME=mailer@example.com
-SMTP_PASSWORD=app-password
-SMTP_FROM=noreply@example.com
-```
+Saved settings take effect for subsequent deliveries without restarting the
+server. `MAIL_TRANSPORT` and `SMTP_*` environment variables are no longer read;
+existing deployments must enter their SMTP settings in the web UI after
+upgrading. Until then, delivery defaults to the file outbox. Protect the SQLite
+database and its backups: SMTP credentials are stored as plaintext, not hashed,
+because the mail worker needs them for authentication.
 
-`SMTP_SECURITY` supports `plain`, `starttls`, and `tls`. `SMTP_AUTH` supports
+SMTP security supports `plain`, `starttls`, and `tls`. Authentication supports
 `none`, `plain`, `login`, and `xoauth2`.

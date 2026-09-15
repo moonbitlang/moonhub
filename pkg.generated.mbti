@@ -46,6 +46,8 @@ type Issue
 
 type LoginResult
 
+type MailSettings
+
 type MailTransportConfig
 
 type MergeRequest
@@ -63,6 +65,8 @@ type RepositoryScope
 type ResolvedRepoImport
 
 type RootUserConfig
+
+type SmtpSettings
 
 type SshAddressConfig
 

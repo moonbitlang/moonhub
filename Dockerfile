@@ -41,7 +41,6 @@ COPY --chmod=755 deploy/hooks/pre-receive /usr/local/lib/moonhub/hooks/pre-recei
 ENV DB_PATH=/data/moonhub.db \
     MOONHUB_REPO_ROOT=/data/repos \
     MOONHUB_SSH_IMPORT_ROOT=/run/moonhub/ssh-import \
-    MAIL_TRANSPORT=file \
     MAIL_OUTBOX_DIR=/data/mail_outbox
 WORKDIR /app
 EXPOSE 8080 2222

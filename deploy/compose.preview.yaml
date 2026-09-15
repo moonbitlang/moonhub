@@ -9,11 +9,6 @@ services:
       MOONHUB_SSH_PUBLIC_URL: ""
       MOONHUB_SSH_INTERNAL_URL: ssh://git@ssh:2222
       MOONHUB_IMPORT_TIMEOUT_SECONDS: "300"
-      MAIL_TRANSPORT: file
-      SMTP_HOST: ""
-      SMTP_USERNAME: ""
-      SMTP_PASSWORD: ""
-      SMTP_FROM: ""
     volumes: !override
       - data:/data
       - ./deploy/secrets/preview-import:/run/secrets/ssh-import:ro

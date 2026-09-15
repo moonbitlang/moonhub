@@ -410,6 +410,49 @@ h2 {
   max-width: 680px;
 }
 
+.mail-settings {
+  max-width: 680px;
+  margin-top: 40px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 32px;
+}
+
+.mail-settings h2 {
+  margin-bottom: 16px;
+}
+
+.mail-fields {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.mail-fields legend {
+  margin-bottom: 0;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.mail-settings button {
+  justify-self: start;
+}
+
+.mail-advanced {
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}
+
+.mail-advanced summary {
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ssh-address-fields {
   display: grid;
   gap: 16px;

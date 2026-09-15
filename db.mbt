@@ -37,7 +37,7 @@ fn[T] new_db_pool(
 }
 
 ///|
-let database_schema_version : Int64 = 4L
+let database_schema_version : Int64 = 5L
 
 ///|
 async fn initialize_db(pool : Database) -> Unit {
@@ -61,6 +61,7 @@ async fn initialize_db(pool : Database) -> Unit {
   ).text()
   let address_migration = @fs.read_file("db/migrations/003_ssh_addresses.sql").text()
   let merge_migration = @fs.read_file("db/migrations/004_merge_requests.sql").text()
+  let mail_migration = @fs.read_file("db/migrations/005_mail_settings.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -82,7 +83,10 @@ async fn initialize_db(pool : Database) -> Unit {
       if version < 4L {
         tx.driver.exec_script(merge_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 4")
+      if version < 5L {
+        tx.driver.exec_script(mail_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 5")
     })
   })
 }

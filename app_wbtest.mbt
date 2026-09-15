@@ -79,64 +79,16 @@ test "public browser assets use immutable caching" {
 }
 
 ///|
-fn with_env_value(
-  name : String,
-  value : String?,
-  f : () -> Unit raise,
-) -> Unit raise {
-  let previous = @env.get_env_var(name)
-  match value {
-    Some(value) => @env.set_env_var(name, value)
-    None => @env.unset_env_var(name)
-  }
-  f()
-  match previous {
-    Some(value) => @env.set_env_var(name, value)
-    None => @env.unset_env_var(name)
-  }
-}
-
-///|
-test "mail transport defaults to file outbox" {
-  with_env_value("MAIL_TRANSPORT", None, () => {
-    with_env_value("MAIL_OUTBOX_DIR", Some("_build/custom_mail_outbox"), () => {
-      match mail_transport_from_env() {
-        File(outbox_dir~) => assert_eq(outbox_dir, "_build/custom_mail_outbox")
-        Smtp(_) => abort("expected file mail transport")
-      }
-    })
-  })
-}
-
-///|
-test "smtp mail transport is configured from env" {
-  with_env_value("MAIL_TRANSPORT", Some("smtp"), () => {
-    with_env_value("SMTP_HOST", Some("smtp.example.com"), () => {
-      with_env_value("SMTP_PORT", Some("465"), () => {
-        with_env_value("SMTP_SECURITY", Some("tls"), () => {
-          with_env_value("SMTP_AUTH", Some("login"), () => {
-            with_env_value("SMTP_USERNAME", Some("mailer@example.com"), () => {
-              with_env_value("SMTP_PASSWORD", Some("secret"), () => {
-                with_env_value("SMTP_FROM", Some("noreply@example.com"), () => {
-                  match mail_transport_from_env() {
-                    File(_) => abort("expected smtp mail transport")
-                    Smtp(config~, from~) => {
-                      assert_eq(config.host, "smtp.example.com")
-                      assert_eq(config.port, 465)
-                      assert_true(config.security == Tls)
-                      assert_true(
-                        config.auth == Login("mailer@example.com", "secret"),
-                      )
-                      assert_eq(from, "noreply@example.com")
-                    }
-                  }
-                })
-              })
-            })
-          })
-        })
-      })
-    })
+async test "mail transport defaults to file outbox without persisted settings" {
+  with_ssh_test_db(pool => {
+    match mail_transport_from_db(pool) {
+      File(outbox_dir~) =>
+        assert_eq(
+          outbox_dir,
+          @env.get_env_var("MAIL_OUTBOX_DIR").unwrap_or(default_mail_outbox_dir),
+        )
+      Smtp(_) => abort("expected file mail transport")
+    }
   })
 }
 

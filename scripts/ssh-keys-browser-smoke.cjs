@@ -80,7 +80,7 @@ async function main() {
   fs.writeFileSync(path.join(temp, 'password'), password, { mode: 0o600 });
   const port = await availablePort();
   const url = `http://127.0.0.1:${port}`;
-  const env = { ...process.env, DB_PATH: path.join(temp, 'moonhub.db'), MAIL_TRANSPORT: 'file',
+  const env = { ...process.env, DB_PATH: path.join(temp, 'moonhub.db'),
     MAIL_OUTBOX_DIR: path.join(temp, 'mail') };
   delete env.MOONHUB_ROOT_PASSWORD;
   delete env.MOONHUB_ROOT_PASSWORD_FILE;

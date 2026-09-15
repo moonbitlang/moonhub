@@ -11,6 +11,26 @@ enum MailTransportConfig {
 }
 
 ///|
+struct SmtpSettings {
+  host : String
+  port : Int
+  security : String
+  auth : String
+  username : String
+  password : String
+  tls_trust : String
+  tls_root_cert_file : String
+  helo_name : String
+  from : String
+}
+
+///|
+struct MailSettings {
+  transport : String
+  smtp : SmtpSettings
+}
+
+///|
 struct EmailOutboxMessage {
   id : Int64
   to_email : String
@@ -54,164 +74,140 @@ fn env_value(name : String) -> String? {
 }
 
 ///|
-fn env_value_or(name : String, default : String) -> String {
-  env_value(name).unwrap_or(default)
-}
-
-///|
-fn parse_env_int(name : String, default : Int) -> Int raise MailConfigError {
-  match env_value(name) {
-    None => default
-    Some(value) =>
-      @string.parse_int(value) catch {
-        _ => raise Invalid(message="invalid \{name}")
-      }
+fn default_smtp_settings() -> SmtpSettings {
+  {
+    host: "",
+    port: 587,
+    security: "starttls",
+    auth: "plain",
+    username: "",
+    password: "",
+    tls_trust: "system",
+    tls_root_cert_file: "",
+    helo_name: "localhost",
+    from: default_mail_from,
   }
 }
 
 ///|
-fn parse_env_bool(name : String, default : Bool) -> Bool raise MailConfigError {
-  match env_value(name) {
-    None => default
-    Some(value) =>
-      match value.to_lower() {
-        "1" | "true" | "yes" | "on" => true
-        "0" | "false" | "no" | "off" => false
-        _ => raise Invalid(message="invalid \{name}")
-      }
-  }
+fn load_mail_settings(pool : Database) -> MailSettings raise {
+  pool.with_client(client => {
+    match
+      client.query_opt(
+        "SELECT transport, smtp_host, smtp_port, smtp_security, smtp_auth, smtp_username, smtp_password, smtp_tls_trust, smtp_tls_root_cert_file, smtp_helo_name, smtp_from FROM mail_settings WHERE id = 1",
+      ) {
+      None => { transport: "file", smtp: default_smtp_settings(), }
+      Some(row) =>
+        {
+          transport: row.get_name("transport"),
+          smtp: {
+            host: row.get_name("smtp_host"),
+            port: (row.get_name("smtp_port") : Int64).to_int(),
+            security: row.get_name("smtp_security"),
+            auth: row.get_name("smtp_auth"),
+            username: row.get_name("smtp_username"),
+            password: row.get_name("smtp_password"),
+            tls_trust: row.get_name("smtp_tls_trust"),
+            tls_root_cert_file: row.get_name("smtp_tls_root_cert_file"),
+            helo_name: row.get_name("smtp_helo_name"),
+            from: row.get_name("smtp_from"),
+          },
+        }
+    }
+  })
 }
 
 ///|
-fn mail_transport_from_env() -> MailTransportConfig raise MailConfigError {
-  match env_value_or("MAIL_TRANSPORT", "file").to_lower() {
-    "file" => File(outbox_dir=mail_outbox_dir_from_env())
-    "smtp" =>
-      Smtp(
-        config=smtp_config_from_env(),
-        from=env_value_or("SMTP_FROM", default_mail_from),
-      )
-    value =>
-      raise Invalid(message="MAIL_TRANSPORT must be file or smtp, got \{value}")
+fn smtp_config_from_settings(
+  settings : SmtpSettings,
+) -> @transport.SmtpConfig raise MailConfigError {
+  guard !settings.host.is_empty() else {
+    raise Invalid(message="SMTP host is required")
   }
-}
-
-///|
-fn smtp_config_from_env() -> @transport.SmtpConfig raise MailConfigError {
-  let host = match env_value("SMTP_HOST") {
-    Some(host) => host
-    None => raise Invalid(message="SMTP_HOST is required")
-  }
-  let port = parse_env_int("SMTP_PORT", 587)
-  let security : @transport.SmtpSecurity = match
-    env_value_or("SMTP_SECURITY", "starttls").to_lower() {
+  let security : @transport.SmtpSecurity = match settings.security.to_lower() {
     "plain" => Plain
     "starttls" | "start_tls" => StartTls
     "tls" | "ssl" => Tls
     value =>
       raise Invalid(
-        message="SMTP_SECURITY must be plain, starttls, or tls, got \{value}",
+        message="SMTP security must be plain, starttls, or tls, got \{value}",
       )
   }
-  let auth : @transport.SmtpAuth = match
-    env_value_or("SMTP_AUTH", "plain").to_lower() {
+  let auth : @transport.SmtpAuth = match settings.auth.to_lower() {
     "none" => None
-    "plain" =>
-      Plain(
-        required_env_value("SMTP_USERNAME"),
-        required_env_value("SMTP_PASSWORD"),
-      )
-    "login" =>
-      Login(
-        required_env_value("SMTP_USERNAME"),
-        required_env_value("SMTP_PASSWORD"),
-      )
-    "xoauth2" =>
-      Xoauth2(
-        required_env_value("SMTP_USERNAME"),
-        required_env_value("SMTP_PASSWORD"),
-      )
+    "plain" => Plain(settings.username, settings.password)
+    "login" => Login(settings.username, settings.password)
+    "xoauth2" => Xoauth2(settings.username, settings.password)
     value =>
       raise Invalid(
-        message="SMTP_AUTH must be none, plain, login, or xoauth2, got \{value}",
+        message="SMTP authentication must be none, plain, login, or xoauth2, got \{value}",
       )
   }
   let tls_trust : @transport.SmtpTlsTrust = match
-    env_value_or("SMTP_TLS_TRUST", "system").to_lower() {
+    settings.tls_trust.to_lower() {
     "system" | "system_root" => SystemRoot
     "insecure" | "insecure_no_verify" => InsecureNoVerify
-    "custom_pem_file" | "custom" =>
-      CustomPemFile(required_env_value("SMTP_TLS_ROOT_CERT_FILE"))
+    "custom_pem_file" | "custom" => CustomPemFile(settings.tls_root_cert_file)
     value =>
       raise Invalid(
-        message="SMTP_TLS_TRUST must be system, insecure, or custom, got \{value}",
+        message="SMTP TLS trust must be system, insecure, or custom, got \{value}",
       )
   }
   @transport.SmtpConfig::new(
-    host,
-    port,
-    hello_name=env_value_or("SMTP_HELO_NAME", "localhost"),
+    settings.host,
+    settings.port,
+    hello_name=settings.helo_name,
     security~,
     auth~,
     tls_trust~,
     timeouts=@transport.SmtpTimeouts::new(
-      connect_ms=parse_env_int("SMTP_CONNECT_TIMEOUT_MS", 10_000),
-      greeting_ms=parse_env_int("SMTP_GREETING_TIMEOUT_MS", 10_000),
-      command_ms=parse_env_int("SMTP_COMMAND_TIMEOUT_MS", 10_000),
-      data_ms=parse_env_int("SMTP_DATA_TIMEOUT_MS", 120_000),
-      idle_ms=parse_env_int("SMTP_IDLE_TIMEOUT_MS", 60_000),
+      connect_ms=10_000,
+      greeting_ms=10_000,
+      command_ms=10_000,
+      data_ms=120_000,
+      idle_ms=60_000,
     ),
     retry_policy=@transport.SmtpRetryPolicy::new(
-      max_retries=parse_env_int("SMTP_MAX_RETRIES", 1),
-      retry_delay_ms=parse_env_int("SMTP_RETRY_DELAY_MS", 250),
-      retry_on_connection_failure=parse_env_bool(
-        "SMTP_RETRY_CONNECTION_FAILURE", true,
-      ),
-      retry_on_timeout=parse_env_bool("SMTP_RETRY_TIMEOUT", true),
-      retry_on_transient_failure=parse_env_bool(
-        "SMTP_RETRY_TRANSIENT_FAILURE", true,
-      ),
+      max_retries=1,
+      retry_delay_ms=250,
+      retry_on_connection_failure=true,
+      retry_on_timeout=true,
+      retry_on_transient_failure=true,
     ),
-    reuse_connection=parse_env_bool("SMTP_REUSE_CONNECTION", true),
+    reuse_connection=true,
   )
 }
 
 ///|
-fn required_env_value(name : String) -> String raise MailConfigError {
-  match env_value(name) {
-    Some(value) => value
-    None => raise Invalid(message="\{name} is required")
+fn mail_transport_from_db(pool : Database) -> MailTransportConfig raise {
+  let settings = load_mail_settings(pool)
+  match settings.transport.to_lower() {
+    "file" => File(outbox_dir=mail_outbox_dir_from_env())
+    "smtp" =>
+      Smtp(
+        config=smtp_config_from_settings(settings.smtp),
+        from=settings.smtp.from,
+      )
+    value => raise Invalid(message="invalid mail transport: \{value}")
   }
 }
 
 ///|
-async fn start_mail_worker(
-  pool : Database,
-  group : @async.TaskGroup[Unit],
-) -> Unit {
+fn start_mail_worker(pool : Database, group : @async.TaskGroup[Unit]) -> Unit {
   let worker_id = mail_worker_id()
-  let transport = mail_transport_from_env()
-  match transport {
-    File(outbox_dir~) =>
-      @fs.mkdir(outbox_dir, recursive=true) catch {
-        @os_error.OSError(_) => ()
-        err => raise err
-      }
-    Smtp(_) => ()
-  }
   group.spawn_bg(no_wait=true, allow_failure=true, () => {
-    run_mail_worker(pool, worker_id, transport)
+    run_mail_worker(pool, worker_id)
   })
 }
 
 ///|
-async fn run_mail_worker(
-  pool : Database,
-  worker_id : String,
-  transport : MailTransportConfig,
-) -> Unit {
+async fn run_mail_worker(pool : Database, worker_id : String) -> Unit {
   for ;; {
-    let processed = deliver_next_email(pool, worker_id, transport) catch {
+    let processed = deliver_next_email(
+      pool,
+      worker_id,
+      mail_transport_from_db(pool),
+    ) catch {
       err => {
         println("mail worker error: \{err}")
         false
@@ -333,7 +329,7 @@ async fn deliver_email_to_smtp(
   from : String,
   message : EmailOutboxMessage,
 ) -> String {
-  let sender = mailbox_or_raise("SMTP_FROM", from)
+  let sender = mailbox_or_raise("SMTP From address", from)
   let recipient = mailbox_or_raise("message recipient", message.to_email)
   let email_message = message_or_raise(sender, recipient, message)
   let envelope = envelope_or_raise(sender, recipient)
