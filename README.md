@@ -1,5 +1,8 @@
 # hackwaly/moonhub
 
+Repository collaboration includes Issues and same-repository Merge Requests.
+See [collaboration architecture and supported behavior](docs/collaboration.md).
+
 ## Docker and Git SSH
 
 Run HTTP and Git-over-SSH services with Docker Compose. See
@@ -87,6 +90,14 @@ http://127.0.0.1:8080/alice/demo/commit/<commit-hash>
 Press `Ctrl-C` in the terminal running `moon run` to stop the server.
 
 ## Email Delivery
+
+When an invitee cannot receive email, a site administrator (the root role) can
+open **Teams > team > Invitations > View sign-in details** to retrieve the
+original invitation email, including its one-time password and expiry time.
+Team owners, team admins, and members cannot view these credentials. Only
+unaccepted, unrevoked, unexpired invitations with a stored email are available;
+users' permanent passwords are never shown. Details are fetched only on an
+explicit, CSRF-protected action and are returned with `Cache-Control: no-store`.
 
 Invitation emails are queued in `email_outbox` and delivered by the background
 mail worker. The default development transport writes `.eml` files to

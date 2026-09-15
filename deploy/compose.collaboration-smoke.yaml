@@ -1,0 +1,8 @@
+services:
+  web:
+    image: ${MOONHUB_COLLABORATION_IMAGE:-moonhub:collaboration}
+    environment:
+      MOONHUB_SSH_PUBLIC_URL: ""
+      MOONHUB_SSH_INTERNAL_URL: ssh://git@ssh:2222
+  ssh:
+    image: ${MOONHUB_COLLABORATION_IMAGE:-moonhub:collaboration}

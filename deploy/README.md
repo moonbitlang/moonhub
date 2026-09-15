@@ -280,8 +280,15 @@ OpenSSH permits public-key authentication only. User commands are restricted to
 Git fetch and push, and shell access, PTYs, SFTP, forwarding, user startup scripts,
 and arbitrary client environment variables are disabled. Git protocol v2 is
 supported through `GIT_PROTOCOL`. Each push has a 1 GiB input limit and incoming
-objects are checked by Git. Git LFS, upload-archive, deploy keys, branch protection,
-and per-repository role overrides are not part of this version.
+objects are checked by Git. Git LFS, upload-archive, deploy keys, and
+per-repository role overrides are not part of this version.
+
+Repository pages include **Issues** and **Merge Requests**. Team administrators
+configure exact-name branch protection from the MR list. Protection is enforced
+by the deployment-owned SSH receive hook, including for administrator pushes.
+Use the same image version for web and SSH when upgrading. See
+[collaboration behavior and architecture](../docs/collaboration.md) for review,
+merge recovery, limits and permissions.
 
 SMTP variables from the top-level `.env.example` are forwarded only to `web`;
 the default transport writes invitation messages under `/data/mail_outbox`.
