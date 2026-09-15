@@ -1,0 +1,40 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/gitops"
+
+import {
+  "moonbitlang/async/fs",
+}
+
+// Values
+pub async fn branch_sha(String, String) -> String
+
+pub async fn compare_branches(String, String, String) -> Revision
+
+pub async fn merge_git(String, Array[String], input? : String) -> String
+
+pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int, identity? : String) -> (Int, String)
+
+pub async fn merged_tree(String, Revision) -> String
+
+pub async fn repository_write_lock(String) -> @fs.File
+
+pub fn valid_commit_sha(String) -> Bool
+
+// Errors
+pub suberror GitOperationError {
+  Failure(message~ : String)
+}
+
+// Types and methods
+pub(all) struct Revision {
+  version : Int64
+  source_sha : String
+  target_sha : String
+  base_sha : String
+  merge_tree : String
+  block_reason : String
+}
+
+// Type aliases
+
+// Traits

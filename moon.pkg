@@ -22,6 +22,7 @@ import {
   "Lfan-ke/moon-sqlite" @sqlite,
   "nexacodes/email/core",
   "nexacodes/email/transport",
+  "hackwaly/moonhub/gitops",
 }
 
 supported_targets = "native"

@@ -1,0 +1,2 @@
+///|
+type MergeRevision = @gitops.Revision

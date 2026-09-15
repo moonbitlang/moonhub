@@ -15,6 +15,8 @@ fn app_error_middleware(
       next(req, res) catch {
         BadRequest(message~) =>
           res.send_html(render_error(400, message, asset_path_map), status=400)
+        @gitops.Failure(message~) =>
+          res.send_html(render_error(400, message, asset_path_map), status=400)
         Unauthorized(message~) =>
           res.send_html(render_error(401, message, asset_path_map), status=401)
         Forbidden(message~) =>

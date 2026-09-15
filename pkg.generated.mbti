@@ -40,9 +40,13 @@ type InvitationSession
 
 type InvitationSummary
 
+type Issue
+
 type LoginResult
 
 type MailTransportConfig
+
+type MergeRequest
 
 type RepoId
 
@@ -51,6 +55,8 @@ type RepoImportConfig
 type RepoOperation derive(Eq, @debug.Debug)
 
 type RepositoryJob
+
+type RepositoryScope
 
 type ResolvedRepoImport
 
