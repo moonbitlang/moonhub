@@ -68,7 +68,9 @@ async fn mock_import_config(root : String, source : String) -> RepoImportConfig 
     "#!/bin/sh\nexec git upload-pack '\{source}'\n",
     permission=0o700,
   )
-  { credentials_root: credentials, ssh_wrapper: wrapper, timeout_ms: 10000, }
+  // Functional imports share the async executor with CPU-heavy authentication
+  // tests. Deadline behavior has its own test with an explicit short timeout.
+  { credentials_root: credentials, ssh_wrapper: wrapper, timeout_ms: 300000, }
 }
 
 ///|
@@ -278,7 +280,11 @@ async test "SSH import failure cleans staging and retry preserves branches tags 
     retry_repository_job(pool, alice, team, repo.name)
     assert_true(run_next_repository_job(pool, root, Some(config)))
     let completed = require_repository_job(pool, team, repo.name)
-    assert_eq(completed.status, "succeeded")
+    assert_eq(
+      completed.status,
+      "succeeded",
+      msg=completed.last_error.unwrap_or("import failed without a diagnostic"),
+    )
     assert_eq(completed.attempt_count, 2L)
     assert_eq(default_ref(repo.git_dir(root)), "master")
     let refs = ["for-each-ref", "--format=%(refname):%(objectname)"]
