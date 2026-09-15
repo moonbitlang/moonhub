@@ -460,6 +460,242 @@ h2 {
   color: var(--color-success);
 }
 
+.mr-page-heading,
+.mr-list-title,
+.mr-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 24px 0 16px;
+}
+
+.mr-page-heading h2,
+.mr-merge-panel h3 {
+  margin: 0;
+}
+
+.mr-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+}
+
+.mr-actions,
+.mr-event-heading,
+.mr-shas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.mr-actions form {
+  margin: 0;
+}
+
+.mr-tabs {
+  display: flex;
+  gap: 20px;
+  margin: 24px 0 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mr-tabs a {
+  padding: 8px 0;
+  color: var(--color-muted);
+  text-transform: capitalize;
+}
+
+.mr-tabs a[aria-current] {
+  border-bottom: 2px solid var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.mr-state {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-success);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.mr-state[data-state="closed"] {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.mr-state[data-state="merged"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.mr-list,
+.mr-timeline {
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.mr-list > li,
+.mr-timeline > li {
+  border-bottom: 1px solid var(--color-border-muted);
+  padding: 16px 0;
+  overflow-wrap: anywhere;
+}
+
+.mr-list-title {
+  margin: 0;
+}
+
+.mr-list-title a {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mr-list p {
+  margin: 6px 0 0;
+}
+
+.mr-form {
+  max-width: 800px;
+  margin-top: 24px;
+}
+
+.mr-form textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.mr-branch-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.mr-branch-fields .field,
+.mr-review-actions .field {
+  min-width: 0;
+}
+
+.mr-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mr-checkbox input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+}
+
+.mr-description,
+.mr-comment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mr-description {
+  padding: 16px 0 24px;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.mr-branch-summary,
+.mr-shas {
+  overflow-wrap: anywhere;
+}
+
+.mr-version-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mr-version-form input {
+  width: 80px;
+}
+
+.mr-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+}
+
+.mr-event-heading time {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.mr-merge-panel {
+  margin-top: 32px;
+  border-top: 1px solid var(--color-border);
+  padding: 24px 0;
+}
+
+.mr-edit {
+  margin-top: 16px;
+}
+
+.mr-edit summary {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.issue-filters {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 220px) auto;
+  align-items: end;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.issue-filters .field {
+  min-width: 0;
+}
+
+.issue-related {
+  margin-top: 24px;
+}
+
+.mr-form :is(textarea, button, select, input):focus-visible,
+.mr-edit summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .mr-page-heading,
+  .mr-rule {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .mr-branch-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .issue-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mr-title {
+    font-size: 21px;
+  }
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;

@@ -28,6 +28,10 @@ fn management_command() -> @argparse.Command {
       @argparse.Command("ssh-serve", hidden=true, positionals=[
         PositionArg("id"),
       ]),
+      @argparse.Command("ssh-pre-receive", hidden=true, positionals=[
+        PositionArg("id"),
+        PositionArg("repository"),
+      ]),
       @argparse.Command(
         "ssh-key-add",
         about="Bind an Ed25519 public key to an active user.",
@@ -188,6 +192,12 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           pool,
           cli_key_id(options),
           cli_value(matches, "root"),
+        )
+      "ssh-pre-receive" =>
+        check_received_refs(
+          pool,
+          cli_key_id(options),
+          parse_transport_repo(cli_value(options, "repository")),
         )
       "ssh-key-add" => {
         let user = active_user_by_name(pool, cli_value(options, "user"))

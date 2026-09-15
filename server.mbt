@@ -10,6 +10,7 @@ async fn serve(config : Config) -> Unit {
     let import_config = repo_import_config_from_env()
     let addresses = ssh_address_config_from_env()
     start_repository_worker(pool, config.root, import_config, group, addresses~)
+    start_merge_worker(pool, config.root, group)
     let custom = [
       @moonback.Config::custom(config_root, config.root),
       @moonback.Config::custom(config_assets_root, config.assets_root),

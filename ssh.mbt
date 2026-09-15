@@ -176,11 +176,35 @@ async fn serve_git_ssh(pool : Database, key_id : Int64, root : String) -> Int {
   let request = parse_ssh_request(command)
   authorize_repository(pool, user, request.repo, request.operation)
   let git_dir = resolve_repository_dir(root, request.repo)
+  let write_lock = if request.operation == Write {
+    Some(@gitops.repository_write_lock(git_dir))
+  } else {
+    None
+  }
+  defer (if write_lock is Some(lock) { lock.close() })
   let git_command = match request.operation {
     Read => "upload-pack"
     Write => "receive-pack"
   }
   let environment = { "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8" }
+  let protected_args = ["-c", "transfer.hideRefs=refs/moonhub/"]
+  if request.operation == Write {
+    // The directory is deployment-owned, never a hook supplied by a repository.
+    let hooks = @env.get_env_var("MOONHUB_HOOKS_PATH").unwrap_or(
+      "/usr/local/lib/moonhub/hooks",
+    )
+    guard @fs.kind("\{hooks}/pre-receive", follow_symlink=false) is Regular else {
+      raise BadRequest(message="Moonhub receive hook is not installed")
+    }
+    protected_args.push("-c")
+    protected_args.push("core.hooksPath=\{hooks}")
+    environment["MOONHUB_KEY_ID"] = key_id.to_string()
+    environment["MOONHUB_REPOSITORY"] = request.repo.path()
+    environment["DB_PATH"] = @env.get_env_var("DB_PATH").unwrap_or("moonhub.db")
+    environment["MOONHUB_BIN"] = @env.get_env_var("MOONHUB_BIN").unwrap_or(
+      "/usr/local/bin/moonhub",
+    )
+  }
   match @env.get_env_var("GIT_PROTOCOL") {
     Some("version=0" | "version=1" | "version=2" as version) =>
       environment["GIT_PROTOCOL"] = version
@@ -197,7 +221,7 @@ async fn serve_git_ssh(pool : Database, key_id : Int64, root : String) -> Int {
     @env.get_env_var("MOONHUB_GIT").unwrap_or("git"),
     [
       "-c", "receive.fsckObjects=true", "-c", "receive.maxInputSize=1073741824",
-      git_command, git_dir,
+      ..protected_args, git_command, git_dir,
     ],
     inherit_env=false,
     extra_env=environment,

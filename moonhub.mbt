@@ -155,6 +155,7 @@ async fn main {
     Some(
       "ssh-authorized-key"
       | "ssh-serve"
+      | "ssh-pre-receive"
       | "ssh-key-add"
       | "ssh-key-list"
       | "ssh-key-revoke"
@@ -162,7 +163,15 @@ async fn main {
     ) => {
       let code = run_management_cli(args[1:]) catch {
         err => {
-          @stdio.stderr.write("moonhub: \{err}\n")
+          let message = match err {
+            BadRequest(message~)
+            | Unauthorized(message~)
+            | Forbidden(message~)
+            | NotFound(message~)
+            | @gitops.Failure(message~) => message
+            _ => err.to_string()
+          }
+          @stdio.stderr.write("moonhub: \{message}\n")
           1
         }
       }
