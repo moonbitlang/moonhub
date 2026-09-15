@@ -92,7 +92,7 @@ fn render_repo_nav(
       None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
     }
     b <+
-      "</div></details></div><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{url_escape_path(rev)}\">Commits</a><a href=\"\{base}/merge-requests\">Merge Requests</a></p></div>"
+      "</div></details></div><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{url_escape_path(rev)}\">Commits</a><a href=\"\{base}/issues\">Issues</a><a href=\"\{base}/merge-requests\">Merge Requests</a></p></div>"
   })
 }
 
