@@ -609,7 +609,8 @@ fn list_invitations(
         #|  invitation.display_name,
         #|  invitation.kind AS kind,
         #|  invitation.team_role AS role,
-        #|  invitation.status AS status,
+        #|  CASE WHEN invitation.status = 'sent' AND invitation.expires_at <= datetime('now')
+        #|    THEN 'expired' ELSE invitation.status END AS status,
         #|  (SELECT status FROM email_outbox
         #|   WHERE email_outbox.invitation_id = invitation.id
         #|   ORDER BY id DESC LIMIT 1) AS email_status,

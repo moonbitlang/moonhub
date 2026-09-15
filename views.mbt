@@ -460,6 +460,7 @@ fn render_team_detail(
   invitations : Array[InvitationSummary],
   repositories~ : Array[TeamRepository],
   can_manage~ : Bool,
+  invitation_credentials_csrf~ : String,
   message : String?,
 ) -> @moonback.Html {
   layout(
@@ -517,6 +518,12 @@ fn render_team_detail(
             None => ()
           }
           b <+ "</td><td>"
+          if user.is_site_admin &&
+            invitation.status == "sent" &&
+            invitation.email_status is Some(_) {
+            b <+
+              "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/credentials\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{invitation_credentials_csrf}\"><button class=\"secondary-button\" type=\"submit\">View sign-in details</button></form>"
+          }
           if can_manage &&
             invitation.status == "sent" &&
             (

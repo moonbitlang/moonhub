@@ -102,8 +102,13 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
           invitations,
           repositories=team_repositories(pool, team),
           can_manage~,
+          invitation_credentials_csrf=request_form_token(
+            req,
+            "invitation-credentials:\{team.id}",
+          ),
           None,
         ),
+        headers=private_page_headers(),
       )
     })
     ctx.post("/teams/:team/invitations", async fn(req, res) {
@@ -139,9 +144,14 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
               invitations,
               repositories=team_repositories(pool, team),
               can_manage~,
+              invitation_credentials_csrf=request_form_token(
+                req,
+                "invitation-credentials:\{team.id}",
+              ),
               Some(message),
             ),
             status=400,
+            headers=private_page_headers(),
           )
         }
         None => {
@@ -154,6 +164,27 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
           )
         }
       }
+    })
+    ctx.post("/teams/:team/invitations/:invitation/credentials", async fn(
+      req,
+      res,
+    ) {
+      let actor = require_current_user(req)
+      guard actor.is_site_admin else {
+        raise Forbidden(message="site administrator required")
+      }
+      let team = require_team_by_request(pool, req)
+      let _ = protected_form(req, "invitation-credentials:\{team.id}")
+      let details = invitation_credentials(
+        pool,
+        actor,
+        team.id,
+        require_invitation_id(req),
+      )
+      res.send_html(
+        render_invitation_credentials(asset_path_map, actor, team, details),
+        headers=private_page_headers(),
+      )
     })
     ctx.post("/teams/:team/invitations/:invitation/revoke", async fn(req, res) {
       let actor = require_current_user(req)

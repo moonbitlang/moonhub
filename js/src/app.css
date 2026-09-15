@@ -106,6 +106,14 @@ pre {
   font: 14px/1.55 var(--font-mono);
 }
 
+.invitation-details {
+  overflow-wrap: anywhere;
+}
+
+.invitation-email {
+  white-space: pre-wrap;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
