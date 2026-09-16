@@ -1,33 +1,3 @@
-import {
-  BookOpen, ChevronDown, ChevronRight, ChevronsUpDown, CircleCheck,
-  CircleDot, Code, Contact, Download, Ellipsis, File, Folder, Folders, GitBranch,
-  GitCommitHorizontal, GitPullRequest, Globe, Grid2X2, KeyRound, Lock,
-  LogOut, Mail, Menu, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search,
-  Send, Settings, Terminal, User, UserPlus, Users, X, createElement, type IconNode,
-} from "lucide";
-
-const icons: Record<string, IconNode> = {
-  "book-open": BookOpen, "chevron-down": ChevronDown,
-  "chevron-right": ChevronRight, "chevrons-up-down": ChevronsUpDown,
-  "circle-check": CircleCheck, "circle-dot": CircleDot, code: Code,
-  contact: Contact, download: Download, ellipsis: Ellipsis, file: File, folder: Folder,
-  folders: Folders, "git-branch": GitBranch, "git-commit": GitCommitHorizontal,
-  "git-pull-request": GitPullRequest, globe: Globe, grid: Grid2X2,
-  key: KeyRound, lock: Lock, "log-out": LogOut, mail: Mail, menu: Menu,
-  moon: Moon, "panel-left-close": PanelLeftClose, "panel-left-open": PanelLeftOpen,
-  plus: Plus, search: Search, send: Send, settings: Settings, terminal: Terminal,
-  user: User, "user-plus": UserPlus, users: Users, x: X,
-};
-
-function renderIcon(element: HTMLElement, name = element.dataset.icon ?? "") {
-  const node = icons[name];
-  if (node) element.replaceChildren(createElement(node, {
-    width: 18, height: 18, "stroke-width": 1.75,
-    "aria-hidden": "true", focusable: "false",
-  }));
-}
-document.querySelectorAll<HTMLElement>("[data-icon]").forEach(element => renderIcon(element));
-
 const root = document.documentElement;
 const sidebar = document.querySelector<HTMLElement>("#app-sidebar");
 const main = document.querySelector<HTMLElement>("#main-content");
@@ -46,7 +16,6 @@ function syncCollapseButton() {
   collapseButton.setAttribute("aria-label", label);
   collapseButton.title = label;
   collapseButton.querySelector(".nav-label")!.textContent = label;
-  renderIcon(collapseButton.querySelector<HTMLElement>(".ui-icon")!, collapsed ? "panel-left-open" : "panel-left-close");
 }
 
 function setDrawer(open: boolean, restoreFocus = true) {
@@ -71,9 +40,10 @@ function setDrawer(open: boolean, restoreFocus = true) {
 
 if (sidebar) {
   root.dataset.uiReady = "true";
-  if (openButton) openButton.hidden = false;
+  if (openButton) { openButton.hidden = false; openButton.inert = false; }
   if (collapseButton) {
     collapseButton.hidden = false;
+    collapseButton.inert = false;
     collapseButton.addEventListener("click", () => {
       const collapsed = root.dataset.sidebarCollapsed !== "true";
       root.dataset.sidebarCollapsed = String(collapsed);
@@ -139,7 +109,7 @@ for (const list of document.querySelectorAll<HTMLElement>("[data-filter-list]"))
   const total = list.querySelector<HTMLElement>("[data-list-total]");
   const empty = list.querySelector<HTMLElement>("[data-filter-empty]");
   const control = list.querySelector<HTMLElement>("[data-filter-control]");
-  if (control) control.hidden = false;
+  if (control) { control.hidden = false; control.inert = false; }
   if (total) { total.setAttribute("role", "status"); total.setAttribute("aria-live", "polite"); }
   input.addEventListener("input", () => {
     const query = input.value.trim().toLocaleLowerCase();

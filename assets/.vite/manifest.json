@@ -14,10 +14,6 @@
       "src/custom-elements.tsx"
     ]
   },
-  "_chevron-down-B9JOKF7C.mjs": {
-    "file": "chevron-down-B9JOKF7C.mjs",
-    "name": "chevron-down"
-  },
   "_cpp-D_ao0WS5.mjs": {
     "file": "cpp-D_ao0WS5.mjs",
     "name": "cpp",
@@ -2211,16 +2207,13 @@
     "isDynamicEntry": true
   },
   "src/app-shell.ts": {
-    "file": "app-shell-CKEa9U20.mjs",
+    "file": "app-shell-8pqv9euw.mjs",
     "name": "app-shell",
     "src": "src/app-shell.ts",
-    "isEntry": true,
-    "imports": [
-      "_chevron-down-B9JOKF7C.mjs"
-    ]
+    "isEntry": true
   },
   "src/app.css": {
-    "file": "app_styles--njFTMhs.css",
+    "file": "app_styles-B3UiBFre.css",
     "name": "app_styles",
     "names": [
       "app_styles.css"
@@ -2551,12 +2544,9 @@
     ]
   },
   "src/repo-clone.ts": {
-    "file": "repo-clone-DnkcVsSh.mjs",
+    "file": "repo-clone-qHO78OYM.mjs",
     "name": "repo-clone",
     "src": "src/repo-clone.ts",
-    "isEntry": true,
-    "imports": [
-      "_chevron-down-B9JOKF7C.mjs"
-    ]
+    "isEntry": true
   }
 }

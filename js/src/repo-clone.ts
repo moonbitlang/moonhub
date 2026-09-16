@@ -1,18 +1,11 @@
-import { Check, ChevronDown, Copy, createElement, type IconNode } from "lucide";
-
-function icon(node: IconNode): SVGElement {
-  return createElement(node, { width: 16, height: 16, "aria-hidden": "true", focusable: "false" });
-}
-
 for (const details of document.querySelectorAll<HTMLDetailsElement>("details.repo-clone")) {
   const summary = details.querySelector<HTMLElement>("summary")!;
-  summary.querySelector("[data-clone-icon]")?.replaceChildren(icon(ChevronDown));
   const input = details.querySelector<HTMLInputElement>("[data-clone-url]");
   const copy = details.querySelector<HTMLButtonElement>("[data-clone-copy]");
   const status = details.querySelector<HTMLElement>("[data-clone-status]");
   let reset: ReturnType<typeof setTimeout> | undefined;
   if (input && copy && status) {
-    copy.replaceChildren(icon(Copy));
+    const copyIcon = copy.querySelector<HTMLElement>("[data-clone-icon]")!;
     copy.disabled = false;
     input.addEventListener("click", () => input.select());
     copy.addEventListener("click", async () => {
@@ -21,7 +14,7 @@ for (const details of document.querySelectorAll<HTMLDetailsElement>("details.rep
       try {
         if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
         await navigator.clipboard.writeText(input.value);
-        copy.replaceChildren(icon(Check));
+        copyIcon.dataset.icon = "check";
         copy.title = "Copied";
         status.textContent = "SSH URL copied.";
       } catch {
@@ -31,7 +24,7 @@ for (const details of document.querySelectorAll<HTMLDetailsElement>("details.rep
       } finally {
         copy.disabled = false;
         reset = setTimeout(() => {
-          copy.replaceChildren(icon(Copy));
+          copyIcon.dataset.icon = "copy";
           copy.title = "Copy SSH URL";
           status.textContent = "";
         }, 2500);

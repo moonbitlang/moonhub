@@ -2,6 +2,7 @@
   "name": "js",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/generate-icons.mjs",
     "build": "vite build"
   },
   "dependencies": {

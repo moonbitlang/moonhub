@@ -142,7 +142,7 @@ async function capture(page, name, viewport) {
   await page.setViewportSize(viewport);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(() => [...document.querySelectorAll('[data-icon]')]
-    .every(element => element.querySelector('svg')));
+    .every(element => getComputedStyle(element, '::before').maskImage !== 'none'));
   const layout = await page.evaluate(() => {
     const width = document.documentElement.clientWidth;
     const clipped = [...document.querySelectorAll('main input, main select, main textarea, main button, main h1, main h2')]

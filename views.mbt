@@ -22,7 +22,7 @@ fn layout(
   }
   Html(b => {
     b <+
-      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">try{if(\{shell.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}
+      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{shell.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}
     if shell {
       b <+ "<div class=\"workspace-shell\">\{render_sidebar(navigation)}"
     }
@@ -46,7 +46,7 @@ fn render_site_header(
       #|<header class="site-header"><div class="site-header__inner"><div class="brand-area">
     if shell {
       b <+
-        "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
+        "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
     }
     b <+
       "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
@@ -92,7 +92,7 @@ fn render_index(
           "<div class=\"empty-state\"><span class=\"empty-icon ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span><h2>No repositories yet</h2><a href=\"/teams\">Browse your teams</a></div>"
       } else {
         b <+
-          "<section data-filter-list><div class=\"list-toolbar\"><label class=\"search-field\" hidden data-filter-control><span class=\"ui-icon\" data-icon=\"search\" aria-hidden=\"true\"></span><input type=\"search\" data-list-filter placeholder=\"Find a repository...\" aria-label=\"Find a repository\"></label><span class=\"list-total\" data-list-total>\{repos.length().to_string()} repositories</span></div><ul class=\"repository-list\">"
+          "<section data-filter-list><div class=\"list-toolbar\"><label class=\"search-field\" hidden inert data-filter-control><span class=\"ui-icon\" data-icon=\"search\" aria-hidden=\"true\"></span><input type=\"search\" data-list-filter placeholder=\"Find a repository...\" aria-label=\"Find a repository\"></label><span class=\"list-total\" data-list-total>\{repos.length().to_string()} repositories</span></div><ul class=\"repository-list\">"
         for repo in repos {
           b <+
             "<li data-filter-item data-filter-text=\"\{repo.path()}\"><a class=\"repository-list-link\" href=\"\{repo_link(repo)}\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><span class=\"repository-identity\"><strong>\{repo.name}</strong><span>\{repo.path()}</span></span><span class=\"repository-owner\">\{repo.owner}</span><span class=\"ui-icon row-chevron\" data-icon=\"chevron-right\" aria-hidden=\"true\"></span></a></li>"
@@ -114,11 +114,11 @@ fn render_repo_nav(
   Html(b => {
     let base = repo_link(repo)
     b <+
-      "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div><details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Clone<span data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
+      "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div><details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Clone<span class=\"ui-icon\" data-icon=\"chevron-down\" data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
     match clone_url {
       Some(url) =>
         b <+
-          "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
+          "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span class=\"ui-icon\" data-icon=\"copy\" data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
       None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
     }
     b <+
