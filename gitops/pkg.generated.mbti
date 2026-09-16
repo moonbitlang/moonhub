@@ -23,7 +23,9 @@ pub fn valid_commit_sha(String) -> Bool
 // Errors
 pub suberror GitOperationError {
   Failure(message~ : String)
+  InternalFailure(details~ : String)
 }
+pub impl Show for GitOperationError
 
 // Types and methods
 pub(all) struct Revision {

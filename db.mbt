@@ -321,6 +321,7 @@ fn accept_invitation(
             #|  status
             #|)
             #|VALUES (?, ?, ?, ?, ?, 'active')
+            #|ON CONFLICT DO NOTHING
             #|RETURNING id, name_key, display_name, is_site_admin
           let params : Array[&DbParam] = [
             name_key as &DbParam,
@@ -329,7 +330,8 @@ fn accept_invitation(
             password_hash as &DbParam,
             is_site_admin as &DbParam,
           ]
-          let user_row = tx.query_one(create_user_sql, params~)
+          let user_row = tx.query_opt(create_user_sql, params~)
+          guard user_row is Some(user_row) else { return None }
           let user : CurrentUser = {
             id: user_row.get_name("id"),
             name_key: user_row.get_name("name_key"),
@@ -418,17 +420,12 @@ fn create_team(
   pool.with_client(client => {
     client.with_transaction(tx => {
       match
-        tx.query_opt("SELECT id FROM team WHERE name_key = ?", params=[name_key]) {
-        Some(_) => false
-        None => {
-          let _ = tx.execute(
-            "INSERT INTO team (name_key, display_name, kind) VALUES (?, ?, 'org')",
-            params=[name_key, display_name],
-          )
-          let team_row = tx.query_one(
-            "SELECT id FROM team WHERE name_key = ?",
-            params=[name_key],
-          )
+        tx.query_opt(
+          "INSERT INTO team (name_key, display_name, kind) VALUES (?, ?, 'org') ON CONFLICT (name_key) DO NOTHING RETURNING id",
+          params=[name_key, display_name],
+        ) {
+        None => false
+        Some(team_row) => {
           let team_id : Int64 = team_row.get_name("id")
           let sql =
             #|INSERT INTO team_member (team_id, user_id, role)
@@ -655,20 +652,31 @@ fn invite_team_member(
   role : String,
 ) -> Int64 raise {
   guard can_manage_team(pool, actor, team.id) else {
-    raise Unauthorized(message="team admin required")
+    raise Forbidden(message="team admin required")
+  }
+  let email = normalize_email(email)
+  guard valid_email(email) else { raise BadRequest(message="invalid email") }
+  guard valid_name_key(name_key) else {
+    raise BadRequest(message="invalid name_key")
+  }
+  guard !display_name.trim().is_empty() else {
+    raise BadRequest(message="missing display name")
+  }
+  guard valid_team_invite_role(role) else {
+    raise BadRequest(message="invalid role")
   }
   let one_time_password = generate_one_time_password(pool)
   pool.with_client(client => {
     client.with_transaction(tx => {
+      // Expiration must release the partial unique indexes before re-inviting.
+      let _ = tx.execute(
+        "UPDATE invitation SET status = 'expired' WHERE status = 'sent' AND expires_at <= datetime('now') AND (name_key = ? OR email = ?)",
+        params=[name_key, email],
+      )
       let conflict_sql =
         #|SELECT id
         #|FROM "user"
         #|WHERE name_key = ? OR email = ?
-        #|UNION ALL
-        #|SELECT id
-        #|FROM invitation
-        #|WHERE status = 'sent'
-        #|  AND (name_key = ? OR email = ?)
         #|LIMIT 1
       if tx.query_opt(conflict_sql, params=[name_key, email]) is Some(_) {
         raise BadRequest(message="user name_key or email is already in use")
@@ -683,7 +691,7 @@ fn invite_team_member(
         role as &DbParam,
         actor.id as &DbParam,
       ]
-      let invitation_row = tx.query_one(
+      let invitation_row = tx.query_opt(
         (
           #|INSERT INTO invitation (
           #|  kind,
@@ -707,10 +715,16 @@ fn invite_team_member(
           #|  ?,
           #|  ?
           #|)
+          #|ON CONFLICT DO NOTHING
           #|RETURNING id
         ),
         params~,
       )
+      guard invitation_row is Some(invitation_row) else {
+        raise BadRequest(
+          message="an active invitation already uses this username or email",
+        )
+      }
       let invitation_id : Int64 = invitation_row.get_name("id")
       let subject = "You have been invited to \{team.display_name} on moonhub"
       let body = invitation_email_body(team, name_key, role, one_time_password)
@@ -768,7 +782,7 @@ fn revoke_invitation(
     None => raise NotFound(message="invitation not found")
   }
   guard can_manage_team(pool, actor, team_id) else {
-    raise Unauthorized(message="team admin required")
+    raise Forbidden(message="team admin required")
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -807,7 +821,7 @@ fn resend_invitation_email(
   invitation_id : Int64,
 ) -> Bool raise {
   guard can_manage_team(pool, actor, team_id) else {
-    raise Unauthorized(message="team admin required")
+    raise Forbidden(message="team admin required")
   }
   pool.with_client(client => {
     let changed = client.execute(
@@ -829,8 +843,10 @@ fn resend_invitation_email(
         #|    AND invitation.team_id = ?
         #|    AND invitation.kind = 'team_member'
         #|    AND invitation.status = 'sent'
+        #|    AND invitation.expires_at > datetime('now')
         #|    AND email_outbox.status IN ('pending', 'failed')
         #|    AND email_outbox.last_error IS NOT NULL
+        #|    AND email_outbox.locked_at IS NULL
         #|  ORDER BY email_outbox.id DESC
         #|  LIMIT 1
         #|)

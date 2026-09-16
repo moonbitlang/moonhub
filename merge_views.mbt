@@ -239,7 +239,11 @@ fn render_merge_detail(
           if i < 50 {
             let actor : String = item.get_name("actor")
             let kind : String = item.get_name("kind")
-            let body : String = item.get_name("body")
+            let body : String = if kind == "merge_failed" {
+              merge_error_message
+            } else {
+              item.get_name("body")
+            }
             let date : String = item.get_name("created_at")
             let item_version : Int64 = item.get_name("version")
             b <+
@@ -315,7 +319,8 @@ fn render_merge_detail(
         b <+
           "<p>\{approved.to_string()} approvals · \{required.to_string()} required</p>"
         if !mr.job_error.is_empty() {
-          b <+ "<p class=\"flash-error\" role=\"alert\">\{mr.job_error}</p>"
+          b <+
+            "<p class=\"flash-error\" role=\"alert\">\{public_merge_job_error(mr.job_error)}</p>"
         }
         if !blocker.is_empty() {
           b <+ "<p role=\"status\">\{blocker}</p>"

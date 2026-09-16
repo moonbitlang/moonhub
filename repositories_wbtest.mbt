@@ -188,7 +188,7 @@ async test "team repository creation denies outsiders ordinary members and forge
       "csrf_token=\{csrf}&name=stolen",
       bob,
     )
-    assert_eq(outsider.code, 401)
+    assert_eq(outsider.code, 403)
     pool.with_client(client => {
       let _ = client.execute(
         "INSERT INTO team_member (team_id, user_id, role) VALUES (1, 2, 'member')",

@@ -140,8 +140,8 @@ fn render_repository_job(
           "<dl class=\"repository-job-details\"><dt>SSH source</dt><dd class=\"path\">\{job.source_url}</dd></dl>"
       }
       b <+ "<p class=\"muted\">Attempts: \{job.attempt_count.to_string()}</p>"
-      if job.last_error is Some(message) {
-        b <+ "<pre class=\"repository-job-error\">\{message}</pre>"
+      if job.last_error is Some(_) {
+        b <+ "<p class=\"repository-job-error\">\{repository_error_message}</p>"
       }
       if discarding {
         b <+

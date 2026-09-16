@@ -89,7 +89,7 @@ fn merge_revision(
       target_sha: row.get_name("target_sha"),
       base_sha: row.get_name("base_sha"),
       merge_tree: row.get_name("merge_tree"),
-      block_reason: row.get_name("block_reason"),
+      block_reason: public_merge_block_reason(row.get_name("block_reason")),
     }
   })
 }

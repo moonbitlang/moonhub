@@ -99,21 +99,18 @@ fn add_ssh_key(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
-      guard tx.query_opt("SELECT id FROM ssh_key WHERE fingerprint = ?", params=[
-          key.fingerprint,
-        ])
-        is None else {
+      let row = tx.query_opt(
+        (
+          #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint)
+          #|VALUES (?, ?, ?, ?) ON CONFLICT (fingerprint) DO NOTHING RETURNING id
+        ),
+        params=[user.id, title, key.public_key, key.fingerprint],
+      )
+      guard row is Some(row) else {
         raise BadRequest(
           message="this public key is already registered (possibly revoked)",
         )
       }
-      let row = tx.query_one(
-        (
-          #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint)
-          #|VALUES (?, ?, ?, ?) RETURNING id
-        ),
-        params=[user.id, title, key.public_key, key.fingerprint],
-      )
       row.get_name("id")
     })
   })

@@ -513,8 +513,9 @@ fn render_team_detail(
             None => ()
           }
           match invitation.email_last_error {
-            Some(last_error) =>
-              b <+ "<div class=\"flash-error\">\{last_error}</div>"
+            Some(_) =>
+              b <+
+                "<div class=\"flash-error\">\{email_delivery_error_message}</div>"
             None => ()
           }
           b <+ "</td><td>"

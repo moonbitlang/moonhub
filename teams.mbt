@@ -38,7 +38,7 @@ fn require_team_member_access(
   } else {
     match team_role(pool, actor, team.id) {
       Some(_) => ()
-      None => raise Unauthorized(message="team access required")
+      None => raise Forbidden(message="team access required")
     }
   }
 }
@@ -64,7 +64,7 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       guard actor.is_site_admin else {
         raise Unauthorized(message="site admin required")
       }
-      let form = parse_form(req.body.text())
+      let form = read_form(req)
       let name_key = required_form_value(form, "name_key", "team name_key")
       let display_name = required_form_value(
         form, "display_name", "team display name",
@@ -114,21 +114,24 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
     ctx.post("/teams/:team/invitations", async fn(req, res) {
       let actor = require_current_user(req)
       let team = require_team_by_request(pool, req)
-      let form = parse_form(req.body.text())
+      guard can_manage_team(pool, actor, team.id) else {
+        raise Forbidden(message="team admin required")
+      }
+      let form = read_form(req)
       let email = normalize_email(required_form_value(form, "email", "email"))
       let name_key = required_form_value(form, "name_key", "name_key")
       let display_name = required_form_value(
         form, "display_name", "display name",
       )
       let role = optional_form_value(form, "role").unwrap_or("member")
-      let bad_message = if !valid_email(email) {
-        Some("invalid email")
-      } else if !valid_name_key(name_key) {
-        Some("invalid name_key")
-      } else if !valid_team_invite_role(role) {
-        Some("invalid role")
-      } else {
+      let bad_message = try {
+        let _ = invite_team_member(
+          pool, actor, team, email, name_key, display_name, role,
+        )
         None
+      } catch {
+        BadRequest(message~) => Some(message)
+        err => raise err
       }
       match bad_message {
         Some(message) => {
@@ -154,15 +157,11 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
             headers=private_page_headers(),
           )
         }
-        None => {
-          let _ = invite_team_member(
-            pool, actor, team, email, name_key, display_name, role,
-          )
+        None =>
           res.send_void(
             status=303,
             headers=redirect_headers("/teams/\{team.name_key}"),
           )
-        }
       }
     })
     ctx.post("/teams/:team/invitations/:invitation/credentials", async fn(

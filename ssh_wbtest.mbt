@@ -2,7 +2,15 @@
 let test_ssh_public_key : String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
 
 ///|
+// Bcrypt is synchronous; unrelated fixtures must not consume a Git lock's
+// deadline while its holder is waiting for a subprocess. Tests still exercise
+// concurrent requests and workers inside each fixture.
+let database_test_slot : @async.Semaphore = @async.Semaphore(1)
+
+///|
 async fn with_ssh_test_db(f : async (Database) -> Unit) -> Unit {
+  database_test_slot.acquire()
+  defer database_test_slot.release()
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()

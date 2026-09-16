@@ -213,7 +213,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       }
     })
     ctx.post("/login", async fn(req, res) {
-      let form = parse_form(req.body.text())
+      let form = read_form(req)
       let name_key = required_form_value(form, "name_key", "name_key")
       let password = required_form_value(form, "password", "password")
       match authenticate_user(pool, name_key, password) {
@@ -250,7 +250,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       }
     })
     ctx.post("/change-password", async fn(req, res) {
-      let form = parse_form(req.body.text())
+      let form = read_form(req)
       let new_password = required_form_value(
         form, "new_password", "new password",
       )

@@ -31,13 +31,7 @@ fn valid_form_token(expected : String, supplied : String) -> Bool {
 }
 
 ///|
-async fn protected_form(
-  req : @moonback.Request,
-  scope : String,
-) -> Map[String, String] {
-  guard req.headers.get("Sec-Fetch-Site") != Some("cross-site") else {
-    raise Forbidden(message="cross-site request rejected")
-  }
+async fn read_form(req : @moonback.Request) -> Map[String, String] {
   let bytes = FixedArray::make(65537, b'\x00')
   let reader = req.body.reader(no_buffer=true)
   let mut length = 0
@@ -56,7 +50,18 @@ async fn protected_form(
   let body = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
     _ => raise BadRequest(message="invalid form encoding")
   }
-  let form = parse_form(body)
+  parse_form(body)
+}
+
+///|
+async fn protected_form(
+  req : @moonback.Request,
+  scope : String,
+) -> Map[String, String] {
+  guard req.headers.get("Sec-Fetch-Site") != Some("cross-site") else {
+    raise Forbidden(message="cross-site request rejected")
+  }
+  let form = read_form(req)
   guard valid_form_token(
     request_form_token(req, scope),
     form.get("csrf_token").unwrap_or(""),

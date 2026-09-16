@@ -176,6 +176,7 @@ async fn run_next_merge_job(pool : Database, root : String) -> Bool {
     }
     err if @async.is_cancellation_error(err) => raise err
     err => {
+      println("merge request \{mr.id} failed: \{err}")
       let result : String = pool.with_client(client => {
         client
         .query_opt(
@@ -192,6 +193,7 @@ async fn run_next_merge_job(pool : Database, root : String) -> Bool {
           | NotFound(message~)
           | Forbidden(message~)
           | Unauthorized(message~) => message
+          @gitops.InternalFailure(_) => merge_error_message
           _ => "merge failed; retry after inspecting the branches"
         }
         fail_merge(pool, mr, actor_id, message)

@@ -403,6 +403,8 @@ fn reset_auth_test_data(pool : Database) -> Unit raise {
 async fn with_production_test_app(
   f : async (@moonback.App, Int, Database) -> Unit,
 ) -> Unit {
+  database_test_slot.acquire()
+  defer database_test_slot.release()
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group) catch {
       err => abort("database open failed: \{err}")

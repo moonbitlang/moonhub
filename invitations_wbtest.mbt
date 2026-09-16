@@ -215,3 +215,380 @@ async test "failed invitation acceptance rolls back and the same invitation can 
     assert_true(lookup_invitation_session(pool, token) is None)
   })
 }
+
+///|
+async test "duplicate invitation names and emails return validation errors without side effects" {
+  with_ssh_settings_app((port, pool, alice, bob, _) => {
+    let form = "email=guest%40example.com&name_key=guest&display_name=Guest&role=member"
+    let (created, _) = http_post_path_with_cookie(
+      port, "/teams/alice/invitations", form, alice,
+    )
+    assert_eq(created.code, 303)
+    for
+      (path, cookie, email, name) in [
+        ("/teams/alice/invitations", alice, "guest@example.com", "guest"),
+        ("/teams/alice/invitations", alice, "other@example.com", "guest"),
+        ("/teams/alice/invitations", alice, "GUEST@EXAMPLE.COM", "other"),
+        ("/teams/bob/invitations", bob, "guest@example.com", "guest"),
+      ] {
+      let (response, body) = http_post_path_with_cookie(
+        port,
+        path,
+        "email=\{email}&name_key=\{name}&display_name=Guest&role=member",
+        cookie,
+      )
+      assert_eq(response.code, 400)
+      assert_true(
+        body.contains(
+          "an active invitation already uses this username or email",
+        ),
+      )
+      assert_true(body.contains("Invite member"))
+      assert_true(!body.contains("sql="))
+      assert_true(!body.contains("UNIQUE constraint"))
+      assert_true(response.headers.get("cache-control") is Some("no-store"))
+    }
+    pool.with_client(client => {
+      assert_eq(client.query_all("SELECT id FROM invitation").length(), 1)
+      assert_eq(client.query_all("SELECT id FROM email_outbox").length(), 1)
+      let _ = client.execute(
+        "UPDATE \"user\" SET email = 'bob@example.com' WHERE id = 2",
+      )
+    })
+    for
+      (email, name) in [("new@example.com", "bob"), ("bob@example.com", "new")] {
+      let (response, body) = http_post_path_with_cookie(
+        port,
+        "/teams/alice/invitations",
+        "email=\{email}&name_key=\{name}&display_name=Guest",
+        alice,
+      )
+      assert_eq(response.code, 400)
+      assert_true(body.contains("user name_key or email is already in use"))
+      assert_true(!body.contains("sql="))
+    }
+  })
+}
+
+///|
+async test "expired and revoked invitations can be replaced without reviving old credentials" {
+  with_ssh_settings_app((port, pool, alice, _, _) => {
+    let actor = active_user_by_name(pool, "alice")
+    let team = get_team_by_name_key(pool, "alice").unwrap()
+    for name in ["expired", "revoked"] {
+      let id = invite_team_member(
+        pool,
+        actor,
+        team,
+        "\{name}@example.com",
+        name,
+        "Guest",
+        "member",
+      )
+      let token = pool.with_client(client => {
+        client.with_transaction(tx => create_invitation_session_token(tx, id))
+      })
+      if name == "expired" {
+        pool.with_client(client => {
+          let _ = client.execute(
+            "UPDATE invitation SET expires_at = datetime('now', '-1 second') WHERE id = ?",
+            params=[id],
+          )
+        })
+      } else {
+        assert_true(revoke_invitation(pool, actor, team.id, id))
+        assert_true(!revoke_invitation(pool, actor, team.id, id))
+      }
+      let (response, body) = http_post_path_with_cookie(
+        port,
+        "/teams/alice/invitations",
+        "email=\{name}@example.com&name_key=\{name}&display_name=Guest&role=admin",
+        alice,
+      )
+      assert_eq(response.code, 303, msg=body)
+      assert_true(lookup_invitation_session(pool, token) is None)
+      pool.with_client(client => {
+        let old = client.query_one(
+          "SELECT status FROM invitation WHERE id = ?",
+          params=[id],
+        )
+        assert_eq((old.get_name("status") : String), name)
+        let current = client.query_one(
+          "SELECT id, team_role FROM invitation WHERE name_key = ? AND status = 'sent'",
+          params=[name],
+        )
+        assert_true((current.get_name("id") : Int64) > id)
+        assert_eq((current.get_name("team_role") : String), "admin")
+      })
+    }
+    for _ in 0..<2 {
+      let message = claim_next_email(pool, "worker").unwrap()
+      let status : String = pool.with_client(client => {
+        client
+        .query_one(
+          "SELECT i.status FROM invitation i JOIN email_outbox e ON e.invitation_id = i.id WHERE e.id = ?",
+          params=[message.id],
+        )
+        .get_name("status")
+      })
+      assert_eq(status, "sent")
+      mark_email_delivered(pool, message.id, "test-provider")
+    }
+    assert_true(claim_next_email(pool, "worker") is None)
+  })
+}
+
+///|
+async test "deleted invitations never deliver orphaned invitation credentials" {
+  with_ssh_test_db(pool => {
+    let actor = active_user_by_name(pool, "alice")
+    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let id = invite_team_member(
+      pool, actor, team, "guest@example.com", "guest", "Guest", "member",
+    )
+    pool.with_client(client => {
+      let _ = client.execute("DELETE FROM invitation WHERE id = ?", params=[id])
+      assert_true(
+        client.query_opt(
+          "SELECT id FROM email_outbox WHERE invitation_id IS NULL",
+        )
+        is Some(_),
+      )
+      let _ = client.execute(
+        "INSERT INTO email_outbox (to_email, subject, body) VALUES ('guest@example.com', 'Plain email', 'Message')",
+      )
+    })
+    let message = claim_next_email(pool, "worker").unwrap()
+    assert_eq(message.subject, "Plain email")
+    mark_email_delivered(pool, message.id, "test-provider")
+    assert_true(claim_next_email(pool, "worker") is None)
+  })
+}
+
+///|
+async test "invalid invitation submissions never disclose a team's membership to outsiders" {
+  with_ssh_settings_app((port, pool, _, bob, _) => {
+    pool.with_client(client => {
+      let _ = client.execute(
+        "UPDATE \"user\" SET email = 'private-member@example.com' WHERE id = 1",
+      )
+    })
+    for
+      form in [
+        "", "email=invalid&name_key=guest&display_name=Guest", "email=guest@example.com&name_key=guest&display_name=Guest",
+      ] {
+      let (response, body) = http_post_path_with_cookie(
+        port, "/teams/alice/invitations", form, bob,
+      )
+      assert_eq(response.code, 403)
+      assert_true(!body.contains("private-member@example.com"))
+      assert_true(!body.contains("Invite member"))
+    }
+    pool.with_client(client => {
+      assert_true(client.query_all("SELECT id FROM invitation").is_empty())
+    })
+  })
+}
+
+///|
+async test "accepting an invitation whose identity was claimed returns a public error" {
+  for field in ["email", "name_key"] {
+    with_ssh_settings_app((port, pool, _, _, _) => {
+      let actor = active_user_by_name(pool, "alice")
+      let team = get_team_by_name_key(pool, "alice").unwrap()
+      let id = invite_team_member(
+        pool, actor, team, "guest@example.com", "guest", "Guest", "member",
+      )
+      let cookie = pool.with_client(client => {
+        client.with_transaction(tx => {
+          session_cookie(create_invitation_session_token(tx, id))
+        })
+      })
+      pool.with_client(client => {
+        let _ = client.execute(
+          if field == "email" {
+            "UPDATE \"user\" SET email = 'guest@example.com' WHERE id = 2"
+          } else {
+            "UPDATE \"user\" SET name_key = 'guest' WHERE id = 2"
+          },
+        )
+      })
+      let (response, body) = http_post_path_with_cookie(
+        port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+        cookie,
+      )
+      assert_eq(response.code, 400)
+      assert_true(body.contains("invitation is no longer valid"))
+      assert_true(!body.contains("UNIQUE"))
+      assert_true(!body.contains("sql="))
+      pool.with_client(client => {
+        assert_eq(client.query_all("SELECT id FROM \"user\"").length(), 3)
+        assert_eq(
+          (
+            client
+            .query_one("SELECT password_hash FROM \"user\" WHERE id = 2")
+            .get_name("password_hash") : String),
+          "test",
+        )
+        assert_true(
+          client.query_opt(
+            "SELECT user_id FROM team_member WHERE team_id = 1 AND user_id = 2",
+          )
+          is None,
+        )
+      })
+    })
+  }
+}
+
+///|
+async test "expired accepted and revoked invitation emails cannot be resent or delivered" {
+  with_ssh_settings_app((port, pool, alice, _, _) => {
+    let actor = active_user_by_name(pool, "alice")
+    let team = get_team_by_name_key(pool, "alice").unwrap()
+    for state in ["expired", "accepted", "revoked"] {
+      let id = invite_team_member(
+        pool,
+        actor,
+        team,
+        "\{state}@example.com",
+        state,
+        "Guest",
+        "member",
+      )
+      pool.with_client(client => {
+        let _ = if state == "expired" {
+          client.execute(
+            "UPDATE invitation SET expires_at = datetime('now', '-1 second') WHERE id = ?",
+            params=[id],
+          )
+        } else {
+          client.execute("UPDATE invitation SET status = ? WHERE id = ?", params=[
+            state, id,
+          ])
+        }
+        let _ = client.execute(
+          "UPDATE email_outbox SET last_error = 'prior failure' WHERE invitation_id = ?",
+          params=[id],
+        )
+      })
+      let (response, _) = http_post_path_with_cookie(
+        port,
+        "/teams/alice/invitations/\{id}/resend",
+        "",
+        alice,
+      )
+      assert_eq(response.code, 404)
+    }
+    assert_true(claim_next_email(pool, "worker") is None)
+  })
+}
+
+///|
+async test "mail claims exclude in-flight deliveries and recover stale claims" {
+  with_ssh_test_db(pool => {
+    let actor = active_user_by_name(pool, "alice")
+    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let id = invite_team_member(
+      pool, actor, team, "guest@example.com", "guest", "Guest", "member",
+    )
+    let message = claim_next_email(pool, "first-worker").unwrap()
+    assert_true(claim_next_email(pool, "second-worker") is None)
+    pool.with_client(client => {
+      let _ = client.execute(
+        "UPDATE email_outbox SET last_error = 'old failure' WHERE invitation_id = ?",
+        params=[id],
+      )
+    })
+    try resend_invitation_email(pool, actor, team.id, id) catch {
+      NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("reset an in-flight email delivery")
+    }
+    pool.with_client(client => {
+      let _ = client.execute(
+        "UPDATE email_outbox SET locked_at = datetime('now', '-6 minutes') WHERE id = ?",
+        params=[message.id],
+      )
+    })
+    assert_eq(claim_next_email(pool, "second-worker").unwrap().id, message.id)
+  })
+}
+
+///|
+async test "mail diagnostics remain private even on administrator invitation pages" {
+  with_ssh_settings_app((port, pool, alice, _, admin) => {
+    let actor = active_user_by_name(pool, "admin")
+    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let id = invite_team_member(
+      pool, actor, team, "guest@example.com", "guest", "Guest", "member",
+    )
+    let message = claim_next_email(pool, "worker").unwrap()
+    mark_email_failed(pool, message.id, private_error_test_detail)
+    for cookie in [alice, admin] {
+      let (response, body) = http_get_path_with_cookie(
+        port, "/teams/alice", cookie,
+      )
+      assert_eq(response.code, 200)
+      assert_true(body.contains(email_delivery_error_message))
+      assert_true(!body.contains("private-diagnostic-sentinel"))
+    }
+    let token = form_csrf_token(admin.value, "invitation-credentials:1")
+    let (response, body) = http_post_path_with_cookie(
+      port,
+      "/teams/alice/invitations/\{id}/credentials",
+      "csrf_token=\{token}",
+      admin,
+    )
+    assert_eq(response.code, 200)
+    assert_true(body.contains(email_delivery_error_message))
+    assert_true(!body.contains("private-diagnostic-sentinel"))
+    assert_eq(
+      invitation_credentials(pool, actor, team.id, id).email_last_error,
+      Some(private_error_test_detail),
+    )
+  })
+}
+
+///|
+test "invitation email validation rejects malformed addresses and control characters" {
+  for
+    value in [
+      "", "@", "guest@", "@example.com", "guest@@example.com", "guest\n@example.com",
+      "guest\r@example.com", "guest\t@example.com", "guest\u0000@example.com",
+    ] {
+    assert_true(!valid_email(value), msg=value)
+  }
+  assert_true(valid_email("guest+team@example.com"))
+  assert_true(valid_email(normalize_email(" GUEST@EXAMPLE.COM ")))
+}
+
+///|
+async test "invitation queue failures roll back creation and expose only a generic error" {
+  with_ssh_settings_app((port, pool, alice, _, _) => {
+    pool.with_client(client => {
+      client.batch_execute(
+        "CREATE TRIGGER reject_mail BEFORE INSERT ON email_outbox BEGIN SELECT RAISE(ABORT, 'private-diagnostic-sentinel'); END;",
+      )
+    })
+    let (response, body) = http_post_path_with_cookie(
+      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
+      alice,
+    )
+    assert_eq(response.code, 500)
+    assert_true(body.contains(internal_error_message))
+    assert_true(!body.contains("private-diagnostic-sentinel"))
+    assert_true(!body.contains("INSERT INTO"))
+    pool.with_client(client => {
+      assert_true(client.query_all("SELECT id FROM invitation").is_empty())
+      assert_true(client.query_all("SELECT id FROM email_outbox").is_empty())
+      client.batch_execute("DROP TRIGGER reject_mail")
+    })
+    let (response, _) = http_post_path_with_cookie(
+      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
+      alice,
+    )
+    assert_eq(response.code, 303)
+  })
+}

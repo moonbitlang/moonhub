@@ -291,6 +291,7 @@ async fn run_next_repository_job(
     }
     err if @async.is_cancellation_error(err) => raise err
     err => {
+      println("repository job \{job.id} failed: \{err}")
       let message = match err {
         BadRequest(message~)
         | Forbidden(message~)

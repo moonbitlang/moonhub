@@ -13,6 +13,12 @@ priv suberror GitError {
 }
 
 ///|
+impl Show for GitError with fn output(self, logger) {
+  let GitCommandFailed(code~, output~) = self
+  logger.write_string("Git exited with status \{code}: \{output}")
+}
+
+///|
 async fn run_git(git_dir : String, args : Array[String]) -> String {
   let full_args = git_args(git_dir, args)
   let (code, output) = @process.collect_output_merged("git", full_args)

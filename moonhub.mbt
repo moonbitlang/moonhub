@@ -160,7 +160,7 @@ async fn main {
       | "ssh-key-list"
       | "ssh-key-revoke"
       | "repo-create"
-    ) => {
+    ) as command => {
       let code = run_management_cli(args[1:]) catch {
         err => {
           let message = match err {
@@ -169,7 +169,13 @@ async fn main {
             | Forbidden(message~)
             | NotFound(message~)
             | @gitops.Failure(message~) => message
-            _ => err.to_string()
+            _ =>
+              if command == Some("ssh-serve") ||
+                command == Some("ssh-pre-receive") {
+                internal_error_message
+              } else {
+                err.to_string()
+              }
           }
           @stdio.stderr.write("moonhub: \{message}\n")
           1

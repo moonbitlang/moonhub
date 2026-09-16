@@ -208,6 +208,7 @@ async fn run_mail_worker(pool : Database, worker_id : String) -> Unit {
       worker_id,
       mail_transport_from_db(pool),
     ) catch {
+      err if @async.is_cancellation_error(err) => raise err
       err => {
         println("mail worker error: \{err}")
         false
@@ -233,7 +234,9 @@ async fn deliver_next_email(
         mark_email_delivered(pool, message.id, provider_message_id)
         true
       } catch {
+        err if @async.is_cancellation_error(err) => raise err
         err => {
+          println("email delivery \{message.id} failed: \{err}")
           mark_email_failed(pool, message.id, "\{err}")
           false
         }
@@ -268,6 +271,11 @@ fn claim_next_email(
           #|FROM email_outbox
           #|WHERE status = 'pending'
           #|  AND next_attempt_at <= datetime('now')
+          #|  AND (locked_at IS NULL OR locked_at <= datetime('now', '-5 minutes'))
+          #|  AND ((invitation_id IS NULL AND template <> 'team_invitation') OR EXISTS (
+          #|    SELECT 1 FROM invitation WHERE invitation.id = email_outbox.invitation_id
+          #|      AND invitation.status = 'sent' AND invitation.expires_at > datetime('now')
+          #|  ))
           #|ORDER BY next_attempt_at, id
           #|LIMIT 1
         ),
@@ -283,6 +291,7 @@ fn claim_next_email(
               #|    locked_by = ?,
               #|    attempt_count = attempt_count + 1
               #|WHERE id = ? AND status = 'pending'
+              #|  AND (locked_at IS NULL OR locked_at <= datetime('now', '-5 minutes'))
             ),
             params=[worker_id, id],
           )

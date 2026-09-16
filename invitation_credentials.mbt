@@ -67,8 +67,8 @@ fn render_invitation_credentials(
         b <+ "<div><dt>Sent</dt><dd>\{sent_at} UTC</dd></div>"
       }
       b <+ "</dl>"
-      if details.email_last_error is Some(error) {
-        b <+ "<p class=\"flash-error\">\{error}</p>"
+      if details.email_last_error is Some(_) {
+        b <+ "<p class=\"flash-error\">\{email_delivery_error_message}</p>"
       }
       b <+
         "</section><section><h2 class=\"section-title\">Invitation email</h2><p>\{details.subject}</p><pre class=\"invitation-email\">\{details.body}</pre></section></div>"

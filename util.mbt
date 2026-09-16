@@ -48,7 +48,10 @@ fn valid_name_key(s : String) -> Bool {
 
 ///|
 fn valid_email(s : String) -> Bool {
-  !s.is_empty() && s == s.to_lower() && s.contains("@") && !s.contains(" ")
+  s.length() <= 254 &&
+  s == s.to_lower() &&
+  s.iter().all(ch => ch.to_int() > 32 && ch.to_int() != 127) &&
+  @core.Mailbox::address_only(s) is Ok(_)
 }
 
 ///|

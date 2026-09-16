@@ -1,6 +1,16 @@
 ///|
 pub suberror GitOperationError {
+  // Only application-authored messages belong in this public error variant.
   Failure(message~ : String)
+  InternalFailure(details~ : String)
+}
+
+///|
+pub impl Show for GitOperationError with fn output(self, logger) {
+  match self {
+    Failure(message~) => logger.write_string(message)
+    InternalFailure(details~) => logger.write_string(details)
+  }
 }
 
 ///|
@@ -93,7 +103,7 @@ pub async fn merge_git(
 ) -> String {
   let (code, output) = merge_git_command(git_dir, args, input~)
   guard code == 0 else {
-    raise Failure(message="Git operation failed: \{output}")
+    raise InternalFailure(details="Git operation failed: \{output}")
   }
   output
 }
@@ -214,7 +224,7 @@ pub async fn merged_tree(git_dir : String, revision : Revision) -> String {
         message="branches have conflicts; resolve them locally and push the source branch",
       )
     }
-    raise Failure(message="could not calculate merge: \{output}")
+    raise InternalFailure(details="could not calculate merge: \{output}")
   }
   let tree = output.trim().to_owned()
   guard valid_commit_sha(tree) else {
