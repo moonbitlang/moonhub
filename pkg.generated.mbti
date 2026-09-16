@@ -52,6 +52,8 @@ type MailTransportConfig
 
 type MergeRequest
 
+type PageNavigation
+
 type RepoId
 
 type RepoImportConfig

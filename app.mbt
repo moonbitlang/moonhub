@@ -70,6 +70,13 @@ let app_main_module : @moonback.Module = Module(ctx => {
           .unwrap_or(no_ssh_address_config),
         ).map(endpoint => endpoint.clone_url(repo))
       },
+      manager=(req, repo) => {
+        match get_team_by_name_key(pool, repo.owner) {
+          Some(team) =>
+            can_manage_team(pool, require_current_user(req), team.id)
+          None => false
+        }
+      },
     ),
   )
 })
@@ -120,6 +127,7 @@ fn repo_browser_module(
   asset_path_map : Map[String, String],
   authorize : (@moonback.Request, RepoId) -> Unit raise,
   clone_url? : (RepoId) -> String? raise = _ => None,
+  manager? : (@moonback.Request, RepoId) -> Bool raise = (_, _) => false,
 ) -> @moonback.Module {
   Module(ctx => {
     let root = repo_root(ctx)
@@ -136,6 +144,7 @@ fn repo_browser_module(
           path="",
           clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
+          manager=manager(req, repo),
         ),
       )
     })
@@ -152,6 +161,7 @@ fn repo_browser_module(
           path="",
           clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
+          manager=manager(req, repo),
         ),
       )
     })
@@ -168,6 +178,7 @@ fn repo_browser_module(
           path="",
           clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
+          manager=manager(req, repo),
         ),
       )
     })
@@ -188,6 +199,7 @@ fn repo_browser_module(
           path~,
           clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
+          manager=manager(req, repo),
         ),
       )
     })
@@ -219,6 +231,7 @@ fn repo_browser_module(
             path~,
             clone_url=clone_url(repo),
             current_user=current_user_from_request(req),
+            manager=manager(req, repo),
           ),
         )
       }
@@ -234,6 +247,7 @@ fn repo_browser_module(
           rev~,
           current_user=current_user_from_request(req),
           clone_url=clone_url(repo),
+          manager=manager(req, repo),
         ),
       )
     })
@@ -252,6 +266,7 @@ fn repo_browser_module(
           commit~,
           clone_url=clone_url(repo),
           current_user=current_user_from_request(req),
+          manager=manager(req, repo),
         ),
       )
     })

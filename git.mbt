@@ -124,6 +124,7 @@ fn parse_tree_entry(line : String) -> TreeEntry? {
       let meta_parts = meta
         .to_owned()
         .split(" ")
+        .filter(v => !v.is_empty())
         .map(v => v.to_owned())
         .collect()
       if meta_parts.length() >= 3 {
@@ -156,6 +157,15 @@ async fn list_tree(
       None => ()
     }
   }
+  entries.sort_by((left, right) => {
+    if left.kind == "tree" && right.kind != "tree" {
+      -1
+    } else if left.kind != "tree" && right.kind == "tree" {
+      1
+    } else {
+      left.name.lexical_compare(right.name)
+    }
+  })
   entries
 }
 

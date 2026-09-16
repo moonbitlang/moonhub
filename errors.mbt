@@ -77,7 +77,12 @@ fn app_error_middleware(
           // A streaming response cannot be replaced once its headers are sent.
           guard !committed.val else { raise err }
           res.send_html(
-            render_error(status, message, asset_path_map),
+            render_error(
+              status,
+              message,
+              asset_path_map,
+              current_user=current_user_from_request(req),
+            ),
             status~,
             headers=private_page_headers(),
           )

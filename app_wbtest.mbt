@@ -535,7 +535,8 @@ async test "root invitation creates team and revoked team invitation cannot sign
     )
     assert_eq(pending_page_response.code, 200)
     assert_true(pending_page_body.contains("<th>Delivery</th>"))
-    assert_true(pending_page_body.contains("<td>pending</td><td>"))
+    assert_true(pending_page_body.contains("data-delivery=\"pending\">Queued"))
+    assert_true(pending_page_body.contains("Awaiting acceptance"))
     let one_time_password = invited_admin_password_from_outbox(pool)
     let outbox_id = latest_invited_admin_outbox_id(pool)
     assert_true(
@@ -634,7 +635,7 @@ async test "root invitation creates team and revoked team invitation cannot sign
       port, "/teams/moonhub_test_team", root_cookie,
     )
     assert_eq(sent_page_response.code, 200)
-    assert_true(sent_page_body.contains("<td>sent<div class=\"muted\">"))
+    assert_true(sent_page_body.contains("data-delivery=\"sent\">Delivered"))
 
     let (revoke_response, _) = http_post_path_with_cookie(
       port,
@@ -731,7 +732,10 @@ async test "serves browser assets from mounted assets app" {
       is Some("text/css; charset=utf-8"),
     )
     assert_true(stylesheet_body.text().contains(".site-header"))
-    let asset_path = extract_attr(html, "<script type=\"module\"", "src=\"")
+    let asset_path = custom_elements_tsx_asset_path(
+      load_entry_to_asset_path_map(test_assets_root),
+    )
+    assert_true(html.contains(asset_path))
     let (response, body) = @http.get("http://127.0.0.1:\{port}\{asset_path}")
     assert_eq(response.code, 200)
     assert_true(
@@ -781,7 +785,10 @@ async test "serves browser assets from configured absolute path" {
     let port = server.addr.port()
     let html = rendered_commit_page(port)
     assert_true(html.contains("/assets/custom-elements-"))
-    let asset_path = extract_attr(html, "<script type=\"module\"", "src=\"")
+    let asset_path = custom_elements_tsx_asset_path(
+      load_entry_to_asset_path_map(test_assets_root),
+    )
+    assert_true(html.contains(asset_path))
     let (response, body) = @http.get("http://127.0.0.1:\{port}\{asset_path}")
     assert_eq(response.code, 200)
     assert_true(body.text().contains("moonhub-file-view"))

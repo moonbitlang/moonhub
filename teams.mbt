@@ -93,6 +93,10 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       let members = list_team_members(pool, team)
       let invitations = list_invitations(pool, team)
       let can_manage = can_manage_team(pool, actor, team.id)
+      let active_tab = req.query().get("tab").unwrap_or("repositories")
+      guard ["repositories", "members", "invitations"].contains(active_tab) else {
+        raise BadRequest(message="invalid team view")
+      }
       res.send_html(
         render_team_detail(
           asset_path_map,
@@ -107,6 +111,14 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
             "invitation-credentials:\{team.id}",
           ),
           None,
+          active_tab~,
+          invite_open=req.query().get("invite") == Some("1"),
+          notice=match req.query().get("notice") {
+            Some("invited") => Some("Invitation created.")
+            Some("revoked") => Some("Invitation revoked.")
+            Some("resent") => Some("Invitation email queued.")
+            _ => None
+          },
         ),
         headers=private_page_headers(),
       )
@@ -118,11 +130,9 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         raise Forbidden(message="team admin required")
       }
       let form = read_form(req)
-      let email = normalize_email(required_form_value(form, "email", "email"))
-      let name_key = required_form_value(form, "name_key", "name_key")
-      let display_name = required_form_value(
-        form, "display_name", "display name",
-      )
+      let email = normalize_email(form.get("email").unwrap_or(""))
+      let name_key = form.get("name_key").unwrap_or("")
+      let display_name = form.get("display_name").unwrap_or("")
       let role = optional_form_value(form, "role").unwrap_or("member")
       let bad_message = try {
         let _ = invite_team_member(
@@ -152,6 +162,9 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
                 "invitation-credentials:\{team.id}",
               ),
               Some(message),
+              active_tab="invitations",
+              invite_open=true,
+              invitation_form=form,
             ),
             status=400,
             headers=private_page_headers(),
@@ -160,7 +173,9 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         None =>
           res.send_void(
             status=303,
-            headers=redirect_headers("/teams/\{team.name_key}"),
+            headers=redirect_headers(
+              "/teams/\{team.name_key}?tab=invitations&notice=invited",
+            ),
           )
       }
     })
@@ -192,7 +207,9 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       let _ = revoke_invitation(pool, actor, team.id, invitation_id)
       res.send_void(
         status=303,
-        headers=redirect_headers("/teams/\{team.name_key}"),
+        headers=redirect_headers(
+          "/teams/\{team.name_key}?tab=invitations&notice=revoked",
+        ),
       )
     })
     ctx.post("/teams/:team/invitations/:invitation/resend", async fn(req, res) {
@@ -202,7 +219,9 @@ fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       let _ = resend_invitation_email(pool, actor, team.id, invitation_id)
       res.send_void(
         status=303,
-        headers=redirect_headers("/teams/\{team.name_key}"),
+        headers=redirect_headers(
+          "/teams/\{team.name_key}?tab=invitations&notice=resent",
+        ),
       )
     })
   })

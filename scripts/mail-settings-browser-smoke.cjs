@@ -27,6 +27,7 @@ async function availablePort() {
 }
 
 async function capture(page, state) {
+  const originalViewport = page.viewportSize();
   for (const [name, viewport] of [
     ['desktop', { width: 1280, height: 900 }],
     ['mobile', { width: 390, height: 844 }],
@@ -61,6 +62,7 @@ async function capture(page, state) {
     assert.deepEqual(layout, { pageOverflow: false, outside: [], overlaps: [] }, `${state}/${name}`);
     await page.screenshot({ path: path.join(output, `${state}-${name}.png`), fullPage: true });
   }
+  await page.setViewportSize(originalViewport);
 }
 
 async function main() {
@@ -102,7 +104,8 @@ async function main() {
   await page.locator('[name=confirm_password]').fill(password);
   await page.locator('form[action="/change-password"] button').click();
   await page.waitForURL(url + '/');
-  await page.getByRole('link', { name: 'Site settings', exact: true }).click();
+  await page.locator('.account-menu > summary').click();
+  await page.locator('.account-menu-panel').getByRole('link', { name: 'Site settings', exact: true }).click();
   const form = page.locator('form[action="/admin/settings/mail"]');
   await form.getByLabel('Transport', { exact: true }).selectOption('smtp');
   await form.getByLabel('SMTP host', { exact: true }).fill('smtp.example.com');

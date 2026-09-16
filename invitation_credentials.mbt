@@ -74,5 +74,6 @@ fn render_invitation_credentials(
         "</section><section><h2 class=\"section-title\">Invitation email</h2><p>\{details.subject}</p><pre class=\"invitation-email\">\{details.body}</pre></section></div>"
     }),
     current_user=Some(user),
+    navigation=TeamNavigation(team, "invitations"),
   )
 }

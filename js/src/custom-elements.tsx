@@ -56,9 +56,9 @@ const codeViewOptions = {
 } as const;
 
 const codeViewShellStyle = {
-  "--moonhub-diff-border": "#d8dee4",
-  "--moonhub-diff-muted": "#57606a",
-  "--moonhub-diff-hover-bg": "#f6f8fa",
+  "--moonhub-diff-border": "var(--color-border)",
+  "--moonhub-diff-muted": "var(--color-muted)",
+  "--moonhub-diff-hover-bg": "var(--color-surface-subtle)",
   "--diffs-font-family":
     "\"M PLUS Code Latin\", \"SF Mono\", Monaco, Consolas, \"Ubuntu Mono\", \"Liberation Mono\", \"Courier New\", monospace",
   "--diffs-font-size": "13px",
@@ -69,7 +69,7 @@ const moonhubCodeViewStyles = `
   overflow: hidden;
   min-width: 0;
   border: 1px solid var(--moonhub-diff-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: #fff;
 }
 

@@ -18,6 +18,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         app_styles: resolve(__dirname, "src/app.css"),
+        "app-shell": resolve(__dirname, "src/app-shell.ts"),
         "repo-clone": resolve(__dirname, "src/repo-clone.ts"),
         "custom-elements": resolve(__dirname, "src/custom-elements.tsx"),
       },

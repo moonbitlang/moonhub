@@ -6,9 +6,15 @@ fn layout(
   head_end? : @moonback.Html = @moonback.Html::raw(""),
   body_class? : String = "",
   current_user? : CurrentUser? = None,
+  navigation? : PageNavigation = WorkspaceNavigation("repositories"),
 ) -> @moonback.Html {
   let stylesheet_head = app_styles_head(asset_path_map)
-  let header = render_site_header(current_user)
+  let shell_script = vite_manifest_entry_path(
+    asset_path_map, "src/app-shell.ts",
+  )
+  let shell = current_user is Some(_) ||
+    navigation is RepositoryNavigation(_, _, _)
+  let header = render_site_header(current_user, navigation, shell)
   let main_class = if body_class.is_empty() {
     "page"
   } else {
@@ -16,25 +22,47 @@ fn layout(
   }
   Html(b => {
     b <+
-      $|<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title}</title>\{head_end}</head><body>\{header}<main class="\{main_class}">\{body}</main></body></html>
+      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">try{if(\{shell.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}
+    if shell {
+      b <+ "<div class=\"workspace-shell\">\{render_sidebar(navigation)}"
+    }
+    b <+
+      "<main id=\"main-content\" class=\"\{main_class}\" tabindex=\"-1\">\{body}</main>"
+    if shell {
+      b <+ "</div>"
+    }
+    b <+ "</body></html>"
   })
 }
 
 ///|
-fn render_site_header(current_user : CurrentUser?) -> @moonback.Html {
+fn render_site_header(
+  current_user : CurrentUser?,
+  navigation : PageNavigation,
+  shell : Bool,
+) -> @moonback.Html {
   Html(b => {
     b <+
-      #|<header class="site-header"><div class="site-header__inner"><a class="brand" href="/">moonhub</a>
+      #|<header class="site-header"><div class="site-header__inner"><div class="brand-area">
+    if shell {
+      b <+
+        "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
+    }
+    b <+
+      "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
+    if shell {
+      b <+ "\{render_breadcrumbs(navigation)}"
+    }
     match current_user {
       Some(user) => {
         b <+
-          "<div class=\"site-header__actions\"><a class=\"header-link\" href=\"/teams\">Teams</a><a class=\"header-link\" href=\"/settings/ssh-keys\">SSH keys</a>"
+          "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
         if user.is_site_admin {
           b <+
-            "<a class=\"header-link\" href=\"/admin/settings/ssh\" aria-label=\"Site settings\" title=\"Site settings\">Settings</a>"
+            "<a href=\"/admin/settings/ssh\" aria-label=\"Site settings\"><span class=\"ui-icon\" data-icon=\"settings\" aria-hidden=\"true\"></span>Site settings</a>"
         }
         b <+
-          "<span class=\"user-chip\">\{user.display_name}</span><form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\">Sign out</button></form></div>"
+          "<form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
       }
       None => ()
     }
@@ -57,18 +85,20 @@ fn render_index(
     "moonhub",
     asset_path_map,
     Html(b => {
-      b <+ "<div class=\"page-heading\"><h1>Repositories</h1></div>"
+      b <+
+        "<div class=\"page-heading page-heading--actions\"><div class=\"heading-title\"><h1>Repositories</h1><span class=\"count-badge\">\{repos.length().to_string()}</span></div><a class=\"secondary-button button-link\" href=\"/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div>"
       if repos.is_empty() {
         b <+
-          "<div class=\"empty-state\"><p class=\"muted\">No repositories available.</p></div>"
+          "<div class=\"empty-state\"><span class=\"empty-icon ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span><h2>No repositories yet</h2><a href=\"/teams\">Browse your teams</a></div>"
       } else {
         b <+
-          "<div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Repository</th></tr></thead><tbody>"
+          "<section data-filter-list><div class=\"list-toolbar\"><label class=\"search-field\" hidden data-filter-control><span class=\"ui-icon\" data-icon=\"search\" aria-hidden=\"true\"></span><input type=\"search\" data-list-filter placeholder=\"Find a repository...\" aria-label=\"Find a repository\"></label><span class=\"list-total\" data-list-total>\{repos.length().to_string()} repositories</span></div><ul class=\"repository-list\">"
         for repo in repos {
           b <+
-            "<tr><td><a class=\"repo-name\" href=\"\{repo_link(repo)}\">\{repo.path()}</a></td></tr>"
+            "<li data-filter-item data-filter-text=\"\{repo.path()}\"><a class=\"repository-list-link\" href=\"\{repo_link(repo)}\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><span class=\"repository-identity\"><strong>\{repo.name}</strong><span>\{repo.path()}</span></span><span class=\"repository-owner\">\{repo.owner}</span><span class=\"ui-icon row-chevron\" data-icon=\"chevron-right\" aria-hidden=\"true\"></span></a></li>"
         }
-        b <+ "</tbody></table></div></div>"
+        b <+
+          "</ul><p class=\"filter-empty empty-state\" data-filter-empty hidden>No matching repositories.</p></section>"
       }
     }),
     current_user~,
@@ -84,7 +114,7 @@ fn render_repo_nav(
   Html(b => {
     let base = repo_link(repo)
     b <+
-      "<div class=\"repo-header\"><div class=\"repo-heading\"><h1 class=\"path repo-title\">\{repo.path()}</h1><details class=\"repo-clone\"><summary>Clone<span data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
+      "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div><details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Clone<span data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
     match clone_url {
       Some(url) =>
         b <+
@@ -92,8 +122,23 @@ fn render_repo_nav(
       None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
     }
     b <+
-      "</div></details></div><p class=\"tabs\"><a href=\"\{base}\">Files</a><a href=\"\{base}/commits?rev=\{url_escape_path(rev)}\">Commits</a><a href=\"\{base}/issues\">Issues</a><a href=\"\{base}/merge-requests\">Merge Requests</a></p></div>"
+      "</div></details></div><div class=\"repo-context-line\"><a href=\"\{base}\">\{repo.path()}</a><span class=\"branch-label\"><span class=\"ui-icon\" data-icon=\"git-branch\" aria-hidden=\"true\"></span>\{rev}</span></div></div>"
   })
+}
+
+///|
+fn escape_html_text_chunk(chunk : Bytes) -> Bytes {
+  // Escape markup bytes without decoding UTF-8 split across stream chunks.
+  let escaped : Array[Byte] = []
+  for byte in chunk {
+    match byte {
+      b'&' => escaped.append(b"&amp;".to_array())
+      b'<' => escaped.append(b"&lt;".to_array())
+      b'>' => escaped.append(b"&gt;".to_array())
+      _ => escaped.push(byte)
+    }
+  }
+  Bytes::from_array(escaped)
 }
 
 ///|
@@ -103,8 +148,9 @@ async fn stream_commit_detail(
   commit : String,
 ) -> Unit {
   let args = git_args(git_dir, [
-    "show", "--diff-algorithm=histogram", "--patch", "--find-renames", "--date=iso-strict",
-    commit,
+    "show", "--no-color", "--no-ext-diff", "--no-textconv", "--format=medium", "--diff-algorithm=histogram",
+    "--diff-merges=first-parent", "--patch", "--find-renames", "--src-prefix=a/",
+    "--dst-prefix=b/", "--date=iso-strict", commit, "--",
   ])
   @async.with_task_group(group => {
     let (reader, writer) = @process.read_from_process()
@@ -120,15 +166,21 @@ async fn stream_commit_detail(
       Some(summary) => summary.trim().to_owned()
       None => ""
     }
-    b <+ "<pre>\{summary_text}</pre>"
+    b <+ "<pre>\{summary_text}</pre><h2>Changes</h2>"
     if reader.read_some(max_len=8192) is Some(first_chunk) {
-      let first_chunk = @moonback.Html::raw_utf8_chunk(first_chunk)
+      let first_chunk = @moonback.Html::raw_utf8_chunk(
+        escape_html_text_chunk(first_chunk),
+      )
       b <+ "<moonhub-commit-diff><pre data-patch>diff --git \{first_chunk}"
       while reader.read_some(max_len=8192) is Some(chunk) {
-        let chunk = @moonback.Html::raw_utf8_chunk(chunk)
+        let chunk = @moonback.Html::raw_utf8_chunk(
+          escape_html_text_chunk(chunk),
+        )
         b <+ "\{chunk}"
       }
       b <+ "</pre></moonhub-commit-diff>"
+    } else {
+      b <+ "<p class=\"muted\">No file changes.</p>"
     }
     let _ = process.wait()
   })
@@ -143,6 +195,7 @@ async fn render_tree(
   path~ : String,
   clone_url? : String? = None,
   current_user? : CurrentUser? = None,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let entries = list_tree(git_dir, rev, path) catch {
@@ -161,10 +214,10 @@ async fn render_tree(
     Html(b => {
       b <+ "\{render_repo_nav(repo, rev, clone_url)}"
       b <+
-        "<div class=\"content-stack\"><h2 class=\"path\">/\{path}</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th>Type</th><th>Size</th></tr></thead><tbody>"
+        "<div class=\"content-stack\"><h2 class=\"file-path-heading\{if path.is_empty() { "" } else { " path" }}\">\{if path.is_empty() { "Files" } else { path }}</h2><div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
       if !path.is_empty() {
         b <+
-          "<tr><td><a href=\"\{base}\">..</a></td><td class=\"muted\">parent</td><td></td></tr>"
+          "<tr><td><a href=\"\{base}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
       }
       for entry in entries {
         let child = if path.is_empty() {
@@ -178,17 +231,18 @@ async fn render_tree(
         } else {
           "\{repo_link(repo)}/blob/\{url_escape_path(rev)}/\{child_url}"
         }
-        let entry_size = entry.size.unwrap_or("")
+        let entry_size = entry.size.unwrap_or("-")
         b <+
-          "<tr><td><a class=\"path\" href=\"\{href}\">\{entry.name}</a></td><td>\{entry.kind}</td><td class=\"muted\">\{entry_size}</td></tr>"
+          "<tr><td><a class=\"file-link\" href=\"\{href}\"><span class=\"ui-icon\" data-icon=\"\{if entry.kind == "tree" { "folder" } else { "file" }}\" aria-hidden=\"true\"></span>\{entry.name}</a></td><td class=\"muted numeric\">\{entry_size}</td></tr>"
       }
       if entries.is_empty() {
-        b <+ "<tr><td colspan=\"3\" class=\"muted\">No files.</td></tr>"
+        b <+ "<tr><td colspan=\"2\" class=\"muted\">No files.</td></tr>"
       }
       b <+ "</tbody></table></div></div></div>"
     }),
     head_end=repository_assets_head(asset_path_map),
     current_user~,
+    navigation=RepositoryNavigation(repo, "files", manager),
   )
 }
 
@@ -201,6 +255,7 @@ async fn render_blob(
   path~ : String,
   clone_url? : String? = None,
   current_user? : CurrentUser? = None,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let content = read_blob(repo.git_dir(root), rev, path) catch {
     GitCommandFailed(_) => raise NotFound(message="file not found")
@@ -216,6 +271,7 @@ async fn render_blob(
     }),
     head_end=repository_assets_head(asset_path_map, code_view=true),
     current_user~,
+    navigation=RepositoryNavigation(repo, "files", manager),
   )
 }
 
@@ -227,6 +283,7 @@ async fn render_commits(
   rev~ : String,
   clone_url? : String? = None,
   current_user? : CurrentUser? = None,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let commits = list_commits(repo.git_dir(root), rev) catch {
     GitCommandFailed(_) =>
@@ -257,6 +314,7 @@ async fn render_commits(
     }),
     head_end=repository_assets_head(asset_path_map),
     current_user~,
+    navigation=RepositoryNavigation(repo, "commits", manager),
   )
 }
 
@@ -268,6 +326,7 @@ async fn render_commit(
   commit~ : String,
   clone_url? : String? = None,
   current_user? : CurrentUser? = None,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let _ = run_git(git_dir, ["cat-file", "-e", "\{commit}^{commit}"]) catch {
@@ -284,6 +343,7 @@ async fn render_commit(
     }),
     head_end=repository_assets_head(asset_path_map, code_view=true),
     current_user~,
+    navigation=RepositoryNavigation(repo, "commits", manager),
   )
 }
 
@@ -342,6 +402,7 @@ fn render_change_password(
     }),
     body_class="auth-main",
     current_user=Some(user),
+    navigation=AccountNavigation("password"),
   )
 }
 
@@ -387,9 +448,10 @@ fn render_teams(
     Html(b => {
       b <+
         #|<section class="page-heading page-heading--actions">
-        #|<div><p class="eyebrow">Access</p><h1>Teams</h1><p class="page-subtitle">Manage repository namespaces and membership.</p></div>
+        #|<div class="heading-title"><h1>Teams</h1></div>
       if user.is_site_admin {
-        b <+ "<a class=\"button-link\" href=\"/teams/new\">New team</a>"
+        b <+
+          "<a class=\"button-link\" href=\"/teams/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New team</a>"
       }
       b <+ "</section>"
       match message {
@@ -401,7 +463,7 @@ fn render_teams(
           "<section class=\"empty-state\"><p class=\"muted\">No teams available.</p></section>"
       } else {
         b <+
-          "<section class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Team</th><th>Kind</th><th>Your role</th></tr></thead><tbody>"
+          "<section class=\"table-frame\"><div class=\"table-scroll\"><table class=\"teams-table\"><thead><tr><th>Team</th><th>Type</th><th>Your role</th></tr></thead><tbody>"
         for team in teams {
           let role = team.role.unwrap_or(
             if user.is_site_admin {
@@ -411,12 +473,13 @@ fn render_teams(
             },
           )
           b <+
-            "<tr><td><a class=\"repo-name path\" href=\"/teams/\{team.name_key}\">\{team.display_name}</a><div class=\"muted path\">\{team.name_key}</div></td><td>\{team.kind}</td><td>\{role}</td></tr>"
+            "<tr><td><div class=\"identity-cell\"><span class=\"team-avatar\" aria-hidden=\"true\">\{team.name_key[:1].to_owned().to_upper()}</span><span><a class=\"repo-name\" href=\"/teams/\{team.name_key}\">\{team.display_name}</a><span class=\"cell-secondary\">\{team.name_key}</span></span></div></td><td class=\"muted\">\{if team.kind == "org" { "Organization" } else { "Personal" }}</td><td><span class=\"role-label\">\{role}</span></td></tr>"
         }
         b <+ "</tbody></table></div></section>"
       }
     }),
     current_user=Some(user),
+    navigation=WorkspaceNavigation("teams"),
   )
 }
 
@@ -432,9 +495,7 @@ fn render_new_team(
     Html(b => {
       b <+
         #|<section class="page-heading">
-        #|<p class="eyebrow">Admin</p>
         #|<h1>New team</h1>
-        #|<p class="page-subtitle">Create an organization team. You will become its owner.</p>
         #|</section>
         #|<section class="panel"><form class="form-stack" method="post" action="/teams">
       match message {
@@ -442,12 +503,14 @@ fn render_new_team(
         None => ()
       }
       b <+
-        #|<label class="field"><span>Name key</span><input name="name_key" autocomplete="off" required></label>
+        #|<label class="field"><span>Team handle</span><input name="name_key" autocomplete="off" required></label>
         #|<label class="field"><span>Display name</span><input name="display_name" required></label>
         #|<p class="form-actions"><button type="submit">Create team</button></p>
         #|</form></section>
     }),
     current_user=Some(user),
+    navigation=WorkspaceNavigation("teams"),
+    body_class="form-page",
   )
 }
 
@@ -462,43 +525,77 @@ fn render_team_detail(
   can_manage~ : Bool,
   invitation_credentials_csrf~ : String,
   message : String?,
+  active_tab? : String = "repositories",
+  invite_open? : Bool = false,
+  invitation_form? : Map[String, String] = Map([]),
+  notice? : String? = None,
 ) -> @moonback.Html {
   layout(
     team.display_name,
     asset_path_map,
     Html(b => {
       b <+
-        "<section class=\"page-heading\"><p class=\"eyebrow\">Team</p><h1>\{team.display_name}</h1><p class=\"page-subtitle path\">\{team.name_key}</p></section>"
-      match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
-        None => ()
+        "<section class=\"page-heading team-heading\"><span class=\"team-avatar team-avatar-large\" aria-hidden=\"true\">\{team.name_key[:1].to_owned().to_upper()}</span><div><h1>\{team.display_name}</h1><p class=\"page-subtitle\">\{team.name_key}<span class=\"metadata-separator\" aria-hidden=\"true\">/</span>\{repositories.length().to_string()} repositories<span class=\"metadata-separator\" aria-hidden=\"true\">/</span>\{members.length().to_string()} members</p></div></section>"
+      if notice is Some(notice) {
+        b <+
+          "<p class=\"settings-success\" role=\"status\"><span class=\"ui-icon\" data-icon=\"circle-check\" aria-hidden=\"true\"></span>\{notice}</p>"
       }
-      b <+ "<div class=\"content-stack\">"
-      b <+ "\{render_team_repositories(team, repositories, can_manage)}"
+      b <+ "<div id=\"team-repositories\""
+      if active_tab != "repositories" {
+        b <+ " hidden"
+      }
       b <+
-        "<section><h2 class=\"section-title\">Members</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead><tbody>"
+        ">\{render_team_repositories(team, repositories, can_manage)}</div><section id=\"team-members\""
+      if active_tab != "members" {
+        b <+ " hidden"
+      }
+      b <+ "><div class=\"section-heading\"><h2>Members</h2>"
+      if can_manage {
+        b <+
+          "<a class=\"button-link\" href=\"/teams/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
+      }
+      b <+
+        "</div><div class=\"table-frame\"><div class=\"table-scroll\"><table class=\"members-table\"><thead><tr><th>Member</th><th>Email</th><th>Role</th></tr></thead><tbody>"
       if members.is_empty() {
         b <+ "<tr><td colspan=\"3\" class=\"muted\">No members.</td></tr>"
       } else {
         for person in members {
           let email = person.email.unwrap_or("")
           b <+
-            "<tr><td><span class=\"repo-name\">\{person.display_name}</span><div class=\"muted path\">\{person.name_key}</div></td><td>\{email}</td><td>\{person.role}</td></tr>"
+            "<tr><td><div class=\"identity-cell\"><span class=\"avatar\" aria-hidden=\"true\">\{person.name_key[:1].to_owned().to_upper()}</span><span><strong>\{person.display_name}</strong><span class=\"cell-secondary\">\{person.name_key}</span></span></div></td><td class=\"muted\">\{email}</td><td><span class=\"role-label\">\{person.role}</span></td></tr>"
         }
       }
-      b <+ "</tbody></table></div></div></section>"
+      b <+
+        "</tbody></table></div></div></section><section id=\"team-invitations\""
+      if active_tab != "invitations" {
+        b <+ " hidden"
+      }
+      b <+ "><div class=\"section-heading\"><h2>Invitations</h2>"
+      if can_manage && !invite_open {
+        b <+
+          "<a class=\"button-link\" href=\"/teams/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
+      }
+      b <+ "</div>"
       if can_manage {
         b <+
-          $|<section class="panel"><h2 class="section-title">Invite member</h2><form class="form-stack" method="post" action="/teams/\{team.name_key}/invitations">
-          $|<label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>
-          $|<label class="field"><span>Name key</span><input name="name_key" autocomplete="off" required></label>
-          $|<label class="field"><span>Display name</span><input name="display_name" required></label>
-          $|<label class="field"><span>Role</span><select name="role"><option value="member">Member</option><option value="admin">Admin</option></select></label>
-          $|<p class="form-actions"><button type="submit">Send invite</button></p>
-          $|</form></section>
+          "<form class=\"invite-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations\""
+        if !invite_open {
+          b <+ " hidden"
+        }
+        b <+ "><h3>Invite member</h3>"
+        if message is Some(message) {
+          b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
+        }
+        b <+
+          "<div class=\"invite-fields\"><label class=\"field\"><span>Email</span><input type=\"email\" name=\"email\" autocomplete=\"email\" value=\"\{invitation_form.get("email").unwrap_or("")}\" required></label><label class=\"field\"><span>Username</span><input name=\"name_key\" autocomplete=\"off\" value=\"\{invitation_form.get("name_key").unwrap_or("")}\" required></label><label class=\"field\"><span>Display name</span><input name=\"display_name\" autocomplete=\"name\" value=\"\{invitation_form.get("display_name").unwrap_or("")}\" required></label><label class=\"field\"><span>Role</span><select name=\"role\" aria-label=\"Role\"><option value=\"member\">Member</option><option value=\"admin\""
+        if invitation_form.get("role") == Some("admin") {
+          b <+ " selected"
+        }
+        b <+
+          ">Admin</option></select></label></div><div class=\"form-actions\"><button type=\"submit\"><span class=\"ui-icon\" data-icon=\"send\" aria-hidden=\"true\"></span>Send invite</button><a class=\"secondary-button button-link\" href=\"/teams/\{team.name_key}?tab=invitations\">Cancel</a></div></form>"
       }
       b <+
-        "<section><h2 class=\"section-title\">Invitations</h2><div class=\"table-frame\"><div class=\"table-scroll\"><table><thead><tr><th>Email</th><th>User</th><th>Role</th><th>Status</th><th>Delivery</th><th></th></tr></thead><tbody>"
+        "<div class=\"table-frame\"><div class=\"table-scroll\"><table class=\"invitations-table\"><thead><tr><th>Email</th><th>User</th><th>Role</th><th>Status</th><th>Delivery</th><th><span class=\"sr-only\">Actions</span></th></tr></thead><tbody>"
       if invitations.is_empty() {
         b <+ "<tr><td colspan=\"6\" class=\"muted\">No invitations.</td></tr>"
       } else {
@@ -506,8 +603,20 @@ fn render_team_detail(
           let invitation_id = invitation.id.to_string()
           let role = invitation.role.unwrap_or("")
           let delivery_status = invitation.email_status.unwrap_or("not queued")
+          let status_label = match invitation.status {
+            "sent" => "Awaiting acceptance"
+            "accepted" => "Accepted"
+            "expired" => "Expired"
+            _ => "Revoked"
+          }
+          let delivery_label = match delivery_status {
+            "pending" => "Queued"
+            "sent" => "Delivered"
+            "failed" => "Failed"
+            _ => "Not queued"
+          }
           b <+
-            "<tr><td>\{invitation.email}</td><td><span class=\"repo-name\">\{invitation.display_name}</span><div class=\"muted path\">\{invitation.name_key}</div></td><td>\{role}</td><td>\{invitation.status}</td><td>\{delivery_status}"
+            "<tr><td>\{invitation.email}</td><td><span class=\"repo-name\">\{invitation.display_name}</span><div class=\"cell-secondary\">\{invitation.name_key}</div></td><td><span class=\"role-label\">\{role}</span></td><td><span class=\"status-badge\" data-status=\"\{invitation.status}\">\{status_label}</span></td><td><span class=\"delivery-state\" data-delivery=\"\{delivery_status}\">\{delivery_label}</span>"
           match invitation.email_sent_at {
             Some(sent_at) => b <+ "<div class=\"muted\">\{sent_at}</div>"
             None => ()
@@ -515,16 +624,10 @@ fn render_team_detail(
           match invitation.email_last_error {
             Some(_) =>
               b <+
-                "<div class=\"flash-error\">\{email_delivery_error_message}</div>"
+                "<details class=\"delivery-detail\"><summary>Details</summary><p class=\"flash-error\">\{email_delivery_error_message}</p></details>"
             None => ()
           }
-          b <+ "</td><td>"
-          if user.is_site_admin &&
-            invitation.status == "sent" &&
-            invitation.email_status is Some(_) {
-            b <+
-              "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/credentials\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{invitation_credentials_csrf}\"><button class=\"secondary-button\" type=\"submit\">View sign-in details</button></form>"
-          }
+          b <+ "</td><td><div class=\"row-action-group\">"
           if can_manage &&
             invitation.status == "sent" &&
             (
@@ -535,16 +638,26 @@ fn render_team_detail(
             b <+
               "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/resend\"><button class=\"secondary-button\" type=\"submit\">Resend</button></form>"
           }
-          if can_manage && invitation.status == "sent" {
+          if (can_manage || user.is_site_admin) && invitation.status == "sent" {
             b <+
-              "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/revoke\"><button class=\"secondary-button\" type=\"submit\">Revoke</button></form>"
+              "<details class=\"row-menu\" data-dismissable><summary class=\"icon-button\" aria-label=\"Invitation actions for \{invitation.email}\" title=\"More actions\"><span class=\"ui-icon\" data-icon=\"ellipsis\" aria-hidden=\"true\"></span></summary><div class=\"row-menu-panel\">"
+            if user.is_site_admin && invitation.email_status is Some(_) {
+              b <+
+                "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/credentials\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{invitation_credentials_csrf}\"><button class=\"secondary-button\" type=\"submit\">View sign-in details</button></form>"
+            }
+            if can_manage {
+              b <+
+                "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/revoke\"><button class=\"danger-button secondary-button\" type=\"submit\">Revoke</button></form>"
+            }
+            b <+ "</div></details>"
           }
-          b <+ "</td></tr>"
+          b <+ "</div></td></tr>"
         }
       }
-      b <+ "</tbody></table></div></div></section></div>"
+      b <+ "</tbody></table></div></div></section>"
     }),
     current_user=Some(user),
+    navigation=TeamNavigation(team, active_tab),
   )
 }
 
@@ -561,7 +674,7 @@ fn render_error(
     asset_path_map,
     Html(b => {
       b <+
-        "<section class=\"error-page\"><p class=\"error-code\">\{status_text}</p><h1 class=\"err\">\{message}</h1></section>"
+        "<section class=\"error-page\"><p class=\"error-code\">\{status_text}</p><h1 class=\"err\">\{message}</h1><p><a class=\"button-link secondary-button\" href=\"/\">Back to repositories</a></p></section>"
     }),
     current_user~,
   )

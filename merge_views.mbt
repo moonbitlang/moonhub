@@ -68,7 +68,7 @@ fn render_merge_list(
       for i, mr in rows {
         if i < 50 {
           b <+
-            "<li><div class=\"mr-list-title\"><a href=\"\{base}/\{mr.number.to_string()}\">\{mr.title}</a><span class=\"mr-state\" data-state=\"\{mr.status}\">\{merge_status(mr)}</span></div><p class=\"muted\">!\{mr.number.to_string()} by \{mr.author} <span class=\"path\">\{mr.source}</span> into <span class=\"path\">\{mr.target}</span></p></li>"
+            "<li><div class=\"mr-list-title\"><a href=\"\{base}/\{mr.number.to_string()}\"><span class=\"ui-icon\" data-icon=\"git-pull-request\" aria-hidden=\"true\"></span>\{mr.title}</a><span class=\"mr-state\" data-state=\"\{merge_status(mr).to_lower()}\">\{merge_status(mr)}</span></div><p class=\"muted\">!\{mr.number.to_string()} by \{mr.author} <span class=\"path\">\{mr.source}</span> into <span class=\"path\">\{mr.target}</span></p></li>"
         }
       }
       if rows.is_empty() {
@@ -87,6 +87,7 @@ fn render_merge_list(
     }),
     head_end=repository_assets_head(assets),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "merge-requests", manager),
   )
 }
 
@@ -100,6 +101,7 @@ fn render_merge_new(
   csrf : String,
   form : Map[String, String],
   error : String?,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let base = "\{repo_link(scope.repo)}/merge-requests"
   layout(
@@ -151,6 +153,7 @@ fn render_merge_new(
       }
     }),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "merge-requests", manager),
   )
 }
 
@@ -187,7 +190,7 @@ fn render_merge_detail(
     assets,
     Html(b => {
       b <+
-        "\{render_repo_nav(scope.repo, mr.target, clone)}<div class=\"mr-page-heading\"><h2 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h2><span class=\"mr-state\" data-state=\"\{mr.status}\">\{merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{mr.target}</code></p>"
+        "\{render_repo_nav(scope.repo, mr.target, clone)}<div class=\"mr-page-heading\"><h2 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h2><span class=\"mr-state\" data-state=\"\{merge_status(mr).to_lower()}\">\{merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{mr.target}</code></p>"
       if editable {
         b <+ "<div class=\"mr-actions\">"
         if mr.status == "open" {
@@ -339,6 +342,7 @@ fn render_merge_detail(
     }),
     head_end=repository_assets_head(assets, code_view=tab == "changes"),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "merge-requests", manager),
   )
 }
 
@@ -370,5 +374,6 @@ fn render_branch_rules(
         "</ul><form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"field\"><span>Branch name</span><input name=\"branch\" required maxlength=\"200\" spellcheck=\"false\"></label><label class=\"field\"><span>Required approvals</span><select aria-label=\"Required approvals\" name=\"approvals\"><option value=\"1\">1 approval from another team member</option><option value=\"0\">No approval required</option></select></label><button type=\"submit\">Protect branch</button></form>"
     }),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "settings", true),
   )
 }

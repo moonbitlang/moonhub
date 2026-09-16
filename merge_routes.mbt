@@ -76,6 +76,7 @@ fn merge_requests_module(assets : Map[String, String]) -> @moonback.Module {
           request_form_token(req, "merge-requests"),
           { "issue": req.query().get("issue").unwrap_or("") },
           None,
+          manager=can_manage_team(pool, actor, scope.team_id),
         ),
         headers=private_page_headers(),
       )
@@ -120,6 +121,7 @@ fn merge_requests_module(assets : Map[String, String]) -> @moonback.Module {
               request_form_token(req, "merge-requests"),
               form,
               Some(message),
+              manager=can_manage_team(pool, actor, scope.team_id),
             ),
             status=400,
             headers=private_page_headers(),

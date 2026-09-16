@@ -20,7 +20,7 @@ fn render_team_repositories(
       "<section class=\"team-repositories\"><div class=\"repository-section-heading\"><h2>Repositories</h2>"
     if can_manage {
       b <+
-        "<div class=\"repository-actions\"><a href=\"/teams/\{team.name_key}/repositories/import\">Import via SSH</a><a class=\"button-link\" href=\"/teams/\{team.name_key}/repositories/new\">New repository</a></div>"
+        "<div class=\"repository-actions\"><a class=\"button-link secondary-button\" href=\"/teams/\{team.name_key}/repositories/import\"><span class=\"ui-icon\" data-icon=\"download\" aria-hidden=\"true\"></span>Import via SSH</a><a class=\"button-link\" href=\"/teams/\{team.name_key}/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a></div>"
     }
     b <+ "</div><ul class=\"team-repository-list\">"
     if repos.is_empty() {
@@ -33,7 +33,7 @@ fn render_team_repositories(
         "/teams/\{team.name_key}/repositories/\{repo.name}/status"
       }
       b <+
-        "<li><a class=\"repo-name path\" href=\"\{href}\">\{repo.name}</a><span class=\"repository-visibility muted\">\{repo.visibility}</span>"
+        "<li><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><a class=\"repo-name\" href=\"\{href}\">\{repo.name}</a><span class=\"repository-visibility\"><span class=\"ui-icon\" data-icon=\"\{if repo.visibility == "private" { "lock" } else { "globe" }}\" aria-hidden=\"true\"></span>\{repo.visibility}</span>"
       if !repo.ready {
         b <+
           "<span class=\"repository-state\">\{repository_status_label(repo.status.unwrap_or("pending"), true)}</span>"
@@ -109,6 +109,7 @@ fn render_repository_form(
         "<a href=\"/teams/\{team.name_key}\">Cancel</a></div></form></section>"
     }),
     current_user=Some(user),
+    navigation=TeamNavigation(team, "repositories"),
   )
 }
 
@@ -153,5 +154,6 @@ fn render_repository_job(
       b <+ "</section>"
     }),
     current_user=Some(user),
+    navigation=TeamNavigation(team, "repositories"),
   )
 }

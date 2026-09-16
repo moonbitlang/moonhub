@@ -158,7 +158,7 @@ fn render_ssh_settings(
     assets,
     Html(b => {
       b <+
-        "<h1>Site settings</h1><section class=\"ssh-address-settings\"><h2>SSH access</h2>"
+        "<div class=\"page-heading\"><h1>Site settings</h1></div><section id=\"ssh-access\" class=\"ssh-address-settings\"><h2>SSH access</h2>"
       if locked {
         b <+
           "<p class=\"settings-notice\" role=\"status\">Managed by deployment configuration</p>"
@@ -187,7 +187,8 @@ fn render_ssh_settings(
         None => b <+ "Not configured"
       }
       b <+ "</dd></div></dl></section></section>"
-      b <+ "<section class=\"mail-settings\"><h2>Email delivery</h2>"
+      b <+
+        "<section id=\"email-delivery\" class=\"mail-settings\"><h2>Email delivery</h2>"
       if mail_saved {
         b <+
           "<p class=\"settings-success\" role=\"status\">Email settings saved.</p>"
@@ -262,6 +263,7 @@ fn render_ssh_settings(
     }),
     head_end=repository_assets_head(assets),
     current_user=Some(user),
+    navigation=SiteNavigation,
   )
 }
 

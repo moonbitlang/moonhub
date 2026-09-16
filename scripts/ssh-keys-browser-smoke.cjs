@@ -36,6 +36,7 @@ async function availablePort() {
 }
 
 async function capture(page, state) {
+  const originalViewport = page.viewportSize();
   for (const [name, viewport] of [
     ['desktop', { width: 1280, height: 900 }],
     ['mobile', { width: 390, height: 844 }],
@@ -71,6 +72,7 @@ async function capture(page, state) {
     assert.deepEqual(overflow, { page: false, controls: [], overlaps: [] }, `${name}/${state} layout`);
     await page.screenshot({ path: path.join(output, `${name}-${state}.png`), fullPage: true });
   }
+  await page.setViewportSize(originalViewport);
 }
 
 async function main() {
@@ -115,7 +117,8 @@ async function main() {
   await page.locator('[name=confirm_password]').fill(password);
   await page.locator('form[action="/change-password"] button[type=submit]').click();
   await page.waitForURL(url + '/');
-  await page.getByRole('link', { name: 'SSH keys', exact: true }).click();
+  await page.locator('.account-menu > summary').click();
+  await page.locator('.account-menu-panel').getByRole('link', { name: 'SSH keys', exact: true }).click();
   await page.getByText('No SSH keys.', { exact: true }).waitFor();
   await capture(page, 'empty');
 
@@ -166,7 +169,8 @@ async function main() {
   await page.locator('.repo-clone summary').click();
   await page.getByText('SSH clone address is not configured.', { exact: true }).waitFor();
   await capture(page, 'clone-unconfigured');
-  await page.getByRole('link', { name: 'Site settings', exact: true }).click();
+  await page.locator('.account-menu > summary').click();
+  await page.locator('.account-menu-panel').getByRole('link', { name: 'Site settings', exact: true }).click();
   await page.getByRole('heading', { name: 'SSH access', exact: true }).waitFor();
   await page.getByLabel('Hostname or IP address', { exact: true }).fill('Git.Example.com');
   await page.getByLabel('Port', { exact: true }).fill('12222');

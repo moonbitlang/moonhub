@@ -10,6 +10,7 @@ fn render_issue_list(
   query : String,
   contributor : Bool,
   clone : String?,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let base = "\{repo_link(scope.repo)}/issues"
   let filters = "assigned=\{if mine { "me" } else { "all" }}&q=\{url_escape_path(query)}"
@@ -59,6 +60,7 @@ fn render_issue_list(
     }),
     head_end=repository_assets_head(assets),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "issues", manager),
   )
 }
 
@@ -72,6 +74,7 @@ fn render_issue_form(
   csrf : String,
   form : Map[String, String],
   error : String?,
+  manager? : Bool = false,
 ) -> @moonback.Html {
   let base = "\{repo_link(scope.repo)}/issues"
   let title = form
@@ -119,6 +122,7 @@ fn render_issue_form(
         "</select></label><div class=\"mr-actions\"><button type=\"submit\">\{if issue is Some(_) { "Save changes" } else { "Create issue" }}</button><a href=\"\{base}\">Cancel</a></div></form>"
     }),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "issues", manager),
   )
 }
 
@@ -194,5 +198,6 @@ fn render_issue_detail(
     }),
     head_end=repository_assets_head(assets),
     current_user=Some(user),
+    navigation=RepositoryNavigation(scope.repo, "issues", manager),
   )
 }
