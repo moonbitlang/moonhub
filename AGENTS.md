@@ -45,8 +45,17 @@ You can browse and install extra skills here:
   format the code. Check the diffs of `.mbti` file to see if the changes are
   expected.
 
-- Run `moon test` to check tests pass. MoonBit supports snapshot testing; when
-  changes affect outputs, run `moon test --update` to refresh snapshots.
+- Temporarily use `moon build --strip -j 1`, `moon test --strip -j 1`, and
+  `moon run --strip -j 1 . -- ...` for native development. The 2026-09-11
+  compiler (`moonc v0.10.12+ef027fb8a`) spends excessive CPU time generating
+  native debug locations; `--strip` avoids that path while retaining `-O0`.
+  Do not retry long-running unstripped builds or switch to release mode as a
+  workaround. See README.md for evidence and the removal criteria. Keep this
+  policy until a compiler update has been verified to fix the issue.
+
+- Run `moon test --strip -j 1` to check tests pass. MoonBit supports snapshot
+  testing; when changes affect outputs, run `moon test --strip -j 1 --update`
+  to refresh snapshots.
 
 - Prefer `assert_eq` or `assert_true(pattern is Pattern(...))` for results that
   are stable or very unlikely to change. For snapshot tests that record

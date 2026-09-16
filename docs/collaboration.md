@@ -103,7 +103,7 @@ test runs real SSH pushes and verifies desktop/mobile layout geometry using
 disposable test volumes.
 
 ```sh
-moon test --target native
+moon test --target native --strip -j 1
 docker build -t moonhub:collaboration .
 node scripts/collaboration-smoke.cjs
 ```
@@ -112,3 +112,5 @@ The browser smoke requires Playwright and its Chromium browser in the host Node
 module search path. `MOONHUB_COLLABORATION_IMAGE` selects an alternate image.
 Its Compose project uses unique names, dynamic loopback ports and disposable
 volumes; it never connects to the prepared preview's data.
+
+Native tests use the temporary [compiler workaround](../README.md#temporary-compiler-workaround).

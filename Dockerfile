@@ -21,7 +21,8 @@ COPY moon.mod moon.pkg ./
 RUN moon update
 COPY . .
 COPY --from=assets /src/assets/ /src/assets/
-RUN moon test --target native && moon build --target native --release
+# Temporary moonc native debug-info workaround; see README.md.
+RUN moon test --target native --strip -j 1 && moon build --target native --release
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \

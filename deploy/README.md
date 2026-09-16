@@ -302,9 +302,12 @@ deletes the repositories, database, and SSH host keys**.
 ## Verification
 
 ```sh
-moon test
+moon test --strip -j 1
 bash scripts/docker-smoke.sh
 ```
+
+Native tests use the temporary [compiler workaround](../README.md#temporary-compiler-workaround),
+including during Docker image builds. Production release builds are unchanged.
 
 The smoke test builds the image and uses a uniquely named Compose project,
 temporary bootstrap secret, dynamic loopback ports, and disposable volumes. It

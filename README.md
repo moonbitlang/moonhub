@@ -44,6 +44,31 @@ under `assets/*.git` are intentionally ignored by the repository browser.
 
 ## Manual Testing
 
+### Temporary Compiler Workaround
+
+Until a verified compiler fix is available, use `--strip -j 1` for native
+development builds, tests, and runs:
+
+```sh
+moon build --strip -j 1
+moon test --strip -j 1
+```
+
+With `moonc v0.10.12+ef027fb8a` (2026-09-11), local profiling found excessive
+CPU time in the new native backend's debug-location generation. Removing only
+`-g` reduced the same cached-input code-generation step from more than 20 seconds
+to about 5 seconds. `--strip` omits source-level debugger information while
+keeping the normal debug build's `-O0`; `-j 1` limits concurrent build jobs.
+This does not change application behavior or require release mode. Type checks,
+formatting, and production release builds do not need this workaround.
+
+After upgrading MoonBit, verify that an unstripped native build and the full
+test suite complete promptly before removing `--strip` from development
+commands, the Docker test step, and `AGENTS.md`. A new version alone is not
+confirmation that the issue is fixed.
+
+### Local Server
+
 The server uses SQLite by default. Copy the example environment file before
 starting the server:
 
@@ -57,13 +82,13 @@ The server creates the SQLite database and schema automatically on first start.
 Use the tracked test fixture under `testdata/repos`:
 
 ```sh
-moon run . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
+moon run --strip -j 1 . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
 ```
 
 After activating the root account, create an `alice` team and register the fixture:
 
 ```sh
-moon run . -- repo-create alice/demo --root testdata/repos --import
+moon run --strip -j 1 . -- repo-create alice/demo --root testdata/repos --import
 ```
 
 Then open these pages in a browser:
