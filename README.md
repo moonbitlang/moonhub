@@ -18,7 +18,10 @@ Site administrators configure the client-facing hostname and port in
 **Clone** menu with the public SSH URL and a copy button; container-internal
 transport addresses remain separate.
 Team owners and admins can create repositories or import them over SSH from the
-team page. Creation runs in the background, with status and retry controls;
+team page. Every activated account also owns a personal namespace named after
+its username, so **New repository** on the repositories page creates a
+repository under the user's own name. Creation runs in the background, with
+status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
 before importing private repositories.
 

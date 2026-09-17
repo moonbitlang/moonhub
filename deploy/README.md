@@ -100,8 +100,11 @@ a newly generated key rather than reusing a revoked one.
 
 On a team page, **New repository** creates an empty repository and **Import via
 SSH** copies a remote repository. Team owners/admins and site administrators may
-create repositories; ordinary members may access existing repositories but not
-create them. Names are reserved immediately, and a background worker prepares the
+create repositories in a team; ordinary members may access existing
+repositories but not create them there. Activating an account also creates a
+personal namespace named after the username, and its owner creates repositories
+there from **New repository** on the repositories page. Names are reserved
+immediately, and a background worker prepares the
 Git data before making it available through the browser or SSH. The status page
 refreshes while work is queued or running. Failed operations can be retried or
 discarded to release their reserved name.

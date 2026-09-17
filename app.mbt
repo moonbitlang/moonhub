@@ -47,9 +47,15 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(site_settings_module(asset_path_map))
   let root = repo_root(ctx)
   ctx.use_(
-    index_module(asset_path_map, req => {
-      visible_repositories(pool, root, require_current_user(req))
-    }),
+    index_module(
+      asset_path_map,
+      req => visible_repositories(pool, root, require_current_user(req)),
+      personal_owner=req => {
+        personal_namespace(pool, require_current_user(req)).map(team => {
+          team.name_key
+        })
+      },
+    ),
   )
   ctx.use_(teams_module(asset_path_map))
   ctx.use_(repositories_module(asset_path_map))
@@ -108,6 +114,7 @@ fn assets_root(ctx : @moonback.ModuleContext) -> String {
 fn index_module(
   asset_path_map : Map[String, String],
   repositories : async (@moonback.Request) -> Array[RepoId],
+  personal_owner? : async (@moonback.Request) -> String? = _ => None,
 ) -> @moonback.Module {
   Module(ctx => {
     ctx.get("/", async fn(req, res) {
@@ -116,6 +123,7 @@ fn index_module(
           repos=repositories(req),
           asset_path_map~,
           current_user=current_user_from_request(req),
+          personal_owner=personal_owner(req),
         ),
       )
     })

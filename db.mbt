@@ -37,7 +37,7 @@ fn[T] new_db_pool(
 }
 
 ///|
-let database_schema_version : Int64 = 5L
+let database_schema_version : Int64 = 6L
 
 ///|
 async fn initialize_db(pool : Database) -> Unit {
@@ -62,6 +62,9 @@ async fn initialize_db(pool : Database) -> Unit {
   let address_migration = @fs.read_file("db/migrations/003_ssh_addresses.sql").text()
   let merge_migration = @fs.read_file("db/migrations/004_merge_requests.sql").text()
   let mail_migration = @fs.read_file("db/migrations/005_mail_settings.sql").text()
+  let personal_namespace_migration = @fs.read_file(
+    "db/migrations/006_personal_namespaces.sql",
+  ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -86,7 +89,10 @@ async fn initialize_db(pool : Database) -> Unit {
       if version < 5L {
         tx.driver.exec_script(mail_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 5")
+      if version < 6L {
+        tx.driver.exec_script(personal_namespace_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 6")
     })
   })
 }
@@ -279,6 +285,44 @@ fn revoke_session(pool : Database, token : String) -> Unit raise {
 }
 
 ///|
+fn ensure_personal_namespace(
+  tx : DbTransaction,
+  user : CurrentUser,
+) -> Unit raise {
+  // A name_key already used by another namespace is left untouched: the account
+  // then has no personal namespace instead of taking over someone else's team.
+  let existing = tx.query_opt(
+    "SELECT id FROM team WHERE name_key = ? AND kind = 'personal'",
+    params=[user.name_key],
+  )
+  if existing is None {
+    let inserted = tx.query_opt(
+      (
+        #|INSERT INTO team (name_key, display_name, kind)
+        #|VALUES (?, ?, 'personal')
+        #|ON CONFLICT (name_key) DO NOTHING
+        #|RETURNING id
+      ),
+      params=[user.name_key, user.display_name],
+    )
+    guard inserted is Some(_) else { return }
+  }
+  let _ = tx.execute(
+    (
+      #|INSERT INTO team_member (team_id, user_id, role)
+      #|VALUES (
+      #|  (SELECT id FROM team WHERE name_key = ? AND kind = 'personal'),
+      #|  ?,
+      #|  'owner'
+      #|)
+      #|ON CONFLICT (team_id, user_id) DO UPDATE
+      #|SET role = excluded.role
+    ),
+    params=[user.name_key, user.id],
+  )
+}
+
+///|
 fn accept_invitation(
   pool : Database,
   invitation_session : InvitationSession,
@@ -338,33 +382,10 @@ fn accept_invitation(
             display_name: user_row.get_name("display_name"),
             is_site_admin: user_row.get_name("is_site_admin"),
           }
-          if kind == "root" {
-            let team_sql =
-              #|INSERT INTO team (name_key, display_name, kind)
-              #|VALUES (?, ?, 'personal')
-              #|ON CONFLICT (name_key) DO UPDATE
-              #|SET display_name = excluded.display_name,
-              #|    updated_at = datetime('now')
-              #|RETURNING id
-            let team_row = tx.query_one(team_sql, params=[
-              user.name_key,
-              user.display_name,
-            ])
-            let personal_team_id : Int64 = team_row.get_name("id")
-            let member_params : Array[&DbParam] = [
-              personal_team_id as &DbParam,
-              user.id as &DbParam,
-            ]
-            let _ = tx.execute(
-              (
-                #|INSERT INTO team_member (team_id, user_id, role)
-                #|VALUES (?, ?, 'owner')
-                #|ON CONFLICT (team_id, user_id) DO UPDATE
-                #|SET role = excluded.role
-              ),
-              params=member_params,
-            )
-          } else {
+          // Every activated account owns a personal namespace, which is the only
+          // namespace it may create repositories in without an administrator.
+          ensure_personal_namespace(tx, user)
+          if kind != "root" {
             let member_params : Array[&DbParam] = [
               team_id.unwrap() as &DbParam,
               user.id as &DbParam,
@@ -459,6 +480,7 @@ fn list_teams(pool : Database, actor : CurrentUser) -> Array[TeamSummary] raise 
           #|  ON team_member.team_id = team.id
           #| AND team_member.user_id = ?
           #|WHERE team.kind = 'org'
+          #|   OR team_member.user_id IS NOT NULL
           #|ORDER BY team.name_key
         ),
         params=[actor.id],
@@ -475,7 +497,6 @@ fn list_teams(pool : Database, actor : CurrentUser) -> Array[TeamSummary] raise 
           #|FROM team
           #|JOIN team_member ON team_member.team_id = team.id
           #|WHERE team_member.user_id = ?
-          #|  AND team.kind = 'org'
           #|ORDER BY team.name_key
         ),
         params=[actor.id],
@@ -489,6 +510,17 @@ fn list_teams(pool : Database, actor : CurrentUser) -> Array[TeamSummary] raise 
       role: row.get_name("role"),
     })
   })
+}
+
+///|
+fn personal_namespace(
+  pool : Database,
+  actor : CurrentUser,
+) -> TeamSummary? raise {
+  match get_team_by_name_key(pool, actor.name_key) {
+    Some(team) if team.kind == "personal" => Some(team)
+    _ => None
+  }
 }
 
 ///|
