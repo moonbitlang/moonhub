@@ -28,7 +28,7 @@ pub fn DbClient::execute(Self, String, params? : Array[&DbParam]) -> Int raise @
 pub fn DbClient::query_all(Self, String, params? : Array[&DbParam]) -> Array[DbRow] raise @moondb.DbError
 pub fn DbClient::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
 pub fn DbClient::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError
-pub fn[A] DbClient::with_transaction(Self, (DbTransaction) -> A raise) -> A raise
+pub fn[A] DbClient::with_transaction(Self, (DbTransaction) -> A raise, immediate? : Bool) -> A raise
 
 pub(all) struct DbConfig {
   path : String
@@ -39,6 +39,7 @@ pub fn[T : DbFromValue] DbRow::get_name(Self, String) -> T raise @moondb.DbError
 
 type DbTransaction
 pub fn DbTransaction::execute(Self, String, params? : Array[&DbParam]) -> Int raise @moondb.DbError
+pub fn DbTransaction::query_all(Self, String, params? : Array[&DbParam]) -> Array[DbRow] raise @moondb.DbError
 pub fn DbTransaction::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
 pub fn DbTransaction::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError
 

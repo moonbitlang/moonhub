@@ -14,57 +14,12 @@ let sample_workflow : String =
   #|      - run: echo test
 
 ///|
-async fn workflow_commit(
-  git_dir : String,
-  source : String,
-  mode? : String = "100644",
-) -> String {
-  let blob = @gitops.merge_git(
-      git_dir,
-      ["hash-object", "-w", "--stdin"],
-      input=source,
-    )
-    .trim()
-    .to_owned()
-  let workflows = @gitops.merge_git(
-      git_dir,
-      ["mktree"],
-      input="\{mode} blob \{blob}\tbuild.yml\n",
-    )
-    .trim()
-    .to_owned()
-  let github = @gitops.merge_git(
-      git_dir,
-      ["mktree"],
-      input="040000 tree \{workflows}\tworkflows\n",
-    )
-    .trim()
-    .to_owned()
-  let tree = @gitops.merge_git(
-      git_dir,
-      ["mktree"],
-      input="040000 tree \{github}\t.github\n",
-    )
-    .trim()
-    .to_owned()
-  let commit = @gitops.merge_git(git_dir, [
-      "commit-tree", tree, "-m", "Workflow fixture",
-    ])
-    .trim()
-    .to_owned()
-  ignore(
-    @gitops.merge_git(git_dir, ["update-ref", "refs/heads/pipeline", commit]),
-  )
-  commit
-}
-
-///|
 async test "a run snapshots its configuration and pins source across force pushes and GC" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let git_dir = repo.git_dir(root)
     let alice = @identity.active_user_by_name(pool, "alice")
-    let sha = workflow_commit(git_dir, sample_workflow)
+    let sha = @test_support.workflow_commit(git_dir, sample_workflow)
     let run = create_run(
       pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
     )
@@ -106,7 +61,7 @@ async test "a run snapshots its configuration and pins source across force pushe
         0,
       )
     })
-    let next_sha = workflow_commit(
+    let next_sha = @test_support.workflow_commit(
       git_dir,
       sample_workflow.replace_all(old="echo build", new="echo changed"),
     )
@@ -142,7 +97,7 @@ async test "pipeline creation and reads enforce current repository permissions" 
     let alice = @identity.active_user_by_name(pool, "alice")
     let bob = @identity.active_user_by_name(pool, "bob")
     let admin = @identity.active_user_by_name(pool, "admin")
-    ignore(workflow_commit(repo.git_dir(root), sample_workflow))
+    ignore(@test_support.workflow_commit(repo.git_dir(root), sample_workflow))
     let run = create_run(
       pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
     )
@@ -231,7 +186,7 @@ async test "invalid source paths workflows and symlinks leave no runs or pins" {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let alice = @identity.active_user_by_name(pool, "alice")
     let git_dir = repo.git_dir(root)
-    ignore(workflow_commit(git_dir, sample_workflow))
+    ignore(@test_support.workflow_commit(git_dir, sample_workflow))
     for
       path in [
         "../build.yml", ".github/workflows/../../config", ".github/workflows/nested/build.yml",
@@ -267,7 +222,7 @@ async test "invalid source paths workflows and symlinks leave no runs or pins" {
         "not a workflow",
         "#" + "x".repeat(@workflow.max_source_bytes),
       ] {
-      ignore(workflow_commit(git_dir, source))
+      ignore(@test_support.workflow_commit(git_dir, source))
       try
         ignore(
           create_run(
@@ -281,7 +236,9 @@ async test "invalid source paths workflows and symlinks leave no runs or pins" {
         _ => fail("accepted invalid workflow")
       }
     }
-    ignore(workflow_commit(git_dir, "../../private", mode="120000"))
+    ignore(
+      @test_support.workflow_commit(git_dir, "../../private", mode="120000"),
+    )
     try
       ignore(
         create_run(
@@ -315,7 +272,7 @@ async test "database failures roll back the entire snapshot and release its Git 
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let alice = @identity.active_user_by_name(pool, "alice")
     let git_dir = repo.git_dir(root)
-    ignore(workflow_commit(git_dir, sample_workflow))
+    ignore(@test_support.workflow_commit(git_dir, sample_workflow))
     pool.with_client(client => {
       client.batch_execute(
         "CREATE TRIGGER reject_pipeline_job BEFORE INSERT ON pipeline_job BEGIN SELECT RAISE(ABORT, 'injected failure'); END;",
@@ -367,7 +324,7 @@ async test "concurrent requests allocate distinct run numbers and immutable snap
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let alice = @identity.active_user_by_name(pool, "alice")
-    ignore(workflow_commit(repo.git_dir(root), sample_workflow))
+    ignore(@test_support.workflow_commit(repo.git_dir(root), sample_workflow))
     @async.with_task_group(group => {
       let first = group.spawn(() => {
         create_run(
@@ -421,7 +378,7 @@ async test "pipeline snapshots survive closing and reopening the database" {
       })
       let actor = @identity.active_user_by_name(pool, "alice")
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
-      ignore(workflow_commit(git_dir, sample_workflow))
+      ignore(@test_support.workflow_commit(git_dir, sample_workflow))
       let run = create_run(
         pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
       )
@@ -445,7 +402,7 @@ async test "attempt history and same-run dependency constraints are enforced" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let alice = @identity.active_user_by_name(pool, "alice")
-    ignore(workflow_commit(repo.git_dir(root), sample_workflow))
+    ignore(@test_support.workflow_commit(repo.git_dir(root), sample_workflow))
     let run = create_run(
       pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
     )

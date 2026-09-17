@@ -5,6 +5,7 @@ import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
   "moonbitlang/async/http",
   "moonbitlang/moonback",
@@ -46,6 +47,8 @@ pub fn optional_form_value(Map[String, String], String) -> String?
 pub fn parse_form(String) -> Map[String, String]
 
 pub fn path_param(@moonback.Request) -> String raise @domain.AppError
+
+pub let pipeline_coordinator_key : @moonback.TypedKey[@pipeline.Coordinator]
 
 pub fn positive_resource_number(String) -> Int64 raise
 

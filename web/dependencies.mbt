@@ -1,4 +1,16 @@
 ///|
+let pipeline_dependencies_module : @moonback.Module = Module(ctx => {
+  let config = ctx.config()
+  guard config.get_custom(@web_context.config_db_pool) is Some(pool) else {
+    raise @domain.BadRequest(message="missing moonhub.db_pool")
+  }
+  let coordinator = config
+    .get_custom(@web_context.pipeline_coordinator_key)
+    .unwrap_or_else(() => @pipeline.Coordinator::new(pool))
+  ctx.provide(@web_context.pipeline_coordinator_key, coordinator)
+})
+
+///|
 // Configuration enters at the application boundary. Feature modules consume
 // app-scoped dependencies and never reload the manifest or inspect bootstrap config.
 pub let browser_resources_module : @moonback.Module = Module(ctx => {

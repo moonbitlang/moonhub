@@ -3,6 +3,7 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/web/ui" @web_ui,
   "moonbitlang/async",

@@ -164,8 +164,13 @@ pub fn DbClient::batch_execute(
 pub fn[A] DbClient::with_transaction(
   self : DbClient,
   f : (DbTransaction) -> A raise,
+  immediate? : Bool = false,
 ) -> A raise {
-  self.driver.begin()
+  if immediate {
+    self.driver.exec_script("BEGIN IMMEDIATE")
+  } else {
+    self.driver.begin()
+  }
   errdefer self.driver.rollback()
   let result = f({ driver: self.driver, })
   self.driver.commit()
@@ -173,7 +178,7 @@ pub fn[A] DbClient::with_transaction(
 }
 
 ///|
-fn DbTransaction::query_all(
+pub fn DbTransaction::query_all(
   self : DbTransaction,
   sql : String,
   params? : Array[&DbParam] = [],

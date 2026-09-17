@@ -1,0 +1,20 @@
+import {
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/pipeline",
+  "hackwaly/moonhub/pipeline/protocol",
+  "hackwaly/moonhub/web/context" @web_context,
+  "moonbitlang/async",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+  "moonbitlang/moonback",
+}
+
+import {
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/web/testkit" @web_testkit,
+  "moonbitlang/async/http",
+} for "wbtest"
+
+supported_targets = "native"

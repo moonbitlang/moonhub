@@ -176,6 +176,18 @@ pub async fn create_run(
           )
         }
         for job in definition.jobs {
+          let job_id : Int64 = tx
+            .query_one(
+              "SELECT id FROM pipeline_job WHERE run_id = ? AND job_key = ?",
+              params=[run.id, job.id],
+            )
+            .get_name("id")
+          for label in job.runs_on {
+            let _ = tx.execute(
+              "INSERT INTO pipeline_job_label (job_id, label) VALUES (?, ?)",
+              params=[job_id, label],
+            )
+          }
           for need in job.needs {
             let _ = tx.execute(
               "INSERT INTO pipeline_job_need (run_id, job_key, needs_job_key) VALUES (?, ?, ?)",

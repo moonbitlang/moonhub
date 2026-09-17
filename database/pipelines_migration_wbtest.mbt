@@ -28,7 +28,7 @@ async test "pipeline migration upgrades schema six and is safe to initialize twi
       let version : Int64 = client
         .query_one("PRAGMA user_version")
         .get_name("user_version")
-      assert_eq(version, 7L)
+      assert_eq(version, database_schema_version)
       assert_eq(client.query_all("SELECT id FROM repository").length(), 1)
       let status : String = client
         .query_one("SELECT status FROM repository_job")

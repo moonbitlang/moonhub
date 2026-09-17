@@ -5,9 +5,9 @@ See [collaboration architecture and supported behavior](docs/collaboration.md).
 See [package boundaries, dependency injection and tests](docs/architecture.md)
 for the source layout and module initialization rules.
 
-Pipeline implementation is staged. The first step provides validated workflow
-definitions and immutable run snapshots, without executing repository code or
-adding a UI. See [the supported subset and delivery plan](docs/pipelines.md).
+Pipeline implementation is staged. Workflow validation, immutable run snapshots,
+and an authenticated runner protocol are implemented, without executing
+repository code or adding a UI. See [the supported subset and delivery plan](docs/pipelines.md).
 
 ## Docker and Git SSH
 

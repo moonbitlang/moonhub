@@ -2,7 +2,14 @@
 pub let app_module : @moonback.Module = Module(ctx => {
   let config = ctx.config()
   ctx.mount("/\{@domain.PUBLIC_ASSETS_OWNER}", App(assets_module, config~))
+  ctx.mount("/-/runner-api/v1", App(runner_app_module, config~))
   ctx.mount("/", App(app_main_module, config~))
+})
+
+///|
+let runner_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(pipeline_dependencies_module)
+  ctx.use_(@pipeline_views.runner_api_module)
 })
 
 ///|

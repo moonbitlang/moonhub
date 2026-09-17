@@ -1,12 +1,15 @@
 import {
   "moonbitlang/async",
   "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/pipeline/workflow",
+  "hackwaly/moonhub/pipeline/protocol",
 }
 
 import {

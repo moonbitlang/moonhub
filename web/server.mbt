@@ -17,7 +17,12 @@ pub async fn serve(config : Config) -> Unit {
       addresses~,
     )
     @collaboration.start_merge_worker(pool, config.root, group)
+    let coordinator = @pipeline.Coordinator::new(pool)
+    coordinator.start_lease_worker(group)
     let custom = [
+      @moonback.Config::custom(
+        @web_context.pipeline_coordinator_key, coordinator,
+      ),
       @moonback.Config::custom(@web_context.config_root, config.root),
       @moonback.Config::custom(
         @web_context.config_assets_root,
