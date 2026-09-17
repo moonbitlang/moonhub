@@ -106,7 +106,10 @@ fn yaml_to_string_map(
       !key.contains("-") &&
       !key.has_prefix("MOONHUB_") &&
       !key.has_prefix("GITHUB_") &&
-      !key.has_prefix("RUNNER_") else {
+      !key.has_prefix("RUNNER_") &&
+      !key.has_prefix("LD_") &&
+      !key.has_prefix("DYLD_") &&
+      !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"].contains(key) else {
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
     result[key] = match value {

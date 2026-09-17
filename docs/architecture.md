@@ -19,6 +19,7 @@ unchanged.
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
+| `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and pre-receive entry point |
 | `web` | Application composition, dependency providers and server lifecycle |
@@ -73,7 +74,8 @@ uses workflow/protocol definitions, repository/identity authorization, bounded
 Git operations, and the database adapter. `web/views/pipelines` owns the machine
 API and its HTTP tests. It is mounted independently of browser authentication;
 `web/dependencies.mbt` provides its coordinator and `web/server.mbt` owns lease
-reconciliation. No job execution or Docker worker exists yet; see
+reconciliation. The independent `runner` package executes assigned literal steps;
+the root package owns its CLI. Dynamic Docker provisioning is not implemented; see
 [pipeline delivery scope](pipelines.md).
 
 Only packages under `web/` import Moonback. Business packages take explicit domain values and

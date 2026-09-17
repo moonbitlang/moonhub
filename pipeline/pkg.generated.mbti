@@ -47,11 +47,13 @@ pub fn Coordinator::expire_attempts(Self) -> Int raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int) -> @protocol.LeaseState raise
 pub fn Coordinator::new(@database.Database, clock? : () -> Int64) -> Self
 pub fn Coordinator::read_logs(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> Array[@protocol.LogChunk] raise
+pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
 pub fn Coordinator::revoke_provider(Self, @domain.CurrentUser, Int64) -> Unit raise
 pub fn Coordinator::set_provider_paused(Self, @domain.CurrentUser, Int64, Bool) -> Unit raise
 pub fn Coordinator::set_provider_repository(Self, @domain.CurrentUser, Int64, @domain.RepoId, Bool) -> Unit raise
-pub fn Coordinator::start(Self, Int64, String, Int) -> @protocol.LeaseState raise
+pub fn Coordinator::start(Self, Int64, String, Int, execution_id? : String) -> @protocol.LeaseState raise
 pub fn Coordinator::start_lease_worker(Self, @async.TaskGroup[Unit]) -> Unit
+pub fn Coordinator::update_step(Self, Int64, String, @protocol.StepRequest) -> @protocol.LeaseState raise
 
 pub struct JobRun {
   id : Int64

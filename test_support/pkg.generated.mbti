@@ -27,6 +27,8 @@ pub async fn with_git_test_repo(async (String, String) -> Unit) -> Unit
 
 pub async fn with_repository_test_data(async (@database.Database, String) -> Unit) -> Unit
 
+pub async fn with_runner_workspace(async (String, String, String) -> Unit) -> Unit
+
 pub async fn with_ssh_test_db(async (@database.Database) -> Unit) -> Unit
 
 pub async fn workflow_commit(String, String, mode? : String) -> String

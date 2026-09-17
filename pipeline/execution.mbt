@@ -116,6 +116,7 @@ fn lease_state(
 ) -> @protocol.LeaseState raise {
   {
     version: @protocol.version,
+    execution_id: (row.get_name("execution_id") : String?).unwrap_or(""),
     attempt_id: row.get_name("id"),
     state: row.get_name("status"),
     lease_until_ms: (row.get_name("lease_until_ms") : Int64?).unwrap_or(0L),
@@ -195,6 +196,14 @@ fn finish_attempt(
   let job_id : Int64 = row.get_name("job_id")
   let run_id : Int64 = row.get_name("run_id")
   flush_log_tails(tx, id)
+  let _ = tx.execute(
+    "UPDATE pipeline_step SET state = ?, exit_code = -1 WHERE attempt_id = ? AND state = 'running'",
+    params=[if conclusion == "success" { "lost" } else { conclusion }, id],
+  )
+  let _ = tx.execute(
+    "UPDATE pipeline_step SET state = 'skipped' WHERE attempt_id = ? AND state = 'pending'",
+    params=[id],
+  )
   let _ = tx.execute(
     "UPDATE pipeline_job_attempt SET status = 'completed', conclusion = ?, finished_at = datetime('now') WHERE id = ? AND status <> 'completed'",
     params=[conclusion, id],
@@ -393,8 +402,18 @@ pub fn Coordinator::start(
   id : Int64,
   token : String,
   version : Int,
+  execution_id? : String = "",
 ) -> @protocol.LeaseState raise {
   check_version(version)
+  guard execution_id.is_empty() ||
+    (
+      execution_id.length() == 32 &&
+      execution_id
+      .iter()
+      .all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f'))
+    ) else {
+    raise @domain.BadRequest(message="invalid execution id")
+  }
   self.authenticate_attempt(id, token)
   ignore(self.expire_attempts())
   self.pool.with_client(client => {
@@ -402,6 +421,23 @@ pub fn Coordinator::start(
       tx => {
         let now = (self.clock)()
         let row = load_live_attempt(tx, id, token, now)
+        let bound : String? = row.get_name("execution_id")
+        if (row.get_name("status") : String) == "running" || bound is Some(_) {
+          guard bound.unwrap_or("") == execution_id else {
+            raise Conflict("attempt belongs to a different execution instance")
+          }
+        } else if !execution_id.is_empty() {
+          let _ = tx.execute(
+            "UPDATE pipeline_job_attempt SET execution_id = ? WHERE id = ?",
+            params=[execution_id, id],
+          )
+          for ordinal, step in attempt_job(row).steps {
+            let _ = tx.execute(
+              "INSERT INTO pipeline_step (attempt_id, step_id, ordinal) VALUES (?, ?, ?)",
+              params=[id, step.id, ordinal.to_int64()],
+            )
+          }
+        }
         if (row.get_name("status") : String) == "leased" &&
           (row.get_name("cancel_at_ms") : Int64?) is None {
           let job = attempt_job(row)
@@ -485,6 +521,16 @@ pub fn Coordinator::complete(
           request.conclusion == "failure" ||
           request.conclusion == "cancelled" else {
           raise Conflict("attempt has not started")
+        }
+        if request.conclusion == "success" &&
+          (row.get_name("execution_id") : String?) is Some(_) {
+          guard tx.query_opt(
+              "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND state <> 'success' LIMIT 1",
+              params=[id],
+            )
+            is None else {
+            raise Conflict("not all steps succeeded")
+          }
         }
         let _ = tx.execute(
           "UPDATE pipeline_job_attempt SET result_hash = ?, reported_conclusion = ? WHERE id = ?",

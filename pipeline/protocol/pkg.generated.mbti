@@ -57,6 +57,7 @@ pub(all) struct JobPlan {
 
 pub(all) struct LeaseState {
   version : Int
+  execution_id : String
   attempt_id : Int64
   state : String
   lease_until_ms : Int64
@@ -82,6 +83,11 @@ pub(all) struct LogRequest {
   text : String
 } derive(ToJson, @json.FromJson)
 
+pub(all) struct StartRequest {
+  version : Int
+  execution_id : String
+} derive(ToJson, @json.FromJson)
+
 pub(all) struct StepPlan {
   id : String
   name : String
@@ -90,6 +96,19 @@ pub(all) struct StepPlan {
   working_directory : String
   env : Map[String, String]
   timeout_minutes : Int
+} derive(ToJson, @debug.Debug, @json.FromJson)
+
+pub(all) struct StepRequest {
+  version : Int
+  step_id : String
+  state : String
+  exit_code : Int
+} derive(ToJson, @debug.Debug, @json.FromJson)
+
+pub(all) struct StepState {
+  step_id : String
+  state : String
+  exit_code : Int
 } derive(ToJson, @debug.Debug, @json.FromJson)
 
 pub(all) struct VersionRequest {

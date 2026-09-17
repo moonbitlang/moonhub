@@ -123,7 +123,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       }
     }),
   )
-  for operation in ["start", "heartbeat", "logs", "complete"] {
+  for operation in ["start", "heartbeat", "logs", "steps", "complete"] {
     ctx.post(
       "/attempts/:id/\{operation}",
       json_handler(req => {
@@ -136,16 +136,43 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
         let token = bearer_token(req)
         coordinator.authenticate_attempt(id, token)
         let state = match operation {
-          "start" | "heartbeat" => {
+          "start" => {
+            let json = request_json(req, ["version", "execution_id"])
+            if json is Object(fields) && fields.contains("execution_id") {
+              let request : @protocol.StartRequest = @json.from_json(json) catch {
+                _ => raise @domain.BadRequest(message="invalid start request")
+              }
+              guard !request.execution_id.is_empty() else {
+                raise @domain.BadRequest(message="execution id is empty")
+              }
+              coordinator.start(
+                id,
+                token,
+                request.version,
+                execution_id=request.execution_id,
+              )
+            } else {
+              let request : @protocol.VersionRequest = @json.from_json(json) catch {
+                _ => raise @domain.BadRequest(message="invalid start request")
+              }
+              coordinator.start(id, token, request.version)
+            }
+          }
+          "heartbeat" => {
             let json = request_json(req, ["version"])
             let request : @protocol.VersionRequest = @json.from_json(json) catch {
               _ => raise @domain.BadRequest(message="invalid version request")
             }
-            if operation == "start" {
-              coordinator.start(id, token, request.version)
-            } else {
-              coordinator.heartbeat(id, token, request.version)
+            coordinator.heartbeat(id, token, request.version)
+          }
+          "steps" => {
+            let json = request_json(req, [
+              "version", "step_id", "state", "exit_code",
+            ])
+            let request : @protocol.StepRequest = @json.from_json(json) catch {
+              _ => raise @domain.BadRequest(message="invalid step request")
             }
+            coordinator.update_step(id, token, request)
           }
           "logs" => {
             let json = request_json(req, [

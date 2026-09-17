@@ -2,6 +2,7 @@
 test "wire state uses decimal strings for Int64 values and scalar conclusions" {
   let state : LeaseState = {
     version: 1,
+    execution_id: "",
     attempt_id: 42L,
     state: "running",
     lease_until_ms: 60000L,
@@ -30,6 +31,7 @@ test "wire state uses decimal strings for Int64 values and scalar conclusions" {
 test "wire Int64 identifiers preserve values beyond JavaScript integer precision" {
   let state : LeaseState = {
     version: 1,
+    execution_id: "",
     attempt_id: 9007199254740993L,
     state: "leased",
     lease_until_ms: 60000L,

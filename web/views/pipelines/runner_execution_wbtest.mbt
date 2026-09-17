@@ -1,0 +1,188 @@
+///|
+async test "real runner streams logs before exit and reports persisted step outcomes" {
+  @test_support.with_repository_test_data((pool, root) => {
+    @test_support.with_runner_workspace((_, launcher, workspace) => {
+      let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let workflow = @test_support.single_job_workflow.replace_all(
+        old="echo fixture",
+        new="printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+      )
+      ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let run = @pipeline.create_run(
+        pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+      )
+      let coordinator = @pipeline.Coordinator::new(pool)
+      let provider_token = @identity.random_hex(32)
+      let attempt_token = @identity.random_hex(32)
+      ignore(
+        coordinator.create_provider(
+          @identity.active_user_by_name(pool, "admin"),
+          "runner",
+          provider_token,
+          ["self-hosted", "linux"],
+          [repo],
+        ),
+      )
+      let assignment = coordinator
+        .claim(provider_token, {
+          version: 1,
+          request_id: @identity.random_hex(16),
+          attempt_token,
+        })
+        .unwrap()
+      let app = @moonback.App(
+        Module(ctx => {
+          ctx.mount(
+            "/-/runner-api/v1",
+            App(
+              Module(child => {
+                child.provide(
+                  @web_context.pipeline_coordinator_key, coordinator,
+                )
+                child.use_(runner_api_module)
+              }),
+            ),
+          )
+        }),
+      )
+      defer app.close()
+      @async.with_task_group(group => {
+        let listener = @moonback.listen(port=0)
+        let serving = group.spawn(() => app.serve(listener))
+        defer serving.cancel()
+        let running = group.spawn(() => {
+          @runner.run(assignment, attempt_token, {
+            server: "http://127.0.0.1:\{listener.addr.port()}",
+            workspace,
+            launcher,
+            allow_http: true,
+            unsafe_local: true,
+            heartbeat_ms: 50,
+          })
+        })
+        @async.with_timeout(6000, () => {
+          while coordinator
+                .read_logs(actor, repo, run.number, assignment.attempt_id)
+                .is_empty() {
+            @async.sleep(10)
+          }
+        })
+        assert_true(
+          @pipeline.get_run(pool, actor, repo, run.number).state
+          is @pipeline.Running,
+        )
+        let result = running.wait()
+        assert_eq(result.conclusion, "success")
+        assert_true(result.reported)
+        let logs = coordinator
+          .read_logs(actor, repo, run.number, assignment.attempt_id)
+          .map(chunk => chunk.text)
+          .join("")
+        assert_eq(logs, "live-output\nfinished\n")
+        assert_true(!logs.contains(attempt_token))
+        let steps = coordinator.read_steps(
+          actor,
+          repo,
+          run.number,
+          assignment.attempt_id,
+        )
+        assert_eq(steps.length(), 1)
+        assert_eq(steps[0].state, "success")
+        assert_eq(steps[0].exit_code, 0)
+      })
+    })
+  })
+}
+
+///|
+async test "duplicate runner is fenced while original receives remote cancellation" {
+  @test_support.with_repository_test_data((pool, root) => {
+    @test_support.with_runner_workspace((local_root, launcher, workspace) => {
+      let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let source = @test_support.single_job_workflow.replace_all(
+        old="echo fixture",
+        new="touch ready; sleep 20; touch survivor",
+      )
+      ignore(@test_support.workflow_commit(repo.git_dir(root), source))
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let run = @pipeline.create_run(
+        pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+      )
+      let coordinator = @pipeline.Coordinator::new(pool)
+      let provider_token = @identity.random_hex(32)
+      let attempt_token = @identity.random_hex(32)
+      ignore(
+        coordinator.create_provider(
+          @identity.active_user_by_name(pool, "admin"),
+          "runner",
+          provider_token,
+          ["self-hosted", "linux"],
+          [repo],
+        ),
+      )
+      let assignment = coordinator
+        .claim(provider_token, {
+          version: 1,
+          request_id: @identity.random_hex(16),
+          attempt_token,
+        })
+        .unwrap()
+      let app = @moonback.App(
+        Module(ctx => {
+          ctx.mount(
+            "/-/runner-api/v1",
+            App(
+              Module(child => {
+                child.provide(
+                  @web_context.pipeline_coordinator_key, coordinator,
+                )
+                child.use_(runner_api_module)
+              }),
+            ),
+          )
+        }),
+      )
+      defer app.close()
+      @async.with_task_group(group => {
+        let listener = @moonback.listen(port=0)
+        let serving = group.spawn(() => app.serve(listener))
+        defer serving.cancel()
+        let options : @runner.Options = {
+          server: "http://127.0.0.1:\{listener.addr.port()}",
+          workspace,
+          launcher,
+          allow_http: true,
+          unsafe_local: true,
+          heartbeat_ms: 50,
+        }
+        let original = group.spawn(() => {
+          @runner.run(assignment, attempt_token, options)
+        })
+        @async.with_timeout(6000, () => {
+          while !@fs.exists(workspace + "/ready") {
+            @async.sleep(10)
+          }
+        })
+        let other = local_root + "/other"
+        @fs.mkdir(other)
+        let duplicate = @runner.run(assignment, attempt_token, {
+          ..options,
+          workspace: other,
+        })
+        assert_eq(duplicate.conclusion, "lost")
+        assert_true(!duplicate.reported)
+        assert_true(!@fs.exists(other + "/ready"))
+        coordinator.cancel_run(actor, repo, run.number)
+        let report = @async.with_timeout(6000, () => original.wait())
+        assert_eq(report.conclusion, "cancelled")
+        assert_true(report.reported)
+        assert_true(!@fs.exists(workspace + "/survivor"))
+        assert_eq(
+          coordinator.read_steps(actor, repo, run.number, assignment.attempt_id)[0].state,
+          "cancelled",
+        )
+      })
+    })
+  })
+}

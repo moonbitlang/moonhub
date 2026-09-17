@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 8L
+pub let database_schema_version : Int64 = 9L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -44,6 +44,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
   let protocol_migration = @fs.read_file(
     "db/migrations/008_pipeline_protocol.sql",
   ).text()
+  let runner_migration = @fs.read_file("db/migrations/009_runner_steps.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -77,7 +78,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 8L {
         tx.driver.exec_script(protocol_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 8")
+      if version < 9L {
+        tx.driver.exec_script(runner_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 9")
     })
   })
 }

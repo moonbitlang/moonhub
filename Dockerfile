@@ -22,7 +22,26 @@ RUN moon update
 COPY . .
 COPY --from=assets /src/assets/ /src/assets/
 # Temporary moonc native debug-info workaround; see README.md.
-RUN moon test --target native --strip -j 1 && moon build --target native --release
+RUN mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
+    && moon test --target native --strip -j 1 --deny-warn && moon build --target native --release --deny-warn
+
+FROM debian:bookworm-slim AS runner
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl git build-essential libssl3 util-linux \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 runner \
+    && useradd --uid 10001 --gid runner --create-home runner \
+    && mkdir /workspace && chown runner:runner /workspace
+COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
+COPY --from=toolchain /root/.moon /opt/moon
+COPY LICENSE /usr/share/doc/moonhub/LICENSE
+COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE
+RUN chmod -R a+rX /opt/moon
+ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
+USER 10001:10001
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/moonhub", "runner"]
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \

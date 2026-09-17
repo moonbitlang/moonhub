@@ -6,8 +6,9 @@ See [package boundaries, dependency injection and tests](docs/architecture.md)
 for the source layout and module initialization rules.
 
 Pipeline implementation is staged. Workflow validation, immutable run snapshots,
-and an authenticated runner protocol are implemented, without executing
-repository code or adding a UI. See [the supported subset and delivery plan](docs/pipelines.md).
+an authenticated runner protocol, and a single-job Runner are implemented.
+Dynamic container provisioning and the UI are not yet implemented. See
+[the supported subset and delivery plan](docs/pipelines.md).
 
 ## Docker and Git SSH
 

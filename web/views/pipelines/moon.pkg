@@ -12,6 +12,8 @@ import {
 
 import {
   "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/runner",
+  "moonbitlang/async/fs",
   "hackwaly/moonhub/test_support",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async/http",

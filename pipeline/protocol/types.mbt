@@ -29,6 +29,27 @@ pub(all) struct VersionRequest {
 } derive(ToJson, FromJson)
 
 ///|
+pub(all) struct StartRequest {
+  version : Int
+  execution_id : String
+} derive(ToJson, FromJson)
+
+///|
+pub(all) struct StepRequest {
+  version : Int
+  step_id : String
+  state : String
+  exit_code : Int
+} derive(Debug, ToJson, FromJson)
+
+///|
+pub(all) struct StepState {
+  step_id : String
+  state : String
+  exit_code : Int
+} derive(Debug, ToJson, FromJson)
+
+///|
 pub(all) struct LogRequest {
   version : Int
   sequence : Int64
@@ -47,6 +68,7 @@ pub(all) struct CompleteRequest {
 ///|
 pub(all) struct LeaseState {
   version : Int
+  execution_id : String
   attempt_id : Int64
   state : String
   lease_until_ms : Int64

@@ -80,6 +80,72 @@ test "provider protocol helpers reject unsupported versions and invalid tokens" 
 }
 
 ///|
+async test "bound executions reject other instances and cannot complete before steps succeed" {
+  with_protocol_fixture((coordinator, pool, _, run, _, _) => {
+    let id = coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id
+    let nonce = "e".repeat(32)
+    assert_eq(
+      coordinator.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
+      nonce,
+    )
+    assert_eq(
+      coordinator.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
+      nonce,
+    )
+    for execution_id in ["", "f".repeat(32)] {
+      try
+        ignore(coordinator.start(id, attempt_secret, 1, execution_id~))
+      catch {
+        Conflict(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("another execution attached to a live attempt")
+      }
+    }
+    try ignore(coordinator.complete(id, attempt_secret, completion())) catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("completed before executing any step")
+    }
+    let running : @protocol.StepRequest = {
+      version: 1,
+      step_id: "check",
+      state: "running",
+      exit_code: 0,
+    }
+    ignore(coordinator.update_step(id, attempt_secret, running))
+    ignore(coordinator.update_step(id, attempt_secret, running))
+    try
+      ignore(
+        coordinator.update_step(id, attempt_secret, {
+          ..running,
+          state: "success",
+          exit_code: 1,
+        }),
+      )
+    catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("success with failed exit code")
+    }
+    let done = { ..running, state: "success", }
+    ignore(coordinator.update_step(id, attempt_secret, done))
+    ignore(coordinator.update_step(id, attempt_secret, done))
+    ignore(coordinator.complete(id, attempt_secret, completion()))
+    let state = coordinator.read_steps(
+      @identity.active_user_by_name(pool, "alice"),
+      protocol_repo,
+      run.number,
+      id,
+    )
+    assert_eq(state.length(), 1)
+    assert_eq(state[0].state, "success")
+  })
+}
+
+///|
 async test "claim allocation is idempotent across coordinator restarts and does not leak credentials" {
   with_protocol_fixture((coordinator, pool, _, run, _, clock) => {
     let request = claim_request()

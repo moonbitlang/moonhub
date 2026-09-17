@@ -1,9 +1,10 @@
-# Pipelines: Steps 1 and 2
+# Pipelines: Steps 1 through 3
 
 The first delivery provides workflow validation and immutable run snapshots.
 The second adds a persistent runner protocol and authenticated machine API.
-Neither executes repository code, starts containers, or exposes a Pipelines
-page. Only explicitly provisioned providers can claim single-job runs.
+Step 3 adds a single-job Runner and a dedicated container image. The server
+does not execute repository code or create containers, and no Pipelines page
+exists yet. Only explicitly provisioned providers can claim single-job runs.
 
 ## Delivery Sequence
 
@@ -11,7 +12,7 @@ page. Only explicitly provisioned providers can claim single-job runs.
 | --- | --- | --- |
 | 1 | Workflow subset, authorization, immutable source/config snapshots, migration | Implemented; business APIs and tests only |
 | 2 | Provider authentication, claims, attempts, leases, logs and result protocol | Implemented; simulated-provider and HTTP acceptance tests |
-| 3 | Single-job Runner and execution semantics | Planned |
+| 3 | Single-job Runner and execution semantics | Implemented; native and HTTP execution tests plus container smoke |
 | 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Planned |
 | 5 | Multi-job scheduling, concurrency and explicit reruns | Planned |
 | 6 | Repository pages and management controls | Planned |
@@ -45,11 +46,13 @@ Supported configuration:
   strings, integers, booleans, and real-number spellings are retained as strings.
   Names must be POSIX-like identifiers. `MOONHUB_`, `GITHUB_`, and `RUNNER_`
   prefixes are reserved for the executor.
+  Shell/loader injection variables (`BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`,
+  `LD_*`, `DYLD_*`) are also rejected by both parser and Runner.
 - Defaults apply workflow < job < step. An omitted shell stays unspecified,
   because GitHub's implicit shell differs from explicitly selecting `bash`.
 - Job timeouts default to 360 minutes; explicit job/step timeouts are integers
   from 1 through 360. The step timeout remains separate from the job deadline;
-  the future executor must not restart the job deadline for each step.
+  the Runner does not restart the job deadline for each step.
 - Working directories must be relative, without parent traversal, backslashes,
   control characters, empty path components, or drive prefixes. The executor
   must additionally enforce symlink containment at runtime.
@@ -130,8 +133,9 @@ Tests cover upstream YAML behavior, multiline script preservation, scalar
 coercion, defaults/env precedence, fail-closed validation, structural limits,
 dependency cycles, current authorization, concurrent run numbering, rollback,
 attempt constraints, migration from schema 6, database reopen, and source
-retention after a force push plus immediate Git garbage collection. No test
-executes workflow scripts or connects to Docker.
+retention after a force push plus immediate Git garbage collection. Those tests
+do not execute workflow scripts or connect to Docker. Step 3 execution tests
+run only application-owned fixtures.
 
 ## Runner Protocol (Step 2)
 
@@ -179,14 +183,15 @@ login and never include exception diagnostics or submitted secrets.
 | Path (under the API prefix) | Credential | Additional request fields |
 | --- | --- | --- |
 | `/claims` | Provider | `request_id`, `attempt_token` |
-| `/attempts/:id/start` | Attempt | none |
+| `/attempts/:id/start` | Attempt | `execution_id` (required by real Runners; optional for legacy clients) |
 | `/attempts/:id/heartbeat` | Attempt | none |
+| `/attempts/:id/steps` | Attempt | `step_id`, `state`, `exit_code` |
 | `/attempts/:id/logs` | Attempt | `sequence`, `step_id`, `stream`, `text` |
 | `/attempts/:id/complete` | Attempt | `conclusion`, `last_log_sequence` |
 
 Claim responses contain `assignment` (object or null). Other responses contain
-the attempt state, acknowledged log sequence, lease deadline, fixed job deadline,
-server time, cancellation flag, and conclusion when completed. Shared wire types
+the attempt state, bound execution ID, acknowledged log sequence, lease deadline,
+fixed job deadline, server time, cancellation flag, and conclusion when completed. Shared wire types
 live in `pipeline/protocol`; no workflow AST, HTTP, or database types enter that
 package. The wire plan uses an empty shell string for the implicit default and
 step timeout `0` for no separate step limit. All Int64 values (numeric IDs,
@@ -209,7 +214,7 @@ repository permissions, match labels, and atomically allocate a leased attempt.
 Start is idempotent and records the fixed job deadline once. Leases last at most
 60 seconds; running heartbeats renew up to the job deadline. Leased-but-not-started
 heartbeats do not reserve work indefinitely. Responses include server time so
-the future runner can derive a conservative monotonic local expiry after
+the Runner can derive a conservative monotonic local expiry after
 subtracting request round-trip time and a safety margin. It must stop its entire
 execution environment when it cannot renew safely, not wait for a reconnect.
 
@@ -226,9 +231,9 @@ The Web lifecycle owns a lease worker checking expiry every two seconds in
 bounded batches. Requests also reconcile expiry. Lease loss or an unacknowledged
 cancel becomes `lost`, not success or an automatic retry. A reached job deadline
 becomes `timed_out` if the lease remained valid until that deadline. Old attempt
-credentials cannot update a later attempt. This is durable bookkeeping, not a
-claim that this stage can terminate a process: actual stopping arrives with the
-runner/provider, and external side effects are never guaranteed exactly-once.
+credentials cannot update a later attempt. Step 3 adds stopping inside the
+execution container; provider-side supervision follows in Step 4. External
+side effects are never guaranteed exactly-once.
 
 ### Logs
 
@@ -243,7 +248,7 @@ The service masks the literal attempt credential, including matches spanning
 chunks of the same step/stream. It temporarily withholds only a matching suffix
 and flushes it on termination if it never becomes a full credential. This is
 not protection against deliberate credential transformation/exfiltration. The
-future executor must keep control credentials out of user scripts, and provider
+Runner keeps control credentials out of user scripts, and provider
 credentials never belong in logs. General workflow secrets are not yet supported.
 
 `Coordinator.read_logs` rechecks repository access and attempt/run scope, returns
@@ -263,3 +268,102 @@ connections competing for a job, database close/reopen, reordered/duplicate
 logs, credential redaction, log quotas, cancellation/result races, revoked
 permissions, expired/old credentials, fixed deadlines, and migration 7 -> 8
 including backfilled labels. No Docker daemon or external service is needed.
+
+## Single-job Runner (Step 3)
+
+`moonhub runner` consumes one bare `Assignment` JSON file and one 64-character
+attempt credential from stdin. It does not claim jobs, access the database,
+load `.env`, or accept a provider credential. An assignment must still be leased,
+the workspace must be empty, and the server must be an origin without a path,
+query, fragment, or embedded credentials. HTTPS uses the system trust store;
+plain HTTP requires the explicit `--allow-http` development flag. Redirects are
+not followed and response bodies/retries are bounded.
+
+The Runner generates a fresh `execution_id` before its first `/start` request.
+Migration 009 binds that ID once and adds persisted per-step states. Start
+retries from the same instance are idempotent; a different Runner instance is
+rejected, even if it receives the same assignment and attempt credential.
+Older simulated clients may still use the legacy start shape, but real Runners
+require the echoed execution ID and fail closed against an older server.
+
+The additional `/attempts/:id/steps` endpoint accepts `version`, `step_id`,
+`state`, and `exit_code`. It enforces pending -> running -> terminal transitions,
+ordered execution, and idempotent repeats. Fenced executions cannot report job
+success until every step succeeded. Terminalization records interrupted running
+steps and skips pending ones. `Coordinator.read_steps` is repository-scoped;
+the step UI remains part of step 6.
+
+### Execution and Isolation
+
+- Each literal `run` starts a new shell, with workflow/job/step environment
+  already resolved in the plan. The workspace is shared within the job, but shell
+  variables, `cd`, and exports do not leak into later shells.
+- Implicit Bash uses `-e`; explicit Bash uses `-e -o pipefail`; `sh` uses `-e`.
+  Custom shell templates and file commands such as `GITHUB_ENV` are not supported.
+- The child environment is constructed explicitly, never inherited from the
+  controller. It includes the assigned repository/SHA/workspace, CI markers and
+  private HOME/TMPDIR directories. The image's MoonBit tools are read-only under
+  `/opt/moon`, with writable per-job cache space under the job HOME.
+- Script paths are generated by the controller; working directories are checked
+  against the canonical workspace, including symlinks. This is a configuration
+  check, not an OS filesystem sandbox: container mounts define the real boundary.
+- Stdout/stderr are streamed with bounded reads and incremental UTF-8 handling.
+  One uploader serializes global log sequence numbers; retries reuse the exact
+  payload. Invalid UTF-8 is replaced. Output caps stop the job rather than growing
+  memory indefinitely. After a shell exits, log drain is bounded to 250 ms so a
+  background pipe holder cannot stall subsequent steps; redirect long-lived
+  background process output to workspace files when needed.
+- A monotonic watchdog enforces the lease and fixed job deadline independently
+  of heartbeat I/O. Linux uses a suspend-aware clock. Heartbeats default to five
+  seconds. Step timeouts cannot extend the job deadline. Cancel, timeout, lease
+  loss and interruption stop execution before reporting; scripts are never retried.
+- A small POSIX launcher creates a new session/process group before `exec` of the
+  shell. Cancellation kills that group, not just its leader. Successful background
+  processes may survive between steps but are cleaned up at job end.
+- Production mode requires **non-root PID 1 in an isolated Linux PID namespace**.
+  It disables dumps/ptrace access to controller secrets and enables no-new-privileges.
+  At job end it kills and reaps all other processes in that namespace, including
+  descendants that detached into another session. Do not wrap this image in
+  `--init`, use host PID mode, give it a Docker socket, or mount application data.
+- `--unsafe-local` deliberately bypasses the container requirement for trusted
+  development fixtures. It cannot contain malicious scripts, detached processes,
+  or access to the host filesystem and must not be used for repository workloads.
+
+The Runner outputs a JSON report. Exit 0 means server-confirmed success; exit 1
+means a confirmed non-success result; exit 2 means configuration failure or an
+unconfirmed result. Final metadata/completion retries have a three-second budget
+after process cleanup. A local result is not authoritative unless `reported` is
+true. Container/host crashes still require provider supervision and server lease
+expiry; external side effects remain outside exactly-once guarantees.
+
+### Image and Acceptance
+
+The separate `runner` Dockerfile target keeps the existing default Web/SSH image
+unchanged. It contains Bash, Git, a C toolchain, and the real MoonBit distribution.
+It runs as UID/GID 10001 and enters the Runner directly as PID 1. The provider
+must still apply mount, network, CPU, memory and PID limits when creating it.
+The workspace mount must allow execution of build outputs (`exec,nosuid,nodev`);
+the separate `/tmp` mount may use `noexec,nosuid,nodev`.
+
+```sh
+docker build --target runner -t moonhub:runner-step3 .
+node scripts/runner-container-smoke.cjs
+```
+
+The smoke test uses an isolated mock control server and temporary manifest, not
+the deployed application or real repositories. It runs a read-only container
+with all capabilities dropped, no-new-privileges, bounded memory/CPU/PIDs, and
+temporary writable workspace/tmp mounts. It verifies non-root execution,
+controller credential isolation, absence of the Docker socket/application data,
+real native `moon run`, cancellation, and removal of detached descendants before
+completion. It cleans up only its own containers and temporary files.
+
+Native execution and real HTTP integration tests need the system C compiler but
+no Docker daemon:
+
+```sh
+moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
+```
+
+Dynamic provisioning, source checkout and automatic repository execution remain
+disabled. Step 4 will create these containers and deliver their assignments.

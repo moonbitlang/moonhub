@@ -136,6 +136,19 @@ async fn run_web() -> Unit {
 async fn main {
   let args = @env.args()
   match args.get(1) {
+    Some("runner") => {
+      let code = run_runner_cli(args[2:]) catch {
+        @runner.InvalidConfiguration(message) => {
+          @stdio.stderr.write("runner: \{message}\n")
+          2
+        }
+        _ => {
+          @stdio.stderr.write("runner: execution failed or was interrupted\n")
+          2
+        }
+      }
+      @sys.exit(code)
+    }
     Some(
       "ssh-authorized-key"
       | "ssh-serve"

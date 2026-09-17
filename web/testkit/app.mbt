@@ -190,7 +190,7 @@ pub async fn with_production_test_app(
   defer @test_support.database_test_slot.release()
   @async.with_task_group(group => {
     let pool = @database.new_db_pool({ path: ":memory:", }, group) catch {
-      err => abort("database open failed: \{err}")
+      err => abort("database open failed: \{(err : Error)}")
     }
     defer pool.close()
     @database.initialize_db(pool) catch {

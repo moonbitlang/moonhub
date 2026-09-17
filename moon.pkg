@@ -15,6 +15,11 @@ import {
   "moonbitlang/core/string",
   "moonbitlang/x/sys",
   "hackwaly/moonhub/web",
+  "hackwaly/moonhub/runner",
+  "hackwaly/moonhub/pipeline/protocol" @runner_protocol,
+  "moonbitlang/async/signal",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
 }
 
 import {

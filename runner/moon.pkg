@@ -1,0 +1,20 @@
+import {
+  "hackwaly/moonhub/pipeline/protocol",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/async/http",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+import {
+  "hackwaly/moonhub/test_support",
+} for "wbtest"
+
+supported_targets = "native"
+
+options(
+  "native-stub": [ "native.c" ],
+)
