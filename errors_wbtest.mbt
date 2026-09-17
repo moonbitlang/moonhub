@@ -190,7 +190,7 @@ async test "all form entry points reject oversized or invalid UTF8 bodies safely
   with_ssh_settings_app((port, _, _, _, admin) => {
     for
       path in [
-        "/login", "/change-password", "/teams", "/teams/alice/invitations",
+        "/-/login", "/-/change-password", "/-/teams", "/teams/alice/invitations",
       ] {
       for
         (body, message) in [
@@ -215,10 +215,10 @@ async test "all form entry points reject oversized or invalid UTF8 bodies safely
 async test "duplicate teams preserve the original team and owner" {
   with_ssh_settings_app((port, pool, _, _, admin) => {
     let form = "name_key=organization&display_name=Original"
-    let (created, _) = http_post_path_with_cookie(port, "/teams", form, admin)
+    let (created, _) = http_post_path_with_cookie(port, "/-/teams", form, admin)
     assert_eq(created.code, 303)
     let (duplicate, body) = http_post_path_with_cookie(
-      port, "/teams", "name_key=organization&display_name=Changed", admin,
+      port, "/-/teams", "name_key=organization&display_name=Changed", admin,
     )
     assert_eq(duplicate.code, 400)
     assert_true(body.contains("team already exists"))

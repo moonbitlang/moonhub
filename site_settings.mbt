@@ -6,7 +6,7 @@ fn site_settings_module(assets : Map[String, String]) -> @moonback.Module {
       .config()
       .get_custom(config_ssh_addresses)
       .unwrap_or(no_ssh_address_config)
-    ctx.get("/admin/settings/ssh", async fn(req, res) {
+    ctx.get("/-/admin/settings/ssh", async fn(req, res) {
       let actor = require_current_user(req)
       guard actor.is_site_admin else {
         raise Forbidden(message="site administrator required")
@@ -31,7 +31,7 @@ fn site_settings_module(assets : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/admin/settings/ssh", async fn(req, res) {
+    ctx.post("/-/admin/settings/ssh", async fn(req, res) {
       let actor = require_current_user(req)
       guard actor.is_site_admin else {
         raise Forbidden(message="site administrator required")
@@ -65,10 +65,10 @@ fn site_settings_module(assets : Map[String, String]) -> @moonback.Module {
       }
       res.send_void(
         status=303,
-        headers=private_page_headers(location="/admin/settings/ssh?saved=1"),
+        headers=private_page_headers(location="/-/admin/settings/ssh?saved=1"),
       )
     })
-    ctx.post("/admin/settings/mail", async fn(req, res) {
+    ctx.post("/-/admin/settings/mail", async fn(req, res) {
       let actor = require_current_user(req)
       guard actor.is_site_admin else {
         raise Forbidden(message="site administrator required")
@@ -104,7 +104,7 @@ fn site_settings_module(assets : Map[String, String]) -> @moonback.Module {
       res.send_void(
         status=303,
         headers=private_page_headers(
-          location="/admin/settings/ssh?saved_mail=1",
+          location="/-/admin/settings/ssh?saved_mail=1",
         ),
       )
     })
@@ -171,7 +171,7 @@ fn render_ssh_settings(
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
       b <+
-        "<form class=\"form-stack\" data-ssh-address-form method=\"post\" action=\"/admin/settings/ssh\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><fieldset class=\"ssh-address-fields\""
+        "<form class=\"form-stack\" data-ssh-address-form method=\"post\" action=\"/-/admin/settings/ssh\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><fieldset class=\"ssh-address-fields\""
       if locked {
         b <+ " disabled"
       }
@@ -197,7 +197,7 @@ fn render_ssh_settings(
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
       b <+
-        "<form class=\"form-stack\" method=\"post\" action=\"/admin/settings/mail\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{mail_csrf}\"><fieldset class=\"mail-fields\"><legend>SMTP delivery</legend><div class=\"field\"><label for=\"mail-transport\"><span>Transport</span></label><select id=\"mail-transport\" name=\"transport\"><option value=\"file\""
+        "<form class=\"form-stack\" method=\"post\" action=\"/-/admin/settings/mail\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{mail_csrf}\"><fieldset class=\"mail-fields\"><legend>SMTP delivery</legend><div class=\"field\"><label for=\"mail-transport\"><span>Transport</span></label><select id=\"mail-transport\" name=\"transport\"><option value=\"file\""
       if mail_values["transport"] == "file" {
         b <+ " selected"
       }

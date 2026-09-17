@@ -19,7 +19,7 @@ async test "team invitations accepted out of order reference the correct users" 
     let second_other_cookie = login_test_user(port, "second", password)
     let second_invitation = lookup_invitation_session(pool, second_cookie.value).unwrap()
     let (accepted, body) = http_post_path_with_cookie(
-      port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+      port, "/-/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
       second_cookie,
     )
     assert_eq(accepted.code, 303, msg=body)
@@ -58,7 +58,7 @@ async test "team invitations accepted out of order reference the correct users" 
     assert_true(second_login.invitation is None)
     assert_eq(lookup_session_user(pool, second_login.token).unwrap().id, 4L)
     let (accepted, body) = http_post_path_with_cookie(
-      port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+      port, "/-/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
       first_cookie,
     )
     assert_eq(accepted.code, 303, msg=body)
@@ -137,7 +137,7 @@ async test "root activation records acceptance when user and invitation sequence
     let cookie = login_test_user(port, "new-root", password)
     let invitation = lookup_invitation_session(pool, cookie.value).unwrap()
     let (accepted, body) = http_post_path_with_cookie(
-      port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+      port, "/-/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
       cookie,
     )
     assert_eq(accepted.code, 303, msg=body)
@@ -414,7 +414,7 @@ async test "accepting an invitation whose identity was claimed returns a public 
         )
       })
       let (response, body) = http_post_path_with_cookie(
-        port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+        port, "/-/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
         cookie,
       )
       assert_eq(response.code, 400)

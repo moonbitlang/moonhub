@@ -50,9 +50,12 @@ async test "initializes app module" {
 }
 
 ///|
-test "assets is a reserved repository owner" {
+test "assets and the route separator are reserved repository owners" {
   assert_true(valid_repo_owner("alice"))
   assert_true(!valid_repo_owner(PUBLIC_ASSETS_OWNER))
+  assert_true(!valid_repo_owner(RESERVED_PATH_SEGMENT))
+  assert_true(valid_repo_name("alice"))
+  assert_true(!valid_repo_name(RESERVED_PATH_SEGMENT))
 }
 
 ///|
@@ -357,7 +360,7 @@ async fn login_test_user(
   let client = @http.Client("http://127.0.0.1:\{port}")
   defer client.close()
   let response = client.post(
-    "/login",
+    "/-/login",
     "name_key=\{name_key}&password=\{password}",
     extra_headers={ "Content-Type": "application/x-www-form-urlencoded" },
   )
@@ -501,7 +504,7 @@ async test "root invitation creates team and revoked team invitation cannot sign
       port, test_auth_name_key, test_auth_password,
     )
     let (change_response, _) = http_post_path_with_cookie(
-      port, "/change-password", "new_password=changedPassword123&confirm_password=changedPassword123",
+      port, "/-/change-password", "new_password=changedPassword123&confirm_password=changedPassword123",
       root_invitation_cookie,
     )
     assert_eq(change_response.code, 303)
@@ -510,13 +513,13 @@ async test "root invitation creates team and revoked team invitation cannot sign
       port, test_auth_name_key, "changedPassword123",
     )
     let (teams_response, teams_body) = http_get_path_with_cookie(
-      port, "/teams", root_cookie,
+      port, "/-/teams", root_cookie,
     )
     assert_eq(teams_response.code, 200)
     assert_true(teams_body.contains("New team"))
 
     let (create_response, _) = http_post_path_with_cookie(
-      port, "/teams", "name_key=moonhub_test_team&display_name=Moonhub%20Test%20Team",
+      port, "/-/teams", "name_key=moonhub_test_team&display_name=Moonhub%20Test%20Team",
       root_cookie,
     )
     assert_eq(create_response.code, 303)
@@ -659,7 +662,7 @@ async test "root invitation creates team and revoked team invitation cannot sign
     let client = @http.Client("http://127.0.0.1:\{port}")
     defer client.close()
     let denied = client.post(
-      "/login",
+      "/-/login",
       "name_key=moonhub_invited_admin&password=\{one_time_password}",
       extra_headers={ "Content-Type": "application/x-www-form-urlencoded" },
     )

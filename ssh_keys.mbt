@@ -91,14 +91,14 @@ fn requested_ssh_key_id(req : @moonback.Request) -> Int64 raise AppError {
 fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
   Module(ctx => {
     let pool = db_pool(ctx)
-    ctx.get("/settings/ssh-keys", async fn(req, res) {
+    ctx.get("/-/settings/ssh-keys", async fn(req, res) {
       let user = require_current_user(req)
       res.send_html(
         render_user_ssh_keys(asset_path_map, user, user_ssh_keys(pool, user)),
         headers=private_page_headers(),
       )
     })
-    ctx.get("/settings/ssh-keys/new", async fn(req, res) {
+    ctx.get("/-/settings/ssh-keys/new", async fn(req, res) {
       let user = require_current_user(req)
       res.send_html(
         render_new_ssh_key(
@@ -112,7 +112,7 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/settings/ssh-keys", async fn(req, res) {
+    ctx.post("/-/settings/ssh-keys", async fn(req, res) {
       let user = require_current_user(req)
       let form = protected_form(req, "ssh-key-settings")
       let title = form.get("title").unwrap_or("").trim().to_owned()
@@ -149,10 +149,10 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
       }
       res.send_void(
         status=303,
-        headers=private_page_headers(location="/settings/ssh-keys"),
+        headers=private_page_headers(location="/-/settings/ssh-keys"),
       )
     })
-    ctx.get("/settings/ssh-keys/:key/revoke", async fn(req, res) {
+    ctx.get("/-/settings/ssh-keys/:key/revoke", async fn(req, res) {
       let user = require_current_user(req)
       let key = own_active_ssh_key(pool, user, requested_ssh_key_id(req))
       res.send_html(
@@ -165,13 +165,13 @@ fn ssh_keys_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/settings/ssh-keys/:key/revoke", async fn(req, res) {
+    ctx.post("/-/settings/ssh-keys/:key/revoke", async fn(req, res) {
       let user = require_current_user(req)
       let _ = protected_form(req, "ssh-key-settings")
       revoke_own_ssh_key(pool, user, requested_ssh_key_id(req))
       res.send_void(
         status=303,
-        headers=private_page_headers(location="/settings/ssh-keys"),
+        headers=private_page_headers(location="/-/settings/ssh-keys"),
       )
     })
   })

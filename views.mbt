@@ -57,13 +57,13 @@ fn render_site_header(
     match current_user {
       Some(user) => {
         b <+
-          "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
+          "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/-/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/-/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/-/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
         if user.is_site_admin {
           b <+
-            "<a href=\"/admin/settings/ssh\" aria-label=\"Site settings\"><span class=\"ui-icon\" data-icon=\"settings\" aria-hidden=\"true\"></span>Site settings</a>"
+            "<a href=\"/-/admin/settings/ssh\" aria-label=\"Site settings\"><span class=\"ui-icon\" data-icon=\"settings\" aria-hidden=\"true\"></span>Site settings</a>"
         }
         b <+
-          "<form class=\"logout-form\" method=\"post\" action=\"/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
+          "<form class=\"logout-form\" method=\"post\" action=\"/-/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
       }
       None => ()
     }
@@ -94,7 +94,7 @@ fn render_index(
           "<a class=\"button-link\" href=\"/teams/\{owner}/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a>"
       }
       b <+
-        "<a class=\"secondary-button button-link\" href=\"/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div>"
+        "<a class=\"secondary-button button-link\" href=\"/-/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div>"
       if repos.is_empty() {
         b <+
           "<div class=\"empty-state\"><span class=\"empty-icon ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span><h2>No repositories yet</h2>"
@@ -102,7 +102,7 @@ fn render_index(
           b <+
             "<a href=\"/teams/\{owner}/repositories/new\">Create your first repository</a>"
         }
-        b <+ "<a href=\"/teams\">Browse your teams</a></div>"
+        b <+ "<a href=\"/-/teams\">Browse your teams</a></div>"
       } else {
         b <+
           "<section data-filter-list><div class=\"list-toolbar\"><label class=\"search-field\" hidden inert data-filter-control><span class=\"ui-icon\" data-icon=\"search\" aria-hidden=\"true\"></span><input type=\"search\" data-list-filter placeholder=\"Find a repository...\" aria-label=\"Find a repository\"></label><span class=\"list-total\" data-list-total>\{repos.length().to_string()} repositories</span></div><ul class=\"repository-list\">"
@@ -375,7 +375,7 @@ fn render_login(
         None => ()
       }
       b <+
-        #|<form class="form-stack" method="post" action="/login">
+        #|<form class="form-stack" method="post" action="/-/login">
         #|<label class="field"><span>Username</span><input name="name_key" autocomplete="username" required></label>
         #|<label class="field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
         #|<p class="form-actions"><button type="submit">Sign in</button></p>
@@ -407,7 +407,7 @@ fn render_change_password(
         None => ()
       }
       b <+
-        #|<form class="form-stack" method="post" action="/change-password">
+        #|<form class="form-stack" method="post" action="/-/change-password">
         #|<label class="field"><span>New password</span><input type="password" name="new_password" autocomplete="new-password" minlength="8" required></label>
         #|<label class="field"><span>Confirm new password</span><input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required></label>
         #|<p class="form-actions"><button type="submit">Change password</button></p>
@@ -438,7 +438,7 @@ fn render_invitation_password(
         None => ()
       }
       b <+
-        #|<form class="form-stack" method="post" action="/change-password">
+        #|<form class="form-stack" method="post" action="/-/change-password">
         #|<label class="field"><span>New password</span><input type="password" name="new_password" autocomplete="new-password" minlength="8" required></label>
         #|<label class="field"><span>Confirm new password</span><input type="password" name="confirm_password" autocomplete="new-password" minlength="8" required></label>
         #|<p class="form-actions"><button type="submit">Set password</button></p>
@@ -464,7 +464,7 @@ fn render_teams(
         #|<div class="heading-title"><h1>Teams</h1></div>
       if user.is_site_admin {
         b <+
-          "<a class=\"button-link\" href=\"/teams/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New team</a>"
+          "<a class=\"button-link\" href=\"/-/teams/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New team</a>"
       }
       b <+ "</section>"
       match message {
@@ -510,7 +510,7 @@ fn render_new_team(
         #|<section class="page-heading">
         #|<h1>New team</h1>
         #|</section>
-        #|<section class="panel"><form class="form-stack" method="post" action="/teams">
+        #|<section class="panel"><form class="form-stack" method="post" action="/-/teams">
       match message {
         Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
         None => ()

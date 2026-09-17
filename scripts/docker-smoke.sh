@@ -53,7 +53,7 @@ class SettingsParser(HTMLParser):
             self.value = attributes.get("value")
         if sys.argv[1] == "revoke" and tag == "a":
             href = attributes.get("href", "")
-            if href.startswith("/settings/ssh-keys/") and href.endswith("/revoke"):
+            if href.startswith("/-/settings/ssh-keys/") and href.endswith("/revoke"):
                 self.value = href
         if sys.argv[1] == "status" and tag == "p" and "repository-job-state" in attributes.get("class", ""):
             self.in_status = True

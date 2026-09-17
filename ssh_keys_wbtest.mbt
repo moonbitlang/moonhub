@@ -31,7 +31,7 @@ async fn with_ssh_settings_app(
 ///|
 async fn settings_form_token(port : Int, cookie : @http.Cookie) -> String {
   let (response, body) = http_get_path_with_cookie(
-    port, "/settings/ssh-keys/new", cookie,
+    port, "/-/settings/ssh-keys/new", cookie,
   )
   assert_eq(response.code, 200)
   assert_true(response.headers.get("cache-control") is Some("no-store"))
@@ -61,26 +61,28 @@ async test "users add and revoke their own SSH keys through the web UI" {
     let encoded_key = test_ssh_public_key.replace(old=" ", new="%20")
     let (response, _) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys",
+      "/-/settings/ssh-keys",
       "csrf_token=\{token}&title=Laptop&public_key=\{encoded_key}&user_id=2&user=bob",
       alice,
     )
     assert_eq(response.code, 303)
-    assert_true(response.headers.get("location") is Some("/settings/ssh-keys"))
+    assert_true(
+      response.headers.get("location") is Some("/-/settings/ssh-keys"),
+    )
     let user = active_user_by_name(pool, "alice")
     let keys = user_ssh_keys(pool, user)
     assert_eq(keys.length(), 1)
     assert_eq(keys[0].title, "Laptop")
     assert_eq(user_ssh_keys(pool, active_user_by_name(pool, "bob")).length(), 0)
     let (list, body) = http_get_path_with_cookie(
-      port, "/settings/ssh-keys", alice,
+      port, "/-/settings/ssh-keys", alice,
     )
     assert_eq(list.code, 200)
     assert_true(body.contains("Laptop"))
     assert_true(body.contains(keys[0].fingerprint))
     assert_true(body.contains("Never"))
     assert_true(body.contains("1 active"))
-    let path = "/settings/ssh-keys/\{keys[0].id}/revoke"
+    let path = "/-/settings/ssh-keys/\{keys[0].id}/revoke"
     let (confirm, confirm_body) = http_get_path_with_cookie(port, path, alice)
     assert_eq(confirm.code, 200)
     assert_true(confirm_body.contains("Revocation cannot be undone."))
@@ -101,7 +103,7 @@ async test "users add and revoke their own SSH keys through the web UI" {
       is None,
     )
     let (_, after) = http_get_path_with_cookie(
-      port, "/settings/ssh-keys", alice,
+      port, "/-/settings/ssh-keys", alice,
     )
     assert_true(after.contains("0 active"))
     assert_true(after.contains("Revoked"))
@@ -126,11 +128,11 @@ async test "neither another user nor a site administrator can manage someone els
       "Alice private title",
       key,
     )
-    let path = "/settings/ssh-keys/\{id}/revoke"
+    let path = "/-/settings/ssh-keys/\{id}/revoke"
     for cookie in [bob, admin] {
       let token = settings_form_token(port, cookie)
       let (listed, body) = http_get_path_with_cookie(
-        port, "/settings/ssh-keys", cookie,
+        port, "/-/settings/ssh-keys", cookie,
       )
       assert_eq(listed.code, 200)
       assert_true(!body.contains("Alice private title"))
@@ -163,7 +165,7 @@ async test "SSH key mutation rejects missing forged and different-session CSRF t
     for token in ["", "forged", foreign, stale] {
       let (response, _) = http_post_path_with_cookie(
         port,
-        "/settings/ssh-keys",
+        "/-/settings/ssh-keys",
         "csrf_token=\{token}&title=Laptop&public_key=\{public_key}",
         alice,
       )
@@ -181,7 +183,7 @@ async test "SSH key mutation rejects missing forged and different-session CSRF t
     )
     let (response, _) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys/\{id}/revoke",
+      "/-/settings/ssh-keys/\{id}/revoke",
       "",
       alice,
     )
@@ -199,7 +201,7 @@ async test "cross-site and oversized requests cannot add SSH keys" {
     let token = settings_form_token(port, alice)
     let client = @http.Client("http://127.0.0.1:\{port}")
     defer client.close()
-    let response = client.post("/settings/ssh-keys", "csrf_token=\{token}", extra_headers={
+    let response = client.post("/-/settings/ssh-keys", "csrf_token=\{token}", extra_headers={
       "Cookie": "\{alice.name}=\{alice.value}",
       "Sec-Fetch-Site": "cross-site",
       "Content-Type": "application/x-www-form-urlencoded",
@@ -208,7 +210,7 @@ async test "cross-site and oversized requests cannot add SSH keys" {
     assert_eq(response.code, 403)
     let (large, _) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys",
+      "/-/settings/ssh-keys",
       "x".repeat(65537),
       alice,
     )
@@ -227,7 +229,7 @@ async test "invalid and duplicate keys preserve form names but never echo privat
     let prefix = "csrf_token=\{token}&title=Work%20laptop&public_key="
     let (invalid, invalid_body) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys",
+      "/-/settings/ssh-keys",
       prefix + "invalid",
       alice,
     )
@@ -237,7 +239,7 @@ async test "invalid and duplicate keys preserve form names but never echo privat
     let private_key = "-----BEGIN%20OPENSSH%20PRIVATE%20KEY-----%0Anever-echo-this-secret%0A-----END%20OPENSSH%20PRIVATE%20KEY-----"
     let (private_response, private_body) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys",
+      "/-/settings/ssh-keys",
       prefix + private_key,
       alice,
     )
@@ -253,7 +255,7 @@ async test "invalid and duplicate keys preserve form names but never echo privat
     )
     let (duplicate, duplicate_body) = http_post_path_with_cookie(
       port,
-      "/settings/ssh-keys",
+      "/-/settings/ssh-keys",
       prefix + test_ssh_public_key.replace(old=" ", new="%20"),
       alice,
     )
@@ -276,7 +278,7 @@ async test "key names are HTML escaped in lists and revoke confirmation" {
       "<img src=x onerror=alert(1)>",
       parse_ssh_public_key(test_ssh_public_key),
     )
-    for path in ["/settings/ssh-keys", "/settings/ssh-keys/\{id}/revoke"] {
+    for path in ["/-/settings/ssh-keys", "/-/settings/ssh-keys/\{id}/revoke"] {
       let (response, body) = http_get_path_with_cookie(port, path, alice)
       assert_eq(response.code, 200)
       assert_true(!body.contains("<img"))
@@ -290,11 +292,11 @@ async test "SSH key settings require a full active login" {
   with_ssh_settings_app((port, pool, alice, _, _) => {
     for
       path in [
-        "/settings/ssh-keys", "/settings/ssh-keys/new", "/settings/ssh-keys/1/revoke",
+        "/-/settings/ssh-keys", "/-/settings/ssh-keys/new", "/-/settings/ssh-keys/1/revoke",
       ] {
       let (response, _) = http_get_path(port, path)
       assert_eq(response.code, 303)
-      assert_true(response.headers.get("location") is Some("/login"))
+      assert_true(response.headers.get("location") is Some("/-/login"))
     }
     pool.with_client(client => {
       let _ = client.execute(
@@ -302,19 +304,19 @@ async test "SSH key settings require a full active login" {
       )
     })
     let (disabled, _) = http_get_path_with_cookie(
-      port, "/settings/ssh-keys", alice,
+      port, "/-/settings/ssh-keys", alice,
     )
     assert_eq(disabled.code, 303)
-    assert_true(disabled.headers.get("location") is Some("/login"))
+    assert_true(disabled.headers.get("location") is Some("/-/login"))
   })
   with_production_test_app((_, port, _) => {
     let invitation = login_test_user(
       port, test_auth_name_key, test_auth_password,
     )
     let (response, _) = http_get_path_with_cookie(
-      port, "/settings/ssh-keys/new", invitation,
+      port, "/-/settings/ssh-keys/new", invitation,
     )
     assert_eq(response.code, 303)
-    assert_true(response.headers.get("location") is Some("/change-password"))
+    assert_true(response.headers.get("location") is Some("/-/change-password"))
   })
 }

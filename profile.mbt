@@ -59,7 +59,7 @@ fn update_display_name(
 fn profile_module(asset_path_map : Map[String, String]) -> @moonback.Module {
   Module(ctx => {
     let pool = db_pool(ctx)
-    ctx.get("/settings/profile", async fn(req, res) {
+    ctx.get("/-/settings/profile", async fn(req, res) {
       let user = require_current_user(req)
       let profile = user_profile(pool, user)
       res.send_html(
@@ -75,7 +75,7 @@ fn profile_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/settings/profile", async fn(req, res) {
+    ctx.post("/-/settings/profile", async fn(req, res) {
       let user = require_current_user(req)
       let form = protected_form(req, "profile-settings")
       let display_name = form
@@ -113,7 +113,7 @@ fn profile_module(asset_path_map : Map[String, String]) -> @moonback.Module {
           update_display_name(pool, user, display_name)
           res.send_void(
             status=303,
-            headers=private_page_headers(location="/settings/profile?saved=1"),
+            headers=private_page_headers(location="/-/settings/profile?saved=1"),
           )
         }
       }

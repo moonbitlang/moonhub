@@ -104,12 +104,12 @@ async test "the personal namespace migration backfills existing accounts and kee
 ///|
 async test "the teams page lists the signed-in user's personal namespace" {
   with_ssh_settings_app((port, _, alice, bob, _) => {
-    let (response, body) = http_get_path_with_cookie(port, "/teams", alice)
+    let (response, body) = http_get_path_with_cookie(port, "/-/teams", alice)
     assert_eq(response.code, 200)
     assert_true(body.contains("href=\"/teams/alice\""))
     assert_true(body.contains("<td class=\"muted\">Personal</td>"))
     assert_true(!body.contains("href=\"/teams/bob\""))
-    let (_, bob_body) = http_get_path_with_cookie(port, "/teams", bob)
+    let (_, bob_body) = http_get_path_with_cookie(port, "/-/teams", bob)
     assert_true(bob_body.contains("href=\"/teams/bob\""))
     assert_true(!bob_body.contains("href=\"/teams/alice\""))
   })

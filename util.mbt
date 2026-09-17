@@ -24,8 +24,19 @@ fn valid_segment(s : String) -> Bool {
 const PUBLIC_ASSETS_OWNER : String = "assets"
 
 ///|
+/// Path segment that separates framework routes from namespaces and
+/// repositories: global pages live under `/-/`, namespace pages under
+/// `/<namespace>/-/`. It is never a namespace or repository name.
+const RESERVED_PATH_SEGMENT : String = "-"
+
+///|
 fn valid_repo_owner(s : String) -> Bool {
-  valid_segment(s) && s != PUBLIC_ASSETS_OWNER
+  valid_segment(s) && s != PUBLIC_ASSETS_OWNER && s != RESERVED_PATH_SEGMENT
+}
+
+///|
+fn valid_repo_name(s : String) -> Bool {
+  valid_segment(s) && s != RESERVED_PATH_SEGMENT
 }
 
 ///|

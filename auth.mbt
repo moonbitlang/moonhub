@@ -82,7 +82,7 @@ fn login_headers(token : String, location : String) -> @moonback.Headers {
 ///|
 fn logout_headers() -> @moonback.Headers {
   let headers = @moonback.MutHeaders()
-  headers.set("location", "/login")
+  headers.set("location", "/-/login")
   headers.add_set_cookie(clear_session_cookie())
   headers.to_immut()
 }
@@ -173,21 +173,22 @@ fn auth_middleware(pool : Database) -> @moonback.Middleware {
 fn require_login_middleware() -> @moonback.Middleware {
   Middleware(next => {
     (req, res) => {
-      if req.path == "/login" {
+      if req.path == "/-/login" {
         next(req, res)
       } else if current_invitation_from_request(req) is Some(_) {
-        if req.path == "/change-password" || req.path == "/logout" {
+        if req.path == "/-/change-password" || req.path == "/-/logout" {
           next(req, res)
         } else {
           res.send_void(
             status=303,
-            headers=redirect_headers("/change-password"),
+            headers=redirect_headers("/-/change-password"),
           )
         }
       } else {
         match current_user_from_request(req) {
           Some(_) => next(req, res)
-          None => res.send_void(status=303, headers=redirect_headers("/login"))
+          None =>
+            res.send_void(status=303, headers=redirect_headers("/-/login"))
         }
       }
     }
@@ -198,7 +199,7 @@ fn require_login_middleware() -> @moonback.Middleware {
 fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
   Module(ctx => {
     let pool = db_pool(ctx)
-    ctx.get("/login", async fn(req, res) {
+    ctx.get("/-/login", async fn(req, res) {
       match current_user_from_request(req) {
         Some(_) => res.send_void(status=303, headers=redirect_headers("/"))
         None =>
@@ -206,20 +207,20 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
             Some(_) =>
               res.send_void(
                 status=303,
-                headers=redirect_headers("/change-password"),
+                headers=redirect_headers("/-/change-password"),
               )
             None => res.send_html(render_login(asset_path_map, None))
           }
       }
     })
-    ctx.post("/login", async fn(req, res) {
+    ctx.post("/-/login", async fn(req, res) {
       let form = read_form(req)
       let name_key = required_form_value(form, "name_key", "name_key")
       let password = required_form_value(form, "password", "password")
       match authenticate_user(pool, name_key, password) {
         Some(login) => {
           let location = if login.invitation is Some(_) {
-            "/change-password"
+            "/-/change-password"
           } else {
             "/"
           }
@@ -235,7 +236,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
           )
       }
     })
-    ctx.get("/change-password", async fn(req, res) {
+    ctx.get("/-/change-password", async fn(req, res) {
       match current_user_from_request(req) {
         Some(user) =>
           res.send_html(
@@ -249,7 +250,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         }
       }
     })
-    ctx.post("/change-password", async fn(req, res) {
+    ctx.post("/-/change-password", async fn(req, res) {
       let form = read_form(req)
       let new_password = required_form_value(
         form, "new_password", "new password",
@@ -291,7 +292,7 @@ fn auth_module(asset_path_map : Map[String, String]) -> @moonback.Module {
         }
       }
     })
-    ctx.post("/logout", async fn(req, res) {
+    ctx.post("/-/logout", async fn(req, res) {
       match req.cookie().get(session_cookie_name) {
         Some(token) => revoke_session(pool, token)
         None => ()

@@ -12,10 +12,10 @@ repository creation/import, persistence, and the end-to-end smoke test.
 Repositories must be registered in the database before authenticated users can
 access them. The same repository permissions apply to SSH and browser access.
 Signed-in users can add, inspect, and revoke their own SSH keys from the
-**SSH keys** link in the site header (`/settings/ssh-keys`), and change their
-display name from **Profile** (`/settings/profile`). Usernames identify
+**SSH keys** link in the site header (`/-/settings/ssh-keys`), and change their
+display name from **Profile** (`/-/settings/profile`). Usernames identify
 repository namespaces, so they are fixed for the life of the account.
-Site administrators reach **Site settings** (`/admin/settings/ssh`) from the
+Site administrators reach **Site settings** (`/-/admin/settings/ssh`) from the
 **Administration** group in the sidebar of any page, or from the site header
 account menu, and configure the client-facing hostname and port there.
 Repository pages provide a

@@ -84,7 +84,7 @@ async test "only site administrators can reveal invitation emails without exposi
     let password = email.body[start:end].to_owned()
     let guest_cookie = login_test_user(port, "guest", password)
     let (accepted, _) = http_post_path_with_cookie(
-      port, "/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
+      port, "/-/change-password", "new_password=AcceptedPassword123&confirm_password=AcceptedPassword123",
       guest_cookie,
     )
     assert_eq(accepted.code, 303)
@@ -146,7 +146,7 @@ async test "revealing invitation credentials requires an active admin session an
       session_cookie("invalid-session"),
     )
     assert_eq(anonymous.code, 303)
-    assert_true(anonymous.headers.get("location") is Some("/login"))
+    assert_true(anonymous.headers.get("location") is Some("/-/login"))
     let invitation_cookie = pool.with_client(client => {
       client.with_transaction(tx => {
         session_cookie(create_invitation_session_token(tx, id))
@@ -156,7 +156,7 @@ async test "revealing invitation credentials requires an active admin session an
       port, path, "", invitation_cookie,
     )
     assert_eq(invited.code, 303)
-    assert_true(invited.headers.get("location") is Some("/change-password"))
+    assert_true(invited.headers.get("location") is Some("/-/change-password"))
     pool.with_client(client => {
       let _ = client.execute(
         "UPDATE \"user\" SET is_site_admin = 0 WHERE id = 3",
@@ -181,7 +181,7 @@ async test "revealing invitation credentials requires an active admin session an
       admin,
     )
     assert_eq(disabled.code, 303)
-    assert_true(disabled.headers.get("location") is Some("/login"))
+    assert_true(disabled.headers.get("location") is Some("/-/login"))
   })
 }
 

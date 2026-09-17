@@ -7,21 +7,23 @@ fn smtp_settings_form(csrf : String, password : String) -> String {
 async test "site administrators configure SMTP settings from the settings page" {
   with_ssh_settings_app((port, pool, alice, _, admin) => {
     let (page, body) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", admin,
+      port, "/-/admin/settings/ssh", admin,
     )
     assert_eq(page.code, 200)
     assert_true(body.contains("Email delivery"))
-    let csrf = extract_attr(body, "action=\"/admin/settings/mail\"", "value=\"")
+    let csrf = extract_attr(
+      body, "action=\"/-/admin/settings/mail\"", "value=\"",
+    )
     let (denied, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       smtp_settings_form(csrf, "secret"),
       alice,
     )
     assert_eq(denied.code, 403)
     let (invalid, invalid_body) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       smtp_settings_form(csrf, ""),
       admin,
     )
@@ -30,13 +32,14 @@ async test "site administrators configure SMTP settings from the settings page" 
     assert_true(invalid_body.contains("value=\"smtp.example.com\""))
     let (saved, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       smtp_settings_form(csrf, "secret"),
       admin,
     )
     assert_eq(saved.code, 303)
     assert_true(
-      saved.headers.get("location") is Some("/admin/settings/ssh?saved_mail=1"),
+      saved.headers.get("location")
+      is Some("/-/admin/settings/ssh?saved_mail=1"),
     )
     let settings = load_mail_settings(pool)
     assert_eq(settings.transport, "smtp")
@@ -57,14 +60,14 @@ async test "site administrators configure SMTP settings from the settings page" 
     }
     let (saved_again, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       smtp_settings_form(csrf, ""),
       admin,
     )
     assert_eq(saved_again.code, 303)
     assert_eq(load_mail_settings(pool).smtp.password, "secret")
     let (_, after) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh?saved_mail=1", admin,
+      port, "/-/admin/settings/ssh?saved_mail=1", admin,
     )
     assert_true(!after.contains("secret"))
     assert_true(after.contains("Password is configured"))
@@ -76,13 +79,13 @@ async test "site administrators configure SMTP settings from the settings page" 
 async test "SMTP settings enforce CSRF and reject invalid fields without storing or exposing passwords" {
   with_ssh_settings_app((port, pool, alice, _, admin) => {
     let (_, body) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", admin,
+      port, "/-/admin/settings/ssh", admin,
     )
     let token = extract_attr(
-      body, "action=\"/admin/settings/mail\"", "value=\"",
+      body, "action=\"/-/admin/settings/mail\"", "value=\"",
     )
     let wrong_scope = extract_attr(
-      body, "action=\"/admin/settings/ssh\"", "value=\"",
+      body, "action=\"/-/admin/settings/ssh\"", "value=\"",
     )
     for
       csrf in [
@@ -93,7 +96,7 @@ async test "SMTP settings enforce CSRF and reject invalid fields without storing
       ] {
       let (response, _) = http_post_path_with_cookie(
         port,
-        "/admin/settings/mail",
+        "/-/admin/settings/mail",
         smtp_settings_form(csrf, "hidden-password"),
         admin,
       )
@@ -116,7 +119,7 @@ async test "SMTP settings enforce CSRF and reject invalid fields without storing
       ] {
       let (response, html) = http_post_path_with_cookie(
         port,
-        "/admin/settings/mail",
+        "/-/admin/settings/mail",
         base.replace(old=field, new=invalid),
         admin,
       )
@@ -127,7 +130,7 @@ async test "SMTP settings enforce CSRF and reject invalid fields without storing
     }
     let client = @http.Client("http://127.0.0.1:\{port}")
     defer client.close()
-    let response = client.post("/admin/settings/mail", base, extra_headers={
+    let response = client.post("/-/admin/settings/mail", base, extra_headers={
       "Cookie": "\{admin.name}=\{admin.value}",
       "Sec-Fetch-Site": "cross-site",
       "Content-Type": "application/x-www-form-urlencoded",
@@ -278,20 +281,22 @@ async test "running mail worker picks up persisted SMTP changes for subsequent m
 async test "SMTP settings reject invalid security and TLS trust values" {
   with_ssh_settings_app((port, _, _, _, admin) => {
     let (_, body) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", admin,
+      port, "/-/admin/settings/ssh", admin,
     )
-    let csrf = extract_attr(body, "action=\"/admin/settings/mail\"", "value=\"")
+    let csrf = extract_attr(
+      body, "action=\"/-/admin/settings/mail\"", "value=\"",
+    )
     let base = smtp_settings_form(csrf, "secret")
     let (invalid_security, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       base.replace(old="smtp_security=tls", new="smtp_security=invalid"),
       admin,
     )
     assert_eq(invalid_security.code, 400)
     let (invalid_trust, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/mail",
+      "/-/admin/settings/mail",
       base.replace(old="smtp_tls_trust=system", new="smtp_tls_trust=invalid"),
       admin,
     )

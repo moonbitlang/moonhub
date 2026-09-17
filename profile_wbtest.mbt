@@ -1,7 +1,7 @@
 ///|
 async fn profile_form_token(port : Int, cookie : @http.Cookie) -> String {
   let (response, body) = http_get_path_with_cookie(
-    port, "/settings/profile", cookie,
+    port, "/-/settings/profile", cookie,
   )
   assert_eq(response.code, 200)
   assert_true(response.headers.get("cache-control") is Some("no-store"))
@@ -12,7 +12,7 @@ async fn profile_form_token(port : Int, cookie : @http.Cookie) -> String {
 async test "users change their own display name and never their username" {
   with_ssh_settings_app((port, pool, alice, _, _) => {
     let (page, body) = http_get_path_with_cookie(
-      port, "/settings/profile", alice,
+      port, "/-/settings/profile", alice,
     )
     assert_eq(page.code, 200)
     assert_true(body.contains("value=\"alice\" readonly"))
@@ -23,13 +23,13 @@ async test "users change their own display name and never their username" {
     let token = extract_attr(body, "name=\"csrf_token\"", "value=\"")
     let (saved, _) = http_post_path_with_cookie(
       port,
-      "/settings/profile",
+      "/-/settings/profile",
       "csrf_token=\{token}&name_key=bob&is_site_admin=1&username=root&display_name=Alice%20Liddell",
       alice,
     )
     assert_eq(saved.code, 303)
     assert_true(
-      saved.headers.get("location") is Some("/settings/profile?saved=1"),
+      saved.headers.get("location") is Some("/-/settings/profile?saved=1"),
     )
     let updated = active_user_by_name(pool, "alice")
     assert_eq(updated.display_name, "Alice Liddell")
@@ -41,11 +41,11 @@ async test "users change their own display name and never their username" {
       get_team_by_name_key(pool, "alice").unwrap().display_name,
       "Alice Liddell",
     )
-    let (list, list_body) = http_get_path_with_cookie(port, "/teams", alice)
+    let (list, list_body) = http_get_path_with_cookie(port, "/-/teams", alice)
     assert_eq(list.code, 200)
     assert_true(list_body.contains("Alice Liddell"))
     let (_, saved_body) = http_get_path_with_cookie(
-      port, "/settings/profile?saved=1", alice,
+      port, "/-/settings/profile?saved=1", alice,
     )
     assert_true(saved_body.contains("Profile saved."))
     assert_true(saved_body.contains("value=\"Alice Liddell\""))
@@ -68,7 +68,7 @@ async test "profile updates reject empty oversized or tokenless submissions" {
       ] {
       let (response, response_body) = http_post_path_with_cookie(
         port,
-        "/settings/profile",
+        "/-/settings/profile",
         "csrf_token=\{token}&\{body}",
         alice,
       )
@@ -79,7 +79,7 @@ async test "profile updates reject empty oversized or tokenless submissions" {
     for token in ["", "forged", foreign] {
       let (rejected, _) = http_post_path_with_cookie(
         port,
-        "/settings/profile",
+        "/-/settings/profile",
         "csrf_token=\{token}&display_name=Taken%20Over",
         alice,
       )
@@ -97,18 +97,18 @@ async test "profile updates reject empty oversized or tokenless submissions" {
 ///|
 async test "profile settings require a full active login" {
   with_ssh_settings_app((port, pool, alice, _, _) => {
-    let (anonymous, _) = http_get_path(port, "/settings/profile")
+    let (anonymous, _) = http_get_path(port, "/-/settings/profile")
     assert_eq(anonymous.code, 303)
-    assert_true(anonymous.headers.get("location") is Some("/login"))
+    assert_true(anonymous.headers.get("location") is Some("/-/login"))
     pool.with_client(client => {
       let _ = client.execute(
         "UPDATE \"user\" SET status = 'disabled' WHERE id = 1",
       )
     })
     let (disabled, _) = http_get_path_with_cookie(
-      port, "/settings/profile", alice,
+      port, "/-/settings/profile", alice,
     )
     assert_eq(disabled.code, 303)
-    assert_true(disabled.headers.get("location") is Some("/login"))
+    assert_true(disabled.headers.get("location") is Some("/-/login"))
   })
 }

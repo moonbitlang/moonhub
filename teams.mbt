@@ -47,19 +47,19 @@ fn require_team_member_access(
 fn teams_module(asset_path_map : Map[String, String]) -> @moonback.Module {
   Module(ctx => {
     let pool = db_pool(ctx)
-    ctx.get("/teams", async fn(req, res) {
+    ctx.get("/-/teams", async fn(req, res) {
       let actor = require_current_user(req)
       let teams = list_teams(pool, actor)
       res.send_html(render_teams(asset_path_map, actor, teams, None))
     })
-    ctx.get("/teams/new", async fn(req, res) {
+    ctx.get("/-/teams/new", async fn(req, res) {
       let actor = require_current_user(req)
       guard actor.is_site_admin else {
         raise Unauthorized(message="site admin required")
       }
       res.send_html(render_new_team(asset_path_map, actor, None))
     })
-    ctx.post("/teams", async fn(req, res) {
+    ctx.post("/-/teams", async fn(req, res) {
       let actor = require_current_user(req)
       guard actor.is_site_admin else {
         raise Unauthorized(message="site admin required")

@@ -53,14 +53,14 @@ test "SSH endpoints reject listen addresses credentials paths and invalid ports"
 ///|
 async test "SSH site settings require admin access and session-bound CSRF" {
   with_ssh_settings_app((port, pool, alice, _, admin) => {
-    let (anonymous, _) = http_get_path(port, "/admin/settings/ssh")
+    let (anonymous, _) = http_get_path(port, "/-/admin/settings/ssh")
     assert_eq(anonymous.code, 303)
     let (denied, _) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", alice,
+      port, "/-/admin/settings/ssh", alice,
     )
     assert_eq(denied.code, 403)
     let (page, body) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", admin,
+      port, "/-/admin/settings/ssh", admin,
     )
     assert_eq(page.code, 200)
     assert_true(page.headers.get("cache-control") is Some("no-store"))
@@ -69,7 +69,7 @@ async test "SSH site settings require admin access and session-bound CSRF" {
     for csrf in ["", "forged", wrong_scope] {
       let (rejected, _) = http_post_path_with_cookie(
         port,
-        "/admin/settings/ssh",
+        "/-/admin/settings/ssh",
         "csrf_token=\{csrf}&host=git.example.com&port=12222",
         admin,
       )
@@ -77,7 +77,7 @@ async test "SSH site settings require admin access and session-bound CSRF" {
     }
     let (forbidden, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/ssh",
+      "/-/admin/settings/ssh",
       "csrf_token=\{token}&host=git.example.com&port=12222",
       alice,
     )
@@ -85,14 +85,14 @@ async test "SSH site settings require admin access and session-bound CSRF" {
     assert_true(effective_ssh_endpoint(pool, no_ssh_address_config) is None)
     let (invalid, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/ssh",
+      "/-/admin/settings/ssh",
       "csrf_token=\{token}&host=0.0.0.0&port=22",
       admin,
     )
     assert_eq(invalid.code, 400)
     let (saved, _) = http_post_path_with_cookie(
       port,
-      "/admin/settings/ssh",
+      "/-/admin/settings/ssh",
       "csrf_token=\{token}&host=Git.Example.com&port=12222",
       admin,
     )
@@ -104,7 +104,7 @@ async test "SSH site settings require admin access and session-bound CSRF" {
     let client = @http.Client("http://127.0.0.1:\{port}")
     defer client.close()
     let cross_site = client.post(
-      "/admin/settings/ssh",
+      "/-/admin/settings/ssh",
       "csrf_token=\{token}&host=other.example&port=22",
       extra_headers={
         "Cookie": "\{admin.name}=\{admin.value}",
@@ -163,7 +163,7 @@ async test "deployment SSH endpoint override is visible readonly and authoritati
         "git.example.com:12222",
       )
       let (_, body) = http_get_path_with_cookie(
-        port, "/admin/settings/ssh", admin_cookie,
+        port, "/-/admin/settings/ssh", admin_cookie,
       )
       assert_true(body.contains("Managed by deployment configuration"))
       assert_true(body.contains("class=\"ssh-address-fields\" disabled"))
@@ -171,7 +171,7 @@ async test "deployment SSH endpoint override is visible readonly and authoritati
       let token = extract_attr(body, "name=\"csrf_token\"", "value=\"")
       let (locked, _) = http_post_path_with_cookie(
         port,
-        "/admin/settings/ssh",
+        "/-/admin/settings/ssh",
         "csrf_token=\{token}&host=other.example&port=22",
         admin_cookie,
       )

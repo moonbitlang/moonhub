@@ -70,14 +70,14 @@ the client. Users must have activated their account by accepting their invitatio
 before a key can be registered.
 
 Signed-in users can open **SSH keys** in the site header (or visit
-`/settings/ssh-keys`) to add and revoke their own keys. The page shows each key's
+`/-/settings/ssh-keys`) to add and revoke their own keys. The page shows each key's
 SHA256 fingerprint, creation time, last use, and revocation status. Revoking a key
 requires confirmation. These pages never expose another user's keys, including
 when the signed-in user is a site administrator. Mutations require a session-bound
 CSRF token.
 
 Accounts change their own display name under **Profile** in the site header (or
-`/settings/profile`). The username is read-only there because it names the
+`/-/settings/profile`). The username is read-only there because it names the
 account's personal repository namespace.
 
 Operators can still administer keys through the container CLI:
@@ -251,7 +251,7 @@ MOONHUB_HTTP_PORT=8090 MOONHUB_SSH_PORT=2223 docker compose up -d --wait
 ### Public SSH Address
 
 Site administrators can open **Site settings** from the **Administration**
-group in the sidebar, or from the account menu (`/admin/settings/ssh`),
+group in the sidebar, or from the account menu (`/-/admin/settings/ssh`),
 and save the hostname/IP and port that clients can reach. The SSH username is
 fixed to `git`. Repository pages expose this address in a **Clone** menu with a
 copy button. Without a configured public address, the menu reports that it is

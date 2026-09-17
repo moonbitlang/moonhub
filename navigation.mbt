@@ -35,7 +35,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
           "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{if section == "teams" { "Teams" } else { "Repositories" }}</strong>"
       TeamNavigation(team, _) =>
         b <+
-          "<a href=\"/teams\">Teams</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
+          "<a href=\"/-/teams\">Teams</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
       RepositoryNavigation(repo, _, _) =>
         b <+
           "<a href=\"/teams/\{repo.owner}\">\{repo.owner}</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><a class=\"breadcrumb-current\" href=\"\{repo_link(repo)}\">\{repo.name}</a>"
@@ -64,7 +64,7 @@ fn render_sidebar(
   }
   Html(b => {
     b <+
-      "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"Workspace navigation\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/teams\">All teams</a>"
+      "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"Workspace navigation\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/-/teams\">All teams</a>"
     match navigation {
       RepositoryNavigation(repo, _, _) =>
         b <+ "<a href=\"/teams/\{repo.owner}\">\{repo.owner} workspace</a>"
@@ -73,7 +73,7 @@ fn render_sidebar(
     b <+
       "</div></details><div class=\"sidebar-scroll\"><nav class=\"nav-group\" aria-label=\"Workspace\">"
     b <+
-      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}</nav>"
+      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}</nav>"
     match navigation {
       TeamNavigation(team, active) => {
         b <+
@@ -114,10 +114,10 @@ fn render_sidebar(
       }
       AccountNavigation(active) =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/change-password", "Password", "lock", active == "password")}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/-/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/-/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/-/change-password", "Password", "lock", active == "password")}</nav>"
       SiteNavigation =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/admin/settings/ssh#ssh-access", "SSH access", "terminal", true)}\{render_navigation_item("/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh#ssh-access", "SSH access", "terminal", true)}\{render_navigation_item("/-/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}</nav>"
       _ => ()
     }
     // Site settings are administration, not part of any workspace scope, so the
@@ -132,7 +132,7 @@ fn render_sidebar(
         SiteNavigation => ()
         _ =>
           b <+
-            "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/admin/settings/ssh", "Site settings", "settings", false)}</nav>"
+            "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "Site settings", "settings", false)}</nav>"
       }
     }
     b <+

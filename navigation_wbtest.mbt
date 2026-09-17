@@ -69,8 +69,8 @@ async test "site administrators reach site settings from every page sidebar" {
   with_ssh_settings_app((port, _, alice, _, admin) => {
     for
       path in [
-        "/", "/teams", "/teams/alice", "/alice/demo", "/settings/profile", "/settings/ssh-keys",
-        "/change-password",
+        "/", "/-/teams", "/teams/alice", "/alice/demo", "/-/settings/profile", "/-/settings/ssh-keys",
+        "/-/change-password",
       ] {
       let (response, body) = http_get_path_with_cookie(port, path, admin)
       assert_eq(response.code, 200, msg=path)
@@ -81,13 +81,13 @@ async test "site administrators reach site settings from every page sidebar" {
       )
       assert_true(
         body.contains(
-          "<p class=\"nav-group-label\">Administration</p><a class=\"nav-item\" href=\"/admin/settings/ssh\"",
+          "<p class=\"nav-group-label\">Administration</p><a class=\"nav-item\" href=\"/-/admin/settings/ssh\"",
         ),
         msg=path,
       )
     }
     let (settings, settings_body) = http_get_path_with_cookie(
-      port, "/admin/settings/ssh", admin,
+      port, "/-/admin/settings/ssh", admin,
     )
     assert_eq(settings.code, 200)
     // The site settings scope keeps a single Administration group.

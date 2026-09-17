@@ -20,7 +20,7 @@ fn render_profile_settings(
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
       b <+
-        "<form class=\"form-stack\" method=\"post\" action=\"/settings/profile\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\">"
+        "<form class=\"form-stack\" method=\"post\" action=\"/-/settings/profile\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\">"
       b <+
         "<div class=\"field\"><label for=\"profile-name-key\"><span>Username</span></label><input id=\"profile-name-key\" class=\"path\" value=\"\{profile.name_key}\" readonly aria-describedby=\"profile-name-key-note\"></div><p id=\"profile-name-key-note\" class=\"muted\">Usernames identify repository namespaces and cannot be changed.</p>"
       b <+
