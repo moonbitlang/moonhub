@@ -1,0 +1,21 @@
+import {
+  "moonbitlang/async",
+  "hackwaly/moonhub/config",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "moonbitlang/async/fs",
+  "hackwaly/moonhub/gitops",
+  "hackwaly/moonhub/identity",
+  "moonbitlang/x/encoding/percent",
+  "moonbitlang/async/process",
+  "moonbitlang/async/socket",
+  "moonbitlang/core/string",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "hackwaly/moonhub/ssh",
+  "hackwaly/moonhub/test_support",
+} for "wbtest"
+
+supported_targets = "native"

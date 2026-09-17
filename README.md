@@ -2,6 +2,8 @@
 
 Repository collaboration includes Issues and same-repository Merge Requests.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
+See [package boundaries, dependency injection and tests](docs/architecture.md)
+for the source layout and module initialization rules.
 
 ## Docker and Git SSH
 

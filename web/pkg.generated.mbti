@@ -1,0 +1,31 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web"
+
+import {
+  "hackwaly/moonhub/identity",
+  "moonbitlang/moonback",
+}
+
+// Values
+pub let app_module : @moonback.Module
+
+pub let assets_module : @moonback.Module
+
+pub let browser_resources_module : @moonback.Module
+
+pub async fn serve(Config) -> Unit
+
+// Errors
+
+// Types and methods
+pub(all) struct Config {
+  root : String
+  assets_root : String
+  host : String
+  port : UInt16
+  root_user : @identity.RootUserConfig
+}
+
+// Type aliases
+
+// Traits

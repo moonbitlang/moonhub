@@ -1,0 +1,45 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/ui"
+
+import {
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/moonback",
+}
+
+// Values
+pub fn layout(String, Map[String, String], @moonback.Html, head_end? : @moonback.Html, body_class? : String, current_user? : @domain.CurrentUser?, navigation? : PageNavigation) -> @moonback.Html
+
+pub fn merge_status(@collaboration.MergeRequest) -> String
+
+pub fn namespace_back_label(@identity.TeamSummary) -> String
+
+pub fn namespace_navigation(@identity.TeamSummary, String) -> PageNavigation
+
+pub fn render_error(Int, String, Map[String, String], current_user? : @domain.CurrentUser?) -> @moonback.Html
+
+pub fn render_repo_nav(@domain.RepoId, String, String?) -> @moonback.Html
+
+pub fn render_team_repositories(@identity.TeamSummary, Array[@repository.TeamRepository], Bool) -> @moonback.Html
+
+pub fn repo_link(@domain.RepoId) -> String
+
+pub fn repository_status_label(String, Bool) -> String
+
+// Errors
+
+// Types and methods
+pub(all) enum PageNavigation {
+  WorkspaceNavigation(String)
+  TeamNavigation(@identity.TeamSummary, String)
+  PersonalNavigation(@identity.TeamSummary)
+  RepositoryNavigation(@domain.RepoId, String, Bool)
+  AccountNavigation(String)
+  SiteNavigation
+}
+
+// Type aliases
+
+// Traits

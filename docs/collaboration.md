@@ -9,13 +9,16 @@ and SSH to the same image.
 
 - `gitops/`: independent MoonBit package for bounded Git subprocesses, branch
   validation, comparisons and cross-process write locks. No database or HTTP dependency.
-- `repository_scope.mbt`: shared repository authorization and write coordination.
-- `merge_store.mbt`, `issue_store.mbt`: persistence models and scoped reads.
-- `merge_requests.mbt`, `issues.mbt`: creation, transitions, reviews and validation.
-- `merge_worker.mbt`: durable merge execution and recovery.
-- `branch_protection.mbt`: branch rules and receive-side enforcement.
-- `merge_routes.mbt`, `issue_routes.mbt`: authenticated HTTP/CSRF boundary.
-- `merge_views.mbt`, `issue_views.mbt`: escaped server-rendered presentation.
+- `repository/repository_scope.mbt`: shared repository authorization and write coordination.
+- `collaboration/merge_store.mbt`, `collaboration/issue_store.mbt`: persistence models and scoped reads.
+- `collaboration/merge_requests.mbt`, `collaboration/issues.mbt`: creation, transitions, reviews and validation.
+- `collaboration/merge_worker.mbt`: durable merge execution and recovery.
+- `collaboration/branch_protection.mbt`: branch rules and receive-side enforcement.
+- `ssh/branch_protection.mbt`: authenticated pre-receive entry point.
+- `web/views/merge_requests/`, `web/views/issues/`: independent page packages containing
+  authenticated HTTP/CSRF handlers, escaped rendering and HTTP regression tests.
+
+See [package architecture](architecture.md) for dependency direction and tests.
 
 ## Issues
 

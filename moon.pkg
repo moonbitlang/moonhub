@@ -1,29 +1,25 @@
 import {
   "moonbitlang/core/argparse",
   "moonbitlang/async",
-  "moonbitlang/async/fs",
-  "moonbitlang/async/http",
-  "moonbitlang/async/os_error",
-  "moonbitlang/async/process",
-  "moonbitlang/async/signal",
-  "moonbitlang/async/stdio",
-  "moonbitlang/async/socket",
+  "hackwaly/moonhub/config",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
   "moonbitlang/core/env",
-  "moonbitlang/core/string",
-  "moonbitlang/core/encoding/utf8",
-  "moonbitlang/core/encoding/base64",
-  "moonbitlang/core/json",
-  "moonbitlang/x/sys",
-  "moonbitlang/x/bcrypt",
-  "moonbitlang/x/crypto",
-  "moonbitlang/x/encoding/percent",
-  "moonbitlang/moonback",
-  "Lfan-ke/moondb",
-  "Lfan-ke/moon-sqlite" @sqlite,
-  "nexacodes/email/core",
-  "nexacodes/email/transport",
+  "moonbitlang/async/fs",
   "hackwaly/moonhub/gitops",
+  "hackwaly/moonhub/identity",
+  "Lfan-ke/moondb",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/ssh",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/string",
+  "moonbitlang/x/sys",
+  "hackwaly/moonhub/web",
 }
+
+import {
+  "hackwaly/moonhub/test_support",
+} for "wbtest"
 
 supported_targets = "native"
 

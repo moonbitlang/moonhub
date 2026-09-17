@@ -1,20 +1,4 @@
 ///|
-fn parse_port(s : String) -> UInt16? {
-  let mut n = 0
-  for ch in s {
-    if ch < '0' || ch > '9' {
-      return None
-    }
-    n = n * 10 + ch.to_int() - '0'.to_int()
-  }
-  if n > 0 && n <= 65535 {
-    Some(n.to_uint16())
-  } else {
-    None
-  }
-}
-
-///|
 fn single_value(matches : @argparse.Matches, name : String) -> String? {
   match matches.values.get(name) {
     Some(values) => values.get(0)
@@ -23,7 +7,7 @@ fn single_value(matches : @argparse.Matches, name : String) -> String? {
 }
 
 ///|
-async fn parse_config() -> Config {
+async fn parse_config() -> @web.Config {
   let cmd = @argparse.Command(
     "moonhub",
     about="Serve registered bare Git repositories. Administrative commands: ssh-key-add, ssh-key-list, ssh-key-revoke, repo-create (use COMMAND --help).",
@@ -78,21 +62,21 @@ async fn parse_config() -> Config {
     Some(path) => @fs.read_file(path).text().trim().to_owned()
     None => single_value(matches, "root-password").unwrap_or("")
   }
-  let port = match parse_port(port_text) {
+  let port = match @config.parse_port(port_text) {
     Some(port) => port
     None => abort("invalid --port: \{port_text}")
   }
-  if !valid_name_key(root_user_name_key) {
+  if !@domain.valid_name_key(root_user_name_key) {
     abort("invalid --root-user: \{root_user_name_key}")
   }
   if root_user_initial_password.is_empty() {
-    raise BadRequest(
+    raise @domain.BadRequest(
       message="--root-password or --root-password-file is required",
     )
   }
   {
-    root: trim_trailing_slash(root),
-    assets_root: trim_trailing_slash(assets_root),
+    root: @domain.trim_trailing_slash(root),
+    assets_root: @domain.trim_trailing_slash(assets_root),
     host,
     port,
     root_user: {
@@ -103,11 +87,11 @@ async fn parse_config() -> Config {
 }
 
 ///|
-async fn normalize_config(config : Config) -> Config {
+async fn normalize_config(config : @web.Config) -> @web.Config {
   {
     ..config,
-    root: trim_trailing_slash(@fs.realpath(config.root)),
-    assets_root: trim_trailing_slash(@fs.realpath(config.assets_root)),
+    root: @domain.trim_trailing_slash(@fs.realpath(config.root)),
+    assets_root: @domain.trim_trailing_slash(@fs.realpath(config.assets_root)),
   }
 }
 
@@ -123,20 +107,20 @@ async fn run_web() -> Unit {
   if !@fs.exists(raw_config.root) {
     abort("repo root does not exist: \{raw_config.root}")
   }
-  if !is_directory(raw_config.root) {
+  if !@gitops.is_directory(raw_config.root) {
     abort("repo root is not a directory: \{raw_config.root}")
   }
   if !@fs.exists(raw_config.assets_root) {
     abort("assets root does not exist: \{raw_config.assets_root}")
   }
-  if !is_directory(raw_config.assets_root) {
+  if !@gitops.is_directory(raw_config.assets_root) {
     abort("assets root is not a directory: \{raw_config.assets_root}")
   }
   let config = normalize_config(raw_config)
-  serve(config) catch {
-    BadRequest(message~) => report_startup_error(message)
-    Unauthorized(message~) => report_startup_error(message)
-    NotFound(message~) => report_startup_error(message)
+  @web.serve(config) catch {
+    @domain.BadRequest(message~) => report_startup_error(message)
+    @domain.Unauthorized(message~) => report_startup_error(message)
+    @domain.NotFound(message~) => report_startup_error(message)
     @moondb.ConnectError(message) =>
       report_startup_error("database error: \{message}")
     @moondb.QueryError(message) =>
@@ -164,15 +148,15 @@ async fn main {
       let code = run_management_cli(args[1:]) catch {
         err => {
           let message = match err {
-            BadRequest(message~)
-            | Unauthorized(message~)
-            | Forbidden(message~)
-            | NotFound(message~)
+            @domain.BadRequest(message~)
+            | @domain.Unauthorized(message~)
+            | @domain.Forbidden(message~)
+            | @domain.NotFound(message~)
             | @gitops.Failure(message~) => message
             _ =>
               if command == Some("ssh-serve") ||
                 command == Some("ssh-pre-receive") {
-                internal_error_message
+                @domain.internal_error_message
               } else {
                 err.to_string()
               }
@@ -184,7 +168,7 @@ async fn main {
       @sys.exit(if code < 0 { 128 - code } else { code })
     }
     _ => {
-      load_dotenv(".env")
+      @config.load_dotenv(".env")
       run_web() catch {
         err => report_startup_error(err.to_string())
       }

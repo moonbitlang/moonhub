@@ -75,7 +75,7 @@ fn management_command() -> @argparse.Command {
 ///|
 fn cli_value(matches : @argparse.Matches, name : String) -> String raise {
   guard single_value(matches, name) is Some(value) else {
-    raise BadRequest(message="missing \{name}")
+    raise @domain.BadRequest(message="missing \{name}")
   }
   value
 }
@@ -84,73 +84,10 @@ fn cli_value(matches : @argparse.Matches, name : String) -> String raise {
 fn cli_key_id(matches : @argparse.Matches) -> Int64 raise {
   let value = cli_value(matches, "id")
   let id = @string.parse_int64(value) catch {
-    _ => raise BadRequest(message="invalid SSH key id")
+    _ => raise @domain.BadRequest(message="invalid SSH key id")
   }
-  guard id > 0L else { raise BadRequest(message="invalid SSH key id") }
+  guard id > 0L else { raise @domain.BadRequest(message="invalid SSH key id") }
   id
-}
-
-///|
-async fn create_managed_repository(
-  pool : Database,
-  root : String,
-  repo : RepoId,
-  visibility : String,
-  import_existing : Bool,
-) -> Unit {
-  guard visibility == "public" || visibility == "private" else {
-    raise BadRequest(message="visibility must be public or private")
-  }
-  guard get_team_by_name_key(pool, repo.owner) is Some(team) else {
-    raise NotFound(
-      message="repository owner must be an existing personal or organization team",
-    )
-  }
-  let exists = pool.with_client(client => {
-    client.query_opt(
-      "SELECT id FROM repository WHERE team_id = ? AND name = ?",
-      params=[team.id, repo.name],
-    )
-  })
-  guard exists is None else {
-    raise BadRequest(message="repository is already registered")
-  }
-  let root = trim_trailing_slash(@fs.realpath(root))
-  let git_dir = repo.git_dir(root)
-  if import_existing {
-    let _ = resolve_repository_dir(root, repo)
-  } else {
-    guard !@fs.exists(git_dir) else {
-      raise BadRequest(
-        message="repository directory already exists; use --import to register it",
-      )
-    }
-    let owner_dir = "\{root}/\{repo.owner}"
-    if !@fs.exists(owner_dir) {
-      @fs.mkdir(owner_dir, permission=0o750)
-    }
-    guard @fs.realpath(owner_dir) == owner_dir else {
-      raise BadRequest(
-        message="repository owner directory must not be a symbolic link",
-      )
-    }
-    let (code, output) = @process.collect_output_merged("git", [
-      "init", "--bare", "--initial-branch=main", git_dir,
-    ])
-    guard code == 0 else {
-      raise BadRequest(message="git init failed: \{output.text()}")
-    }
-  }
-  let bare = run_git(git_dir, ["rev-parse", "--is-bare-repository"])
-  guard bare.trim() == "true" else {
-    raise BadRequest(message="only bare repositories can be registered")
-  }
-  pool.with_client(client => {
-    let _ = client.execute(
-      "INSERT INTO repository (team_id, name, visibility) VALUES (?, ?, ?)",
-      params=[team.id, repo.name, visibility],
-    )
-  })
 }
 
 ///|
@@ -159,54 +96,59 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
   guard matches.subcommand is Some((command, options)) else { return 1 }
   let db_path = cli_value(matches, "db")
   guard @fs.exists(db_path) else {
-    raise NotFound(message="database not found; start the web service first")
+    raise @domain.NotFound(
+      message="database not found; start the web service first",
+    )
   }
   @async.with_task_group(group => {
-    let pool = new_db_pool({ path: db_path, }, group)
+    let pool = @database.new_db_pool({ path: db_path, }, group)
     defer pool.close()
     let version : Int64 = pool.with_client(client => {
       guard client.query_opt("PRAGMA user_version") is Some(row) else {
-        raise BadRequest(message="cannot read database schema version")
+        raise @domain.BadRequest(message="cannot read database schema version")
       }
       row.get_name("user_version")
     })
-    guard version == database_schema_version else {
-      raise BadRequest(
+    guard version == @database.database_schema_version else {
+      raise @domain.BadRequest(
         message="database requires migration; start the matching web service first",
       )
     }
     match command {
       "ssh-authorized-key" => {
         guard cli_value(options, "system-user") == "git" else { return 0 }
-        let key = parse_ssh_public_key(
+        let key = @ssh.parse_ssh_public_key(
           "\{cli_value(options, "type")} \{cli_value(options, "key")}",
         ) catch {
           _ => return 0
         }
-        if authorized_ssh_key(pool, key) is Some(line) {
+        if @ssh.authorized_ssh_key(pool, key) is Some(line) {
           println(line)
         }
       }
       "ssh-serve" =>
-        return serve_git_ssh(
+        return @ssh.serve_git_ssh(
           pool,
           cli_key_id(options),
           cli_value(matches, "root"),
         )
       "ssh-pre-receive" =>
-        check_received_refs(
+        @ssh.check_received_refs(
           pool,
           cli_key_id(options),
-          parse_transport_repo(cli_value(options, "repository")),
+          @domain.parse_transport_repo(cli_value(options, "repository")),
         )
       "ssh-key-add" => {
-        let user = active_user_by_name(pool, cli_value(options, "user"))
+        let user = @identity.active_user_by_name(
+          pool,
+          cli_value(options, "user"),
+        )
         let text = match single_value(options, "file") {
           Some(path) => @fs.read_file(path).text()
           None => @stdio.stdin.read_all().text()
         }
-        let key = parse_ssh_public_key(text)
-        let id = add_ssh_key(pool, user, cli_value(options, "title"), key)
+        let key = @ssh.parse_ssh_public_key(text)
+        let id = @ssh.add_ssh_key(pool, user, cli_value(options, "title"), key)
         println("\{id}\t\{user.name_key}\t\{key.fingerprint}")
       }
       "ssh-key-list" => {
@@ -244,13 +186,15 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           )
         })
         guard changed == 1 else {
-          raise NotFound(message="active SSH key not found")
+          raise @domain.NotFound(message="active SSH key not found")
         }
         println("Revoked SSH key \{id}")
       }
       "repo-create" => {
-        let repo = parse_transport_repo(cli_value(options, "repository"))
-        create_managed_repository(
+        let repo = @domain.parse_transport_repo(
+          cli_value(options, "repository"),
+        )
+        @repository.create_managed_repository(
           pool,
           cli_value(matches, "root"),
           repo,
@@ -259,7 +203,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
         )
         println("Registered \{repo.path()}")
       }
-      _ => raise BadRequest(message="unknown management command")
+      _ => raise @domain.BadRequest(message="unknown management command")
     }
     0
   })

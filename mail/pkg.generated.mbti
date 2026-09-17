@@ -1,0 +1,69 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/mail"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "moonbitlang/async",
+  "moonbitlang/core/debug",
+  "nexacodes/email/transport",
+}
+
+// Values
+pub fn claim_next_email(@database.Database, String) -> EmailOutboxMessage? raise
+
+pub async fn deliver_next_email(@database.Database, String, MailTransportConfig) -> Bool
+
+pub fn load_mail_settings(@database.Database) -> MailSettings raise
+
+pub fn mail_transport_from_db(@database.Database) -> MailTransportConfig raise
+
+pub fn mark_email_delivered(@database.Database, Int64, String) -> Unit raise
+
+pub fn mark_email_failed(@database.Database, Int64, String) -> Unit raise
+
+pub async fn run_mail_worker(@database.Database, String) -> Unit
+
+pub fn save_mail_settings(@database.Database, @domain.CurrentUser, Map[String, String], MailSettings) -> Unit raise
+
+pub fn start_mail_worker(@database.Database, @async.TaskGroup[Unit]) -> Unit
+
+// Errors
+type MailConfigError derive(@debug.Debug)
+
+type MailDeliveryError derive(@debug.Debug)
+
+// Types and methods
+pub struct EmailOutboxMessage {
+  id : Int64
+  to_email : String
+  subject : String
+  body : String
+}
+
+pub struct MailSettings {
+  transport : String
+  smtp : SmtpSettings
+}
+
+pub(all) enum MailTransportConfig {
+  File(outbox_dir~ : String)
+  Smtp(config~ : @transport.SmtpConfig, from~ : String)
+}
+
+pub struct SmtpSettings {
+  host : String
+  port : Int
+  security : String
+  auth : String
+  username : String
+  password : String
+  tls_trust : String
+  tls_root_cert_file : String
+  helo_name : String
+  from : String
+}
+
+// Type aliases
+
+// Traits

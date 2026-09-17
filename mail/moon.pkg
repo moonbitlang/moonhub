@@ -1,0 +1,19 @@
+import {
+  "moonbitlang/async",
+  "nexacodes/email/core",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "moonbitlang/core/env",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
+  "moonbitlang/core/string",
+  "nexacodes/email/transport",
+}
+
+import {
+  "hackwaly/moonhub/identity",
+  "moonbitlang/async/socket",
+  "hackwaly/moonhub/test_support",
+} for "wbtest"
+
+supported_targets = "native"

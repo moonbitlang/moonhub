@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/views/issues"
+
+import {
+  "moonbitlang/moonback",
+}
+
+// Values
+pub let issues_module : @moonback.Module
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

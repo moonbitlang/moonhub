@@ -1,0 +1,16 @@
+import {
+  "moonbitlang/x/bcrypt",
+  "moonbitlang/x/crypto",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "moonbitlang/core/env",
+  "Lfan-ke/moondb",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "moonbitlang/async",
+  "hackwaly/moonhub/test_support",
+} for "wbtest"
+
+supported_targets = "native"

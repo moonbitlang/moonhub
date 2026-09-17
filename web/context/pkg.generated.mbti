@@ -1,0 +1,101 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/context"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async/http",
+  "moonbitlang/moonback",
+}
+
+// Values
+pub fn app_error_middleware(Map[String, String]) -> @moonback.Middleware
+
+pub let asset_paths_key : @moonback.TypedKey[Map[String, String]]
+
+pub fn auth_middleware(@database.Database) -> @moonback.Middleware
+
+pub let browser_access_key : @moonback.TypedKey[BrowserAccess]
+
+pub fn commit_param(@moonback.Request) -> String raise @domain.AppError
+
+pub let config_assets_root : @moonback.TypedKey[String]
+
+pub let config_db_pool : @moonback.TypedKey[@database.Database]
+
+pub let config_repo_import : @moonback.TypedKey[@repository.RepoImportConfig]
+
+pub let config_root : @moonback.TypedKey[String]
+
+pub let config_ssh_addresses : @moonback.TypedKey[@repository.SshAddressConfig]
+
+pub fn current_invitation_from_request(@moonback.Request) -> @identity.InvitationSession?
+
+pub fn current_user_from_request(@moonback.Request) -> @domain.CurrentUser?
+
+pub fn form_csrf_token(String, String) -> String
+
+pub fn login_headers(String, String) -> @moonback.Headers
+
+pub fn logout_headers() -> @moonback.Headers
+
+pub fn optional_form_value(Map[String, String], String) -> String?
+
+pub fn parse_form(String) -> Map[String, String]
+
+pub fn path_param(@moonback.Request) -> String raise @domain.AppError
+
+pub fn positive_resource_number(String) -> Int64 raise
+
+pub fn private_page_headers(location? : String, refresh? : Bool) -> @moonback.Headers
+
+pub async fn protected_form(@moonback.Request, String) -> Map[String, String]
+
+pub fn query_rev(@moonback.Request) -> String?
+
+pub async fn read_form(@moonback.Request) -> Map[String, String]
+
+pub fn redirect_headers(String) -> @moonback.Headers
+
+pub fn repo_param(@moonback.Request) -> @domain.RepoId raise @domain.AppError
+
+pub fn request_form_token(@moonback.Request, String) -> String raise @domain.AppError
+
+pub fn require_current_user(@moonback.Request) -> @domain.CurrentUser raise @domain.AppError
+
+pub fn require_invitation_session(@moonback.Request) -> @identity.InvitationSession raise @domain.AppError
+
+pub fn require_login_middleware() -> @moonback.Middleware
+
+pub fn require_organization_namespace(@database.Database, @moonback.Request) -> @identity.TeamSummary raise
+
+pub fn require_owner_namespace(@database.Database, @moonback.Request) -> @identity.TeamSummary raise
+
+pub fn required_form_value(Map[String, String], String, String) -> String raise @domain.AppError
+
+pub fn required_param(@moonback.Request, String, String) -> String raise @domain.AppError
+
+pub fn rev_param(@moonback.Request) -> String raise @domain.AppError
+
+pub fn session_cookie(String) -> @http.Cookie
+
+pub let session_cookie_name : String
+
+pub fn url_escape_path(String) -> String
+
+// Errors
+
+// Types and methods
+pub(all) struct BrowserAccess {
+  repositories : async (@moonback.Request) -> Array[@domain.RepoId]
+  personal_owner : async (@moonback.Request) -> String?
+  authorize : (@moonback.Request, @domain.RepoId) -> Unit raise
+  clone_url : (@domain.RepoId) -> String? raise
+  manager : (@moonback.Request, @domain.RepoId) -> Bool raise
+}
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,11 @@
+import {
+  "moonbitlang/async",
+  "hackwaly/moonhub/database",
+  "moonbitlang/async/fs",
+  "hackwaly/moonhub/gitops",
+  "moonbitlang/async/process",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async/socket",
+}
+
+supported_targets = "native"

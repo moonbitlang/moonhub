@@ -20,7 +20,8 @@
   invitations release their reserved identity before replacement. Inactive
   invitation emails cannot be resent or claimed for delivery.
 
-Regression coverage lives in `errors_wbtest.mbt`, `invitations_wbtest.mbt`, and
+Regression coverage lives in `web/context/errors_wbtest.mbt`, invitation tests in
+`web/views/auth/`, `web/views/namespaces/`, `identity/` and `mail/`, and
 the existing SSH, repository, issue, and merge request tests. No database
 migration is needed for these changes; historical diagnostics remain available
 to operators without being returned to users.

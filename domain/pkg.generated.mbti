@@ -1,0 +1,68 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/domain"
+
+// Values
+pub const PUBLIC_ASSETS_OWNER : String = "assets"
+
+pub let email_delivery_error_message : String
+
+pub let internal_error_message : String
+
+pub let merge_error_message : String
+
+pub fn normalize_email(String) -> String
+
+pub fn parse_transport_repo(String) -> RepoId raise
+
+pub fn public_merge_block_reason(String) -> String
+
+pub fn public_merge_job_error(String) -> String
+
+pub let repository_error_message : String
+
+pub fn split_lines(String) -> Array[String]
+
+pub fn strip_git_suffix(String) -> String?
+
+pub fn trim_trailing_slash(String) -> String
+
+pub fn valid_email(String) -> Bool
+
+pub fn valid_name_key(String) -> Bool
+
+pub fn valid_repo_name(String) -> Bool
+
+pub fn valid_repo_owner(String) -> Bool
+
+pub fn valid_repo_path(String) -> Bool
+
+pub fn valid_segment(String) -> Bool
+
+pub fn valid_team_invite_role(String) -> Bool
+
+// Errors
+pub(all) suberror AppError {
+  BadRequest(message~ : String)
+  Unauthorized(message~ : String)
+  Forbidden(message~ : String)
+  NotFound(message~ : String)
+}
+
+// Types and methods
+pub(all) struct CurrentUser {
+  id : Int64
+  name_key : String
+  display_name : String
+  is_site_admin : Bool
+}
+
+pub(all) struct RepoId {
+  owner : String
+  name : String
+}
+pub fn RepoId::git_dir(Self, String) -> String
+pub fn RepoId::path(Self) -> String
+
+// Type aliases
+
+// Traits

@@ -1,102 +1,12 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "hackwaly/moonhub"
 
-import {
-  "Lfan-ke/moondb",
-  "moonbitlang/core/debug",
-}
-
 // Values
 
 // Errors
-type AppError
-
-type MailConfigError derive(@debug.Debug)
-
-type MailDeliveryError derive(@debug.Debug)
 
 // Types and methods
-type CommitInfo
-
-type Config
-
-type CurrentUser
-
-type Database
-
-type DbClient
-
-type DbConfig
-
-type DbRow
-
-type DbTransaction
-
-type EmailOutboxMessage
-
-type InvitationCredentials
-
-type InvitationLogin
-
-type InvitationSession
-
-type InvitationSummary
-
-type Issue
-
-type LoginResult
-
-type MailSettings
-
-type MailTransportConfig
-
-type MergeRequest
-
-type PageNavigation
-
-type RepoId
-
-type RepoImportConfig
-
-type RepoOperation derive(Eq, @debug.Debug)
-
-type RepositoryJob
-
-type RepositoryScope
-
-type ResolvedRepoImport
-
-type RootUserConfig
-
-type SmtpSettings
-
-type SshAddressConfig
-
-type SshEndpoint derive(Eq, @debug.Debug)
-
-type SshImportSource
-
-type SshPublicKey
-
-type SshRequest
-
-type TeamImportCredentials
-
-type TeamMemberSummary
-
-type TeamRepository
-
-type TeamSummary
-
-type TreeEntry
-
-type UserProfile
-
-type UserSshKey
 
 // Type aliases
 
 // Traits
-trait DbFromValue
-
-trait DbParam

@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/config"
+
+// Values
+pub fn env_value(String) -> String?
+
+pub async fn load_dotenv(String) -> Unit
+
+pub fn parse_port(String) -> UInt16?
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

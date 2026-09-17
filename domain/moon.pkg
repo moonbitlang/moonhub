@@ -1,0 +1,5 @@
+import {
+  "nexacodes/email/core",
+}
+
+supported_targets = "native"

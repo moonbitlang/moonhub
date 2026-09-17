@@ -1,0 +1,61 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/database"
+
+import {
+  "Lfan-ke/moondb",
+  "moonbitlang/async",
+}
+
+// Values
+pub let database_schema_version : Int64
+
+pub fn db_config_from_env() -> DbConfig
+
+pub async fn initialize_db(Database) -> Unit
+
+pub fn[T] new_db_pool(DbConfig, @async.TaskGroup[T]) -> Database raise @moondb.DbError
+
+// Errors
+
+// Types and methods
+type Database
+pub fn Database::close(Self) -> Unit
+pub fn[A] Database::with_client(Self, (DbClient) -> A raise) -> A raise
+
+type DbClient
+pub fn DbClient::batch_execute(Self, String) -> Unit raise @moondb.DbError
+pub fn DbClient::execute(Self, String, params? : Array[&DbParam]) -> Int raise @moondb.DbError
+pub fn DbClient::query_all(Self, String, params? : Array[&DbParam]) -> Array[DbRow] raise @moondb.DbError
+pub fn DbClient::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
+pub fn DbClient::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError
+pub fn[A] DbClient::with_transaction(Self, (DbTransaction) -> A raise) -> A raise
+
+pub(all) struct DbConfig {
+  path : String
+}
+
+type DbRow
+pub fn[T : DbFromValue] DbRow::get_name(Self, String) -> T raise @moondb.DbError
+
+type DbTransaction
+pub fn DbTransaction::execute(Self, String, params? : Array[&DbParam]) -> Int raise @moondb.DbError
+pub fn DbTransaction::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
+pub fn DbTransaction::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError
+
+// Type aliases
+
+// Traits
+pub trait DbFromValue {
+  fn from_db_value(@moondb.Value) -> Self raise @moondb.DbError
+}
+pub impl DbFromValue for Bool
+pub impl DbFromValue for Int64
+pub impl DbFromValue for String
+pub impl[T : DbFromValue] DbFromValue for T?
+
+pub trait DbParam {
+  fn to_db_value(Self) -> @moondb.Value
+}
+pub impl DbParam for Bool
+pub impl DbParam for Int64
+pub impl DbParam for String

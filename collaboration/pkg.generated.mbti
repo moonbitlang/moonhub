@@ -1,0 +1,127 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/collaboration"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/gitops",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async",
+}
+
+// Values
+pub fn authorize_received_refs(@database.Database, @domain.CurrentUser, @domain.RepoId, String) -> Unit raise
+
+pub fn branch_rules(@database.Database, @repository.RepositoryScope) -> Array[BranchRule] raise
+
+pub fn create_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, String, String, Int64) -> Int64 raise
+
+pub async fn create_merge_request(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, String, String, String, Bool, issue? : Int64) -> MergeRequest
+
+pub fn edit_merge_request(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, String, String, expected? : Int64) -> Unit raise
+
+pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
+
+pub fn issue_assignees(@database.Database, @repository.RepositoryScope) -> Array[IssueAssignee] raise
+
+pub fn issue_merge_requests(@database.Database, @repository.RepositoryScope, Issue) -> Array[MergeRequest] raise
+
+pub fn list_issue_activity(@database.Database, Issue, Int64) -> Array[IssueActivity] raise
+
+pub fn list_issues(@database.Database, @repository.RepositoryScope, String, Int64, Bool, Int64, String) -> Array[Issue] raise
+
+pub fn list_merge_activity(@database.Database, MergeRequest, Int64) -> Array[MergeActivity] raise
+
+pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64) -> Array[MergeRequest] raise
+
+pub fn merge_blocker(@database.Database, @repository.RepositoryScope, MergeRequest, @gitops.Revision) -> String raise
+
+pub fn merge_review_counts(@database.Database, @repository.RepositoryScope, MergeRequest) -> (Int64, Int64) raise
+
+pub fn merge_revision(@database.Database, MergeRequest, version? : Int64) -> @gitops.Revision raise
+
+pub fn mutate_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, Issue, Int64, String, String, String, Int64, String) -> Unit raise
+
+pub async fn refresh_merge_request(@database.Database, @repository.RepositoryScope, String, MergeRequest) -> MergeRequest
+
+pub fn require_issue(@database.Database, @repository.RepositoryScope, Int64) -> Issue raise
+
+pub fn require_merge_request(@database.Database, @repository.RepositoryScope, Int64) -> MergeRequest raise
+
+pub fn required_merge_approvals(@database.Database, @repository.RepositoryScope, String) -> Int64 raise
+
+pub async fn run_next_merge_job(@database.Database, String) -> Bool
+
+pub async fn save_branch_rule(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, Bool, Int64) -> Unit
+
+pub fn start_merge_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
+pub fn submit_merge_review(@database.Database, @domain.CurrentUser, MergeRequest, Int64, String, String) -> Unit raise
+
+// Errors
+
+// Types and methods
+pub struct BranchRule {
+  branch : String
+  required_approvals : Int64
+}
+
+pub struct Issue {
+  id : Int64
+  number : Int64
+  author_id : Int64
+  author : String
+  assignee_id : Int64
+  assignee : String
+  title : String
+  description : String
+  status : String
+  edit_version : Int64
+  updated_at : String
+}
+
+pub struct IssueActivity {
+  actor : String
+  kind : String
+  body : String
+  created_at : String
+}
+
+pub struct IssueAssignee {
+  id : Int64
+  display_name : String
+  name_key : String
+}
+
+pub struct MergeActivity {
+  actor : String
+  kind : String
+  body : String
+  created_at : String
+  version : Int64
+}
+
+pub struct MergeRequest {
+  id : Int64
+  repository_id : Int64
+  number : Int64
+  author_id : Int64
+  author : String
+  title : String
+  description : String
+  source : String
+  target : String
+  draft : Bool
+  status : String
+  version : Int64
+  merged_sha : String
+  job_status : String
+  job_error : String
+  issue_number : Int64
+  edit_version : Int64
+}
+
+// Type aliases
+pub using @gitops {type Revision as MergeRevision}
+
+// Traits

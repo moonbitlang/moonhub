@@ -1,0 +1,15 @@
+import {
+  "hackwaly/moonhub/domain",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
+  "moonbitlang/core/json",
+  "moonbitlang/moonback",
+}
+
+import {
+  "hackwaly/moonhub/web/testkit" @web_testkit,
+  "moonbitlang/async",
+  "moonbitlang/async/http",
+} for "wbtest"
+
+supported_targets = "native"

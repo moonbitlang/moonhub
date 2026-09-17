@@ -1,0 +1,40 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/test_support"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async/semaphore",
+  "moonbitlang/async/socket",
+}
+
+// Values
+pub let database_test_slot : @semaphore.Semaphore
+
+pub async fn merge_test_commit(String, String, String, String) -> String
+
+pub async fn mock_import_config(String, String) -> @repository.RepoImportConfig
+
+pub async fn run_one_message_smtp_server(@socket.TcpServer, TestSmtpTranscript) -> Unit
+
+pub let test_mail_outbox_dir : String
+
+pub let test_ssh_public_key : String
+
+pub async fn with_git_test_repo(async (String, String) -> Unit) -> Unit
+
+pub async fn with_repository_test_data(async (@database.Database, String) -> Unit) -> Unit
+
+pub async fn with_ssh_test_db(async (@database.Database) -> Unit) -> Unit
+
+// Errors
+
+// Types and methods
+pub(all) struct TestSmtpTranscript {
+  lines : Array[String]
+  mut data : String
+}
+
+// Type aliases
+
+// Traits

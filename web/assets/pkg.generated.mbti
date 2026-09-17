@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/assets"
+
+import {
+  "moonbitlang/moonback",
+}
+
+// Values
+pub fn app_styles_head(Map[String, String]) -> @moonback.Html
+
+pub async fn load_entry_to_asset_path_map(String) -> Map[String, String]
+
+pub fn repository_assets_head(Map[String, String], code_view? : Bool) -> @moonback.Html
+
+pub fn static_assets(root~ : String) -> @moonback.Middleware
+
+pub fn vite_manifest_entry_path(Map[String, String], String) -> String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

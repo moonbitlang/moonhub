@@ -1,0 +1,45 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/ssh"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+}
+
+// Values
+pub fn add_ssh_key(@database.Database, @domain.CurrentUser, String, SshPublicKey) -> Int64 raise
+
+pub fn authorized_ssh_key(@database.Database, SshPublicKey) -> String? raise
+
+pub async fn check_received_refs(@database.Database, Int64, @domain.RepoId) -> Unit
+
+pub fn own_active_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> UserSshKey raise
+
+pub fn parse_ssh_public_key(String) -> SshPublicKey raise
+
+pub fn revoke_own_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
+
+pub async fn serve_git_ssh(@database.Database, Int64, String) -> Int
+
+pub fn user_ssh_keys(@database.Database, @domain.CurrentUser) -> Array[UserSshKey] raise
+
+// Errors
+
+// Types and methods
+pub struct SshPublicKey {
+  public_key : String
+  fingerprint : String
+}
+
+pub struct UserSshKey {
+  id : Int64
+  title : String
+  fingerprint : String
+  created_at : String
+  last_used_at : String?
+  revoked_at : String?
+}
+
+// Type aliases
+
+// Traits

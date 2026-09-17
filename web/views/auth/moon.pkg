@@ -1,0 +1,15 @@
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/ui" @web_ui,
+  "moonbitlang/moonback",
+}
+
+import {
+  "hackwaly/moonhub/web/testkit" @web_testkit,
+  "moonbitlang/async",
+} for "wbtest"
+
+supported_targets = "native"

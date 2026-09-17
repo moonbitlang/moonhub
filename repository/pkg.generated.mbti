@@ -1,0 +1,137 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/repository"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/identity",
+  "moonbitlang/async",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn authorize_import_source(TeamImportCredentials, SshImportSource) -> Unit raise
+
+pub fn authorize_repository(@database.Database, @domain.CurrentUser, @domain.RepoId, RepoOperation) -> Unit raise
+
+pub fn can_access_repository(@database.Database, @domain.CurrentUser, @domain.RepoId, RepoOperation) -> Bool raise
+
+pub async fn create_managed_repository(@database.Database, String, @domain.RepoId, String, Bool) -> Unit
+
+pub async fn discard_repository_job(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit
+
+pub fn effective_ssh_endpoint(@database.Database, SshAddressConfig) -> SshEndpoint? raise
+
+pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String, String, String, addresses? : SshAddressConfig) -> @domain.RepoId
+
+pub fn namespace_repositories(@database.Database, @domain.CurrentUser, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
+
+pub let no_ssh_address_config : SshAddressConfig
+
+pub fn pin_legacy_repository_source(@database.Database, @domain.CurrentUser, RepositoryJob, SshAddressConfig) -> RepositoryJob raise
+
+pub fn repo_import_config_from_env() -> RepoImportConfig? raise
+
+pub fn repository_job_source(@database.Database, @domain.CurrentUser, RepositoryJob, SshAddressConfig) -> SshImportSource? raise
+
+pub fn repository_scope(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
+
+pub fn require_repository_job(@database.Database, @identity.TeamSummary, String) -> RepositoryJob raise
+
+pub fn require_repository_manager(@database.Database, @domain.CurrentUser, @identity.TeamSummary) -> Unit raise
+
+pub async fn resolve_repository_dir(String, @domain.RepoId) -> String
+
+pub fn resolve_repository_import_source(@database.Database, @domain.CurrentUser, String, SshAddressConfig) -> ResolvedRepoImport raise
+
+pub fn retry_repository_job(@database.Database, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit raise
+
+pub async fn run_next_repository_job(@database.Database, String, RepoImportConfig?, addresses? : SshAddressConfig) -> Bool
+
+pub fn save_ssh_endpoint(@database.Database, @domain.CurrentUser, SshAddressConfig, String, String) -> Unit raise
+
+pub fn ssh_address_config_from_env() -> SshAddressConfig raise
+
+pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
+
+pub async fn team_import_credentials(RepoImportConfig, String) -> TeamImportCredentials
+
+pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[TeamRepository] raise
+
+pub async fn visible_repositories(@database.Database, String, @domain.CurrentUser) -> Array[@domain.RepoId]
+
+pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, @domain.RepoId, async (RepositoryScope, String) -> A) -> A
+
+// Errors
+
+// Types and methods
+pub(all) struct RepoImportConfig {
+  credentials_root : String
+  ssh_wrapper : String
+  timeout_ms : Int
+}
+
+pub(all) enum RepoOperation {
+  Read
+  Write
+} derive(Eq, @debug.Debug)
+
+pub struct RepositoryJob {
+  id : Int64
+  team_id : Int64
+  repo : @domain.RepoId
+  requester_id : Int64
+  source_url : String
+  status : String
+  stage_token : String
+  last_error : String?
+  attempt_count : Int64
+  source_kind : String
+  source_repository_id : Int64?
+}
+
+pub(all) struct RepositoryScope {
+  id : Int64
+  repo : @domain.RepoId
+  team_id : Int64
+}
+
+pub struct ResolvedRepoImport {
+  submitted_url : String
+  transport : SshImportSource
+  local_id : Int64?
+}
+
+pub(all) struct SshAddressConfig {
+  public_override : SshEndpoint?
+  internal : SshEndpoint?
+}
+
+pub(all) struct SshEndpoint {
+  host : String
+  port : UInt16
+} derive(Eq, @debug.Debug)
+pub fn SshEndpoint::authority(Self) -> String
+pub fn SshEndpoint::clone_url(Self, @domain.RepoId) -> String
+pub fn SshEndpoint::from_fields(String, String) -> Self raise
+
+pub struct SshImportSource {
+  url : String
+  host : String
+  port : UInt16
+  user : String
+  path : String
+}
+
+type TeamImportCredentials
+
+pub struct TeamRepository {
+  name : String
+  visibility : String
+  ready : Bool
+  status : String?
+}
+
+// Type aliases
+
+// Traits

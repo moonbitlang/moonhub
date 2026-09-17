@@ -2,6 +2,7 @@
 package "hackwaly/moonhub/gitops"
 
 import {
+  "hackwaly/moonhub/domain",
   "moonbitlang/async/fs",
 }
 
@@ -10,17 +11,46 @@ pub async fn branch_sha(String, String) -> String
 
 pub async fn compare_branches(String, String, String) -> Revision
 
+pub async fn default_ref(String) -> String
+
+pub fn git_args(String, Array[String]) -> Array[String]
+
+pub async fn is_directory(String) -> Bool
+
+pub async fn is_unborn_default_ref(String, String) -> Bool
+
+pub async fn list_commits(String, String) -> Array[CommitInfo]
+
+pub async fn list_repositories(String) -> Array[@domain.RepoId]
+
+pub async fn list_tree(String, String, String) -> Array[TreeEntry]
+
 pub async fn merge_git(String, Array[String], input? : String) -> String
 
 pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int, identity? : String) -> (Int, String)
 
 pub async fn merged_tree(String, Revision) -> String
 
+pub fn parse_commit_line(String) -> CommitInfo?
+
+pub async fn read_blob(String, String, String) -> String
+
 pub async fn repository_write_lock(String) -> @fs.File
+
+pub async fn resolve_ref(String, String?) -> String
+
+pub async fn resolve_ref_path(String, String, String) -> (String, String)
+
+pub async fn run_git(String, Array[String]) -> String
 
 pub fn valid_commit_sha(String) -> Bool
 
 // Errors
+pub(all) suberror GitError {
+  GitCommandFailed(code~ : Int, output~ : String)
+}
+pub impl Show for GitError
+
 pub suberror GitOperationError {
   Failure(message~ : String)
   InternalFailure(details~ : String)
@@ -28,6 +58,13 @@ pub suberror GitOperationError {
 pub impl Show for GitOperationError
 
 // Types and methods
+pub struct CommitInfo {
+  hash : String
+  subject : String
+  author : String
+  date : String
+}
+
 pub(all) struct Revision {
   version : Int64
   source_sha : String
@@ -35,6 +72,12 @@ pub(all) struct Revision {
   base_sha : String
   merge_tree : String
   block_reason : String
+}
+
+pub struct TreeEntry {
+  kind : String
+  size : String?
+  name : String
 }
 
 // Type aliases

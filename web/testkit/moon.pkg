@@ -1,0 +1,16 @@
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/gitops",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/web",
+  "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/views/repositories" @repository_views,
+  "moonbitlang/async",
+  "moonbitlang/async/http",
+  "moonbitlang/moonback",
+}
+
+supported_targets = "native"

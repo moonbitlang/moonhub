@@ -1,0 +1,27 @@
+import {
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/mail",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/web/assets" @web_assets,
+  "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/views/account" @account_views,
+  "hackwaly/moonhub/web/views/auth" @auth_views,
+  "hackwaly/moonhub/web/views/issues" @issue_views,
+  "hackwaly/moonhub/web/views/merge_requests" @merge_request_views,
+  "hackwaly/moonhub/web/views/namespaces" @namespace_views,
+  "hackwaly/moonhub/web/views/repositories" @repository_views,
+  "hackwaly/moonhub/web/views/settings" @settings_views,
+  "moonbitlang/async",
+  "moonbitlang/async/signal",
+  "moonbitlang/moonback",
+}
+
+import {
+  "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/web/testkit" @web_testkit,
+} for "wbtest"
+
+supported_targets = "native"

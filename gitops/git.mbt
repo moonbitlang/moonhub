@@ -1,234 +1,207 @@
 ///|
-pub suberror GitOperationError {
-  // Only application-authored messages belong in this public error variant.
-  Failure(message~ : String)
-  InternalFailure(details~ : String)
-}
-
-///|
-pub impl Show for GitOperationError with fn output(self, logger) {
-  match self {
-    Failure(message~) => logger.write_string(message)
-    InternalFailure(details~) => logger.write_string(details)
+pub fn git_args(git_dir : String, args : Array[String]) -> Array[String] {
+  let full_args = ["--no-pager", "--git-dir=\{git_dir}"]
+  for arg in args {
+    full_args.push(arg)
   }
+  full_args
 }
 
 ///|
-fn git_args(git_dir : String, args : Array[String]) -> Array[String] {
-  ["--no-pager", "--git-dir=\{git_dir}", ..args]
+pub(all) suberror GitError {
+  GitCommandFailed(code~ : Int, output~ : String)
 }
 
 ///|
-fn split_lines(value : String) -> Array[String] {
-  value
-  .split("\n")
-  .filter(line => !line.is_empty())
-  .map(line => line.to_owned())
-  .collect()
+pub impl Show for GitError with fn output(self, logger) {
+  let GitCommandFailed(code~, output~) = self
+  logger.write_string("Git exited with status \{code}: \{output}")
 }
 
 ///|
-pub async fn merge_git_command(
-  git_dir : String,
-  args : Array[String],
-  input? : String = "",
-  limit? : Int = 2097152,
-  identity? : String = "Moonhub",
-) -> (Int, String) {
-  @async.with_timeout(
-    60000,
-    () => {
-      @async.with_task_group(group => {
-        let (reader, output) = @process.read_from_process()
-        defer reader.close()
-        let (stdin, writer) = @process.write_to_process()
-        defer writer.close()
-        let process = @process.spawn(
-          group,
-          "git",
-          git_args(
-            git_dir,
-            [
-              "-c", "core.hooksPath=/dev/null", "-c", "core.commitGraph=false", ..args,
-            ],
-          ),
-          inherit_env=false,
-          extra_env={
-            "PATH": "/usr/bin:/bin",
-            "LANG": "C.UTF-8",
-            "HOME": "/nonexistent",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_AUTHOR_NAME": identity,
-            "GIT_AUTHOR_EMAIL": "merge@moonhub.invalid",
-            "GIT_COMMITTER_NAME": identity,
-            "GIT_COMMITTER_EMAIL": "merge@moonhub.invalid",
-          },
-          stdin~,
-          stdout=output,
-          stderr=output,
-        )
-        group.spawn_bg(() => {
-          writer.write(input)
-          writer.close()
-        })
-        let bytes : Array[Byte] = []
-        while reader.read_some(max_len=8192) is Some(chunk) {
-          guard bytes.length() + chunk.length() <= limit else {
-            raise Failure(
-              message="Git output is too large; narrow the change or inspect it locally",
-            )
-          }
-          for byte in chunk {
-            bytes.push(byte)
-          }
-        }
-        let code = process.wait()
-        @async.pause()
-        (code, @utf8.decode_lossy(Bytes::from_array(bytes)))
-      })
-    },
-    error=Failure(
-      message="Git operation timed out; try again or inspect the branches locally",
-    ),
-  )
-}
-
-///|
-pub async fn merge_git(
-  git_dir : String,
-  args : Array[String],
-  input? : String = "",
-) -> String {
-  let (code, output) = merge_git_command(git_dir, args, input~)
-  guard code == 0 else {
-    raise InternalFailure(details="Git operation failed: \{output}")
+pub async fn run_git(git_dir : String, args : Array[String]) -> String {
+  let full_args = git_args(git_dir, args)
+  let (code, output) = @process.collect_output_merged("git", full_args)
+  let output = output.text() catch {
+    _ => output.binary().to_unchecked_string()
   }
+  guard code == 0 else { raise GitCommandFailed(code~, output~) }
   output
 }
 
 ///|
-pub fn valid_commit_sha(value : String) -> Bool {
-  (value.length() == 40 || value.length() == 64) &&
-  value.iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f'))
+pub async fn default_ref(git_dir : String) -> String {
+  let out = run_git(git_dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]) catch {
+    GitCommandFailed(code=1, ..) => return "HEAD"
+    err => raise err
+  }
+  let lines = @domain.split_lines(out)
+  match lines.get(0) {
+    Some(line) => line
+    None => "HEAD"
+  }
 }
 
 ///|
-pub async fn branch_sha(git_dir : String, branch : String) -> String {
-  guard !branch.is_empty() && branch.length() <= 200 else {
-    raise Failure(message="invalid branch name")
-  }
-  let reference = "refs/heads/\{branch}"
-  let (valid, _) = merge_git_command(git_dir, ["check-ref-format", reference])
-  guard valid == 0 else { raise Failure(message="invalid branch name") }
-  let (symbolic, _) = merge_git_command(git_dir, [
-    "symbolic-ref", "--quiet", reference,
-  ])
-  guard symbolic == 1 else {
-    raise Failure(message="symbolic branches are not supported")
-  }
-  let (code, output) = merge_git_command(git_dir, [
-    "rev-parse",
-    "--verify",
-    "\{reference}^{commit}",
-  ])
-  let sha = output.trim().to_owned()
-  guard code == 0 && valid_commit_sha(sha) else {
-    raise Failure(message="branch '\{branch}' is missing or has no commits")
-  }
-  sha
+pub async fn is_unborn_default_ref(git_dir : String, rev : String) -> Bool {
+  rev == default_ref(git_dir) &&
+  run_git(git_dir, ["for-each-ref", "--count=1", "--format=%(refname)"]).is_empty()
 }
 
 ///|
-pub async fn repository_write_lock(git_dir : String) -> @fs.File {
-  let path = "\{git_dir}/moonhub-write.lock"
-  if @fs.exists(path) {
-    guard @fs.kind(path, follow_symlink=false) is Regular else {
-      raise Failure(message="invalid repository write lock")
-    }
+pub async fn resolve_ref(git_dir : String, rev : String?) -> String {
+  match rev {
+    Some(v) if @domain.valid_repo_path(v) => v
+    _ => default_ref(git_dir)
   }
-  let lock = @fs.open(
-    path,
-    mode=ReadWrite,
-    create_mode=OpenOrCreate,
-    permission=0o600,
-  )
-  errdefer lock.close()
-  @async.with_timeout(
-    15000,
-    () => lock.lock(Exclusive),
-    error=Failure(
-      message="repository is busy; retry after the current push or merge",
-    ),
-  )
-  lock
 }
 
 ///|
-pub(all) struct Revision {
-  version : Int64
-  source_sha : String
-  target_sha : String
-  base_sha : String
-  merge_tree : String
-  block_reason : String
-}
-
-///|
-pub async fn compare_branches(
+pub async fn resolve_ref_path(
   git_dir : String,
-  source : String,
-  target : String,
-) -> Revision {
-  guard source != target else {
-    raise Failure(message="choose different source and target branches")
-  }
-  let source_sha = branch_sha(git_dir, source)
-  let target_sha = branch_sha(git_dir, target)
-  let (code, bases) = merge_git_command(git_dir, [
-    "merge-base", "--all", target_sha, source_sha,
+  rev : String,
+  path : String,
+) -> (String, String) {
+  let combined = "\{rev}/\{path}"
+  let refs = run_git(git_dir, [
+    "for-each-ref", "--format=%(refname:strip=2)", "refs/heads/", "refs/tags/",
   ])
-  let lines = split_lines(bases)
-  guard code == 0 && lines.length() == 1 && valid_commit_sha(lines[0]) else {
-    raise Failure(
-      message="branches need exactly one common ancestor for this merge request",
-    )
+  let mut matched_ref = rev
+  let mut matched_path = path
+  // URL segments do not mark where a slash-containing ref ends. Prefer the
+  // longest named ref; otherwise preserve single-segment revisions such as HEAD.
+  for candidate in @domain.split_lines(refs) {
+    if candidate.length() > matched_ref.length() {
+      if combined == candidate {
+        matched_ref = candidate
+        matched_path = ""
+      } else if combined.has_prefix("\{candidate}/") {
+        matched_ref = candidate
+        matched_path = combined[candidate.length() + 1:].to_owned()
+      }
+    }
   }
-  {
-    version: 0L,
-    source_sha,
-    target_sha,
-    base_sha: lines[0],
-    merge_tree: "",
-    block_reason: "",
+  (matched_ref, matched_path)
+}
+
+///|
+pub async fn is_directory(path : String) -> Bool {
+  try @fs.kind(path) catch {
+    _ => false
+  } noraise {
+    kind => kind is Directory
   }
 }
 
 ///|
-pub async fn merged_tree(git_dir : String, revision : Revision) -> String {
-  guard revision.base_sha != revision.source_sha else {
-    raise Failure(
-      message="source commits are already included in the target branch",
-    )
-  }
-  let (code, output) = merge_git_command(git_dir, [
-    "merge-tree",
-    "--write-tree",
-    revision.target_sha,
-    revision.source_sha,
-  ])
-  guard code == 0 else {
-    if code == 1 {
-      raise Failure(
-        message="branches have conflicts; resolve them locally and push the source branch",
-      )
+pub async fn list_repositories(root : String) -> Array[@domain.RepoId] {
+  let repos : Array[@domain.RepoId] = []
+  let owners = @fs.readdir(root, sort=true) catch { _ => [] }
+  owners.sort()
+  for owner in owners {
+    let owner_dir = "\{@domain.trim_trailing_slash(root)}/\{owner}"
+    if @domain.valid_repo_owner(owner) && is_directory(owner_dir) {
+      let names = @fs.readdir(owner_dir, sort=true) catch { _ => [] }
+      names.sort()
+      for dir in names {
+        match @domain.strip_git_suffix(dir) {
+          Some(name) =>
+            if @domain.valid_segment(name) &&
+              @fs.exists("\{owner_dir}/\{dir}/HEAD") {
+              repos.push({ owner, name, })
+            }
+          _ => ()
+        }
+      }
     }
-    raise InternalFailure(details="could not calculate merge: \{output}")
   }
-  let tree = output.trim().to_owned()
-  guard valid_commit_sha(tree) else {
-    raise Failure(message="unexpected Git merge result")
+  repos
+}
+
+///|
+fn parse_tree_entry(line : String) -> TreeEntry? {
+  match line.split_once("\t") {
+    Some((meta, name_view)) => {
+      let meta_parts = meta
+        .to_owned()
+        .split(" ")
+        .filter(v => !v.is_empty())
+        .map(v => v.to_owned())
+        .collect()
+      if meta_parts.length() >= 3 {
+        let size = if meta_parts.length() >= 4 && meta_parts[3] != "-" {
+          Some(meta_parts[3])
+        } else {
+          None
+        }
+        Some({ kind: meta_parts[1], size, name: name_view.to_owned(), })
+      } else {
+        None
+      }
+    }
+    None => None
   }
-  tree
+}
+
+///|
+pub async fn list_tree(
+  git_dir : String,
+  rev : String,
+  path : String,
+) -> Array[TreeEntry] {
+  let spec = if path.is_empty() { rev } else { "\{rev}:\{path}" }
+  let out = run_git(git_dir, ["ls-tree", "-l", spec])
+  let entries : Array[TreeEntry] = []
+  for line in @domain.split_lines(out) {
+    match parse_tree_entry(line) {
+      Some(entry) => entries.push(entry)
+      None => ()
+    }
+  }
+  entries.sort_by((left, right) => {
+    if left.kind == "tree" && right.kind != "tree" {
+      -1
+    } else if left.kind != "tree" && right.kind == "tree" {
+      1
+    } else {
+      left.name.lexical_compare(right.name)
+    }
+  })
+  entries
+}
+
+///|
+pub async fn read_blob(git_dir : String, rev : String, path : String) -> String {
+  run_git(git_dir, ["show", "\{rev}:\{path}"])
+}
+
+///|
+pub fn parse_commit_line(line : String) -> CommitInfo? {
+  let parts = line.split("\u{1f}").map(v => v.to_owned()).collect()
+  if parts.length() >= 4 {
+    Some({
+      hash: parts[0],
+      subject: parts[1],
+      author: parts[2],
+      date: parts[3],
+    })
+  } else {
+    None
+  }
+}
+
+///|
+pub async fn list_commits(git_dir : String, rev : String) -> Array[CommitInfo] {
+  let out = run_git(git_dir, [
+    "log", "--date=short", "--pretty=format:%H%x1f%s%x1f%an%x1f%ad", "-n", "50",
+    rev,
+  ])
+  let commits : Array[CommitInfo] = []
+  for line in @domain.split_lines(out) {
+    match parse_commit_line(line) {
+      Some(commit) => commits.push(commit)
+      None => ()
+    }
+  }
+  commits
 }

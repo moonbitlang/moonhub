@@ -15,6 +15,22 @@ You can browse and install extra skills here:
 - In the toplevel directory, there is a `moon.mod` file listing module
   metadata.
 
+## Package Boundaries
+
+- See `docs/architecture.md` for package responsibilities and dependency
+  direction. Keep the root package limited to the CLI and process entry point.
+- Business packages must not import Web packages or Moonback, including in tests.
+- Group Web features under `web/views/<feature>`. Each package owns its routes,
+  rendering and HTTP tests; related list/detail/edit pages belong together.
+  Page packages must not import sibling page packages. Put shared presentation
+  in `web/ui` and request/session helpers in `web/context`.
+- Web feature modules obtain app-scoped dependencies with `ctx.require` during
+  initialization. Register dependencies in `web/dependencies.mbt`; keep custom
+  bootstrap configuration reads at the application boundary.
+- Import `test_support` and `web/testkit` only for tests, never in production
+  packages. The Web testkit may reuse the lower-level test fixtures.
+- Run `node scripts/check-package-boundaries.cjs` after changing package imports.
+
 ## Coding convention
 
 - MoonBit code is organized in block style, each block is separated by `///|`,
