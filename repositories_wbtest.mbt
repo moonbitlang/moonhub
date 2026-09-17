@@ -36,7 +36,7 @@ async fn repository_test_token(
 ) -> String {
   let (response, body) = http_get_path_with_cookie(
     port,
-    "/teams/\{team}/repositories/new",
+    "/\{team}/-/repositories/new",
     cookie,
   )
   assert_eq(response.code, 200)
@@ -142,21 +142,21 @@ async test "team owners create private repositories without exposing partially p
     let csrf = repository_test_token(port, "alice", alice_cookie)
     let (response, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories",
+      "/alice/-/repositories",
       "csrf_token=\{csrf}&name=new-repo&visibility=private&team=bob",
       alice_cookie,
     )
     assert_eq(response.code, 303)
     assert_true(
       response.headers.get("location")
-      is Some("/teams/alice/repositories/new-repo/status"),
+      is Some("/alice/-/repositories/new-repo/status"),
     )
     let alice = active_user_by_name(pool, "alice")
     let repo : RepoId = { owner: "alice", name: "new-repo", }
     assert_true(!@fs.exists(repo.git_dir(root)))
     assert_true(!can_access_repository(pool, alice, repo, Read))
     let (pending, _) = http_get_path_with_cookie(
-      port, "/teams/alice/repositories/new-repo/status", alice_cookie,
+      port, "/alice/-/repositories/new-repo/status", alice_cookie,
     )
     assert_eq(pending.code, 200)
     assert_true(pending.headers.get("refresh") is Some("2"))
@@ -164,12 +164,12 @@ async test "team owners create private repositories without exposing partially p
     assert_true(can_access_repository(pool, alice, repo, Write))
     assert_eq(default_ref(repo.git_dir(root)), "main")
     let (ready, _) = http_get_path_with_cookie(
-      port, "/teams/alice/repositories/new-repo/status", alice_cookie,
+      port, "/alice/-/repositories/new-repo/status", alice_cookie,
     )
     assert_eq(ready.code, 303)
     assert_true(ready.headers.get("location") is Some("/alice/new-repo"))
     let (team_response, team_body) = http_get_path_with_cookie(
-      port, "/teams/alice", alice_cookie,
+      port, "/alice", alice_cookie,
     )
     assert_eq(team_response.code, 200)
     assert_true(team_body.contains("New repository"))
@@ -184,7 +184,7 @@ async test "team repository creation denies outsiders ordinary members and forge
     let csrf = repository_test_token(port, "alice", alice)
     let (outsider, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories",
+      "/alice/-/repositories",
       "csrf_token=\{csrf}&name=stolen",
       bob,
     )
@@ -195,24 +195,24 @@ async test "team repository creation denies outsiders ordinary members and forge
       )
     })
     let (member_response, _) = http_get_path_with_cookie(
-      port, "/teams/alice/repositories/new", bob,
+      port, "/alice/-/repositories/new", bob,
     )
     assert_eq(member_response.code, 403)
     let (missing, _) = http_post_path_with_cookie(
-      port, "/teams/alice/repositories", "name=invalid", alice,
+      port, "/alice/-/repositories", "name=invalid", alice,
     )
     assert_eq(missing.code, 403)
     let settings_csrf = settings_form_token(port, alice)
     let (wrong_scope, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories",
+      "/alice/-/repositories",
       "csrf_token=\{settings_csrf}&name=invalid",
       alice,
     )
     assert_eq(wrong_scope.code, 403)
     let (unconfigured, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories/import",
+      "/alice/-/repositories/import",
       "csrf_token=\{csrf}&name=imported&source_url=git@source.example:repo.git",
       alice,
     )
@@ -228,7 +228,7 @@ async test "concurrent creation reserves a name once and never reinitializes exi
       () => {
         http_post_path_with_cookie(
           port,
-          "/teams/alice/repositories",
+          "/alice/-/repositories",
           "csrf_token=\{csrf}&name=unique",
           alice,
         )
@@ -236,7 +236,7 @@ async test "concurrent creation reserves a name once and never reinitializes exi
       () => {
         http_post_path_with_cookie(
           port,
-          "/teams/alice/repositories",
+          "/alice/-/repositories",
           "csrf_token=\{csrf}&name=unique",
           alice,
         )
@@ -249,7 +249,7 @@ async test "concurrent creation reserves a name once and never reinitializes exi
     let head = @fs.read_file("\{root}/alice/demo.git/HEAD").text()
     let (duplicate, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories",
+      "/alice/-/repositories",
       "csrf_token=\{csrf}&name=demo",
       alice,
     )
@@ -383,13 +383,13 @@ async test "failed jobs can be discarded and permissions are rechecked before ex
       )
     })
     let (confirmation, body) = http_get_path_with_cookie(
-      port, "/teams/alice/repositories/failed/discard", alice_cookie,
+      port, "/alice/-/repositories/failed/discard", alice_cookie,
     )
     assert_eq(confirmation.code, 200)
     let csrf = extract_attr(body, "name=\"csrf_token\"", "value=\"")
     let (discarded, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories/failed/discard",
+      "/alice/-/repositories/failed/discard",
       "csrf_token=\{csrf}",
       alice_cookie,
     )

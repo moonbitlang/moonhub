@@ -91,7 +91,7 @@ fn render_index(
         "<div class=\"page-heading page-heading--actions\"><div class=\"heading-title\"><h1>Repositories</h1><span class=\"count-badge\">\{repos.length().to_string()}</span></div>"
       if personal_owner is Some(owner) {
         b <+
-          "<a class=\"button-link\" href=\"/teams/\{owner}/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a>"
+          "<a class=\"button-link\" href=\"/\{owner}/-/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a>"
       }
       b <+
         "<a class=\"secondary-button button-link\" href=\"/-/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div>"
@@ -100,7 +100,7 @@ fn render_index(
           "<div class=\"empty-state\"><span class=\"empty-icon ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span><h2>No repositories yet</h2>"
         if personal_owner is Some(owner) {
           b <+
-            "<a href=\"/teams/\{owner}/repositories/new\">Create your first repository</a>"
+            "<a href=\"/\{owner}/-/repositories/new\">Create your first repository</a>"
         }
         b <+ "<a href=\"/-/teams\">Browse your teams</a></div>"
       } else {
@@ -476,7 +476,7 @@ fn render_teams(
           "<section class=\"empty-state\"><p class=\"muted\">No teams available.</p></section>"
       } else {
         b <+
-          "<section class=\"table-frame\"><div class=\"table-scroll\"><table class=\"teams-table\"><thead><tr><th>Team</th><th>Type</th><th>Your role</th></tr></thead><tbody>"
+          "<section class=\"table-frame\"><div class=\"table-scroll\"><table class=\"teams-table\"><thead><tr><th>Team</th><th>Your role</th></tr></thead><tbody>"
         for team in teams {
           let role = team.role.unwrap_or(
             if user.is_site_admin {
@@ -486,7 +486,7 @@ fn render_teams(
             },
           )
           b <+
-            "<tr><td><div class=\"identity-cell\"><span class=\"team-avatar\" aria-hidden=\"true\">\{team.name_key[:1].to_owned().to_upper()}</span><span><a class=\"repo-name\" href=\"/teams/\{team.name_key}\">\{team.display_name}</a><span class=\"cell-secondary\">\{team.name_key}</span></span></div></td><td class=\"muted\">\{if team.kind == "org" { "Organization" } else { "Personal" }}</td><td><span class=\"role-label\">\{role}</span></td></tr>"
+            "<tr><td><div class=\"identity-cell\"><span class=\"team-avatar\" aria-hidden=\"true\">\{team.name_key[:1].to_owned().to_upper()}</span><span><a class=\"repo-name\" href=\"/\{team.name_key}\">\{team.display_name}</a><span class=\"cell-secondary\">\{team.name_key}</span></span></div></td><td><span class=\"role-label\">\{role}</span></td></tr>"
         }
         b <+ "</tbody></table></div></section>"
       }
@@ -565,7 +565,7 @@ fn render_team_detail(
       b <+ "><div class=\"section-heading\"><h2>Members</h2>"
       if can_manage {
         b <+
-          "<a class=\"button-link\" href=\"/teams/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
+          "<a class=\"button-link\" href=\"/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
       }
       b <+
         "</div><div class=\"table-frame\"><div class=\"table-scroll\"><table class=\"members-table\"><thead><tr><th>Member</th><th>Email</th><th>Role</th></tr></thead><tbody>"
@@ -586,12 +586,12 @@ fn render_team_detail(
       b <+ "><div class=\"section-heading\"><h2>Invitations</h2>"
       if can_manage && !invite_open {
         b <+
-          "<a class=\"button-link\" href=\"/teams/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
+          "<a class=\"button-link\" href=\"/\{team.name_key}?tab=invitations&amp;invite=1\"><span class=\"ui-icon\" data-icon=\"user-plus\" aria-hidden=\"true\"></span>Invite member</a>"
       }
       b <+ "</div>"
       if can_manage {
         b <+
-          "<form class=\"invite-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations\""
+          "<form class=\"invite-form\" method=\"post\" action=\"/\{team.name_key}/-/invitations\""
         if !invite_open {
           b <+ " hidden"
         }
@@ -605,7 +605,7 @@ fn render_team_detail(
           b <+ " selected"
         }
         b <+
-          ">Admin</option></select></label></div><div class=\"form-actions\"><button type=\"submit\"><span class=\"ui-icon\" data-icon=\"send\" aria-hidden=\"true\"></span>Send invite</button><a class=\"secondary-button button-link\" href=\"/teams/\{team.name_key}?tab=invitations\">Cancel</a></div></form>"
+          ">Admin</option></select></label></div><div class=\"form-actions\"><button type=\"submit\"><span class=\"ui-icon\" data-icon=\"send\" aria-hidden=\"true\"></span>Send invite</button><a class=\"secondary-button button-link\" href=\"/\{team.name_key}?tab=invitations\">Cancel</a></div></form>"
       }
       b <+
         "<div class=\"table-frame\"><div class=\"table-scroll\"><table class=\"invitations-table\"><thead><tr><th>Email</th><th>User</th><th>Role</th><th>Status</th><th>Delivery</th><th><span class=\"sr-only\">Actions</span></th></tr></thead><tbody>"
@@ -649,18 +649,18 @@ fn render_team_detail(
             ) &&
             invitation.email_last_error is Some(_) {
             b <+
-              "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/resend\"><button class=\"secondary-button\" type=\"submit\">Resend</button></form>"
+              "<form class=\"inline-form\" method=\"post\" action=\"/\{team.name_key}/-/invitations/\{invitation_id}/resend\"><button class=\"secondary-button\" type=\"submit\">Resend</button></form>"
           }
           if (can_manage || user.is_site_admin) && invitation.status == "sent" {
             b <+
               "<details class=\"row-menu\" data-dismissable><summary class=\"icon-button\" aria-label=\"Invitation actions for \{invitation.email}\" title=\"More actions\"><span class=\"ui-icon\" data-icon=\"ellipsis\" aria-hidden=\"true\"></span></summary><div class=\"row-menu-panel\">"
             if user.is_site_admin && invitation.email_status is Some(_) {
               b <+
-                "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/credentials\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{invitation_credentials_csrf}\"><button class=\"secondary-button\" type=\"submit\">View sign-in details</button></form>"
+                "<form class=\"inline-form\" method=\"post\" action=\"/\{team.name_key}/-/invitations/\{invitation_id}/credentials\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{invitation_credentials_csrf}\"><button class=\"secondary-button\" type=\"submit\">View sign-in details</button></form>"
             }
             if can_manage {
               b <+
-                "<form class=\"inline-form\" method=\"post\" action=\"/teams/\{team.name_key}/invitations/\{invitation_id}/revoke\"><button class=\"danger-button secondary-button\" type=\"submit\">Revoke</button></form>"
+                "<form class=\"inline-form\" method=\"post\" action=\"/\{team.name_key}/-/invitations/\{invitation_id}/revoke\"><button class=\"danger-button secondary-button\" type=\"submit\">Revoke</button></form>"
             }
             b <+ "</div></details>"
           }

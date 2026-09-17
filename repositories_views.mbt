@@ -20,7 +20,7 @@ fn render_team_repositories(
       "<section class=\"team-repositories\"><div class=\"repository-section-heading\"><h2>Repositories</h2>"
     if can_manage {
       b <+
-        "<div class=\"repository-actions\"><a class=\"button-link secondary-button\" href=\"/teams/\{team.name_key}/repositories/import\"><span class=\"ui-icon\" data-icon=\"download\" aria-hidden=\"true\"></span>Import via SSH</a><a class=\"button-link\" href=\"/teams/\{team.name_key}/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a></div>"
+        "<div class=\"repository-actions\"><a class=\"button-link secondary-button\" href=\"/\{team.name_key}/-/repositories/import\"><span class=\"ui-icon\" data-icon=\"download\" aria-hidden=\"true\"></span>Import via SSH</a><a class=\"button-link\" href=\"/\{team.name_key}/-/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a></div>"
     }
     b <+ "</div><ul class=\"team-repository-list\">"
     if repos.is_empty() {
@@ -30,7 +30,7 @@ fn render_team_repositories(
       let href = if repo.ready {
         "/\{team.name_key}/\{repo.name}"
       } else {
-        "/teams/\{team.name_key}/repositories/\{repo.name}/status"
+        "/\{team.name_key}/-/repositories/\{repo.name}/status"
       }
       b <+
         "<li><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><a class=\"repo-name\" href=\"\{href}\">\{repo.name}</a><span class=\"repository-visibility\"><span class=\"ui-icon\" data-icon=\"\{if repo.visibility == "private" { "lock" } else { "globe" }}\" aria-hidden=\"true\"></span>\{repo.visibility}</span>"
@@ -59,22 +59,22 @@ fn render_repository_form(
 ) -> @moonback.Html {
   let title = if importing { "Import repository" } else { "New repository" }
   let action = if importing {
-    "/teams/\{team.name_key}/repositories/import"
+    "/\{team.name_key}/-/repositories/import"
   } else {
-    "/teams/\{team.name_key}/repositories"
+    "/\{team.name_key}/-/repositories"
   }
   layout(
     title,
     assets,
     Html(b => {
       b <+
-        "<section class=\"repository-form\"><nav class=\"ssh-settings-back\" aria-label=\"Team\"><a href=\"/teams/\{team.name_key}\">\{team.display_name}</a></nav><h1>\{title}</h1><nav class=\"repository-mode\" aria-label=\"Repository source\">"
+        "<section class=\"repository-form\"><nav class=\"ssh-settings-back\" aria-label=\"\{namespace_back_label(team)}\"><a href=\"/\{team.name_key}\">\{team.display_name}</a></nav><h1>\{title}</h1><nav class=\"repository-mode\" aria-label=\"Repository source\">"
       if importing {
         b <+
-          "<a href=\"/teams/\{team.name_key}/repositories/new\">Empty repository</a><a href=\"/teams/\{team.name_key}/repositories/import\" aria-current=\"page\">SSH import</a>"
+          "<a href=\"/\{team.name_key}/-/repositories/new\">Empty repository</a><a href=\"/\{team.name_key}/-/repositories/import\" aria-current=\"page\">SSH import</a>"
       } else {
         b <+
-          "<a href=\"/teams/\{team.name_key}/repositories/new\" aria-current=\"page\">Empty repository</a><a href=\"/teams/\{team.name_key}/repositories/import\">SSH import</a>"
+          "<a href=\"/\{team.name_key}/-/repositories/new\" aria-current=\"page\">Empty repository</a><a href=\"/\{team.name_key}/-/repositories/import\">SSH import</a>"
       }
       b <+ "</nav>"
       if error is Some(message) {
@@ -82,7 +82,7 @@ fn render_repository_form(
       }
       if importing && !import_available {
         b <+
-          "<p class=\"flash-error\" role=\"status\">SSH imports are not configured for this team.</p>"
+          "<p class=\"flash-error\" role=\"status\">SSH imports are not configured for this namespace.</p>"
       }
       b <+
         "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"field\"><label for=\"repository-name\"><span>Repository name</span></label><div class=\"repository-name-field\"><span class=\"path muted\">\{team.name_key}/</span><input id=\"repository-name\" name=\"name\" value=\"\{name}\" maxlength=\"100\" autocomplete=\"off\" required></div></div><div class=\"field\"><label for=\"repository-visibility\"><span>Visibility</span></label><select id=\"repository-visibility\" name=\"visibility\">"
@@ -105,11 +105,10 @@ fn render_repository_form(
         b <+
           "<button type=\"submit\">\{if importing { "Import repository" } else { "Create repository" }}</button>"
       }
-      b <+
-        "<a href=\"/teams/\{team.name_key}\">Cancel</a></div></form></section>"
+      b <+ "<a href=\"/\{team.name_key}\">Cancel</a></div></form></section>"
     }),
     current_user=Some(user),
-    navigation=TeamNavigation(team, "repositories"),
+    navigation=namespace_navigation(team, "repositories"),
   )
 }
 
@@ -128,7 +127,7 @@ fn render_repository_job(
     assets,
     Html(b => {
       b <+
-        "<section class=\"repository-form\"><nav class=\"ssh-settings-back\" aria-label=\"Team\"><a href=\"/teams/\{team.name_key}\">\{team.display_name}</a></nav>"
+        "<section class=\"repository-form\"><nav class=\"ssh-settings-back\" aria-label=\"\{namespace_back_label(team)}\"><a href=\"/\{team.name_key}\">\{team.display_name}</a></nav>"
       if discarding {
         b <+
           "<h1>Discard failed operation</h1><p class=\"path\">\{job.repo.path()}</p>"
@@ -146,14 +145,14 @@ fn render_repository_job(
       }
       if discarding {
         b <+
-          "<p>The reserved repository name will be released. No existing repository data will be deleted.</p><form method=\"post\" action=\"/teams/\{team.name_key}/repositories/\{job.repo.name}/discard\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"repository-actions\"><button class=\"danger-button\" type=\"submit\">Discard operation</button><a href=\"/teams/\{team.name_key}/repositories/\{job.repo.name}/status\">Cancel</a></div></form>"
+          "<p>The reserved repository name will be released. No existing repository data will be deleted.</p><form method=\"post\" action=\"/\{team.name_key}/-/repositories/\{job.repo.name}/discard\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"repository-actions\"><button class=\"danger-button\" type=\"submit\">Discard operation</button><a href=\"/\{team.name_key}/-/repositories/\{job.repo.name}/status\">Cancel</a></div></form>"
       } else if job.status == "failed" && can_manage {
         b <+
-          "<form method=\"post\" action=\"/teams/\{team.name_key}/repositories/\{job.repo.name}/retry\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"repository-actions\"><button type=\"submit\">Retry</button><a class=\"ssh-revoke-link\" href=\"/teams/\{team.name_key}/repositories/\{job.repo.name}/discard\">Discard failed operation</a></div></form>"
+          "<form method=\"post\" action=\"/\{team.name_key}/-/repositories/\{job.repo.name}/retry\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"repository-actions\"><button type=\"submit\">Retry</button><a class=\"ssh-revoke-link\" href=\"/\{team.name_key}/-/repositories/\{job.repo.name}/discard\">Discard failed operation</a></div></form>"
       }
       b <+ "</section>"
     }),
     current_user=Some(user),
-    navigation=TeamNavigation(team, "repositories"),
+    navigation=namespace_navigation(team, "repositories"),
   )
 }

@@ -34,7 +34,7 @@ async fn handle_repository_create(
   addresses : SshAddressConfig,
 ) -> Unit {
   let actor = require_current_user(req)
-  let team = require_team_by_request(pool, req)
+  let team = require_owner_namespace(pool, req)
   require_repository_manager(pool, actor, team)
   let scope = "team-repositories:\{team.id}"
   let form = protected_form(req, scope)
@@ -52,7 +52,9 @@ async fn handle_repository_create(
         pool, actor, source_url, addresses,
       )
       guard available && config is Some(config) else {
-        raise BadRequest(message="SSH imports are not configured for this team")
+        raise BadRequest(
+          message="SSH imports are not configured for this namespace",
+        )
       }
       authorize_import_source(
         team_import_credentials(config, team.name_key),
@@ -94,7 +96,7 @@ async fn handle_repository_create(
   res.send_void(
     status=303,
     headers=private_page_headers(
-      location="/teams/\{team.name_key}/repositories/\{repo.name}/status",
+      location="/\{team.name_key}/-/repositories/\{repo.name}/status",
     ),
   )
 }
@@ -109,9 +111,9 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
       .config()
       .get_custom(config_ssh_addresses)
       .unwrap_or(no_ssh_address_config)
-    ctx.get("/teams/:team/repositories/new", async fn(req, res) {
+    ctx.get("/:owner/-/repositories/new", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_repository_manager(pool, actor, team)
       res.send_html(
         render_repository_form(
@@ -129,9 +131,9 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.get("/teams/:team/repositories/import", async fn(req, res) {
+    ctx.get("/:owner/-/repositories/import", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_repository_manager(pool, actor, team)
       res.send_html(
         render_repository_form(
@@ -149,19 +151,19 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/teams/:team/repositories", async fn(req, res) {
+    ctx.post("/:owner/-/repositories", async fn(req, res) {
       handle_repository_create(
         req, res, pool, root, config, assets, false, addresses,
       )
     })
-    ctx.post("/teams/:team/repositories/import", async fn(req, res) {
+    ctx.post("/:owner/-/repositories/import", async fn(req, res) {
       handle_repository_create(
         req, res, pool, root, config, assets, true, addresses,
       )
     })
-    ctx.get("/teams/:team/repositories/:repo/status", async fn(req, res) {
+    ctx.get("/:owner/-/repositories/:repo/status", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_team_member_access(pool, actor, team)
       let job = require_repository_job(
         pool,
@@ -190,9 +192,9 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
         )
       }
     })
-    ctx.post("/teams/:team/repositories/:repo/retry", async fn(req, res) {
+    ctx.post("/:owner/-/repositories/:repo/retry", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_repository_manager(pool, actor, team)
       let _ = protected_form(req, "team-repositories:\{team.id}")
       let name = requested_team_repo(req, team)
@@ -200,13 +202,13 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
       res.send_void(
         status=303,
         headers=private_page_headers(
-          location="/teams/\{team.name_key}/repositories/\{name}/status",
+          location="/\{team.name_key}/-/repositories/\{name}/status",
         ),
       )
     })
-    ctx.get("/teams/:team/repositories/:repo/discard", async fn(req, res) {
+    ctx.get("/:owner/-/repositories/:repo/discard", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_repository_manager(pool, actor, team)
       let job = require_repository_job(
         pool,
@@ -229,9 +231,9 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
         headers=private_page_headers(),
       )
     })
-    ctx.post("/teams/:team/repositories/:repo/discard", async fn(req, res) {
+    ctx.post("/:owner/-/repositories/:repo/discard", async fn(req, res) {
       let actor = require_current_user(req)
-      let team = require_team_by_request(pool, req)
+      let team = require_owner_namespace(pool, req)
       require_repository_manager(pool, actor, team)
       let _ = protected_form(req, "team-repositories:\{team.id}")
       discard_repository_job(
@@ -243,7 +245,7 @@ fn repositories_module(assets : Map[String, String]) -> @moonback.Module {
       )
       res.send_void(
         status=303,
-        headers=private_page_headers(location="/teams/\{team.name_key}"),
+        headers=private_page_headers(location="/\{team.name_key}"),
       )
     })
   })

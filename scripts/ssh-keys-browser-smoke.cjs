@@ -158,7 +158,7 @@ async function main() {
   await page.locator('[name=name_key]').fill('workshop');
   await page.locator('[name=display_name]').fill('Workshop');
   await page.getByRole('button', { name: 'Create team', exact: true }).click();
-  await page.waitForURL(`${url}/teams/workshop`);
+  await page.waitForURL(`${url}/workshop`);
   await page.getByRole('link', { name: 'New repository', exact: true }).click();
   await page.getByLabel('Repository name', { exact: true }).fill('example');
   await page.getByLabel('Visibility', { exact: true }).selectOption('private');
@@ -200,21 +200,21 @@ async function main() {
   await capture(page, 'clone-clipboard-denied');
   await page.locator('h1').click();
   assert.equal(await page.locator('.repo-clone').getAttribute('open'), null);
-  await page.goto(`${url}/teams/workshop`);
+  await page.goto(`${url}/workshop`);
   await page.getByRole('link', { name: 'example', exact: true }).waitFor();
   await capture(page, 'team-repositories');
   await page.getByRole('link', { name: 'Import via SSH', exact: true }).click();
   await page.getByText('SSH imports are not configured for this team.', { exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Import repository', exact: true }).isDisabled());
   await capture(page, 'repository-import');
-  await page.goto(`${url}/teams/workshop`);
+  await page.goto(`${url}/workshop`);
   assert.deepEqual(pageErrors, []);
   succeeded = true;
   if (process.env.MOONHUB_KEEP_PREVIEW === '1') {
     fs.writeFileSync(path.join(output, 'preview.json'), JSON.stringify({
-      url: `${url}/teams/workshop`, username, password, pid: server.pid, data: temp,
+      url: `${url}/workshop`, username, password, pid: server.pid, data: temp,
     }, null, 2) + '\n', { mode: 0o600 });
-    console.log(`Preview: ${url}/teams/workshop`);
+    console.log(`Preview: ${url}/workshop`);
     console.log(`Login details: ${path.join(output, 'preview.json')}`);
   }
   console.log('Browser smoke test passed: SSH keys, team repositories, site SSH settings, clone URL copying, clipboard denial and keyboard controls; desktop and mobile layouts.');

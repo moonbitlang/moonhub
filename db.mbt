@@ -480,7 +480,6 @@ fn list_teams(pool : Database, actor : CurrentUser) -> Array[TeamSummary] raise 
           #|  ON team_member.team_id = team.id
           #| AND team_member.user_id = ?
           #|WHERE team.kind = 'org'
-          #|   OR team_member.user_id IS NOT NULL
           #|ORDER BY team.name_key
         ),
         params=[actor.id],
@@ -497,6 +496,7 @@ fn list_teams(pool : Database, actor : CurrentUser) -> Array[TeamSummary] raise 
           #|FROM team
           #|JOIN team_member ON team_member.team_id = team.id
           #|WHERE team_member.user_id = ?
+          #|  AND team.kind = 'org'
           #|ORDER BY team.name_key
         ),
         params=[actor.id],

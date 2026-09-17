@@ -22,9 +22,10 @@ async fn with_ssh_test_db(f : async (Database) -> Unit) -> Unit {
           #|VALUES (1, 'alice', 'Alice', 'test', 0), (2, 'bob', 'Bob', 'test', 0),
           #|  (3, 'admin', 'Admin', 'test', 1);
           #|INSERT INTO team (id, name_key, display_name, kind)
-          #|VALUES (1, 'alice', 'Alice', 'personal'), (2, 'bob', 'Bob', 'personal');
+          #|VALUES (1, 'alice', 'Alice', 'personal'), (2, 'bob', 'Bob', 'personal'),
+          #|  (3, 'workshop', 'Workshop', 'org'), (4, 'squad', 'Squad', 'org');
           #|INSERT INTO team_member (team_id, user_id, role)
-          #|VALUES (1, 1, 'owner'), (2, 2, 'owner');
+          #|VALUES (1, 1, 'owner'), (2, 2, 'owner'), (3, 1, 'owner'), (4, 2, 'owner');
           #|INSERT INTO repository (team_id, name, visibility)
           #|VALUES (1, 'demo', 'private'), (1, 'public', 'public');
         ),

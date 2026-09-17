@@ -2,9 +2,31 @@
 enum PageNavigation {
   WorkspaceNavigation(String)
   TeamNavigation(TeamSummary, String)
+  PersonalNavigation(TeamSummary)
   RepositoryNavigation(RepoId, String, Bool)
   AccountNavigation(String)
   SiteNavigation
+}
+
+///|
+/// A user's own namespace is not a team in the product, so it never uses the
+/// team views, labels, or sections.
+fn namespace_navigation(team : TeamSummary, active : String) -> PageNavigation {
+  if team.kind == "personal" {
+    PersonalNavigation(team)
+  } else {
+    TeamNavigation(team, active)
+  }
+}
+
+///|
+/// Accessible name for a link that leaves a page back to its namespace.
+fn namespace_back_label(team : TeamSummary) -> String {
+  if team.kind == "personal" {
+    "Repositories"
+  } else {
+    "Team"
+  }
 }
 
 ///|
@@ -36,9 +58,12 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
       TeamNavigation(team, _) =>
         b <+
           "<a href=\"/-/teams\">Teams</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
+      PersonalNavigation(team) =>
+        b <+
+          "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
       RepositoryNavigation(repo, _, _) =>
         b <+
-          "<a href=\"/teams/\{repo.owner}\">\{repo.owner}</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><a class=\"breadcrumb-current\" href=\"\{repo_link(repo)}\">\{repo.name}</a>"
+          "<a href=\"/\{repo.owner}\">\{repo.owner}</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><a class=\"breadcrumb-current\" href=\"\{repo_link(repo)}\">\{repo.name}</a>"
       AccountNavigation(_) =>
         b <+
           "<span>Account</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>Settings</strong>"
@@ -57,6 +82,8 @@ fn render_sidebar(
 ) -> @moonback.Html {
   let (name, subtitle, icon) = match navigation {
     TeamNavigation(team, _) => (team.display_name, "Team workspace", "users")
+    PersonalNavigation(team) =>
+      (team.display_name, "Personal repositories", "user")
     RepositoryNavigation(repo, _, _) => (repo.name, repo.owner, "book-open")
     AccountNavigation(_) => ("Your account", "Personal settings", "user")
     SiteNavigation => ("Administration", "Site settings", "settings")
@@ -67,7 +94,7 @@ fn render_sidebar(
       "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"Workspace navigation\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/-/teams\">All teams</a>"
     match navigation {
       RepositoryNavigation(repo, _, _) =>
-        b <+ "<a href=\"/teams/\{repo.owner}\">\{repo.owner} workspace</a>"
+        b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
       _ => ()
     }
     b <+
@@ -78,7 +105,7 @@ fn render_sidebar(
       TeamNavigation(team, active) => {
         b <+
           "<nav class=\"nav-group context-navigation\" aria-label=\"Team\"><p class=\"nav-group-label\">\{team.display_name}</p>"
-        let base = "/teams/\{team.name_key}"
+        let base = "/\{team.name_key}"
         for
           (key, label, icon) in [
             ("repositories", "Team repositories", "book-open"),

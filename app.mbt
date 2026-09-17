@@ -59,6 +59,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
     ),
   )
   ctx.use_(teams_module(asset_path_map))
+  ctx.use_(namespaces_module(asset_path_map))
   ctx.use_(repositories_module(asset_path_map))
   ctx.use_(merge_requests_module(asset_path_map))
   ctx.use_(issues_module(asset_path_map))

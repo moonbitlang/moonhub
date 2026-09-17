@@ -524,17 +524,16 @@ async test "root invitation creates team and revoked team invitation cannot sign
     )
     assert_eq(create_response.code, 303)
     assert_true(
-      create_response.headers.get("location")
-      is Some("/teams/moonhub_test_team"),
+      create_response.headers.get("location") is Some("/moonhub_test_team"),
     )
 
     let invite_body = "email=invited-admin%40example.com&name_key=moonhub_invited_admin&display_name=Invited%20Admin&role=admin"
     let (invite_response, _) = http_post_path_with_cookie(
-      port, "/teams/moonhub_test_team/invitations", invite_body, root_cookie,
+      port, "/moonhub_test_team/-/invitations", invite_body, root_cookie,
     )
     assert_eq(invite_response.code, 303)
     let (pending_page_response, pending_page_body) = http_get_path_with_cookie(
-      port, "/teams/moonhub_test_team", root_cookie,
+      port, "/moonhub_test_team", root_cookie,
     )
     assert_eq(pending_page_response.code, 200)
     assert_true(pending_page_body.contains("<th>Delivery</th>"))
@@ -597,12 +596,12 @@ async test "root invitation creates team and revoked team invitation cannot sign
       )
     })
     let (_, failed_page_body) = http_get_path_with_cookie(
-      port, "/teams/moonhub_test_team", root_cookie,
+      port, "/moonhub_test_team", root_cookie,
     )
     assert_true(failed_page_body.contains(">Resend</button>"))
     let (resend_response, _) = http_post_path_with_cookie(
       port,
-      "/teams/moonhub_test_team/invitations/\{invitation_id.to_string()}/resend",
+      "/moonhub_test_team/-/invitations/\{invitation_id.to_string()}/resend",
       "",
       root_cookie,
     )
@@ -635,14 +634,14 @@ async test "root invitation creates team and revoked team invitation cannot sign
       ),
     )
     let (sent_page_response, sent_page_body) = http_get_path_with_cookie(
-      port, "/teams/moonhub_test_team", root_cookie,
+      port, "/moonhub_test_team", root_cookie,
     )
     assert_eq(sent_page_response.code, 200)
     assert_true(sent_page_body.contains("data-delivery=\"sent\">Delivered"))
 
     let (revoke_response, _) = http_post_path_with_cookie(
       port,
-      "/teams/moonhub_test_team/invitations/\{invitation_id.to_string()}/revoke",
+      "/moonhub_test_team/-/invitations/\{invitation_id.to_string()}/revoke",
       "",
       root_cookie,
     )

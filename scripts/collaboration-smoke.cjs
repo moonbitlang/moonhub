@@ -71,8 +71,8 @@ async function main() {
   await owner.locator('[name=name_key]').fill('engineering');
   await owner.locator('[name=display_name]').fill('Engineering');
   await owner.getByRole('button', { name: 'Create team', exact: true }).click();
-  await owner.waitForURL(base + '/teams/engineering');
-  await owner.goto(base + '/teams/engineering?tab=invitations&invite=1');
+  await owner.waitForURL(base + '/engineering');
+  await owner.goto(base + '/engineering?tab=invitations&invite=1');
   await owner.locator('[name=email]').fill('reviewer@example.com');
   await owner.locator('[name=name_key]').fill('reviewer');
   await owner.locator('[name=display_name]').fill('Reviewer');

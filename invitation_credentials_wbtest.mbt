@@ -2,15 +2,15 @@
 async test "only site administrators can reveal invitation emails without exposing them in lists" {
   with_ssh_settings_app((port, pool, alice, bob, admin) => {
     let actor = active_user_by_name(pool, "admin")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
-    let path = "/teams/alice/invitations/\{id}/credentials"
+    let path = "/workshop/-/invitations/\{id}/credentials"
     let email = invitation_credentials(pool, actor, team.id, id)
     for cookie in [alice, admin] {
       let (response, body) = http_get_path_with_cookie(
-        port, "/teams/alice", cookie,
+        port, "/workshop", cookie,
       )
       assert_eq(response.code, 200)
       assert_true(response.headers.get("cache-control") is Some("no-store"))
@@ -21,16 +21,16 @@ async test "only site administrators can reveal invitation emails without exposi
     for role in ["owner", "admin", "member"] {
       pool.with_client(client => {
         let _ = client.execute(
-          "UPDATE team_member SET role = ? WHERE team_id = 1 AND user_id = 1",
+          "UPDATE team_member SET role = ? WHERE team_id = 3 AND user_id = 1",
           params=[role],
         )
       })
-      let (_, listed) = http_get_path_with_cookie(port, "/teams/alice", alice)
+      let (_, listed) = http_get_path_with_cookie(port, "/workshop", alice)
       assert_true(!listed.contains(path))
       let (denied, body) = http_post_path_with_cookie(
         port,
         path,
-        "csrf_token=\{form_csrf_token(alice.value, "invitation-credentials:1")}",
+        "csrf_token=\{form_csrf_token(alice.value, "invitation-credentials:3")}",
         alice,
       )
       assert_eq(denied.code, 403)
@@ -51,7 +51,7 @@ async test "only site administrators can reveal invitation emails without exposi
     } noraise {
       _ => fail("team member read invitation credentials")
     }
-    let (_, listed) = http_get_path_with_cookie(port, "/teams/alice", admin)
+    let (_, listed) = http_get_path_with_cookie(port, "/workshop", admin)
     let csrf = extract_attr(listed, "name=\"csrf_token\"", "value=\"")
     for status in ["pending", "failed", "sent"] {
       pool.with_client(client => {
@@ -104,17 +104,17 @@ async test "only site administrators can reveal invitation emails without exposi
 async test "revealing invitation credentials requires an active admin session and scoped CSRF token" {
   with_ssh_settings_app((port, pool, alice, _, admin) => {
     let actor = active_user_by_name(pool, "admin")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
-    let path = "/teams/alice/invitations/\{id}/credentials"
-    let csrf = form_csrf_token(admin.value, "invitation-credentials:1")
+    let path = "/workshop/-/invitations/\{id}/credentials"
+    let csrf = form_csrf_token(admin.value, "invitation-credentials:3")
     for
       token in [
         "",
         "invalid",
-        form_csrf_token(alice.value, "invitation-credentials:1"),
+        form_csrf_token(alice.value, "invitation-credentials:3"),
         form_csrf_token(admin.value, "invitation-credentials:2"),
         form_csrf_token(admin.value, "ssh-key-settings"),
       ] {
@@ -189,7 +189,7 @@ async test "revealing invitation credentials requires an active admin session an
 async test "invitation credentials reject mismatched teams and unavailable invitations" {
   with_ssh_settings_app((port, pool, _, _, admin) => {
     let actor = active_user_by_name(pool, "admin")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
@@ -197,7 +197,7 @@ async test "invitation credentials reject mismatched teams and unavailable invit
       (name, team_id, invitation_id) in [("bob", 2L, id), ("alice", 1L, 99999L)] {
       let (response, body) = http_post_path_with_cookie(
         port,
-        "/teams/\{name}/invitations/\{invitation_id}/credentials",
+        "/\{name}/-/invitations/\{invitation_id}/credentials",
         "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:\{team_id}")}",
         admin,
       )
@@ -229,13 +229,13 @@ async test "invitation credentials reject mismatched teams and unavailable invit
           )
         }
       })
-      let path = "/teams/alice/invitations/\{id}/credentials"
-      let (_, listed) = http_get_path_with_cookie(port, "/teams/alice", admin)
+      let path = "/workshop/-/invitations/\{id}/credentials"
+      let (_, listed) = http_get_path_with_cookie(port, "/workshop", admin)
       assert_true(!listed.contains(path), msg=state)
       let (response, body) = http_post_path_with_cookie(
         port,
         path,
-        "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:1")}",
+        "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:3")}",
         admin,
       )
       assert_eq(response.code, 404, msg=state)
@@ -248,7 +248,7 @@ async test "invitation credentials reject mismatched teams and unavailable invit
 async test "invitation detail uses the latest invitation email and escapes all mail content" {
   with_ssh_settings_app((port, pool, _, _, admin) => {
     let actor = active_user_by_name(pool, "admin")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
@@ -265,8 +265,8 @@ async test "invitation detail uses the latest invitation email and escapes all m
     })
     let (response, body) = http_post_path_with_cookie(
       port,
-      "/teams/alice/invitations/\{id}/credentials",
-      "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:1")}",
+      "/workshop/-/invitations/\{id}/credentials",
+      "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:3")}",
       admin,
     )
     assert_eq(response.code, 200)

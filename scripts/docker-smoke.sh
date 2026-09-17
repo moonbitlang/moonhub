@@ -76,7 +76,7 @@ wait_repository_operation() {
   local name=$1 expected=$2 code state
   for _ in $(seq 1 60); do
     code=$(curl --silent --show-error --output "$tmp/operation" --write-out '%{http_code}' \
-      -b "$tmp/cookies" "$http/teams/smoke-team/repositories/$name/status")
+      -b "$tmp/cookies" "$http/smoke-team/-/repositories/$name/status")
     if [ "$code" = 303 ] && [ "$expected" = Ready ]; then return; fi
     if [ "$code" = 200 ]; then
       state=$(settings_value status < "$tmp/operation")
@@ -159,11 +159,11 @@ grep -q 'README.md' "$tmp/response"
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" -d 'name_key=smoke-team&display_name=Smoke%20Team' "$http/teams")
 test "$status" = 303
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/new" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/-/repositories/new" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=empty&visibility=private' \
-  "$http/teams/smoke-team/repositories")
+  "$http/smoke-team/-/repositories")
 test "$status" = 303
 wait_repository_operation empty Ready
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/empty" > "$tmp/response"
@@ -187,15 +187,15 @@ awk '{print "[ssh]:2222 " $1 " " $2}' "$tmp/import-key.pub" > "$MOONHUB_SSH_IMPO
 "${compose[@]}" restart web
 "${compose[@]}" up --no-build -d --wait --wait-timeout 180
 refresh_endpoints
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/import" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/-/repositories/import" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=blocked&source_url=git@unlisted.example:repo.git' \
-  "$http/teams/smoke-team/repositories/import")
+  "$http/smoke-team/-/repositories/import")
 test "$status" = 400
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'name=imported&visibility=private' \
-  --data-urlencode "source_url=$url" "$http/teams/smoke-team/repositories/import")
+  --data-urlencode "source_url=$url" "$http/smoke-team/-/repositories/import")
 test "$status" = 303
 wait_repository_operation imported Failed
 grep -Eq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' "$tmp/operation"
@@ -209,10 +209,10 @@ awk '{print "[ssh]:2222 " $1 " " $2}' "$tmp/source-host.pub" > "$MOONHUB_SSH_IMP
 "${compose[@]}" restart web
 "${compose[@]}" up --no-build -d --wait --wait-timeout 180
 refresh_endpoints
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/teams/smoke-team/repositories/imported/status" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/-/repositories/imported/status" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
-  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" "$http/teams/smoke-team/repositories/imported/retry")
+  -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" "$http/smoke-team/-/repositories/imported/retry")
 test "$status" = 303
 wait_repository_operation imported Ready
 import_url="ssh://git@127.0.0.1:$ssh_port/smoke-team/imported.git"

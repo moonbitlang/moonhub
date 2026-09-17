@@ -58,6 +58,30 @@ async fn visible_repositories(
 }
 
 ///|
+/// Repositories of a namespace that the actor may see. A manager also sees
+/// names that are still being prepared, so their status page stays reachable.
+fn namespace_repositories(
+  pool : Database,
+  actor : CurrentUser,
+  team : TeamSummary,
+  can_manage : Bool,
+) -> Array[TeamRepository] raise {
+  let repositories = team_repositories(pool, team)
+  if can_manage {
+    repositories
+  } else {
+    repositories.filter(repo => {
+      can_access_repository(
+        pool,
+        actor,
+        { owner: team.name_key, name: repo.name, },
+        Read,
+      )
+    })
+  }
+}
+
+///|
 async fn resolve_repository_dir(root : String, repo : RepoId) -> String {
   let root = trim_trailing_slash(@fs.realpath(root))
   let expected = repo.git_dir(root)

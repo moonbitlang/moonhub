@@ -21,11 +21,14 @@ account menu, and configure the client-facing hostname and port there.
 Repository pages provide a
 **Clone** menu with the public SSH URL and a copy button; container-internal
 transport addresses remain separate.
-Team owners and admins can create repositories or import them over SSH from the
-team page. Every activated account also owns a personal namespace named after
-its username, so **New repository** on the repositories page creates a
-repository under the user's own name. Creation runs in the background, with
-status and retry controls;
+Every repository belongs to a namespace, and every namespace has its own page at
+`/<name>`: a user's personal namespace, or an organization team. Team owners and
+admins create or import repositories there, and the page lists the existing
+ones. Pages that are not repositories live under the reserved `/-/` prefix, so
+any name is available to a namespace.
+Activating an account creates its personal namespace, so **New repository** on
+the repositories page creates a repository under the user's own name. Creation
+runs in the background, with status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
 before importing private repositories.
 

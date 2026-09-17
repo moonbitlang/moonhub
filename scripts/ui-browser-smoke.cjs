@@ -193,7 +193,7 @@ async function verify(page) {
   assert.equal(await page.locator('.sidebar').evaluate(element => Math.round(element.getBoundingClientRect().width)), 64);
   await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click();
   assert.equal(await page.locator('.sidebar').evaluate(element => Math.round(element.getBoundingClientRect().width)), 224);
-  await page.goto(`${url}/teams/moonhub?tab=invitations`);
+  await page.goto(`${url}/moonhub?tab=invitations`);
   const invitationMenu = page.locator('.row-menu').first();
   await invitationMenu.locator('summary').click();
   await invitationMenu.getByRole('button', { name: 'View sign-in details', exact: true }).waitFor();
@@ -201,8 +201,8 @@ async function verify(page) {
   assert.equal(await invitationMenu.getAttribute('open'), null);
 
   const pages = [
-    ['repositories', '/'], ['team', '/teams/moonhub'], ['members', '/teams/moonhub?tab=members'],
-    ['invitations', '/teams/moonhub?tab=invitations'], ['invite-form', '/teams/moonhub?tab=invitations&invite=1'],
+    ['repositories', '/'], ['team', '/moonhub'], ['members', '/moonhub?tab=members'],
+    ['invitations', '/moonhub?tab=invitations'], ['invite-form', '/moonhub?tab=invitations&invite=1'],
     ['files', '/moonhub/moonhub'], ['issues', '/moonhub/moonhub/issues'],
     ['merge-requests', '/moonhub/moonhub/merge-requests'], ['merge-detail', '/moonhub/moonhub/merge-requests/1'],
     ['ssh-keys', '/settings/ssh-keys'], ['site-settings', '/admin/settings/ssh'],
@@ -227,7 +227,7 @@ async function verify(page) {
       assert.deepEqual(entries.map(entry => entry.name), [...directories, ...files]);
     }
   }
-  await page.goto(`${url}/teams/moonhub?tab=invitations`);
+  await page.goto(`${url}/moonhub?tab=invitations`);
   await capture(page, 'small-mobile-invitations', { width: 320, height: 740 });
   await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
   await page.getByRole('dialog', { name: 'Workspace navigation' }).waitFor();
@@ -238,12 +238,12 @@ async function verify(page) {
   assert(await page.getByRole('button', { name: 'Open navigation', exact: true }).evaluate(element => element === document.activeElement));
   await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
   await page.getByRole('link', { name: 'Members', exact: true }).click();
-  await page.waitForURL(`${url}/teams/moonhub?tab=members`);
+  await page.waitForURL(`${url}/moonhub?tab=members`);
   assert(await page.locator('#team-invitations').evaluate(element => element.hidden));
   assert(!await page.locator('#team-members').evaluate(element => element.hidden));
 
   await page.setViewportSize(desktop);
-  await page.goto(`${url}/teams/moonhub?tab=invitations&invite=1`);
+  await page.goto(`${url}/moonhub?tab=invitations&invite=1`);
   await page.getByLabel('Email', { exact: true }).fill('new-member@example.test');
   await page.getByLabel('Username', { exact: true }).fill('INVALID');
   await page.getByLabel('Display name', { exact: true }).fill('New member <Preview>');

@@ -8,8 +8,8 @@ async test "team invitations accepted out of order reference the correct users" 
         (
           #|INSERT INTO invitation (id, kind, email, name_key, display_name,
           #|  password_hash, team_id, team_role, invited_by_user_id)
-          #|VALUES (4, 'team_member', 'first@example.com', 'first', 'First', ?, 1, 'admin', 3),
-          #|  (5, 'team_member', 'second@example.com', 'second', 'Second', ?, 1, 'member', 3)
+          #|VALUES (4, 'team_member', 'first@example.com', 'first', 'First', ?, 3, 'admin', 3),
+          #|  (5, 'team_member', 'second@example.com', 'second', 'Second', ?, 3, 'member', 3)
         ),
         params=[password_hash, password_hash],
       )
@@ -47,7 +47,7 @@ async test "team invitations accepted out of order reference the correct users" 
       assert_eq((second.get_name("accepted_user_id") : Int64), 4L)
       assert_true((second.get_name("accepted_at") : String?) is Some(_))
       let membership = client.query_one(
-        "SELECT role FROM team_member WHERE team_id = 1 AND user_id = 4",
+        "SELECT role FROM team_member WHERE team_id = 3 AND user_id = 4",
       )
       assert_eq((membership.get_name("role") : String), "member")
     })
@@ -75,7 +75,7 @@ async test "team invitations accepted out of order reference the correct users" 
       )
       assert_eq((second.get_name("accepted_user_id") : Int64), 4L)
       let membership = client.query_one(
-        "SELECT role FROM team_member WHERE team_id = 1 AND user_id = 5",
+        "SELECT role FROM team_member WHERE team_id = 3 AND user_id = 5",
       )
       assert_eq((membership.get_name("role") : String), "admin")
       assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
@@ -221,15 +221,15 @@ async test "duplicate invitation names and emails return validation errors witho
   with_ssh_settings_app((port, pool, alice, bob, _) => {
     let form = "email=guest%40example.com&name_key=guest&display_name=Guest&role=member"
     let (created, _) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", form, alice,
+      port, "/workshop/-/invitations", form, alice,
     )
     assert_eq(created.code, 303)
     for
       (path, cookie, email, name) in [
-        ("/teams/alice/invitations", alice, "guest@example.com", "guest"),
-        ("/teams/alice/invitations", alice, "other@example.com", "guest"),
-        ("/teams/alice/invitations", alice, "GUEST@EXAMPLE.COM", "other"),
-        ("/teams/bob/invitations", bob, "guest@example.com", "guest"),
+        ("/workshop/-/invitations", alice, "guest@example.com", "guest"),
+        ("/workshop/-/invitations", alice, "other@example.com", "guest"),
+        ("/workshop/-/invitations", alice, "GUEST@EXAMPLE.COM", "other"),
+        ("/squad/-/invitations", bob, "guest@example.com", "guest"),
       ] {
       let (response, body) = http_post_path_with_cookie(
         port,
@@ -259,7 +259,7 @@ async test "duplicate invitation names and emails return validation errors witho
       (email, name) in [("new@example.com", "bob"), ("bob@example.com", "new")] {
       let (response, body) = http_post_path_with_cookie(
         port,
-        "/teams/alice/invitations",
+        "/workshop/-/invitations",
         "email=\{email}&name_key=\{name}&display_name=Guest",
         alice,
       )
@@ -274,7 +274,7 @@ async test "duplicate invitation names and emails return validation errors witho
 async test "expired and revoked invitations can be replaced without reviving old credentials" {
   with_ssh_settings_app((port, pool, alice, _, _) => {
     let actor = active_user_by_name(pool, "alice")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     for name in ["expired", "revoked"] {
       let id = invite_team_member(
         pool,
@@ -301,7 +301,7 @@ async test "expired and revoked invitations can be replaced without reviving old
       }
       let (response, body) = http_post_path_with_cookie(
         port,
-        "/teams/alice/invitations",
+        "/workshop/-/invitations",
         "email=\{name}@example.com&name_key=\{name}&display_name=Guest&role=admin",
         alice,
       )
@@ -342,7 +342,7 @@ async test "expired and revoked invitations can be replaced without reviving old
 async test "deleted invitations never deliver orphaned invitation credentials" {
   with_ssh_test_db(pool => {
     let actor = active_user_by_name(pool, "alice")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
@@ -378,7 +378,7 @@ async test "invalid invitation submissions never disclose a team's membership to
         "", "email=invalid&name_key=guest&display_name=Guest", "email=guest@example.com&name_key=guest&display_name=Guest",
       ] {
       let (response, body) = http_post_path_with_cookie(
-        port, "/teams/alice/invitations", form, bob,
+        port, "/workshop/-/invitations", form, bob,
       )
       assert_eq(response.code, 403)
       assert_true(!body.contains("private-member@example.com"))
@@ -395,7 +395,7 @@ async test "accepting an invitation whose identity was claimed returns a public 
   for field in ["email", "name_key"] {
     with_ssh_settings_app((port, pool, _, _, _) => {
       let actor = active_user_by_name(pool, "alice")
-      let team = get_team_by_name_key(pool, "alice").unwrap()
+      let team = get_team_by_name_key(pool, "workshop").unwrap()
       let id = invite_team_member(
         pool, actor, team, "guest@example.com", "guest", "Guest", "member",
       )
@@ -432,7 +432,7 @@ async test "accepting an invitation whose identity was claimed returns a public 
         )
         assert_true(
           client.query_opt(
-            "SELECT user_id FROM team_member WHERE team_id = 1 AND user_id = 2",
+            "SELECT user_id FROM team_member WHERE team_id = 3 AND user_id = 2",
           )
           is None,
         )
@@ -445,7 +445,7 @@ async test "accepting an invitation whose identity was claimed returns a public 
 async test "expired accepted and revoked invitation emails cannot be resent or delivered" {
   with_ssh_settings_app((port, pool, alice, _, _) => {
     let actor = active_user_by_name(pool, "alice")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     for state in ["expired", "accepted", "revoked"] {
       let id = invite_team_member(
         pool,
@@ -474,7 +474,7 @@ async test "expired accepted and revoked invitation emails cannot be resent or d
       })
       let (response, _) = http_post_path_with_cookie(
         port,
-        "/teams/alice/invitations/\{id}/resend",
+        "/workshop/-/invitations/\{id}/resend",
         "",
         alice,
       )
@@ -488,7 +488,7 @@ async test "expired accepted and revoked invitation emails cannot be resent or d
 async test "mail claims exclude in-flight deliveries and recover stale claims" {
   with_ssh_test_db(pool => {
     let actor = active_user_by_name(pool, "alice")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
@@ -520,7 +520,7 @@ async test "mail claims exclude in-flight deliveries and recover stale claims" {
 async test "mail diagnostics remain private even on administrator invitation pages" {
   with_ssh_settings_app((port, pool, alice, _, admin) => {
     let actor = active_user_by_name(pool, "admin")
-    let team = get_team_by_name_key(pool, "alice").unwrap()
+    let team = get_team_by_name_key(pool, "workshop").unwrap()
     let id = invite_team_member(
       pool, actor, team, "guest@example.com", "guest", "Guest", "member",
     )
@@ -528,16 +528,16 @@ async test "mail diagnostics remain private even on administrator invitation pag
     mark_email_failed(pool, message.id, private_error_test_detail)
     for cookie in [alice, admin] {
       let (response, body) = http_get_path_with_cookie(
-        port, "/teams/alice", cookie,
+        port, "/workshop", cookie,
       )
       assert_eq(response.code, 200)
       assert_true(body.contains(email_delivery_error_message))
       assert_true(!body.contains("private-diagnostic-sentinel"))
     }
-    let token = form_csrf_token(admin.value, "invitation-credentials:1")
+    let token = form_csrf_token(admin.value, "invitation-credentials:3")
     let (response, body) = http_post_path_with_cookie(
       port,
-      "/teams/alice/invitations/\{id}/credentials",
+      "/workshop/-/invitations/\{id}/credentials",
       "csrf_token=\{token}",
       admin,
     )
@@ -573,7 +573,7 @@ async test "invitation queue failures roll back creation and expose only a gener
       )
     })
     let (response, body) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
       alice,
     )
     assert_eq(response.code, 500)
@@ -586,7 +586,7 @@ async test "invitation queue failures roll back creation and expose only a gener
       client.batch_execute("DROP TRIGGER reject_mail")
     })
     let (response, _) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
       alice,
     )
     assert_eq(response.code, 303)

@@ -4,11 +4,11 @@ async test "accepting a team invitation also provisions the member's personal na
     pool.with_client(client => {
       client.batch_execute(
         (
-          #|INSERT INTO team (id, name_key, display_name, kind) VALUES (3, 'org', 'Org', 'org');
+          #|INSERT INTO team (id, name_key, display_name, kind) VALUES (5, 'acme', 'Acme', 'org');
           #|INSERT INTO invitation (id, kind, email, name_key, display_name,
           #|  password_hash, team_id, team_role, invited_by_user_id)
           #|VALUES (9, 'team_member', 'newcomer@example.com', 'newcomer', 'Newcomer',
-          #|  'test', 3, 'member', 3);
+          #|  'test', 5, 'member', 3);
         ),
       )
     })
@@ -28,7 +28,7 @@ async test "accepting a team invitation also provisions the member's personal na
     assert_eq(personal.name_key, "newcomer")
     assert_eq(personal.display_name, "Newcomer")
     assert_eq(team_role(pool, newcomer, personal.id), Some("owner"))
-    let org = get_team_by_name_key(pool, "org").unwrap()
+    let org = get_team_by_name_key(pool, "acme").unwrap()
     assert_eq(team_role(pool, newcomer, org.id), Some("member"))
   })
 }
@@ -102,16 +102,63 @@ async test "the personal namespace migration backfills existing accounts and kee
 }
 
 ///|
-async test "the teams page lists the signed-in user's personal namespace" {
-  with_ssh_settings_app((port, _, alice, bob, _) => {
+async test "a personal namespace is not a team anywhere in the product" {
+  with_ssh_settings_app((port, _, alice, bob, admin) => {
     let (response, body) = http_get_path_with_cookie(port, "/-/teams", alice)
     assert_eq(response.code, 200)
-    assert_true(body.contains("href=\"/teams/alice\""))
-    assert_true(body.contains("<td class=\"muted\">Personal</td>"))
-    assert_true(!body.contains("href=\"/teams/bob\""))
-    let (_, bob_body) = http_get_path_with_cookie(port, "/-/teams", bob)
-    assert_true(bob_body.contains("href=\"/teams/bob\""))
-    assert_true(!bob_body.contains("href=\"/teams/alice\""))
+    // The directory lists organization teams only.
+    assert_true(body.contains("href=\"/workshop\""))
+    assert_true(!body.contains("href=\"/alice\""))
+    assert_true(!body.contains(">Personal</td>"))
+    let (bob_page, bob_body) = http_get_path_with_cookie(port, "/-/teams", bob)
+    assert_eq(bob_page.code, 200)
+    assert_true(bob_body.contains("href=\"/squad\""))
+    assert_true(!bob_body.contains("href=\"/workshop\""))
+    // Team membership stays private to its members.
+    let (outside, _) = http_get_path_with_cookie(port, "/workshop", bob)
+    assert_eq(outside.code, 403)
+    // The namespace home lists repositories and no team management.
+    let (home, home_body) = http_get_path_with_cookie(port, "/alice", alice)
+    assert_eq(home.code, 200)
+    assert_true(home_body.contains(">Repositories</h2>"))
+    assert_true(!home_body.contains(">Members<"))
+    assert_true(!home_body.contains(">Invitations<"))
+    assert_true(!home_body.contains("Invite member"))
+    assert_true(!home_body.contains("aria-label=\"Team\""))
+    // A visitor reads the same namespace without management actions.
+    let (visitor, visitor_body) = http_get_path_with_cookie(port, "/alice", bob)
+    assert_eq(visitor.code, 200)
+    assert_true(!visitor_body.contains("/alice/-/repositories/new"))
+    // An organization team keeps its member and invitation views.
+    let (team_page, team_body) = http_get_path_with_cookie(
+      port, "/workshop?tab=members", alice,
+    )
+    assert_eq(team_page.code, 200)
+    assert_true(team_body.contains(">Members<"))
+    // Personal namespaces expose no team management endpoints.
+    for
+      path in [
+        "/alice/-/invitations", "/alice/-/invitations/1/revoke", "/alice/-/invitations/1/resend",
+      ] {
+      let (denied, _) = http_post_path_with_cookie(
+        port, path, "email=guest@example.com&name_key=guest&display_name=Guest",
+        alice,
+      )
+      assert_eq(denied.code, 404, msg=path)
+    }
+    let (credentials, _) = http_post_path_with_cookie(
+      port,
+      "/alice/-/invitations/1/credentials",
+      "csrf_token=\{form_csrf_token(admin.value, "invitation-credentials:1")}",
+      admin,
+    )
+    assert_eq(credentials.code, 404)
+    // The same endpoints keep working for an organization team.
+    let (org_invite, _) = http_post_path_with_cookie(
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=guest&display_name=Guest&role=member",
+      alice,
+    )
+    assert_eq(org_invite.code, 303)
   })
 }
 
@@ -120,15 +167,15 @@ async test "users create repositories under their own name from the workspace" {
   with_repository_test_app((port, pool, root, alice, bob) => {
     let (page, body) = http_get_path_with_cookie(port, "/", alice)
     assert_eq(page.code, 200)
-    assert_true(body.contains("href=\"/teams/alice/repositories/new\""))
+    assert_true(body.contains("href=\"/alice/-/repositories/new\""))
     assert_true(body.contains("New repository"))
     let (_, bob_body) = http_get_path_with_cookie(port, "/", bob)
-    assert_true(bob_body.contains("href=\"/teams/bob/repositories/new\""))
-    assert_true(!bob_body.contains("href=\"/teams/alice/repositories/new\""))
+    assert_true(bob_body.contains("href=\"/bob/-/repositories/new\""))
+    assert_true(!bob_body.contains("href=\"/alice/-/repositories/new\""))
     let csrf = repository_test_token(port, "alice", alice)
     let (created, _) = http_post_path_with_cookie(
       port,
-      "/teams/alice/repositories",
+      "/alice/-/repositories",
       "csrf_token=\{csrf}&name=notes&visibility=private",
       alice,
     )

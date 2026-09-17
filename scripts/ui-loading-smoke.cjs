@@ -45,7 +45,7 @@ async function verifyDelayedShell(browser, scenario) {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const results = [];
-    for (const route of ['/', '/teams', '/teams/moonhub?tab=members', '/moonhub/moonhub', '/settings/ssh-keys']) {
+    for (const route of ['/', '/-/teams', '/moonhub?tab=members', '/moonhub/moonhub', '/-/settings/ssh-keys']) {
       let release;
       const gate = new Promise(resolve => { release = resolve; });
       const hold = async request => { await gate; await request.continue(); };
@@ -100,7 +100,7 @@ async function verifyFallback(browser, scriptsEnabled) {
     assert(!await page.locator('[data-sidebar-open]').isVisible());
     assert.deepEqual((await frame(page)).missingIcons, []);
     await page.locator('.sidebar').getByRole('link', { name: 'Teams', exact: true }).click();
-    await page.waitForURL(preview.url + '/teams');
+    await page.waitForURL(preview.url + '/-/teams');
     await page.getByRole('heading', { name: 'Teams', exact: true }).waitFor();
   } finally { await context.close(); }
 }

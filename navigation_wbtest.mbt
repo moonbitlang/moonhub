@@ -4,7 +4,7 @@ async test "workspace shell selects the team view and keeps private actions auth
     for tab in ["repositories", "members", "invitations"] {
       let (response, body) = http_get_path_with_cookie(
         port,
-        "/teams/alice?tab=\{tab}",
+        "/workshop?tab=\{tab}",
         alice,
       )
       assert_eq(response.code, 200)
@@ -21,11 +21,11 @@ async test "workspace shell selects the team view and keeps private actions auth
       assert_true(!body.contains(alice.value))
     }
     let (bad, _) = http_get_path_with_cookie(
-      port, "/teams/alice?tab=unknown", alice,
+      port, "/workshop?tab=unknown", alice,
     )
     assert_eq(bad.code, 400)
     let (denied, body) = http_get_path_with_cookie(
-      port, "/teams/alice?tab=members", bob,
+      port, "/workshop?tab=members", bob,
     )
     assert_eq(denied.code, 403)
     assert_true(!body.contains("id=\"team-members\""))
@@ -69,7 +69,7 @@ async test "site administrators reach site settings from every page sidebar" {
   with_ssh_settings_app((port, _, alice, _, admin) => {
     for
       path in [
-        "/", "/-/teams", "/teams/alice", "/alice/demo", "/-/settings/profile", "/-/settings/ssh-keys",
+        "/", "/-/teams", "/workshop", "/alice/demo", "/-/settings/profile", "/-/settings/ssh-keys",
         "/-/change-password",
       ] {
       let (response, body) = http_get_path_with_cookie(port, path, admin)
@@ -111,7 +111,7 @@ async test "site administrators reach site settings from every page sidebar" {
 async test "invalid invitation forms retain entered values in the invitations view" {
   with_ssh_settings_app((port, _, alice, _, _) => {
     let (response, body) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", "email=guest@example.com&name_key=INVALID&display_name=%3CGuest%3E&role=admin",
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=INVALID&display_name=%3CGuest%3E&role=admin",
       alice,
     )
     assert_eq(response.code, 400)
@@ -122,7 +122,7 @@ async test "invalid invitation forms retain entered values in the invitations vi
     assert_true(body.contains("value=\"admin\" selected"))
     assert_true(body.contains("role=\"alert\""))
     let (missing, missing_body) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&role=member",
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=guest&role=member",
       alice,
     )
     assert_eq(missing.code, 400)
@@ -135,16 +135,16 @@ async test "invalid invitation forms retain entered values in the invitations vi
 async test "successful invitation submission returns to its list with distinct acceptance and delivery states" {
   with_ssh_settings_app((port, _, alice, _, _) => {
     let (response, _) = http_post_path_with_cookie(
-      port, "/teams/alice/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
+      port, "/workshop/-/invitations", "email=guest@example.com&name_key=guest&display_name=Guest",
       alice,
     )
     assert_eq(response.code, 303)
     assert_true(
       response.headers.get("location")
-      is Some("/teams/alice?tab=invitations&notice=invited"),
+      is Some("/workshop?tab=invitations&notice=invited"),
     )
     let (page, body) = http_get_path_with_cookie(
-      port, "/teams/alice?tab=invitations&notice=invited", alice,
+      port, "/workshop?tab=invitations&notice=invited", alice,
     )
     assert_eq(page.code, 200)
     assert_true(body.contains("Invitation created."))

@@ -108,7 +108,7 @@ async test "legacy repository and merge diagnostics are never rendered" {
     for suffix in ["status", "discard"] {
       let (response, body) = http_get_path_with_cookie(
         port,
-        "/teams/alice/repositories/\{repo.name}/\{suffix}",
+        "/alice/-/repositories/\{repo.name}/\{suffix}",
         cookie,
       )
       assert_eq(response.code, 200)
@@ -190,7 +190,7 @@ async test "all form entry points reject oversized or invalid UTF8 bodies safely
   with_ssh_settings_app((port, _, _, _, admin) => {
     for
       path in [
-        "/-/login", "/-/change-password", "/-/teams", "/teams/alice/invitations",
+        "/-/login", "/-/change-password", "/-/teams", "/workshop/-/invitations",
       ] {
       for
         (body, message) in [
