@@ -57,10 +57,6 @@ You can browse and install extra skills here:
   change does not bring the visible changes to the external package users, it is
   typically a safe refactoring.
 
-- In the last step, run `moon info && moon fmt` to update the interface and
-  format the code. Check the diffs of `.mbti` file to see if the changes are
-  expected.
-
 - Temporarily use `moon build --strip -j 1`, `moon test --strip -j 1`, and
   `moon run --strip -j 1 . -- ...` for native development. The 2026-09-11
   compiler (`moonc v0.10.12+ef027fb8a`) spends excessive CPU time generating
@@ -80,3 +76,24 @@ You can browse and install extra skills here:
   scientific computations), prefer assertion tests. You can use
   `moon coverage analyze > uncovered.log` to see which parts of your code are
   not covered by tests.
+
+## Before Committing
+
+Before every commit, run these commands in this exact order, stopping on the
+first failure:
+
+```sh
+moon check --deny-warn
+moon fmt
+moon info
+```
+
+Review formatting and generated `.mbti` changes. Stage only the intended changes,
+then rerun the sequence if the staged content changed. Do not commit with
+warnings, skip failed checks, or automatically stage unrelated changes.
+
+Enable the tracked pre-commit hook in each clone with
+`git config --local core.hooksPath .githooks`. The hook requires tracked changes
+and MoonBit inputs to be staged, runs the sequence above, and rejects unstaged
+formatting/interface changes. It never stages files or stashes work. See
+`.githooks/README.md` for the hook's scope and verification command.

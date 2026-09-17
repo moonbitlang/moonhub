@@ -1,3 +1,40 @@
 #!/bin/sh
+set -eu
 
-moon check
+cd "$(git rev-parse --show-toplevel)"
+
+require_staged_inputs() {
+  if ! git diff --quiet --; then
+    printf '%s\n' 'pre-commit: review and stage tracked changes before committing.' >&2
+    git diff --name-only -- >&2
+    exit 1
+  fi
+
+  untracked=$(git ls-files --others --exclude-standard -- \
+    '*.mbt' '*.mbt.md' '*.mbti' \
+    ':(glob)**/moon.pkg' ':(glob)**/moon.pkg.json' \
+    ':(glob)**/moon.mod' ':(glob)**/moon.mod.json')
+  if [ -n "$untracked" ]; then
+    printf '%s\n' 'pre-commit: review and stage new MoonBit inputs/interfaces before committing.' >&2
+    printf '%s\n' "$untracked" >&2
+    exit 1
+  fi
+}
+
+# Do not validate a different tracked tree or format unstaged user work.
+require_staged_inputs
+if ! command -v moon >/dev/null 2>&1; then
+  printf '%s\n' 'pre-commit: moon is not on PATH; install/configure the MoonBit toolchain.' >&2
+  exit 1
+fi
+
+printf '%s\n' 'pre-commit: moon check --deny-warn'
+moon check --deny-warn
+printf '%s\n' 'pre-commit: moon fmt'
+moon fmt
+printf '%s\n' 'pre-commit: moon info'
+moon info
+
+# Formatting and interface generation must not silently bypass the Git index.
+require_staged_inputs
+git diff --cached --check
