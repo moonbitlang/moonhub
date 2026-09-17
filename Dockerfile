@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY --from=assets /src/assets/ /app/assets/
 COPY db/ /app/db/
+# Git only records the executable bit, so migration files created under a
+# restrictive umask reach the image unreadable to the git user.
+RUN chmod -R a+rX /app/db
 COPY deploy/sshd_config /etc/ssh/moonhub_sshd_config
 COPY --chmod=755 deploy/entrypoint.sh /usr/local/bin/moonhub-entrypoint
 COPY --chmod=755 deploy/import-ssh.sh /usr/local/bin/moonhub-import-ssh
