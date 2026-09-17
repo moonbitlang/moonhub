@@ -27,8 +27,8 @@ imported from the sample source repository. To try another import in this team,
 use `ssh://git@127.0.0.1:12222/preview/source.git` in the SSH import form. The
 server maps this instance's public address to `ssh:2222` inside the Compose
 network. Host clients can use the same public address after registering their
-public key in the preview account. In **Settings > SSH access**, the prepared
-preview uses hostname `127.0.0.1` and port `12222`.
+public key in the preview account. In **Site settings > SSH access**, the
+prepared preview uses hostname `127.0.0.1` and port `12222`.
 
 The overlay requires the provisioned preview password and credential directory
 under `deploy/secrets`; these are deliberately not committed. It does not use
@@ -250,7 +250,8 @@ MOONHUB_HTTP_PORT=8090 MOONHUB_SSH_PORT=2223 docker compose up -d --wait
 
 ### Public SSH Address
 
-Site administrators can open **Settings > SSH access** (`/admin/settings/ssh`)
+Site administrators can open **Site settings** from the **Administration**
+group in the sidebar, or from the account menu (`/admin/settings/ssh`),
 and save the hostname/IP and port that clients can reach. The SSH username is
 fixed to `git`. Repository pages expose this address in a **Clone** menu with a
 copy button. Without a configured public address, the menu reports that it is

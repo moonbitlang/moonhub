@@ -51,7 +51,10 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
 }
 
 ///|
-fn render_sidebar(navigation : PageNavigation) -> @moonback.Html {
+fn render_sidebar(
+  navigation : PageNavigation,
+  current_user : CurrentUser?,
+) -> @moonback.Html {
   let (name, subtitle, icon) = match navigation {
     TeamNavigation(team, _) => (team.display_name, "Team workspace", "users")
     RepositoryNavigation(repo, _, _) => (repo.name, repo.owner, "book-open")
@@ -116,6 +119,21 @@ fn render_sidebar(navigation : PageNavigation) -> @moonback.Html {
         b <+
           "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/admin/settings/ssh#ssh-access", "SSH access", "terminal", true)}\{render_navigation_item("/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}</nav>"
       _ => ()
+    }
+    // Site settings are administration, not part of any workspace scope, so the
+    // entry is offered from every page instead of only inside the account menu.
+    let site_admin = match current_user {
+      Some(user) => user.is_site_admin
+      None => false
+    }
+    if site_admin {
+      // The site settings scope already lists its own sections.
+      match navigation {
+        SiteNavigation => ()
+        _ =>
+          b <+
+            "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/admin/settings/ssh", "Site settings", "settings", false)}</nav>"
+      }
     }
     b <+
       "</div><div class=\"sidebar-footer\"><button class=\"nav-item sidebar-collapse\" type=\"button\" data-sidebar-collapse aria-controls=\"app-sidebar\" aria-expanded=\"true\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\" hidden inert><span class=\"ui-icon\" data-icon=\"panel-left-close\" aria-hidden=\"true\"></span><span class=\"nav-label\">Collapse sidebar</span></button></div></aside><button class=\"sidebar-scrim\" type=\"button\" data-sidebar-close aria-label=\"Close navigation\" hidden></button>"

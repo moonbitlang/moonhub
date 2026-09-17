@@ -15,8 +15,10 @@ Signed-in users can add, inspect, and revoke their own SSH keys from the
 **SSH keys** link in the site header (`/settings/ssh-keys`), and change their
 display name from **Profile** (`/settings/profile`). Usernames identify
 repository namespaces, so they are fixed for the life of the account.
-Site administrators configure the client-facing hostname and port in
-**Settings > SSH access** (`/admin/settings/ssh`). Repository pages provide a
+Site administrators reach **Site settings** (`/admin/settings/ssh`) from the
+**Administration** group in the sidebar of any page, or from the site header
+account menu, and configure the client-facing hostname and port there.
+Repository pages provide a
 **Clone** menu with the public SSH URL and a copy button; container-internal
 transport addresses remain separate.
 Team owners and admins can create repositories or import them over SSH from the
@@ -136,8 +138,9 @@ mail worker. The default transport writes `.eml` files to `_build/mail_outbox`:
 MAIL_OUTBOX_DIR=_build/mail_outbox
 ```
 
-To send real email, open **Settings > Email delivery** as a site administrator
-and select **SMTP**. Configure the host, port, security mode, authentication,
+To send real email, open **Site settings > Email delivery** in the sidebar as a
+site administrator and select **SMTP**. Configure the host, port, security mode,
+authentication,
 credentials, and sender address there. The password is stored in the database,
 is never rendered back into the form, and can be retained by leaving the
 password field blank when saving changes.

@@ -24,7 +24,8 @@ fn layout(
     b <+
       $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{shell.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}
     if shell {
-      b <+ "<div class=\"workspace-shell\">\{render_sidebar(navigation)}"
+      b <+
+        "<div class=\"workspace-shell\">\{render_sidebar(navigation, current_user)}"
     }
     b <+
       "<main id=\"main-content\" class=\"\{main_class}\" tabindex=\"-1\">\{body}</main>"

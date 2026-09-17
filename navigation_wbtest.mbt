@@ -65,6 +65,49 @@ async test "repository sidebar matches the current page and hides management for
 }
 
 ///|
+async test "site administrators reach site settings from every page sidebar" {
+  with_ssh_settings_app((port, _, alice, _, admin) => {
+    for
+      path in [
+        "/", "/teams", "/teams/alice", "/alice/demo", "/settings/profile", "/settings/ssh-keys",
+        "/change-password",
+      ] {
+      let (response, body) = http_get_path_with_cookie(port, path, admin)
+      assert_eq(response.code, 200, msg=path)
+      assert_true(body.contains("aria-label=\"Site settings\""), msg=path)
+      assert_true(
+        body.contains("aria-label=\"Site settings\" title=\"Site settings\""),
+        msg=path,
+      )
+      assert_true(
+        body.contains(
+          "<p class=\"nav-group-label\">Administration</p><a class=\"nav-item\" href=\"/admin/settings/ssh\"",
+        ),
+        msg=path,
+      )
+    }
+    let (settings, settings_body) = http_get_path_with_cookie(
+      port, "/admin/settings/ssh", admin,
+    )
+    assert_eq(settings.code, 200)
+    // The site settings scope keeps a single Administration group.
+    assert_eq(
+      settings_body
+      .split("<p class=\"nav-group-label\">Administration</p>")
+      .to_array()
+      .length(),
+      2,
+    )
+    let (member_page, member_body) = http_get_path_with_cookie(
+      port, "/alice/demo", alice,
+    )
+    assert_eq(member_page.code, 200)
+    assert_true(!member_body.contains("aria-label=\"Site settings\""))
+    assert_true(!member_body.contains("Administration"))
+  })
+}
+
+///|
 async test "invalid invitation forms retain entered values in the invitations view" {
   with_ssh_settings_app((port, _, alice, _, _) => {
     let (response, body) = http_post_path_with_cookie(
