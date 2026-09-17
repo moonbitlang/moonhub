@@ -90,6 +90,8 @@ type TeamSummary
 
 type TreeEntry
 
+type UserProfile
+
 type UserSshKey
 
 // Type aliases

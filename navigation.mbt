@@ -111,7 +111,7 @@ fn render_sidebar(navigation : PageNavigation) -> @moonback.Html {
       }
       AccountNavigation(active) =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/change-password", "Password", "lock", active == "password")}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/change-password", "Password", "lock", active == "password")}</nav>"
       SiteNavigation =>
         b <+
           "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/admin/settings/ssh#ssh-access", "SSH access", "terminal", true)}\{render_navigation_item("/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}</nav>"

@@ -76,6 +76,10 @@ requires confirmation. These pages never expose another user's keys, including
 when the signed-in user is a site administrator. Mutations require a session-bound
 CSRF token.
 
+Accounts change their own display name under **Profile** in the site header (or
+`/settings/profile`). The username is read-only there because it names the
+account's personal repository namespace.
+
 Operators can still administer keys through the container CLI:
 
 ```sh

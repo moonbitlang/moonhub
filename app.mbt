@@ -43,6 +43,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.add_middleware(auth_middleware(pool))
   ctx.add_middleware(require_login_middleware())
   ctx.use_(auth_module(asset_path_map))
+  ctx.use_(profile_module(asset_path_map))
   ctx.use_(ssh_keys_module(asset_path_map))
   ctx.use_(site_settings_module(asset_path_map))
   let root = repo_root(ctx)
