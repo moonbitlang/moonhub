@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/deque",
+  "moonbitlang/core/double",
+  "moonbitlang/core/hashmap",
+  "moonbitlang/core/sorted_map",
+  "moonbitlang/core/string",
+}
+
+import {
+  "moonbitlang/core/test",
+} for "test"

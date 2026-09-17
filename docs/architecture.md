@@ -16,6 +16,9 @@ unchanged.
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules and merge worker |
+| `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
+| `pipeline` | Repository-authorized immutable run snapshots, source retention and persistence models |
+| `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and pre-receive entry point |
 | `web` | Application composition, dependency providers and server lifecycle |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
@@ -62,6 +65,11 @@ depend on `domain`. `identity` and `mail` use `database` and `domain`.
 `repository` composes identity, database, Git and configuration services;
 `collaboration` builds on repository authorization. `ssh` uses repository and
 collaboration services. `web` is the outer application adapter.
+
+`pipeline/workflow` depends only on `vendor/yaml` and core packages. `pipeline`
+uses workflow definitions, repository/identity authorization, bounded Git
+operations, and the database adapter. It is not yet wired into Web or any
+execution worker; see [pipeline delivery scope](pipelines.md).
 
 Only packages under `web/` import Moonback. Business packages take explicit domain values and
 database handles, never HTTP requests, HTML or module contexts. The database's
@@ -135,5 +143,7 @@ loopback ports. Tests retain existing authorization, migration, concurrency,
 recovery and error-redaction coverage, plus DI failure/isolation checks and
 typed query pagination coverage.
 
-After changing public interfaces, run `moon info` and `moon fmt`, review the
-generated `.mbti` files, then run the tests and the package-boundary check.
+Before committing, run `moon check --deny-warn`, `moon fmt`, and `moon info`, in
+that order. Review the generated `.mbti` and formatting changes, then run the
+tests and the package-boundary check. The tracked pre-commit hook enforces the
+three-command sequence; see [hook setup and index safety](../.githooks/README.md).

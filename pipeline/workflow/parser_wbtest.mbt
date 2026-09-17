@@ -1,0 +1,297 @@
+///|
+let basic_workflow : String =
+  #|name: Build
+  #|on: workflow_dispatch
+  #|jobs:
+  #|  build:
+  #|    runs-on: [self-hosted, linux]
+  #|    steps:
+  #|      - run: echo hello
+
+///|
+fn expect_invalid(source : String, fragment : String) -> Unit raise {
+  try ignore(parse(source)) catch {
+    InvalidWorkflow(message) =>
+      assert_true(message.contains(fragment), msg=message)
+  } noraise {
+    _ => fail("accepted invalid workflow: \{fragment}")
+  }
+}
+
+///|
+test "workflow scalar trigger and normalized plan round trip" {
+  let workflow = parse(basic_workflow)
+  assert_eq(workflow.name, "Build")
+  assert_eq(workflow.jobs.length(), 1)
+  assert_eq(workflow.jobs[0].timeout_minutes, 360)
+  let step = workflow.jobs[0].steps[0]
+  assert_eq(step.id, "step_1")
+  assert_eq(step.run, "echo hello")
+  assert_eq(step.shell, None)
+  assert_eq(step.working_directory, ".")
+  let restored : Workflow = @json.from_json(ToJson::to_json(workflow))
+  assert_eq(ToJson::to_json(restored), ToJson::to_json(workflow))
+  for
+    trigger in [
+      "[workflow_dispatch]", "{workflow_dispatch: null}", "{workflow_dispatch: {}}",
+    ] {
+    assert_eq(
+      parse(
+        basic_workflow.replace_all(
+          old="on: workflow_dispatch",
+          new="on: \{trigger}",
+        ),
+      ).jobs.length(),
+      1,
+    )
+  }
+}
+
+///|
+test "workflow job and step env and defaults have explicit precedence" {
+  // The env/defaults precedence scenario follows actrun's docs compatibility fixtures.
+  let workflow = parse(
+    (
+      #|on: workflow_dispatch
+      #|env: {LEVEL: workflow, COUNT: 42, FLAG: true, EMPTY: "", TEXT: 'on'}
+      #|defaults:
+      #|  run: {shell: sh, working-directory: src}
+      #|jobs:
+      #|  build:
+      #|    runs-on: self-hosted
+      #|    timeout-minutes: 20
+      #|    env: {LEVEL: job, JOB: yes}
+      #|    defaults:
+      #|      run: {shell: bash}
+      #|    steps:
+      #|      - id: first
+      #|        run: echo first
+      #|        env: {LEVEL: step}
+      #|        working-directory: other
+      #|        timeout-minutes: 2
+      #|      - run: echo second
+    ),
+  )
+  let job = workflow.jobs[0]
+  let first = job.steps[0]
+  let second = job.steps[1]
+  assert_eq(job.timeout_minutes, 20)
+  assert_eq(first.shell, Some("bash"))
+  assert_eq(first.working_directory, "other")
+  assert_eq(first.timeout_minutes, Some(2))
+  assert_eq(first.env.get("LEVEL"), Some("step"))
+  assert_eq(first.env.get("COUNT"), Some("42"))
+  assert_eq(first.env.get("FLAG"), Some("true"))
+  assert_eq(first.env.get("EMPTY"), Some(""))
+  assert_eq(first.env.get("TEXT"), Some("on"))
+  assert_eq(second.working_directory, "src")
+  assert_eq(second.timeout_minutes, None)
+  assert_eq(second.env.get("LEVEL"), Some("job"))
+}
+
+///|
+test "YAML multiline scripts comments quotes and chomping remain intact" {
+  let workflow = parse(
+    (
+      #|name: "Build #1" # comment
+      #|on: workflow_dispatch
+      #|jobs:
+      #|  build:
+      #|    runs-on: self-hosted
+      #|    steps:
+      #|      - run: |
+      #|          printf '%s\n' '# not a comment'
+      #|          echo "on: true"
+      #|      - run: >-
+      #|          echo one
+      #|          two
+      #|      - run: 'echo ''quoted'' # literal'
+    ),
+  )
+  assert_eq(workflow.name, "Build #1")
+  assert_eq(
+    workflow.jobs[0].steps[0].run,
+    "printf '%s\\n' '# not a comment'\necho \"on: true\"\n",
+  )
+  assert_eq(workflow.jobs[0].steps[1].run, "echo one two")
+  assert_eq(workflow.jobs[0].steps[2].run, "echo 'quoted' # literal")
+}
+
+///|
+test "unsupported execution semantics fail closed at every mapping level" {
+  for
+    (field, fragment) in [
+      ("permissions: read-all\n", "workflow.permissions"),
+      ("concurrency: deploy\n", "workflow.concurrency"),
+      ("unknown: true\n", "workflow.unknown"),
+    ] {
+    expect_invalid(field + basic_workflow, fragment)
+  }
+  for
+    field in [
+      "if: false", "container: alpine", "services: {}", "strategy: {}", "continue-on-error: true",
+      "outputs: {}",
+    ] {
+    expect_invalid(basic_workflow + "\n    " + field, "not supported")
+  }
+  for
+    field in [
+      "uses: actions/checkout@v4", "if: false", "continue-on-error: true", "with: {}",
+      "unknown: 1",
+    ] {
+    expect_invalid(basic_workflow + "\n        " + field, "not supported")
+  }
+  expect_invalid(
+    basic_workflow.replace_all(old="on: workflow_dispatch", new="on: push"),
+    "trigger",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: {workflow_dispatch: {inputs: {}}}",
+    ),
+    "without inputs",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(
+      old="echo hello",
+      new="echo '${{ secrets.TOKEN }}'",
+    ),
+    "expressions",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(
+      old="name: Build",
+      new="name: '${{ github.ref }}'",
+    ),
+    "expressions",
+  )
+  expect_invalid(
+    basic_workflow + "\n    env: {TOKEN: '${{ secrets.TOKEN }}'}",
+    "expressions",
+  )
+}
+
+///|
+test "YAML duplicate keys empty keys aliases tags and extra documents are rejected" {
+  expect_invalid("name: Other\n" + basic_workflow, "duplicate")
+  expect_invalid(basic_workflow + "\n        run: echo other", "duplicate")
+  expect_invalid(basic_workflow + "\n    env: {X: 1, X: 2}", "duplicate")
+  expect_invalid(basic_workflow + "\n'': ignored", "empty keys")
+  expect_invalid(basic_workflow + "\n---\nname: ignored", "one YAML document")
+  expect_invalid(
+    basic_workflow.replace_all(old="name: Build", new="name: &name Build"),
+    "anchors",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(old="name: Build", new="name: !!str Build"),
+    "tags",
+  )
+  expect_invalid(basic_workflow + "\n    env: {<<: {X: value}}", "merge keys")
+  expect_invalid(
+    basic_workflow.replace_all(old="name: Build", new="name: *missing"),
+    "invalid YAML",
+  )
+  expect_invalid("", "one YAML document")
+}
+
+///|
+test "structural limits apply before workflow field mapping" {
+  expect_invalid("#" + "x".repeat(max_source_bytes), "64 KiB")
+  expect_invalid("#" + "a".repeat(max_source_bytes - 1) + "\n", "64 KiB")
+  expect_invalid(basic_workflow + "\u{0000}", "NUL")
+  expect_invalid(
+    basic_workflow.replace_all(old="echo hello", new="\"echo \\0\""),
+    "NUL",
+  )
+  expect_invalid("value: " + "[".repeat(33) + "0" + "]".repeat(33), "nesting")
+  expect_invalid("- ".repeat(10000) + "0", "nesting")
+  expect_invalid("value: [" + "0,".repeat(8200) + "0]", "8192 nodes")
+  let expanded = "on: workflow_dispatch\nenv: {LARGE: '" +
+    "x".repeat(32768) +
+    "'}\njobs:\n  build:\n    runs-on: self-hosted\n    steps:\n" +
+    "      - run: echo test\n".repeat(64)
+  expect_invalid(expanded, "normalized workflow")
+}
+
+///|
+test "job dependency validation rejects unknown self duplicate and cyclic edges" {
+  for need in ["missing", "build"] {
+    expect_invalid(
+      basic_workflow + "\n    needs: " + need,
+      "unknown job or itself",
+    )
+  }
+  expect_invalid(basic_workflow + "\n    needs: [other, other]", "duplicate")
+  let two_jobs = basic_workflow +
+    "\n  test:\n    runs-on: self-hosted\n    needs: build\n    steps:\n      - run: echo test"
+  let workflow = parse(two_jobs)
+  assert_eq(workflow.jobs.length(), 2)
+  let test_job = workflow.jobs
+    .iter()
+    .find_first(job => job.id == "test")
+    .unwrap()
+  assert_eq(test_job.needs, ["build"])
+  expect_invalid(
+    two_jobs.replace_all(old="  build:\n", new="  build:\n    needs: test\n"),
+    "cycle",
+  )
+}
+
+///|
+test "paths shell identifiers reserved variables and timeout types are validated" {
+  for path in ["../outside", "/tmp", "a/../../b", "a//b", "C:\\temp"] {
+    expect_invalid(
+      basic_workflow + "\n        working-directory: '" + path + "'",
+      "workspace path",
+    )
+  }
+  for value in ["0", "-1", "361", "true", "'5'", "1.5"] {
+    expect_invalid(
+      basic_workflow + "\n        timeout-minutes: " + value,
+      "integer",
+    )
+  }
+  expect_invalid(basic_workflow + "\n        shell: 'bash {0}'", "bash and sh")
+  expect_invalid(basic_workflow + "\n        id: 12", "string")
+  expect_invalid(basic_workflow + "\n        id: invalid.id", "step id")
+  expect_invalid(
+    basic_workflow + "\n      - id: step_1\n        run: echo again",
+    "duplicate step id",
+  )
+  for
+    key in [
+      "MOONHUB_TOKEN", "GITHUB_TOKEN", "RUNNER_TEMP", "bad-name", "1invalid",
+    ] {
+    expect_invalid(
+      basic_workflow + "\n        env: {" + key + ": secret}",
+      "reserved variable",
+    )
+  }
+  expect_invalid(
+    basic_workflow.replace_all(old="[self-hosted, linux]", new="ubuntu-latest"),
+    "self-hosted",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(
+      old="[self-hosted, linux]",
+      new="[self-hosted, Windows]",
+    ),
+    "Linux",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(
+      old="[self-hosted, linux]",
+      new="[self-hosted, Linux, linux]",
+    ),
+    "duplicate label",
+  )
+  expect_invalid(
+    basic_workflow.replace_all(old="echo hello", new="[echo, hello]"),
+    "string",
+  )
+  expect_invalid(
+    basic_workflow + "\n    env: {VALUE: {nested: object}}",
+    "scalar",
+  )
+}

@@ -29,6 +29,7 @@ pub async fn merge_git_command(
   input? : String = "",
   limit? : Int = 2097152,
   identity? : String = "Moonhub",
+  strict_utf8? : Bool = false,
 ) -> (Int, String) {
   @async.with_timeout(
     60000,
@@ -81,7 +82,15 @@ pub async fn merge_git_command(
         }
         let code = process.wait()
         @async.pause()
-        (code, @utf8.decode_lossy(Bytes::from_array(bytes)))
+        let bytes = Bytes::from_array(bytes)
+        let text = if strict_utf8 {
+          @utf8.decode(bytes) catch {
+            _ => raise Failure(message="Git output is not valid UTF-8")
+          }
+        } else {
+          @utf8.decode_lossy(bytes)
+        }
+        (code, text)
       })
     },
     error=Failure(

@@ -1,0 +1,84 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/vendor/yaml"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+pub(all) suberror YamlError {
+  YamlError(mark~ : Marker, info~ : String)
+} derive(@debug.Debug)
+
+// Types and methods
+pub enum Event {
+  StreamStart
+  StreamEnd
+  DocumentStart
+  DocumentEnd
+  Alias(id~ : Int)
+  Scalar(value~ : String, style~ : TScalarStyle, id~ : Int, tag~ : Tag?)
+  SequenceStart(id~ : Int, tag~ : Tag?)
+  SequenceEnd
+  MappingStart(id~ : Int, tag~ : Tag?)
+  MappingEnd
+} derive(Eq, @debug.Debug)
+
+pub struct Marker {
+  index : Int
+  line : Int
+  col : Int
+} derive(Eq, @debug.Debug)
+
+type Parser
+pub fn Parser::keep_tags(Self, Bool) -> Unit
+pub fn[R : MarkedEventReceiver] Parser::load(Self, R, Bool) -> Unit raise YamlError
+pub fn Parser::new(StringView) -> Self
+
+pub enum TScalarStyle {
+  Plain
+  SingleQuoted
+  DoubleQuoted
+  Literal
+  Folded
+} derive(Eq, @debug.Debug)
+
+pub struct Tag {
+  handle : String
+  suffix : String
+} derive(Eq, @debug.Debug)
+
+pub(all) enum Yaml {
+  Real(Double, repr~ : String)
+  Integer(Int64)
+  String(String)
+  Boolean(Bool)
+  Array(Array[Yaml])
+  Map(Map[String, Yaml])
+  Null
+  BadValue
+} derive(Eq, @debug.Debug)
+pub fn Yaml::dump(Self) -> String
+pub fn Yaml::load_from_parser(Parser) -> Array[Self] raise YamlError
+pub fn Yaml::load_from_string(StringView) -> Array[Self] raise YamlError
+pub impl ToJson for Yaml
+
+type YamlEmitter
+pub fn YamlEmitter::compact(Self, Bool) -> Unit
+pub fn YamlEmitter::dump(Self, Yaml) -> Unit
+pub fn YamlEmitter::multiline_strings(Self, Bool) -> Unit
+pub fn YamlEmitter::new(writer? : StringBuilder) -> Self
+pub fn YamlEmitter::to_string(Self) -> String
+
+// Type aliases
+
+// Traits
+pub trait EventReceiver {
+  fn on_event(Self, Event) -> Unit
+}
+
+pub(open) trait MarkedEventReceiver {
+  fn on_event(Self, Event, Marker) -> Unit raise YamlError
+}

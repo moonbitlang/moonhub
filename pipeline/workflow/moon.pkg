@@ -1,0 +1,7 @@
+import {
+  "hackwaly/moonhub/vendor/yaml",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+supported_targets = "native"

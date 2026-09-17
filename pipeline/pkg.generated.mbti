@@ -1,0 +1,72 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/pipeline/workflow",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String) -> Run
+
+pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
+
+pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
+
+// Errors
+
+// Types and methods
+pub enum Conclusion {
+  Success
+  Failure
+  Cancelled
+  TimedOut
+  Lost
+  Skipped
+} derive(Eq, @debug.Debug)
+
+pub struct JobRun {
+  id : Int64
+  run_id : Int64
+  job_key : String
+  state : JobState
+  conclusion : Conclusion?
+} derive(@debug.Debug)
+
+pub enum JobState {
+  Waiting
+  Queued
+  Leased
+  Running
+  Completed
+} derive(Eq, @debug.Debug)
+
+pub struct Run {
+  id : Int64
+  repository_id : Int64
+  number : Int64
+  requested_by_user_id : Int64
+  workflow_path : String
+  workflow_name : String
+  source_branch : String
+  commit_sha : String
+  source_ref : String
+  definition_version : Int
+  workflow_source : String
+  definition : @workflow.Workflow
+  state : RunState
+  conclusion : Conclusion?
+  created_at : String
+} derive(@debug.Debug)
+
+pub enum RunState {
+  Queued
+  Running
+  Completed
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

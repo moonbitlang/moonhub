@@ -1,0 +1,409 @@
+// Adapted from mizchi/actrun src/parser.mbt and src/lowering.mbt, Apache-2.0.
+// Modified to use the independent YAML parser and reject unsupported semantics.
+
+///|
+fn yaml_as_obj(
+  value : @yaml.Yaml,
+  ctx : String,
+) -> Map[String, @yaml.Yaml] raise InvalidWorkflow {
+  match value {
+    Map(fields) => fields
+    _ => raise InvalidWorkflow("\{ctx} must be a mapping")
+  }
+}
+
+///|
+fn check_fields(
+  fields : Map[String, @yaml.Yaml],
+  allowed : Array[String],
+  ctx : String,
+) -> Unit raise InvalidWorkflow {
+  for key, _ in fields {
+    guard allowed.contains(key) else {
+      raise InvalidWorkflow("\{ctx}.\{key} is not supported")
+    }
+  }
+}
+
+///|
+fn yaml_as_optional_string(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> String? raise InvalidWorkflow {
+  match value {
+    None => None
+    Some(String(text)) => {
+      guard !text.contains("${{") else {
+        raise InvalidWorkflow("\{ctx}: expressions are not supported")
+      }
+      Some(text)
+    }
+    _ => raise InvalidWorkflow("\{ctx} must be a string")
+  }
+}
+
+///|
+fn required_string(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> String raise InvalidWorkflow {
+  let text = yaml_as_optional_string(value, ctx).unwrap_or("")
+  guard !text.trim().is_empty() else {
+    raise InvalidWorkflow("\{ctx} must be a nonempty string")
+  }
+  text
+}
+
+///|
+fn yaml_as_string_list(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> Array[String] raise InvalidWorkflow {
+  match value {
+    None => []
+    Some(String(_)) => [required_string(value, ctx)]
+    Some(Array(items)) => {
+      let result : Array[String] = []
+      for item in items {
+        let text = required_string(Some(item), ctx)
+        guard !result.contains(text) else {
+          raise InvalidWorkflow("\{ctx} contains a duplicate value")
+        }
+        result.push(text)
+      }
+      result
+    }
+    _ => raise InvalidWorkflow("\{ctx} must be a string or list of strings")
+  }
+}
+
+///|
+fn valid_identifier(value : String) -> Bool {
+  !value.is_empty() &&
+  value.length() <= 100 &&
+  value
+  .iter()
+  .all(ch => {
+    ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_' || ch == '-'
+  }) &&
+  value.get_char(0) is Some(ch) &&
+  (ch.is_ascii_alphabetic() || ch == '_')
+}
+
+///|
+fn yaml_to_string_map(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> Map[String, String] raise InvalidWorkflow {
+  let result : Map[String, String] = Map([])
+  guard value is Some(value) else { return result }
+  let fields = yaml_as_obj(value, ctx)
+  guard fields.length() <= 100 else {
+    raise InvalidWorkflow("\{ctx} exceeds 100 variables")
+  }
+  for key, value in fields {
+    guard valid_identifier(key) &&
+      !key.contains("-") &&
+      !key.has_prefix("MOONHUB_") &&
+      !key.has_prefix("GITHUB_") &&
+      !key.has_prefix("RUNNER_") else {
+      raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
+    }
+    result[key] = match value {
+      String(_) =>
+        yaml_as_optional_string(Some(value), "\{ctx}.\{key}").unwrap_or("")
+      Integer(n) => n.to_string()
+      Boolean(b) => if b { "true" } else { "false" }
+      Real(_, repr~) => repr
+      _ => raise InvalidWorkflow("\{ctx}.\{key} must be a scalar value")
+    }
+  }
+  result
+}
+
+///|
+fn merge_env(
+  base : Map[String, String],
+  overlay : Map[String, String],
+) -> Map[String, String] {
+  let result = base.copy()
+  for key, value in overlay {
+    result[key] = value
+  }
+  result
+}
+
+///|
+fn inherit_defaults(base : RunDefaults, overlay : RunDefaults) -> RunDefaults {
+  {
+    shell: match overlay.shell {
+      Some(_) => overlay.shell
+      None => base.shell
+    },
+    working_directory: match overlay.working_directory {
+      Some(_) => overlay.working_directory
+      None => base.working_directory
+    },
+  }
+}
+
+///|
+fn parse_timeout(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> Int? raise InvalidWorkflow {
+  match value {
+    None => None
+    Some(Integer(n)) if n >= 1L && n <= 360L => Some(n.to_int())
+    _ => raise InvalidWorkflow("\{ctx} must be an integer between 1 and 360")
+  }
+}
+
+///|
+fn parse_shell(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> String? raise InvalidWorkflow {
+  let shell = yaml_as_optional_string(value, ctx)
+  guard shell is None || shell == Some("bash") || shell == Some("sh") else {
+    raise InvalidWorkflow("\{ctx} supports only bash and sh")
+  }
+  shell
+}
+
+///|
+fn parse_directory(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> String? raise InvalidWorkflow {
+  let directory = yaml_as_optional_string(value, ctx)
+  if directory is Some(path) {
+    guard !path.is_empty() &&
+      path.length() <= 512 &&
+      !path.has_prefix("/") &&
+      !path.contains("\\") &&
+      !path.contains(":") &&
+      path.iter().all(ch => ch.to_int() >= 32 && ch.to_int() != 127) &&
+      path.split("/").all(part => !part.is_empty() && part != "..") else {
+      raise InvalidWorkflow(
+        "\{ctx} must be a relative workspace path without '..'",
+      )
+    }
+  }
+  directory
+}
+
+///|
+fn parse_run_defaults(
+  value : @yaml.Yaml?,
+  ctx : String,
+) -> RunDefaults raise InvalidWorkflow {
+  guard value is Some(value) else {
+    return { shell: None, working_directory: None, }
+  }
+  let defaults = yaml_as_obj(value, ctx)
+  check_fields(defaults, ["run"], ctx)
+  guard defaults.get("run") is Some(value) else {
+    return { shell: None, working_directory: None, }
+  }
+  let fields = yaml_as_obj(value, "\{ctx}.run")
+  check_fields(fields, ["shell", "working-directory"], "\{ctx}.run")
+  {
+    shell: parse_shell(fields.get("shell"), "\{ctx}.run.shell"),
+    working_directory: parse_directory(
+      fields.get("working-directory"),
+      "\{ctx}.run.working-directory",
+    ),
+  }
+}
+
+///|
+fn parse_trigger(value : @yaml.Yaml?) -> Unit raise InvalidWorkflow {
+  match value {
+    Some(String("workflow_dispatch")) => ()
+    Some(Array([String("workflow_dispatch")])) => ()
+    Some(Map(fields)) => {
+      check_fields(fields, ["workflow_dispatch"], "on")
+      match fields.get("workflow_dispatch") {
+        Some(Null) => ()
+        Some(Map(options)) if options.is_empty() => ()
+        _ =>
+          raise InvalidWorkflow("on requires workflow_dispatch without inputs")
+      }
+    }
+    _ =>
+      raise InvalidWorkflow("only the workflow_dispatch trigger is supported")
+  }
+}
+
+///|
+fn parse_job(
+  id : String,
+  value : @yaml.Yaml,
+  workflow_env : Map[String, String],
+  defaults : RunDefaults,
+) -> Job raise InvalidWorkflow {
+  guard valid_identifier(id) else {
+    raise InvalidWorkflow("invalid job id: \{id}")
+  }
+  let ctx = "jobs.\{id}"
+  let fields = yaml_as_obj(value, ctx)
+  check_fields(
+    fields,
+    ["name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps"],
+    ctx,
+  )
+  let runs_on = yaml_as_string_list(fields.get("runs-on"), "\{ctx}.runs-on").map(label => {
+      label.to_lower()
+    },
+  )
+  guard runs_on.contains("self-hosted") &&
+    runs_on.length() <= 8 &&
+    runs_on.all(label => {
+      !label.is_empty() &&
+      label.length() <= 64 &&
+      label
+      .iter()
+      .all(ch => {
+        ch.is_ascii_alphabetic() ||
+        ch.is_ascii_digit() ||
+        ch == '-' ||
+        ch == '_'
+      })
+    }) &&
+    !runs_on.contains("windows") &&
+    !runs_on.contains("macos") else {
+    raise InvalidWorkflow(
+      "\{ctx}.runs-on requires self-hosted Linux runner labels",
+    )
+  }
+  let unique_labels : Map[String, Bool] = Map([])
+  for label in runs_on {
+    guard !unique_labels.contains(label) else {
+      raise InvalidWorkflow("\{ctx}.runs-on contains a duplicate label")
+    }
+    unique_labels[label] = true
+  }
+  let env = merge_env(
+    workflow_env,
+    yaml_to_string_map(fields.get("env"), "\{ctx}.env"),
+  )
+  let job_defaults = inherit_defaults(
+    defaults,
+    parse_run_defaults(fields.get("defaults"), "\{ctx}.defaults"),
+  )
+  guard fields.get("steps") is Some(Array(items)) &&
+    !items.is_empty() &&
+    items.length() <= 64 else {
+    raise InvalidWorkflow("\{ctx}.steps requires between 1 and 64 steps")
+  }
+  let steps : Array[Step] = []
+  let step_ids : Map[String, Bool] = Map([])
+  for index, value in items {
+    let ctx = "\{ctx}.steps[\{index}]"
+    let fields = yaml_as_obj(value, ctx)
+    check_fields(
+      fields,
+      [
+        "id", "name", "run", "env", "shell", "working-directory", "timeout-minutes",
+      ],
+      ctx,
+    )
+    let step_id = yaml_as_optional_string(fields.get("id"), "\{ctx}.id").unwrap_or(
+      "step_\{index + 1}",
+    )
+    guard valid_identifier(step_id) && !step_ids.contains(step_id) else {
+      raise InvalidWorkflow("\{ctx}: invalid or duplicate step id")
+    }
+    step_ids[step_id] = true
+    let step_defaults = inherit_defaults(job_defaults, {
+      shell: parse_shell(fields.get("shell"), "\{ctx}.shell"),
+      working_directory: parse_directory(
+        fields.get("working-directory"),
+        "\{ctx}.working-directory",
+      ),
+    })
+    steps.push({
+      id: step_id,
+      name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
+        step_id,
+      ),
+      run: required_string(fields.get("run"), "\{ctx}.run"),
+      shell: step_defaults.shell,
+      working_directory: step_defaults.working_directory.unwrap_or("."),
+      env: merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env")),
+      timeout_minutes: parse_timeout(
+        fields.get("timeout-minutes"),
+        "\{ctx}.timeout-minutes",
+      ),
+    })
+  }
+  {
+    id,
+    name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
+      id,
+    ),
+    needs: yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
+    runs_on,
+    timeout_minutes: parse_timeout(
+      fields.get("timeout-minutes"),
+      "\{ctx}.timeout-minutes",
+    ).unwrap_or(360),
+    steps,
+  }
+}
+
+///|
+pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
+  let fields = yaml_as_obj(read_yaml(source), "workflow")
+  check_fields(fields, ["name", "on", "env", "defaults", "jobs"], "workflow")
+  parse_trigger(fields.get("on"))
+  let env = yaml_to_string_map(fields.get("env"), "env")
+  let defaults = parse_run_defaults(fields.get("defaults"), "defaults")
+  guard fields.get("jobs") is Some(value) else {
+    raise InvalidWorkflow("jobs is required")
+  }
+  let fields_jobs = yaml_as_obj(value, "jobs")
+  guard !fields_jobs.is_empty() && fields_jobs.length() <= 16 else {
+    raise InvalidWorkflow("workflow requires between 1 and 16 jobs")
+  }
+  let jobs : Array[Job] = []
+  let mut step_count = 0
+  for id, value in fields_jobs {
+    let job = parse_job(id, value, env, defaults)
+    step_count += job.steps.length()
+    jobs.push(job)
+  }
+  guard step_count <= 256 else {
+    raise InvalidWorkflow("workflow exceeds 256 steps")
+  }
+  for job in jobs {
+    for need in job.needs {
+      guard need != job.id && fields_jobs.contains(need) else {
+        raise InvalidWorkflow(
+          "jobs.\{job.id}.needs references an unknown job or itself: \{need}",
+        )
+      }
+    }
+  }
+  let visited : Map[String, Bool] = Map([])
+  while visited.length() < jobs.length() {
+    let before = visited.length()
+    for job in jobs {
+      if job.needs.all(need => visited.contains(need)) {
+        visited[job.id] = true
+      }
+    }
+    guard visited.length() > before else {
+      raise InvalidWorkflow("job dependency cycle")
+    }
+  }
+  let workflow : Workflow = {
+    name: yaml_as_optional_string(fields.get("name"), "name").unwrap_or(""),
+    jobs,
+  }
+  guard @utf8.encode(ToJson::to_json(workflow).stringify()).length() <= 1048576 else {
+    raise InvalidWorkflow("normalized workflow exceeds 1 MiB")
+  }
+  workflow
+}

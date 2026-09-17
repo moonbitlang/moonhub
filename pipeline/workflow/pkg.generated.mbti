@@ -1,0 +1,48 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline/workflow"
+
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub let format_version : Int
+
+pub let max_source_bytes : Int
+
+pub fn parse(String) -> Workflow raise InvalidWorkflow
+
+// Errors
+pub suberror InvalidWorkflow {
+  InvalidWorkflow(String)
+} derive(@debug.Debug)
+
+// Types and methods
+pub struct Job {
+  id : String
+  name : String
+  needs : Array[String]
+  runs_on : Array[String]
+  timeout_minutes : Int
+  steps : Array[Step]
+} derive(ToJson, @debug.Debug, @json.FromJson)
+
+pub struct Step {
+  id : String
+  name : String
+  run : String
+  shell : String?
+  working_directory : String
+  env : Map[String, String]
+  timeout_minutes : Int?
+} derive(ToJson, @debug.Debug, @json.FromJson)
+
+pub struct Workflow {
+  name : String
+  jobs : Array[Job]
+} derive(ToJson, @debug.Debug, @json.FromJson)
+
+// Type aliases
+
+// Traits

@@ -21,6 +21,9 @@ const allowed = {
   mail: ['domain', 'database'],
   repository: ['domain', 'config', 'database', 'identity', 'gitops'],
   collaboration: ['domain', 'database', 'identity', 'gitops', 'repository'],
+  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'pipeline/workflow'],
+  'pipeline/workflow': ['vendor/yaml'],
+  'vendor/yaml': [],
   ssh: ['domain', 'database', 'gitops', 'repository', 'collaboration'],
   web: [
     'domain', 'database', 'identity', 'repository', 'collaboration', 'mail',

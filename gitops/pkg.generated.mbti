@@ -27,7 +27,7 @@ pub async fn list_tree(String, String, String) -> Array[TreeEntry]
 
 pub async fn merge_git(String, Array[String], input? : String) -> String
 
-pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int, identity? : String) -> (Int, String)
+pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int, identity? : String, strict_utf8? : Bool) -> (Int, String)
 
 pub async fn merged_tree(String, Revision) -> String
 
