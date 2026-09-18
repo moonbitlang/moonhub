@@ -94,20 +94,28 @@ build_images() {
   validate_inputs true
   validate_compose
   printf 'Building Web/SSH image: %s\n' "$RUNTIME_IMAGE"
-  local pull_args=()
   if [ "$PULL_IMAGES" = 1 ]; then
-    pull_args+=(--pull)
+    "${compose[@]}" build --pull web
+  else
+    "${compose[@]}" build web
   fi
-  "${compose[@]}" build "${pull_args[@]}" web
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     if [ "$BUILD_RUNNER" = 1 ]; then
       printf 'Building Runner image: %s\n' "$RUNNER_IMAGE"
-      docker build "${pull_args[@]}" --target runner -t "$RUNNER_IMAGE" "$ROOT"
+      if [ "$PULL_IMAGES" = 1 ]; then
+        docker build --pull --target runner -t "$RUNNER_IMAGE" "$ROOT"
+      else
+        docker build --target runner -t "$RUNNER_IMAGE" "$ROOT"
+      fi
     else
       printf 'Using pre-published Runner image: %s\n' "$RUNNER_IMAGE"
     fi
     printf 'Building provider image: %s\n' "$PROVIDER_IMAGE"
-    "${compose[@]}" build "${pull_args[@]}" pipeline-provider
+    if [ "$PULL_IMAGES" = 1 ]; then
+      "${compose[@]}" build --pull pipeline-provider
+    else
+      "${compose[@]}" build pipeline-provider
+    fi
   fi
 }
 
