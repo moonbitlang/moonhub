@@ -7,7 +7,7 @@ fn smtp_settings_form(csrf : String, password : String) -> String {
 async test "site administrators configure SMTP settings from the settings page" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, admin) => {
     let (page, body) = @web_testkit.http_get_path_with_cookie(
-      port, "/-/admin/settings/ssh", admin,
+      port, "/-/admin/settings/mail", admin,
     )
     assert_eq(page.code, 200)
     assert_true(body.contains("Email delivery"))
@@ -38,8 +38,7 @@ async test "site administrators configure SMTP settings from the settings page" 
     )
     assert_eq(saved.code, 303)
     assert_true(
-      saved.headers.get("location")
-      is Some("/-/admin/settings/ssh?saved_mail=1"),
+      saved.headers.get("location") is Some("/-/admin/settings/mail?saved=1"),
     )
     let settings = @mail.load_mail_settings(pool)
     assert_eq(settings.transport, "smtp")
@@ -67,7 +66,7 @@ async test "site administrators configure SMTP settings from the settings page" 
     assert_eq(saved_again.code, 303)
     assert_eq(@mail.load_mail_settings(pool).smtp.password, "secret")
     let (_, after) = @web_testkit.http_get_path_with_cookie(
-      port, "/-/admin/settings/ssh?saved_mail=1", admin,
+      port, "/-/admin/settings/mail?saved=1", admin,
     )
     assert_true(!after.contains("secret"))
     assert_true(after.contains("Password is configured"))
@@ -82,13 +81,16 @@ async test "site administrators configure SMTP settings from the settings page" 
 async test "SMTP settings enforce CSRF and reject invalid fields without storing or exposing passwords" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, admin) => {
     let (_, body) = @web_testkit.http_get_path_with_cookie(
-      port, "/-/admin/settings/ssh", admin,
+      port, "/-/admin/settings/mail", admin,
     )
     let token = @web_testkit.extract_attr(
       body, "action=\"/-/admin/settings/mail\"", "value=\"",
     )
+    let (_, ssh_body) = @web_testkit.http_get_path_with_cookie(
+      port, "/-/admin/settings/ssh", admin,
+    )
     let wrong_scope = @web_testkit.extract_attr(
-      body, "action=\"/-/admin/settings/ssh\"", "value=\"",
+      ssh_body, "action=\"/-/admin/settings/ssh\"", "value=\"",
     )
     for
       csrf in [
@@ -254,7 +256,7 @@ async test "running mail worker picks up persisted SMTP changes for subsequent m
 async test "SMTP settings reject invalid security and TLS trust values" {
   @web_testkit.with_ssh_settings_app((port, _, _, _, admin) => {
     let (_, body) = @web_testkit.http_get_path_with_cookie(
-      port, "/-/admin/settings/ssh", admin,
+      port, "/-/admin/settings/mail", admin,
     )
     let csrf = @web_testkit.extract_attr(
       body, "action=\"/-/admin/settings/mail\"", "value=\"",

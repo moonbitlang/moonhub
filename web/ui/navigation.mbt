@@ -132,7 +132,7 @@ fn render_sidebar(
             (
               "/merge-requests", "merge-requests", "Merge requests", "git-pull-request",
             ),
-            ("/pipelines", "pipelines", "Pipelines", "workflow"),
+            ("/pipelines", "pipelines", "Pipelines", "git-commit"),
           ] {
           b <+
             "\{render_navigation_item(base + suffix, label, icon, active == key)}"
@@ -148,7 +148,7 @@ fn render_sidebar(
           "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/-/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/-/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/-/change-password", "Password", "lock", active == "password")}</nav>"
       SiteNavigation(active) =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh#ssh-access", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "workflow", active == "pipeline-providers")}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/mail", "Email delivery", "mail", active == "mail")}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "git-commit", active == "pipeline-providers")}</nav>"
       _ => ()
     }
     // Site settings are administration, not part of any workspace scope, so the
