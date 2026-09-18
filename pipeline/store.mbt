@@ -50,6 +50,7 @@ pub struct JobRun {
   job_key : String
   state : JobState
   conclusion : Conclusion?
+  attempt_id : Int64?
 } derive(Debug)
 
 ///|
@@ -125,6 +126,23 @@ pub fn get_run(
 }
 
 ///|
+pub fn list_runs(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+) -> Array[Run] raise {
+  let scope = @repository.repository_scope(pool, actor, repo)
+  pool.with_client(client => {
+    client
+    .query_all(
+      "SELECT * FROM pipeline_run WHERE repository_id = ? ORDER BY number DESC LIMIT 50",
+      params=[scope.id],
+    )
+    .map(row => Run::from_row(row))
+  })
+}
+
+///|
 pub fn list_jobs(
   pool : @database.Database,
   actor : @domain.CurrentUser,
@@ -134,9 +152,10 @@ pub fn list_jobs(
   let run = get_run(pool, actor, repo, number)
   pool.with_client(client => {
     client
-    .query_all("SELECT * FROM pipeline_job WHERE run_id = ? ORDER BY ordinal", params=[
-      run.id,
-    ])
+    .query_all(
+      "SELECT j.*, (SELECT a.id FROM pipeline_job_attempt a WHERE a.job_id = j.id ORDER BY a.number DESC LIMIT 1) AS attempt_id FROM pipeline_job j WHERE j.run_id = ? ORDER BY j.ordinal",
+      params=[run.id],
+    )
     .map(row => {
       let status : String = row.get_name("status")
       {
@@ -152,6 +171,7 @@ pub fn list_jobs(
           _ => raise InvalidRecord
         },
         conclusion: decode_conclusion(row.get_name("conclusion")),
+        attempt_id: row.get_name("attempt_id"),
       }
     })
   })

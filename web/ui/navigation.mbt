@@ -132,6 +132,7 @@ fn render_sidebar(
             (
               "/merge-requests", "merge-requests", "Merge requests", "git-pull-request",
             ),
+            ("/pipelines", "pipelines", "Pipelines", "workflow"),
           ] {
           b <+
             "\{render_navigation_item(base + suffix, label, icon, active == key)}"

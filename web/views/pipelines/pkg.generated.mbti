@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub let pipeline_pages_module : @moonback.Module
+
 pub let runner_api_module : @moonback.Module
 
 // Errors

@@ -48,7 +48,10 @@ const allowed = {
     'domain', 'gitops', 'identity', 'repository', 'collaboration', 'web/assets', 'web/context', 'web/ui',
   ],
   'web/views/settings': ['domain', 'mail', 'repository', 'web/assets', 'web/context', 'web/ui'],
-  'web/views/pipelines': ['domain', 'pipeline', 'pipeline/protocol', 'web/context'],
+  'web/views/pipelines': [
+    'domain', 'database', 'identity', 'repository', 'pipeline', 'pipeline/protocol',
+    'web/assets', 'web/context', 'web/ui',
+  ],
   test_support: ['database', 'gitops', 'repository'],
   'web/testkit': [
     'domain', 'database', 'gitops', 'identity', 'repository', 'test_support',

@@ -17,6 +17,8 @@ pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 
+pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[Run] raise
+
 pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> Run
 
 // Errors
@@ -63,6 +65,7 @@ pub struct JobRun {
   job_key : String
   state : JobState
   conclusion : Conclusion?
+  attempt_id : Int64?
 } derive(@debug.Debug)
 
 pub enum JobState {

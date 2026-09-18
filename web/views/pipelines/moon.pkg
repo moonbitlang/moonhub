@@ -1,8 +1,13 @@
 import {
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/pipeline/protocol",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/web/assets" @web_assets,
   "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/ui" @web_ui,
   "moonbitlang/async",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",

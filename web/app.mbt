@@ -16,6 +16,7 @@ let runner_app_module : @moonback.Module = Module(ctx => {
 let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(browser_resources_module)
   ctx.use_(services_module)
+  ctx.use_(pipeline_dependencies_module)
   let assets = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
   ctx.add_middleware(@web_context.app_error_middleware(assets))
@@ -31,6 +32,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@repository_views.repositories_module)
   ctx.use_(@merge_request_views.merge_requests_module)
   ctx.use_(@issue_views.issues_module)
+  ctx.use_(@pipeline_views.pipeline_pages_module)
   ctx.use_(@repository_views.repo_browser_module)
 })
 

@@ -306,6 +306,11 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mr-list p { margin: 6px 0 0; font-size: 12px; }
 .mr-list p .path { margin-inline: 4px; }
 .mr-list + .mr-actions { justify-content: flex-end; }
+.pipeline-steps { margin: 14px 0 0; padding: 0 0 0 20px; color: var(--color-muted); font-size: 13px; }
+.pipeline-steps li { padding: 5px 0; }
+.pipeline-logs { margin-top: 14px; border-top: 1px solid var(--color-border-muted); }
+.pipeline-logs summary { padding: 10px 0; color: var(--color-muted); cursor: pointer; font-size: 12px; font-weight: 600; }
+.pipeline-logs pre { max-height: 420px; margin: 0 0 4px; padding: 14px; overflow: auto; border: 1px solid var(--color-border-muted); border-radius: 4px; background: #f7f8fa; color: var(--color-text); font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mr-form textarea { min-height: 110px; }
 .mr-branch-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .mr-checkbox { display: flex; align-items: center; gap: 9px; font-size: 13px; }
