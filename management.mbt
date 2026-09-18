@@ -82,6 +82,19 @@ fn management_command() -> @argparse.Command {
         ],
       ),
       @argparse.Command(
+        "pipeline-provider-ensure",
+        about="Idempotently register a Docker pipeline provider from a token file.",
+        options=[
+          OptionArg("name", long="name", required=true),
+          OptionArg("token-file", long="token-file", required=true),
+          OptionArg("labels", long="labels", default_values=[
+            "self-hosted,linux",
+          ]),
+          OptionArg("repositories", long="repositories", default_values=[""]),
+          OptionArg("admin", long="admin", default_values=["root"]),
+        ],
+      ),
+      @argparse.Command(
         "pipeline-rerun",
         about="Rerun a completed pipeline from its immutable source snapshot.",
         positionals=[PositionArg("repository"), PositionArg("number")],
@@ -255,6 +268,40 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           repositories,
         )
         println("Registered pipeline provider \{provider.id}:\{provider.name}")
+      }
+      "pipeline-provider-ensure" => {
+        let token_path = cli_value(options, "token-file")
+        guard @fs.kind(token_path, follow_symlink=false) is Regular &&
+          @fs.file_size(token_path) <= 256L else {
+          raise @domain.BadRequest(
+            message="provider token file must be a regular small file",
+          )
+        }
+        let token = @fs.read_file(token_path).text().trim().to_owned()
+        let labels = cli_value(options, "labels")
+          .split(",")
+          .filter(label => !label.trim().is_empty())
+          .map(label => label.trim().to_owned())
+          .collect()
+        let repositories : Array[@domain.RepoId] = []
+        for path in cli_value(options, "repositories").split(",") {
+          let path = path.trim()
+          if !path.is_empty() {
+            repositories.push(@domain.parse_transport_repo(path.to_owned()))
+          }
+        }
+        let admin = @identity.active_user_by_name(
+          pool,
+          cli_value(options, "admin"),
+        )
+        let provider = @pipeline.Coordinator::new(pool).ensure_provider(
+          admin,
+          cli_value(options, "name"),
+          token,
+          labels,
+          repositories,
+        )
+        println("Ensured pipeline provider \{provider.id}:\{provider.name}")
       }
       "pipeline-rerun" => {
         let number = @string.parse_int64(cli_value(matches, "number")) catch {

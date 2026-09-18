@@ -251,6 +251,43 @@ test "provider protocol helpers reject unsupported versions and invalid tokens" 
 }
 
 ///|
+async test "provider ensure is idempotent and refuses credential replacement" {
+  with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let ensured = coordinator.ensure_provider(
+      admin,
+      provider.name,
+      provider_secret,
+      ["self-hosted", "linux"],
+      [protocol_repo],
+    )
+    assert_eq(ensured.id, provider.id)
+    assert_eq(
+      pool.with_client(client => {
+        client.query_all("SELECT id FROM pipeline_provider").length()
+      }),
+      1,
+    )
+    try
+      ignore(
+        coordinator.ensure_provider(
+          admin,
+          provider.name,
+          "c".repeat(64),
+          ["self-hosted", "linux"],
+          [protocol_repo],
+        ),
+      )
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("provider ensure replaced an existing credential")
+    }
+  })
+}
+
+///|
 async test "bound executions reject other instances and cannot complete before steps succeed" {
   with_protocol_fixture((coordinator, pool, _, run, _, _) => {
     let id = coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id

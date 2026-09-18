@@ -49,6 +49,26 @@ fn require_provider_admin(
 }
 
 ///|
+fn provider_from_row(
+  client : @database.DbClient,
+  row : @database.DbRow,
+) -> Provider raise {
+  let id : Int64 = row.get_name("id")
+  {
+    id,
+    name: row.get_name("name"),
+    paused: row.get_name("paused"),
+    revoked: row.get_name("revoked"),
+    labels: client
+    .query_all(
+      "SELECT label FROM pipeline_provider_label WHERE provider_id = ? ORDER BY label",
+      params=[id],
+    )
+    .map(label => label.get_name("label")),
+  }
+}
+
+///|
 pub fn Coordinator::create_provider(
   self : Coordinator,
   actor : @domain.CurrentUser,
@@ -117,6 +137,97 @@ pub fn Coordinator::create_provider(
           )
         }
         { id, name, paused: false, revoked: false, labels, }
+      },
+      immediate=true,
+    )
+  })
+}
+
+///|
+pub fn Coordinator::ensure_provider(
+  self : Coordinator,
+  actor : @domain.CurrentUser,
+  name : String,
+  token : String,
+  labels : Array[String],
+  repositories : Array[@domain.RepoId],
+) -> Provider raise {
+  require_provider_admin(self.pool, actor)
+  check_token(token)
+  guard @domain.valid_segment(name) && name.length() <= 64 else {
+    raise @domain.BadRequest(message="invalid provider name")
+  }
+  let labels = labels.map(label => label.to_lower())
+  guard labels.contains("self-hosted") &&
+    labels.contains("linux") &&
+    labels.length() <= 8 &&
+    labels.all(label => {
+      !label.is_empty() &&
+      label.length() <= 64 &&
+      label
+      .iter()
+      .all(ch => {
+        ch.is_ascii_alphabetic() ||
+        ch.is_ascii_digit() ||
+        ch == '_' ||
+        ch == '-'
+      })
+    }) else {
+    raise @domain.BadRequest(message="invalid provider labels")
+  }
+  let repository_ids = repositories.map(repo => {
+    @repository.repository_scope(self.pool, actor, repo).id
+  })
+  let hash = @identity.hash_token(token)
+  self.pool.with_client(client => {
+    client.with_transaction(
+      tx => {
+        let row = match
+          tx.query_opt("SELECT * FROM pipeline_provider WHERE name = ?", params=[
+            name,
+          ]) {
+          Some(row) => {
+            guard (row.get_name("token_hash") : String) == hash else {
+              raise Conflict("provider name exists with a different credential")
+            }
+            guard !(row.get_name("revoked") : Bool) else {
+              raise Conflict("provider is revoked")
+            }
+            row
+          }
+          None => {
+            guard tx.query_opt(
+                "SELECT id FROM pipeline_provider WHERE token_hash = ? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
+                params=[hash, hash],
+              )
+              is None else {
+              raise Conflict("provider credential is already in use")
+            }
+            tx.query_one(
+              "INSERT INTO pipeline_provider (name, token_hash) VALUES (?, ?) RETURNING *",
+              params=[name, hash],
+            )
+          }
+        }
+        let id : Int64 = row.get_name("id")
+        for label in labels {
+          let _ = tx.execute(
+            "INSERT OR IGNORE INTO pipeline_provider_label (provider_id, label) VALUES (?, ?)",
+            params=[id, label],
+          )
+        }
+        for repository_id in repository_ids {
+          let _ = tx.execute(
+            "INSERT OR IGNORE INTO pipeline_provider_repository (provider_id, repository_id) VALUES (?, ?)",
+            params=[id, repository_id],
+          )
+        }
+        provider_from_row(
+          client,
+          tx.query_one("SELECT * FROM pipeline_provider WHERE id = ?", params=[
+            id,
+          ]),
+        )
       },
       immediate=true,
     )
