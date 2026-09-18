@@ -24,6 +24,7 @@ RUNTIME_IMAGE=${MOONHUB_IMAGE:-moonhub:$RELEASE}
 PROVIDER_IMAGE=${MOONHUB_PROVIDER_IMAGE:-moonhub-provider:$RELEASE}
 RUNNER_IMAGE=${MOONHUB_RUNNER_IMAGE:-moonhub-runner:$RELEASE}
 BUILD_RUNNER=${MOONHUB_RUNNER_BUILD:-1}
+PULL_IMAGES=${MOONHUB_PULL:-1}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
@@ -93,16 +94,20 @@ build_images() {
   validate_inputs true
   validate_compose
   printf 'Building Web/SSH image: %s\n' "$RUNTIME_IMAGE"
-  "${compose[@]}" build --pull web
+  local pull_args=()
+  if [ "$PULL_IMAGES" = 1 ]; then
+    pull_args+=(--pull)
+  fi
+  "${compose[@]}" build "${pull_args[@]}" web
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     if [ "$BUILD_RUNNER" = 1 ]; then
       printf 'Building Runner image: %s\n' "$RUNNER_IMAGE"
-      docker build --pull --target runner -t "$RUNNER_IMAGE" "$ROOT"
+      docker build "${pull_args[@]}" --target runner -t "$RUNNER_IMAGE" "$ROOT"
     else
       printf 'Using pre-published Runner image: %s\n' "$RUNNER_IMAGE"
     fi
     printf 'Building provider image: %s\n' "$PROVIDER_IMAGE"
-    "${compose[@]}" build --pull pipeline-provider
+    "${compose[@]}" build "${pull_args[@]}" pipeline-provider
   fi
 }
 
