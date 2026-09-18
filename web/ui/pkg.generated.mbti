@@ -37,7 +37,7 @@ pub(all) enum PageNavigation {
   PersonalNavigation(@identity.TeamSummary)
   RepositoryNavigation(@domain.RepoId, String, Bool)
   AccountNavigation(String)
-  SiteNavigation
+  SiteNavigation(String)
 }
 
 // Type aliases

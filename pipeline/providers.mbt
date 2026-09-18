@@ -22,6 +22,9 @@ pub fn Coordinator::new(
 pub struct Provider {
   id : Int64
   name : String
+  paused : Bool
+  revoked : Bool
+  labels : Array[String]
 } derive(Debug)
 
 ///|
@@ -113,10 +116,37 @@ pub fn Coordinator::create_provider(
             params=[id, repository_id],
           )
         }
-        { id, name, }
+        { id, name, paused: false, revoked: false, labels, }
       },
       immediate=true,
     )
+  })
+}
+
+///|
+pub fn Coordinator::list_providers(
+  self : Coordinator,
+  actor : @domain.CurrentUser,
+) -> Array[Provider] raise {
+  require_provider_admin(self.pool, actor)
+  self.pool.with_client(client => {
+    client
+    .query_all("SELECT * FROM pipeline_provider ORDER BY id")
+    .map(row => {
+      let id : Int64 = row.get_name("id")
+      {
+        id,
+        name: row.get_name("name"),
+        paused: row.get_name("paused"),
+        revoked: row.get_name("revoked"),
+        labels: client
+        .query_all(
+          "SELECT label FROM pipeline_provider_label WHERE provider_id = ? ORDER BY label",
+          params=[id],
+        )
+        .map(label => label.get_name("label")),
+      }
+    })
   })
 }
 

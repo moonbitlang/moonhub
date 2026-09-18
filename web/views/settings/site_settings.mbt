@@ -261,6 +261,6 @@ fn render_ssh_settings(
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),
-    navigation=@web_ui.SiteNavigation,
+    navigation=@web_ui.SiteNavigation("ssh"),
   )
 }

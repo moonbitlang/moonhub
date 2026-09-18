@@ -423,6 +423,12 @@ docker compose exec -T web sh -eu -c '
 ' < deploy/secrets/provider_token
 ```
 
+Site administrators can also manage providers at
+`/-/admin/pipelines/providers`: create a provider, pause/resume it, or revoke
+it. The browser shows a newly generated provider token only in the creation
+response; store it in the provider secret immediately. Existing deployments
+may continue using the CLI flow above for non-interactive provisioning.
+
 Start the provider and DinD services with a pinned Runner image available from
 the configured registry. A digest is preferred over a mutable tag:
 

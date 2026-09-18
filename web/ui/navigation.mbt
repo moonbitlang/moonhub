@@ -5,7 +5,7 @@ pub(all) enum PageNavigation {
   PersonalNavigation(@identity.TeamSummary)
   RepositoryNavigation(@domain.RepoId, String, Bool)
   AccountNavigation(String)
-  SiteNavigation
+  SiteNavigation(String)
 }
 
 ///|
@@ -70,7 +70,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
       AccountNavigation(_) =>
         b <+
           "<span>Account</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>Settings</strong>"
-      SiteNavigation =>
+      SiteNavigation(_) =>
         b <+
           "<span>Administration</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>Site settings</strong>"
     }
@@ -89,7 +89,7 @@ fn render_sidebar(
       (team.display_name, "Personal repositories", "user")
     RepositoryNavigation(repo, _, _) => (repo.name, repo.owner, "book-open")
     AccountNavigation(_) => ("Your account", "Personal settings", "user")
-    SiteNavigation => ("Administration", "Site settings", "settings")
+    SiteNavigation(_) => ("Administration", "Site settings", "settings")
     _ => ("Workspace", "Your repositories & teams", "grid")
   }
   Html(b => {
@@ -146,9 +146,9 @@ fn render_sidebar(
       AccountNavigation(active) =>
         b <+
           "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/-/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/-/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/-/change-password", "Password", "lock", active == "password")}</nav>"
-      SiteNavigation =>
+      SiteNavigation(active) =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh#ssh-access", "SSH access", "terminal", true)}\{render_navigation_item("/-/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh#ssh-access", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/ssh#email-delivery", "Email delivery", "mail", false)}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "workflow", active == "pipeline-providers")}</nav>"
       _ => ()
     }
     // Site settings are administration, not part of any workspace scope, so the
@@ -160,7 +160,7 @@ fn render_sidebar(
     if site_admin {
       // The site settings scope already lists its own sections.
       match navigation {
-        SiteNavigation => ()
+        SiteNavigation(_) => ()
         _ =>
           b <+
             "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "Site settings", "settings", false)}</nav>"

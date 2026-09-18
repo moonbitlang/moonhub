@@ -32,6 +32,111 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.get("/-/admin/pipelines/providers", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    res.send_html(
+      render_provider_admin(
+        assets,
+        actor,
+        coordinator.list_providers(actor),
+        @web_context.request_form_token(req, "pipeline-providers"),
+        None,
+        None,
+      ),
+      headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    let form = @web_context.protected_form(req, "pipeline-providers")
+    let name = form.get("name").unwrap_or("").trim().to_owned()
+    let labels = form
+      .get("labels")
+      .unwrap_or("")
+      .split(",")
+      .filter(label => !label.trim().is_empty())
+      .map(label => label.trim().to_owned())
+      .collect()
+    let repositories : Array[@domain.RepoId] = []
+    for path in form.get("repositories").unwrap_or("").split(",") {
+      let path = path.trim()
+      if !path.is_empty() {
+        repositories.push(@domain.parse_transport_repo(path.to_owned()))
+      }
+    }
+    let token = @identity.random_hex(32)
+    let _ = coordinator.create_provider(
+      actor, name, token, labels, repositories,
+    ) catch {
+      @domain.BadRequest(message~) | @pipeline.Conflict(message) => {
+        res.send_html(
+          render_provider_admin(
+            assets,
+            actor,
+            coordinator.list_providers(actor),
+            @web_context.request_form_token(req, "pipeline-providers"),
+            None,
+            Some(message),
+          ),
+          status=400,
+          headers=@web_context.private_page_headers(),
+        )
+        return
+      }
+      err => raise err
+    }
+    res.send_html(
+      render_provider_admin(
+        assets,
+        actor,
+        coordinator.list_providers(actor),
+        @web_context.request_form_token(req, "pipeline-providers"),
+        Some(token),
+        None,
+      ),
+      headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers/:id/pause", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    let form = @web_context.protected_form(req, "pipeline-providers")
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    coordinator.set_provider_paused(actor, id, form.get("paused") == Some("1"))
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/admin/pipelines/providers",
+      ),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers/:id/revoke", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    ignore(@web_context.protected_form(req, "pipeline-providers"))
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    coordinator.revoke_provider(actor, id)
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/admin/pipelines/providers",
+      ),
+    )
+  })
   ctx.get("/:owner/:repo/pipelines", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)

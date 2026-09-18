@@ -48,3 +48,54 @@ async test "pipeline pages list runs, show jobs, and cancel with CSRF" {
     assert_true(conclusion is Some(@pipeline.Cancelled))
   })
 }
+
+///|
+async test "site admins can create, pause, and revoke pipeline providers" {
+  @web_testkit.with_ssh_settings_app((port, pool, _, _, admin_cookie) => {
+    let (response, body) = @web_testkit.http_get_path_with_cookie(
+      port, "/-/admin/pipelines/providers", admin_cookie,
+    )
+    assert_eq(response.code, 200)
+    let csrf = @web_testkit.extract_attr(
+      body, "name=\"csrf_token\"", "value=\"",
+    )
+    let (created_response, created_body) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/admin/pipelines/providers",
+      "csrf_token=" +
+      csrf +
+      "&name=web-provider&labels=self-hosted%2Clinux&repositories=alice%2Fdemo",
+      admin_cookie,
+    )
+    assert_eq(created_response.code, 200)
+    assert_true(created_body.contains("Provider created"))
+    assert_true(created_body.contains("web-provider"))
+    let provider = @pipeline.Coordinator::new(pool).list_providers(
+        @identity.active_user_by_name(pool, "admin"),
+      )[0]
+    let (paused_response, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/admin/pipelines/providers/" + provider.id.to_string() + "/pause",
+      "csrf_token=" + csrf + "&paused=1",
+      admin_cookie,
+    )
+    assert_eq(paused_response.code, 303)
+    assert_true(
+      @pipeline.Coordinator::new(pool).list_providers(
+        @identity.active_user_by_name(pool, "admin"),
+      )[0].paused,
+    )
+    let (revoked_response, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/admin/pipelines/providers/" + provider.id.to_string() + "/revoke",
+      "csrf_token=" + csrf,
+      admin_cookie,
+    )
+    assert_eq(revoked_response.code, 303)
+    assert_true(
+      @pipeline.Coordinator::new(pool).list_providers(
+        @identity.active_user_by_name(pool, "admin"),
+      )[0].revoked,
+    )
+  })
+}
