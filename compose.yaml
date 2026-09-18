@@ -1,6 +1,6 @@
 services:
   web:
-    image: moonhub:local
+    image: ${MOONHUB_IMAGE:-moonhub:local}
     build:
       context: .
       args:
@@ -29,7 +29,7 @@ services:
     stop_grace_period: 30s
 
   ssh:
-    image: moonhub:local
+    image: ${MOONHUB_IMAGE:-moonhub:local}
     command: ["ssh"]
     restart: unless-stopped
     depends_on:
@@ -53,4 +53,4 @@ volumes:
 
 secrets:
   root_password:
-    file: ./deploy/secrets/root_password
+    file: ${MOONHUB_ROOT_PASSWORD_FILE:-./deploy/secrets/root_password}

@@ -307,6 +307,33 @@ files. Preserve the SSH host-key volume on restore to avoid changing the server
 identity. `docker compose down` retains the volumes; **`docker compose down -v`
 deletes the repositories, database, and SSH host keys**.
 
+For production, use the tracked deployment wrapper after pulling a clean Git
+revision. It builds images before stopping the running services, creates a
+volume backup, then performs the final service switch automatically:
+
+```sh
+./deploy/deploy.sh upgrade
+```
+
+Pipeline services are included when `MOONHUB_ENABLE_PIPELINES=1`. The wrapper
+builds the Runner image locally and loads it into the new persistent DinD
+daemon, so no registry is required for this deployment mode:
+
+```sh
+MOONHUB_ENABLE_PIPELINES=1 ./deploy/deploy.sh upgrade
+```
+
+For repeat deployments, put operator settings such as
+`MOONHUB_ENABLE_PIPELINES=1`, `MOONHUB_BACKUP_DIR`, and secret paths in an
+operator-owned file and set `MOONHUB_DEPLOY_ENV_FILE` to that path. Use
+`./deploy/deploy.sh build` to build without downtime, `backup` to create a
+backup only, `status` to inspect services, and `config` to validate the
+resolved Compose configuration. When pipelines are enabled, set
+`MOONHUB_PROVIDER_REPOSITORIES` to the comma-separated repositories that the
+provider may claim; the wrapper idempotently registers the provider after Web
+is healthy and before starting the provider service. The wrapper refuses a
+dirty Git worktree and never stops services before a successful build.
+
 ## Verification
 
 ```sh
