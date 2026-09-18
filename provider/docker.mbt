@@ -109,7 +109,10 @@ async fn run_container(
         })
         let code = process.wait()
         let output = output.wait()
-        ignore(diagnostic.wait())
+        let diagnostic_text = diagnostic.wait()
+        if code != 0 && !diagnostic_text.trim().is_empty() {
+          println("pipeline provider: docker: \{diagnostic_text.trim()}")
+        }
         let report = @json.parse(output.trim()) catch {
           _ => raise DockerFailure(code)
         }

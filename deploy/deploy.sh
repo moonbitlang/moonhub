@@ -111,8 +111,8 @@ backup_volumes() {
   stamp=$(date +%Y%m%d-%H%M%S)
   dir="$BACKUP_ROOT/$stamp-$RELEASE"
   mkdir -p "$dir"
-  web_id=$("${compose[@]}" ps -q web 2>/dev/null || true)
-  ssh_id=$("${compose[@]}" ps -q ssh 2>/dev/null || true)
+  web_id=$("${compose[@]}" ps -aq web 2>/dev/null || true)
+  ssh_id=$("${compose[@]}" ps -aq ssh 2>/dev/null || true)
   if [ -n "$web_id" ]; then
     docker cp "$web_id:/data" "$dir/data"
   else

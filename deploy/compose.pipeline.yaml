@@ -42,10 +42,11 @@ services:
     command: ["--allow-http"]
     environment:
       MOONHUB_SERVER: http://web:8080
-      MOONHUB_RUNNER_SERVER: http://moonhub-web:8080
+      MOONHUB_RUNNER_SERVER: http://172.30.90.10:8080
+      MOONHUB_RUNNER_NETWORK: host
       MOONHUB_RUNNER_IMAGE: ${MOONHUB_RUNNER_IMAGE:?Set MOONHUB_RUNNER_IMAGE to a registry image or digest}
-      MOONHUB_RUNNER_HOST: moonhub-web
-      MOONHUB_RUNNER_HOST_IP: 172.30.90.10
+      MOONHUB_RUNNER_HOST: ""
+      MOONHUB_RUNNER_HOST_IP: ""
       MOONHUB_PROVIDER_WORKSPACE: /var/lib/moonhub/provider
       DOCKER_HOST: tcp://pipeline-docker:2375
     secrets:

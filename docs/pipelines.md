@@ -440,7 +440,9 @@ docker compose -f compose.yaml -f deploy/compose.pipeline.yaml \
 ```
 
 Only `pipeline-docker` is privileged. It exposes Docker TCP only on the private
-Compose network; the provider has no host Docker socket, and job containers are
+Compose network; the provider has no host Docker socket, and job containers use
+the DinD container's network namespace to reach Web without exposing ports on
+the host. Job containers are
 created with dropped capabilities, no-new-privileges, read-only rootfs,
 resource limits, temporary filesystems, and no application volumes. The
 provider and DinD share only the assignment control volume required for the
