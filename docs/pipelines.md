@@ -1,11 +1,11 @@
-# Pipelines: Steps 1 through 4
+# Pipelines: Steps 1 through 5
 
 The first delivery provides workflow validation and immutable run snapshots.
 The second adds a persistent runner protocol and authenticated machine API.
 Step 3 adds a single-job Runner and a dedicated container image. Step 4 adds
-the Docker provider and a dedicated DinD service. The server does not execute
-repository code, and no Pipelines page exists yet. Only explicitly provisioned
-providers can claim single-job runs.
+the Docker provider and a dedicated DinD service. Step 5 adds DAG scheduling
+and explicit reruns. The server does not execute repository code, and no
+Pipelines page exists yet. Only explicitly provisioned providers can claim work.
 
 ## Delivery Sequence
 
@@ -15,7 +15,7 @@ providers can claim single-job runs.
 | 2 | Provider authentication, claims, attempts, leases, logs and result protocol | Implemented; simulated-provider and HTTP acceptance tests |
 | 3 | Single-job Runner and execution semantics | Implemented; native and HTTP execution tests plus container smoke |
 | 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Implemented; provider smoke and Compose overlay |
-| 5 | Multi-job scheduling, concurrency and explicit reruns | Planned |
+| 5 | Multi-job scheduling, concurrency and explicit reruns | Implemented; DAG scheduler and snapshot reruns |
 | 6 | Repository pages and management controls | Planned |
 | 7 | Fault injection, recovery, cleanup and deployment acceptance | Planned |
 
@@ -108,7 +108,8 @@ Run configuration is immutable and versioned. New runs contain no attempts;
 jobs without dependencies are queued and dependent jobs are waiting. Lifecycle
 state and conclusion are separate. Completed records require a conclusion, and
 at most one active attempt can exist per job. Step 2 adds transactional claiming
-and attempt transitions; dependent multi-job scheduling remains deferred.
+and attempt transitions; Step 5 advances dependent jobs transactionally and
+supports explicit reruns from an immutable completed snapshot.
 
 The repository's existing cross-process write lock coordinates run creation.
 Source is pinned under a random `refs/moonhub/pipelines/<token>` ref **before**
@@ -151,9 +152,9 @@ business APIs requiring a live site-administrator identity. There is no default
 credential, public registration endpoint, or registration UI. Step 4 adds the
 `pipeline-provider-create` deployment command and Compose provider service. Each
 provider starts with an explicit repository allowlist and normalized labels
-including `self-hosted` and `linux`. No grant means no work. This stage allows
-one live attempt per provider and only one-job runs; it does not partially run
-multi-job workflows. Global concurrency and DAG scheduling arrive in step 5.
+including `self-hosted` and `linux`. No grant means no work. Each provider still
+has one live attempt at a time; different providers can claim different ready
+jobs. DAG scheduling and explicit reruns are described below.
 
 ### Credentials and Replay
 
@@ -367,8 +368,28 @@ no Docker daemon:
 moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
 ```
 
-Dynamic source checkout and multi-job scheduling remain disabled. The provider
-creates only the single-job containers described above.
+Dynamic source checkout remains disabled. The provider creates one isolated
+container per ready DAG Job; a workflow's workspace is not shared across jobs.
+
+## DAG Scheduling and Reruns (Step 5)
+
+Jobs without `needs` enter `queued`; dependent jobs enter `waiting`. After an
+attempt completes successfully, its direct dependents become queued when all
+their dependencies succeeded. If any dependency concludes with failure,
+timeout, cancellation, loss, or skip, the dependent job is completed as
+`skipped`; this propagates through deeper branches in the same transaction.
+Claims can continue from a Run whose status is already `running`, so a provider
+can execute each ready Job in order. A provider still has one active attempt;
+parallelism comes from multiple provisioned providers and matching labels.
+
+`rerun_run` accepts a completed Run under the normal repository-manager
+authorization. It creates a new Run number and Git pin for the original commit,
+copies the immutable workflow source/definition, and resets all Job states.
+It never reparses the current branch, so a force-push cannot change what the
+rerun executes. Active Runs cannot be implicitly rerun; cancellation and
+recovery remain explicit operations.
+
+No browser rerun page or per-repository concurrency policy exists yet.
 
 ## Docker Provider (Step 4)
 

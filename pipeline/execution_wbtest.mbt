@@ -29,6 +29,177 @@ fn completion(
 }
 
 ///|
+let dag_workflow : String =
+  #|name: DAG
+  #|on: workflow_dispatch
+  #|jobs:
+  #|  build:
+  #|    runs-on: [self-hosted, linux]
+  #|    steps:
+  #|      - id: build
+  #|        run: echo build
+  #|  test:
+  #|    needs: build
+  #|    runs-on: self-hosted
+  #|    steps:
+  #|      - id: test
+  #|        run: echo test
+  #|  deploy:
+  #|    needs: [test]
+  #|    runs-on: self-hosted
+  #|    steps:
+  #|      - id: deploy
+  #|        run: echo deploy
+
+///|
+async fn with_dag_fixture(
+  f : async (Coordinator, @database.Database, @domain.RepoId, Run, String) -> Unit,
+) -> Unit {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    ignore(@test_support.workflow_commit(repo.git_dir(root), dag_workflow))
+    let coordinator = Coordinator::new(pool)
+    let provider_token = @identity.random_hex(32)
+    ignore(
+      coordinator.create_provider(
+        @identity.active_user_by_name(pool, "admin"),
+        "dag-provider",
+        provider_token,
+        ["self-hosted", "linux"],
+        [repo],
+      ),
+    )
+    let run = create_run(
+      pool,
+      root,
+      @identity.active_user_by_name(pool, "alice"),
+      repo,
+      "pipeline",
+      ".github/workflows/build.yml",
+    )
+    f(coordinator, pool, repo, run, provider_token)
+  })
+}
+
+///|
+fn claim_dag_attempt(
+  coordinator : Coordinator,
+  provider_token : String,
+) -> (@protocol.Assignment, String) raise {
+  let attempt_token = @identity.random_hex(32)
+  let assignment = coordinator
+    .claim(provider_token, {
+      version: 1,
+      request_id: @identity.random_hex(16),
+      attempt_token,
+    })
+    .unwrap()
+  (assignment, attempt_token)
+}
+
+///|
+async test "claim advances a multi-job DAG after each successful attempt" {
+  with_dag_fixture((coordinator, pool, repo, run, provider_token) => {
+    let (build, build_token) = claim_dag_attempt(coordinator, provider_token)
+    assert_eq(build.job.id, "build")
+    ignore(coordinator.start(build.attempt_id, build_token, 1))
+    ignore(coordinator.complete(build.attempt_id, build_token, completion()))
+    let (test_assignment, test_token) = claim_dag_attempt(
+      coordinator, provider_token,
+    )
+    assert_eq(test_assignment.job.id, "test")
+    ignore(coordinator.start(test_assignment.attempt_id, test_token, 1))
+    ignore(
+      coordinator.complete(test_assignment.attempt_id, test_token, completion()),
+    )
+    let (deploy_assignment, deploy_token) = claim_dag_attempt(
+      coordinator, provider_token,
+    )
+    assert_eq(deploy_assignment.job.id, "deploy")
+    ignore(coordinator.start(deploy_assignment.attempt_id, deploy_token, 1))
+    ignore(
+      coordinator.complete(
+        deploy_assignment.attempt_id,
+        deploy_token,
+        completion(),
+      ),
+    )
+    assert_eq(
+      get_run(
+        pool,
+        @identity.active_user_by_name(pool, "alice"),
+        repo,
+        run.number,
+      ).state,
+      Completed,
+    )
+    let jobs = list_jobs(
+      pool,
+      @identity.active_user_by_name(pool, "alice"),
+      repo,
+      run.number,
+    )
+    assert_true(
+      jobs.all(job => job.state is Completed && job.conclusion is Some(Success)),
+    )
+  })
+}
+
+///|
+async test "failed DAG dependencies skip all downstream jobs" {
+  with_dag_fixture((coordinator, pool, repo, run, provider_token) => {
+    let build_token = @identity.random_hex(32)
+    let build = coordinator
+      .claim(provider_token, {
+        version: 1,
+        request_id: @identity.random_hex(16),
+        attempt_token: build_token,
+      })
+      .unwrap()
+    ignore(coordinator.start(build.attempt_id, build_token, 1))
+    ignore(
+      coordinator.complete(
+        build.attempt_id,
+        build_token,
+        completion(conclusion="failure"),
+      ),
+    )
+    assert_true(
+      coordinator.claim(provider_token, {
+        version: 1,
+        request_id: @identity.random_hex(16),
+        attempt_token: @identity.random_hex(32),
+      })
+      is None,
+    )
+    let jobs = list_jobs(
+      pool,
+      @identity.active_user_by_name(pool, "alice"),
+      repo,
+      run.number,
+    )
+    assert_true(
+      jobs.iter().find_first(job => job.job_key == "build").unwrap().conclusion
+      is Some(Failure),
+    )
+    for key in ["test", "deploy"] {
+      let job = jobs.iter().find_first(job => job.job_key == key).unwrap()
+      assert_true(job.state is Completed)
+      assert_true(job.conclusion is Some(Skipped))
+    }
+    assert_eq(
+      get_run(
+        pool,
+        @identity.active_user_by_name(pool, "alice"),
+        repo,
+        run.number,
+      ).conclusion,
+      Some(Failure),
+    )
+  })
+}
+
+///|
 async fn with_protocol_fixture(
   f : async (Coordinator, @database.Database, String, Run, Provider, Ref[Int64]) -> Unit,
 ) -> Unit {
@@ -799,7 +970,7 @@ async test "two consumers on separate SQLite connections cannot allocate the sam
 }
 
 ///|
-async test "provider does not match missing labels or partially execute a multi-job workflow" {
+async test "provider does not match missing labels and starts the root of a multi-job workflow" {
   @test_support.with_repository_test_data((pool, root) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let alice = @identity.active_user_by_name(pool, "alice")
@@ -835,12 +1006,23 @@ async test "provider does not match missing labels or partially execute a multi-
     let multi = create_run(
       pool, root, alice, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+    let root_assignment = coordinator
+      .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
+      .unwrap()
+    assert_eq(root_assignment.job.id, "build")
+    ignore(coordinator.start(root_assignment.attempt_id, "c".repeat(64), 1))
+    ignore(
+      coordinator.complete(
+        root_assignment.attempt_id,
+        "c".repeat(64),
+        completion(),
+      ),
+    )
     assert_eq(
       get_run(pool, alice, protocol_repo, mismatch.number).state,
       Queued,
     )
-    assert_eq(get_run(pool, alice, protocol_repo, multi.number).state, Queued)
+    assert_eq(get_run(pool, alice, protocol_repo, multi.number).state, Running)
   })
 }
 

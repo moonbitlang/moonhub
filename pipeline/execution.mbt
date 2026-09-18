@@ -212,6 +212,7 @@ fn finish_attempt(
     "UPDATE pipeline_job SET status = 'completed', conclusion = ? WHERE id = ? AND status <> 'completed'",
     params=[conclusion, job_id],
   )
+  advance_run_jobs(tx, run_id)
   finalize_run(tx, run_id)
 }
 
@@ -268,6 +269,7 @@ pub fn Coordinator::claim(
         let now = (self.clock)()
         let provider = authenticate_provider(tx, token)
         let provider_id : Int64 = provider.get_name("id")
+        advance_all_runs(tx)
         let hash = @identity.hash_token(request.attempt_token)
         let previous = tx.query_opt(
           "SELECT id, token_hash FROM pipeline_job_attempt WHERE provider_id = ? AND request_id = ?",
@@ -316,11 +318,9 @@ pub fn Coordinator::claim(
                 #|JOIN pipeline_provider_repository g ON g.repository_id = r.repository_id AND g.provider_id = ?
                 #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
                 #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
-                #|WHERE j.status = 'queued' AND r.status = 'queued' AND r.cancel_requested = 0 AND repo.ready = 1
+                #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
                 #|AND r.definition_version = ?
                 #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
-                #|AND (SELECT COUNT(*) FROM pipeline_job sibling WHERE sibling.run_id = r.id) = 1
-                #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_need n WHERE n.run_id = r.id AND n.job_key = j.job_key)
                 #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
                 #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
                 #|ORDER BY j.id LIMIT 1

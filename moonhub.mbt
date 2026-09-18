@@ -171,6 +171,7 @@ async fn main {
       | "ssh-key-revoke"
       | "repo-create"
       | "pipeline-provider-create"
+      | "pipeline-rerun"
     ) as command => {
       let code = run_management_cli(args[1:]) catch {
         err => {

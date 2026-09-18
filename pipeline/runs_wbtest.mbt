@@ -91,6 +91,71 @@ async test "a run snapshots its configuration and pins source across force pushe
 }
 
 ///|
+async test "explicit rerun clones the completed snapshot instead of the current branch" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let git_dir = repo.git_dir(root)
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let sha = @test_support.workflow_commit(git_dir, sample_workflow)
+    let original = create_run(
+      pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
+    )
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE pipeline_job SET status = 'completed', conclusion = 'success' WHERE run_id = ?",
+          params=[original.id],
+        ),
+      )
+      ignore(
+        client.execute(
+          "UPDATE pipeline_run SET status = 'completed', conclusion = 'success' WHERE id = ?",
+          params=[original.id],
+        ),
+      )
+    })
+    let rerun = rerun_run(pool, root, alice, repo, original.number)
+    assert_eq(rerun.number, 2L)
+    assert_eq(rerun.commit_sha, sha)
+    assert_eq(rerun.workflow_source, original.workflow_source)
+    assert_eq(
+      ToJson::to_json(rerun.definition),
+      ToJson::to_json(original.definition),
+    )
+    assert_true(rerun.source_ref != original.source_ref)
+    assert_eq(rerun.state, Queued)
+    assert_true(
+      list_jobs(pool, alice, repo, rerun.number)
+      .iter()
+      .find_first(job => job.job_key == "build")
+      .unwrap().state
+      is Queued,
+    )
+    assert_true(
+      @gitops.merge_git(git_dir, ["rev-parse", rerun.source_ref]).trim() == sha,
+    )
+  })
+}
+
+///|
+async test "active pipeline runs cannot be implicitly rerun" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    ignore(@test_support.workflow_commit(repo.git_dir(root), sample_workflow))
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let run = create_run(
+      pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
+    )
+    try ignore(rerun_run(pool, root, alice, repo, run.number)) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("reran an active pipeline")
+    }
+  })
+}
+
+///|
 async test "pipeline creation and reads enforce current repository permissions" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }

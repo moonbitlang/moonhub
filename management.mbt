@@ -81,6 +81,12 @@ fn management_command() -> @argparse.Command {
           OptionArg("admin", long="admin", default_values=["root"]),
         ],
       ),
+      @argparse.Command(
+        "pipeline-rerun",
+        about="Rerun a completed pipeline from its immutable source snapshot.",
+        positionals=[PositionArg("repository"), PositionArg("number")],
+        options=[OptionArg("admin", long="admin", default_values=["root"])],
+      ),
     ],
   )
 }
@@ -249,6 +255,29 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           repositories,
         )
         println("Registered pipeline provider \{provider.id}:\{provider.name}")
+      }
+      "pipeline-rerun" => {
+        let number = @string.parse_int64(cli_value(matches, "number")) catch {
+          _ => raise @domain.BadRequest(message="invalid pipeline run number")
+        }
+        guard number > 0L else {
+          raise @domain.BadRequest(message="invalid pipeline run number")
+        }
+        let repo = @domain.parse_transport_repo(
+          cli_value(matches, "repository"),
+        )
+        let actor = @identity.active_user_by_name(
+          pool,
+          cli_value(options, "admin"),
+        )
+        let run = @pipeline.rerun_run(
+          pool,
+          cli_value(matches, "root"),
+          actor,
+          repo,
+          number,
+        )
+        println("Rerun pipeline \{repo.path()}#\{run.number}")
       }
       _ => raise @domain.BadRequest(message="unknown management command")
     }

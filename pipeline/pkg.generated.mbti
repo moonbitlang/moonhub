@@ -17,6 +17,8 @@ pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 
+pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> Run
+
 // Errors
 pub suberror ExecutionError {
   Conflict(String)
