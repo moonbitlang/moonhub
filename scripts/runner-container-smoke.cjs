@@ -24,6 +24,15 @@ async function scenario(cancel) {
   const server = http.createServer(async (req, res) => {
     try {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
+      if (req.method === 'GET' && req.url.endsWith('/source')) {
+        res.writeHead(200, {
+          'Content-Type': 'application/x-tar',
+          'Content-Length': 1024,
+          Connection: 'close',
+        });
+        res.end(Buffer.alloc(1024));
+        return;
+      }
       let text = '';
       for await (const chunk of req) { text += chunk; assert.ok(text.length < 65536); }
       const body = JSON.parse(text);

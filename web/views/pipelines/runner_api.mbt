@@ -104,6 +104,27 @@ fn json_handler(
 ///|
 pub let runner_api_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let root = ctx.config().get_custom(@web_context.config_root)
+  ctx.get("/attempts/:id/source", async fn(req, res) {
+    let id = @string.parse_int64(req.params.get("id").unwrap_or("")) catch {
+      _ => raise @domain.BadRequest(message="invalid attempt id")
+    }
+    guard id > 0L else {
+      raise @domain.BadRequest(message="invalid attempt id")
+    }
+    let token = bearer_token(req)
+    coordinator.authenticate_attempt(id, token)
+    guard root is Some(root) else {
+      raise @domain.NotFound(message="source checkout is unavailable")
+    }
+    let archive = coordinator.read_source(root, id, token)
+    let writer = res.respond(status=200, headers={
+      "Cache-Control": "no-store",
+      "Content-Type": "application/x-tar",
+      "Content-Length": archive.length().to_string(),
+    })
+    writer.write(archive)
+  })
   ctx.post(
     "/claims",
     json_handler(req => {

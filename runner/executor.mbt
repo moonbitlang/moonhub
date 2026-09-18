@@ -263,10 +263,37 @@ async fn Runtime::cleanup_processes(self : Runtime) -> Unit {
 }
 
 ///|
+async fn extract_source(
+  workspace : String,
+  archive : String,
+) -> Unit raise RunnerError {
+  let code = @process.run(
+    "tar",
+    ["-xf", archive, "-C", workspace, "--no-same-owner", "--no-overwrite-dir"],
+    inherit_env=false,
+    extra_env={ "PATH": "/usr/bin:/bin" },
+  ) catch {
+    _ => 125
+  }
+  guard code == 0 else { raise Stopped("failure") }
+}
+
+///|
 async fn execute_assignment(
   assignment : @protocol.Assignment,
   options : Options,
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
+) -> Report {
+  execute_assignment_internal(assignment, options, post, None, false)
+}
+
+///|
+async fn execute_assignment_internal(
+  assignment : @protocol.Assignment,
+  options : Options,
+  post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
+  source : (async () -> Bytes)?,
+  checkout : Bool,
 ) -> Report {
   let options = validate_options(assignment, options)
   let scratch = @fs.tmpdir(prefix="moonhub-runner-")
@@ -315,7 +342,18 @@ async fn execute_assignment(
         @fs.symlink(target=installed, moon_home + "/" + directory)
       }
     }
-    @async.any([() => runtime.execute_steps(scratch), () => runtime.monitor()])
+    @async.any([
+      () => {
+        if checkout {
+          let archive = source.unwrap()()
+          let archive_path = scratch + "/source.tar"
+          @fs.write_file(archive_path, archive, permission=0o600)
+          extract_source(options.workspace, archive_path)
+        }
+        runtime.execute_steps(scratch)
+      },
+      () => runtime.monitor(),
+    ])
   } catch {
     err if @async.is_cancellation_error(err) => {
       interrupted = Some(err)
@@ -388,7 +426,7 @@ pub async fn run(
     raise InvalidConfiguration("invalid attempt credential")
   }
   validate_server(options.server, options.allow_http)
-  execute_assignment(assignment, options, (operation, body, until) => {
+  let post = (operation, body, until) => {
     post_retry(
       options.server,
       assignment.attempt_id,
@@ -397,5 +435,16 @@ pub async fn run(
       body,
       until,
     )
-  })
+  }
+  if options.unsafe_local {
+    execute_assignment(assignment, options, post)
+  } else {
+    execute_assignment_internal(
+      assignment,
+      options,
+      post,
+      Some(() => fetch_source(options.server, assignment.attempt_id, token)),
+      true,
+    )
+  }
 }

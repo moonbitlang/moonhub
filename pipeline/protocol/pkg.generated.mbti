@@ -17,6 +17,8 @@ pub let max_log_chunk_bytes : Int
 
 pub let max_log_chunks : Int64
 
+pub let max_source_bytes : Int64
+
 pub let version : Int
 
 // Errors

@@ -99,6 +99,27 @@ async fn post_retry(
 }
 
 ///|
+async fn fetch_source(server : String, id : Int64, token : String) -> Bytes {
+  let client = @http.Client(server)
+  defer client.close()
+  let response = client.get("/-/runner-api/v1/attempts/\{id}/source", extra_headers={
+    "Authorization": "Bearer " + token,
+  })
+  guard response.code == 200 else { raise Rejected(response.code) }
+  let bytes : Array[Byte] = []
+  while client.read_some(max_len=8192) is Some(chunk) {
+    guard bytes.length().to_int64() + chunk.length().to_int64() <=
+      @protocol.max_source_bytes else {
+      raise InvalidResponse
+    }
+    for byte in chunk {
+      bytes.push(byte)
+    }
+  }
+  Bytes::from_array(bytes)
+}
+
+///|
 fn Runtime::accept(
   self : Runtime,
   state : @protocol.LeaseState,

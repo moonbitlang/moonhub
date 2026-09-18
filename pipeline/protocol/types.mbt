@@ -17,6 +17,9 @@ pub let max_log_bytes : Int64 = 1048576L
 pub let max_log_chunks : Int64 = 4096L
 
 ///|
+pub let max_source_bytes : Int64 = 67108864L
+
+///|
 pub(all) struct ClaimRequest {
   version : Int
   request_id : String
