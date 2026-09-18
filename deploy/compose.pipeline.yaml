@@ -1,0 +1,70 @@
+services:
+  web:
+    networks:
+      default: null
+      pipeline:
+        ipv4_address: 172.30.90.10
+
+  pipeline-docker:
+    image: docker:27.5.1-dind
+    privileged: true
+    command:
+      - --host=tcp://0.0.0.0:2375
+      - --host=unix:///var/run/docker.sock
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - pipeline-control:/var/lib/moonhub/provider
+    networks:
+      pipeline:
+        ipv4_address: 172.30.90.11
+    healthcheck:
+      test: ["CMD-SHELL", "docker -H tcp://127.0.0.1:2375 info >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  pipeline-provider:
+    build:
+      context: .
+      target: provider
+      args:
+        MOONBIT_VERSION: ${MOONBIT_VERSION:-latest}
+    depends_on:
+      web:
+        condition: service_healthy
+      pipeline-docker:
+        condition: service_healthy
+    command: ["--allow-http"]
+    environment:
+      MOONHUB_SERVER: http://web:8080
+      MOONHUB_RUNNER_SERVER: http://moonhub-web:8080
+      MOONHUB_RUNNER_IMAGE: ${MOONHUB_RUNNER_IMAGE:?Set MOONHUB_RUNNER_IMAGE to a registry image or digest}
+      MOONHUB_RUNNER_HOST: moonhub-web
+      MOONHUB_RUNNER_HOST_IP: 172.30.90.10
+      MOONHUB_PROVIDER_WORKSPACE: /var/lib/moonhub/provider
+      DOCKER_HOST: tcp://pipeline-docker:2375
+    secrets:
+      - provider_token
+    volumes:
+      - pipeline-control:/var/lib/moonhub/provider
+    networks:
+      pipeline:
+        ipv4_address: 172.30.90.12
+    restart: unless-stopped
+
+volumes:
+  pipeline-control:
+
+secrets:
+  provider_token:
+    file: ${MOONHUB_PROVIDER_TOKEN_FILE:-./deploy/secrets/provider_token}
+
+networks:
+  pipeline:
+    name: ${MOONHUB_PIPELINE_NETWORK:-moonhub_pipeline}
+    ipam:
+      config:
+        - subnet: 172.30.90.0/24

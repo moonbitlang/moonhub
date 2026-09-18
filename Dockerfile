@@ -43,6 +43,20 @@ USER 10001:10001
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/moonhub", "runner"]
 
+FROM debian:bookworm-slim AS provider
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates docker.io \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 provider \
+    && useradd --uid 10001 --gid provider --create-home provider \
+    && mkdir -p /var/lib/moonhub/provider \
+    && chown provider:provider /var/lib/moonhub/provider
+COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
+COPY LICENSE /usr/share/doc/moonhub/LICENSE
+USER 10001:10001
+WORKDIR /var/lib/moonhub/provider
+ENTRYPOINT ["/usr/local/bin/moonhub", "provider"]
+
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git gosu openssh-server libssl3 tini \

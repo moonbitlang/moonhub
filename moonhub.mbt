@@ -149,6 +149,19 @@ async fn main {
       }
       @sys.exit(code)
     }
+    Some("provider") => {
+      let code = run_provider_cli(args[2:]) catch {
+        @provider.InvalidConfiguration(message) => {
+          @stdio.stderr.write("provider: \{message}\n")
+          2
+        }
+        _ => {
+          @stdio.stderr.write("provider: execution failed or was interrupted\n")
+          2
+        }
+      }
+      @sys.exit(code)
+    }
     Some(
       "ssh-authorized-key"
       | "ssh-serve"
@@ -157,6 +170,7 @@ async fn main {
       | "ssh-key-list"
       | "ssh-key-revoke"
       | "repo-create"
+      | "pipeline-provider-create"
     ) as command => {
       let code = run_management_cli(args[1:]) catch {
         err => {

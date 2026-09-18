@@ -1,0 +1,36 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/provider"
+
+// Values
+pub async fn run(Options, String) -> Unit raise ProviderError
+
+// Errors
+pub(all) suberror ProviderError {
+  InvalidConfiguration(String)
+  TransportFailure
+  Rejected(Int)
+  DockerFailure(Int)
+  Stopped
+}
+
+// Types and methods
+pub(all) struct Options {
+  server : String
+  runner_server : String
+  runner_image : String
+  docker : String
+  docker_host : String
+  network : String
+  runner_host : String
+  runner_host_ip : String
+  workspace_root : String
+  poll_ms : Int
+  allow_http : Bool
+  memory : String
+  cpus : String
+  pids_limit : Int
+}
+
+// Type aliases
+
+// Traits

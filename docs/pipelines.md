@@ -1,10 +1,11 @@
-# Pipelines: Steps 1 through 3
+# Pipelines: Steps 1 through 4
 
 The first delivery provides workflow validation and immutable run snapshots.
 The second adds a persistent runner protocol and authenticated machine API.
-Step 3 adds a single-job Runner and a dedicated container image. The server
-does not execute repository code or create containers, and no Pipelines page
-exists yet. Only explicitly provisioned providers can claim single-job runs.
+Step 3 adds a single-job Runner and a dedicated container image. Step 4 adds
+the Docker provider and a dedicated DinD service. The server does not execute
+repository code, and no Pipelines page exists yet. Only explicitly provisioned
+providers can claim single-job runs.
 
 ## Delivery Sequence
 
@@ -13,13 +14,13 @@ exists yet. Only explicitly provisioned providers can claim single-job runs.
 | 1 | Workflow subset, authorization, immutable source/config snapshots, migration | Implemented; business APIs and tests only |
 | 2 | Provider authentication, claims, attempts, leases, logs and result protocol | Implemented; simulated-provider and HTTP acceptance tests |
 | 3 | Single-job Runner and execution semantics | Implemented; native and HTTP execution tests plus container smoke |
-| 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Planned |
+| 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Implemented; provider smoke and Compose overlay |
 | 5 | Multi-job scheduling, concurrency and explicit reruns | Planned |
 | 6 | Repository pages and management controls | Planned |
 | 7 | Fault injection, recovery, cleanup and deployment acceptance | Planned |
 
 Each step is a separate implementation commit with its own acceptance tests.
-Provider and DinD will be separate services. Job containers must never receive
+Provider and DinD are separate services. Job containers must never receive
 privileged mode, the Docker control socket/certificates, provider credentials,
 or the application's data volume. Isolation checks accompany step 4, not step 7.
 
@@ -147,8 +148,8 @@ headers or claim request bodies in a reverse proxy.
 
 Provider creation, pause/revocation, and repository grant changes are currently
 business APIs requiring a live site-administrator identity. There is no default
-credential, public registration endpoint, CLI provisioning, or registration UI.
-Those deployment entry points follow with the real provider in step 4. Each
+credential, public registration endpoint, or registration UI. Step 4 adds the
+`pipeline-provider-create` deployment command and Compose provider service. Each
 provider starts with an explicit repository allowlist and normalized labels
 including `self-hosted` and `linux`. No grant means no work. This stage allows
 one live attempt per provider and only one-job runs; it does not partially run
@@ -170,7 +171,8 @@ after that attempt ends/expires, returns 409 rather than allocating another job.
 Empty polls return `assignment: null` and are not persisted as reservations;
 poll again with backoff. An assignment includes its current `state`: replaying
 one already `running` is reconciliation, never permission to start a second
-process. The future provider must name/reconcile resources by attempt ID.
+process. The Docker provider names its container by attempt ID and does not
+retry a script after the container result is uncertain.
 
 ### Endpoints
 
@@ -232,7 +234,7 @@ bounded batches. Requests also reconcile expiry. Lease loss or an unacknowledged
 cancel becomes `lost`, not success or an automatic retry. A reached job deadline
 becomes `timed_out` if the lease remained valid until that deadline. Old attempt
 credentials cannot update a later attempt. Step 3 adds stopping inside the
-execution container; provider-side supervision follows in Step 4. External
+execution container; Step 4 adds provider-side container supervision. External
 side effects are never guaranteed exactly-once.
 
 ### Logs
@@ -365,5 +367,63 @@ no Docker daemon:
 moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
 ```
 
-Dynamic provisioning, source checkout and automatic repository execution remain
-disabled. Step 4 will create these containers and deliver their assignments.
+Dynamic source checkout and multi-job scheduling remain disabled. The provider
+creates only the single-job containers described above.
+
+## Docker Provider (Step 4)
+
+The provider is a separate `moonhub:provider` service. It reads its long-lived
+provider credential from `/run/secrets/provider_token`, claims at most one live
+attempt, writes the assignment to a private shared control volume, and invokes
+the configured Runner image through the DinD daemon. The attempt credential is
+written only to the Runner process stdin. It is never a Docker argument,
+environment variable, volume, or job file.
+
+The Compose overlay is intentionally separate from the default Web/SSH stack:
+
+```sh
+mkdir -p deploy/secrets
+(umask 077; openssl rand -hex 32 > deploy/secrets/provider_token)
+docker compose -f compose.yaml -f deploy/compose.pipeline.yaml \
+  config --quiet
+```
+
+Register the provider once, using the same token file. This command uses the
+Web container's database but does not put the token in argv:
+
+```sh
+docker compose exec -T web sh -eu -c '
+  umask 077
+  cat > /tmp/moonhub-provider-token
+  moonhub pipeline-provider-create \
+    --name dind --token-file /tmp/moonhub-provider-token \
+    --labels self-hosted,linux --repositories alice/demo
+  rm -f /tmp/moonhub-provider-token
+' < deploy/secrets/provider_token
+```
+
+Start the provider and DinD services with a pinned Runner image available from
+the configured registry. A digest is preferred over a mutable tag:
+
+```sh
+MOONHUB_RUNNER_IMAGE=registry.example/moonhub-runner@sha256:<digest> \
+docker compose -f compose.yaml -f deploy/compose.pipeline.yaml \
+  up -d --build --wait
+```
+
+Only `pipeline-docker` is privileged. It exposes Docker TCP only on the private
+Compose network; the provider has no host Docker socket, and job containers are
+created with dropped capabilities, no-new-privileges, read-only rootfs,
+resource limits, temporary filesystems, and no application volumes. The
+provider and DinD share only the assignment control volume required for the
+Docker daemon to read the manifest. The fixed pipeline subnet is
+`172.30.90.0/24`; change the overlay before deployment if it conflicts with
+the host network plan.
+
+The provider smoke test uses a real provider binary and mock HTTP/Docker
+adapters:
+
+```sh
+moon build --strip -j 1 --deny-warn
+node scripts/provider-smoke.cjs
+```
