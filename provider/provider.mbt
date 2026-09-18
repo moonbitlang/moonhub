@@ -35,6 +35,44 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
 }
 
 ///|
+async fn cleanup_stale_containers(
+  options : Options,
+) -> Unit raise ProviderError {
+  let (code, output) = @process.collect_output_merged(
+    options.docker,
+    ["ps", "-aq", "--filter", "name=^moonhub-pipeline-"],
+    inherit_env=false,
+    extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+  ) catch {
+    _ => raise DockerFailure(125)
+  }
+  guard code == 0 else { raise DockerFailure(code) }
+  let output_text = output.text() catch {
+    _ => raise InvalidConfiguration("Docker returned invalid output")
+  }
+  for raw_id in output_text.split("\n") {
+    let id = raw_id.trim()
+    if !id.is_empty() {
+      guard id.iter().all(ch => ch.is_ascii_alphabetic() || ch.is_ascii_digit()) else {
+        raise InvalidConfiguration("Docker returned an invalid container id")
+      }
+      let removed = @process.run(
+        options.docker,
+        ["rm", "-f", id.to_owned()],
+        inherit_env=false,
+        extra_env={
+          "PATH": "/usr/bin:/bin",
+          "DOCKER_HOST": options.docker_host,
+        },
+      ) catch {
+        _ => 125
+      }
+      guard removed == 0 else { raise DockerFailure(removed) }
+    }
+  }
+}
+
+///|
 fn validate_assignment(
   assignment : @protocol.Assignment,
 ) -> Unit raise ProviderError {
@@ -80,6 +118,7 @@ pub async fn run(
   }
   wait_for_docker(options)
   ensure_runner_image(options)
+  cleanup_stale_containers(options)
   for ;; {
     let assignment = claim(options, provider_token) catch {
       err if @async.is_cancellation_error(err) => raise Stopped

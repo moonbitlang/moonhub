@@ -1,11 +1,12 @@
-# Pipelines: Steps 1 through 5
+# Pipelines: Steps 1 through 7
 
 The first delivery provides workflow validation and immutable run snapshots.
 The second adds a persistent runner protocol and authenticated machine API.
 Step 3 adds a single-job Runner and a dedicated container image. Step 4 adds
 the Docker provider and a dedicated DinD service. Step 5 adds DAG scheduling
-and explicit reruns. The server does not execute repository code, and no
-Pipelines page exists yet. Only explicitly provisioned providers can claim work.
+and explicit reruns. Steps 6 and 7 add the browser controls, fault/recovery
+coverage, orphan cleanup, and deployment topology acceptance. The server does
+not execute repository code. Only explicitly provisioned providers can claim work.
 
 ## Delivery Sequence
 
@@ -16,8 +17,8 @@ Pipelines page exists yet. Only explicitly provisioned providers can claim work.
 | 3 | Single-job Runner and execution semantics | Implemented; native and HTTP execution tests plus container smoke |
 | 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Implemented; provider smoke and Compose overlay |
 | 5 | Multi-job scheduling, concurrency and explicit reruns | Implemented; DAG scheduler and snapshot reruns |
-| 6 | Repository pages and management controls | Planned |
-| 7 | Fault injection, recovery, cleanup and deployment acceptance | Planned |
+| 6 | Repository pages and management controls | Implemented; run/provider pages and CSRF controls |
+| 7 | Fault injection, recovery, cleanup and deployment acceptance | Implemented; recovery tests, orphan cleanup and topology smoke |
 
 Each step is a separate implementation commit with its own acceptance tests.
 Provider and DinD are separate services. Job containers must never receive
@@ -454,3 +455,23 @@ adapters:
 moon build --strip -j 1 --deny-warn
 node scripts/provider-smoke.cjs
 ```
+
+On startup the provider removes only containers named `moonhub-pipeline-*` in
+its configured Docker daemon. This makes a provider restart recover stale DinD
+containers without touching unrelated workloads. The attempt lease remains the
+source of truth: stale containers are not retried as successful work, and an
+expired attempt is reconciled as lost by the Web service.
+
+The deployment smoke validates the Compose topology without starting services:
+
+```sh
+MOONHUB_PROVIDER_TOKEN_FILE=/dev/null \
+node scripts/pipeline-deployment-smoke.cjs
+```
+
+It checks that only `pipeline-docker` is privileged, the provider has no host
+Docker socket, the provider and DinD share only the assignment control volume,
+the internal Docker TCP endpoint is not published, and Web remains attached to
+both its normal SSH network and the private pipeline network. A full deployment
+run still requires a real pinned Runner image in the configured registry and is
+environment-dependent.

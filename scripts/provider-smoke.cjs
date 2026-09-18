@@ -11,6 +11,7 @@ const binary = path.resolve('_build/native/debug/build/moonhub.exe');
 const providerToken = 'a'.repeat(64);
 const attemptTokenFile = path.join(root, 'attempt-token');
 const dockerArgsFile = path.join(root, 'docker-args');
+const cleanupFile = path.join(root, 'cleanup');
 const dockerCalledFile = path.join(root, 'docker-called');
 const fakeDocker = path.join(root, 'docker');
 const tokenFile = path.join(root, 'provider-token');
@@ -22,6 +23,7 @@ set -eu
 touch ${JSON.stringify(dockerCalledFile)}
 if [ "$1" = info ]; then exit 0; fi
 if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
+if [ "$1" = ps ]; then printf '%s\\n' deadbeef; exit 0; fi
 if [ "$1" = run ]; then
   printf '%s\\n' "$*" > ${JSON.stringify(dockerArgsFile)}
   IFS= read -r token
@@ -31,7 +33,7 @@ if [ "$1" = run ]; then
   printf '%s\\n' '{"reported":true,"conclusion":"success"}'
   exit 0
 fi
-if [ "$1" = rm ]; then exit 0; fi
+if [ "$1" = rm ]; then printf '%s\\n' "$3" > ${JSON.stringify(cleanupFile)}; exit 0; fi
 exit 0
 `, { mode: 0o700 });
 
@@ -105,6 +107,7 @@ function waitForExit(child) {
   const result = await waitForExit(child);
   assert.equal(server.failure, undefined);
   assert.ok(claimBody);
+  assert.equal(fs.readFileSync(cleanupFile, 'utf8').trim(), 'deadbeef');
   assert.equal(fs.readFileSync(attemptTokenFile, 'utf8').length, 64);
   const args = fs.readFileSync(dockerArgsFile, 'utf8');
   assert.match(args, /--read-only/);
