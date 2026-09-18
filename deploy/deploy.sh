@@ -25,6 +25,7 @@ PROVIDER_IMAGE=${MOONHUB_PROVIDER_IMAGE:-moonhub-provider:$RELEASE}
 RUNNER_IMAGE=${MOONHUB_RUNNER_IMAGE:-moonhub-runner:$RELEASE}
 BUILD_RUNNER=${MOONHUB_RUNNER_BUILD:-1}
 PULL_IMAGES=${MOONHUB_PULL:-1}
+BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
@@ -93,6 +94,11 @@ validate_compose() {
 build_images() {
   validate_inputs true
   validate_compose
+  if [ "$BUILD_IMAGES" != 1 ]; then
+    printf 'Using prebuilt images without building: %s / %s / %s\n' \
+      "$RUNTIME_IMAGE" "$PROVIDER_IMAGE" "$RUNNER_IMAGE"
+    return 0
+  fi
   printf 'Building Web/SSH image: %s\n' "$RUNTIME_IMAGE"
   if [ "$PULL_IMAGES" = 1 ]; then
     "${compose[@]}" build --pull web
