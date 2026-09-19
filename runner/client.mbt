@@ -29,7 +29,7 @@ fn validate_server(
 ///|
 async fn post_once(
   server : String,
-  id : Int64,
+  id : String,
   token : String,
   operation : String,
   body : Json,
@@ -70,7 +70,7 @@ async fn post_once(
 ///|
 async fn post_retry(
   server : String,
-  id : Int64,
+  id : String,
   token : String,
   operation : String,
   body : Json,
@@ -99,7 +99,7 @@ async fn post_retry(
 }
 
 ///|
-async fn fetch_source(server : String, id : Int64, token : String) -> Bytes {
+async fn fetch_source(server : String, id : String, token : String) -> Bytes {
   let client = @http.Client(server)
   defer client.close()
   let response = client.get("/-/runner-api/v1/attempts/\{id}/source", extra_headers={
@@ -130,17 +130,27 @@ fn Runtime::accept(
     state.execution_id == self.execution_id else {
     raise InvalidResponse
   }
+  let lease_until_ms = parse_runner_int64(state.lease_until_ms)
+  let server_time_ms = parse_runner_int64(state.server_time_ms)
+  let deadline_ms = parse_runner_int64(state.deadline_ms)
+  guard parse_runner_int64(state.log_sequence) <= @protocol.max_log_chunks else {
+    raise InvalidResponse
+  }
   if state.state == "completed" {
     return
   }
-  guard state.lease_until_ms >= state.server_time_ms &&
-    state.lease_until_ms - state.server_time_ms <= @protocol.lease_ms else {
+  guard lease_until_ms >= server_time_ms &&
+    lease_until_ms - server_time_ms <= @protocol.lease_ms else {
     raise InvalidResponse
   }
-  let lease = sent + state.lease_until_ms - state.server_time_ms - 1000L
+  let lease = sent + (lease_until_ms - server_time_ms) - 1000L
   self.lease_until = lease
-  if state.deadline_ms > 0L {
-    let deadline = sent + state.deadline_ms - state.server_time_ms - 1000L
+  if deadline_ms > 0L {
+    let remaining = deadline_ms - server_time_ms
+    guard remaining <= self.assignment.job.timeout_minutes.to_int64() * 60000L else {
+      raise InvalidResponse
+    }
+    let deadline = sent + Int64::max(0L, remaining) - 1000L
     self.deadline = Int64::min(self.deadline, deadline)
   }
   if state.cancel_requested {

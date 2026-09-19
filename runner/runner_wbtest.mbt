@@ -21,13 +21,13 @@ fn test_step(
 fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
   {
     version: 1,
-    attempt_id: 1L,
-    run_id: 1L,
-    job_id: 1L,
+    attempt_id: "1",
+    run_id: "1",
+    job_id: "1",
     repository: "alice/demo",
     commit_sha: "a".repeat(40),
-    lease_until_ms: 60000L,
-    server_time_ms: 0L,
+    lease_until_ms: "60000",
+    server_time_ms: "0",
     state: "leased",
     job: {
       id: "build",
@@ -96,31 +96,31 @@ async fn FakeServer::post(
   } else if operation == "logs" {
     let request : @protocol.LogRequest = @json.from_json(body)
     self.logs.push(request)
-    assert_eq(request.sequence, self.sequence + 1L)
-    self.sequence = request.sequence
+    assert_eq(request.sequence, (self.sequence + 1L).to_string())
+    self.sequence += 1L
   } else if operation == "steps" {
     self.events.push(@json.from_json(body))
   } else if operation == "complete" {
     let request : @protocol.CompleteRequest = @json.from_json(body)
-    assert_eq(request.last_log_sequence, self.sequence)
+    assert_eq(request.last_log_sequence, self.sequence.to_string())
     conclusion = request.conclusion
   }
   (
     {
       version: 1,
       execution_id: self.execution_id,
-      attempt_id: 1L,
+      attempt_id: "1",
       state: if operation == "complete" {
         "completed"
       } else {
         "running"
       },
-      lease_until_ms: self.started + self.remaining_ms,
-      server_time_ms: now,
-      deadline_ms: self.started + self.job_ms,
+      lease_until_ms: (self.started + self.remaining_ms).to_string(),
+      server_time_ms: now.to_string(),
+      deadline_ms: (self.started + self.job_ms).to_string(),
       cancel_requested: self.cancel_after > 0 &&
       self.heartbeats >= self.cancel_after,
-      log_sequence: self.sequence,
+      log_sequence: self.sequence.to_string(),
       conclusion,
     },
     now,
@@ -137,6 +137,72 @@ fn test_options(launcher : String, workspace : String) -> Options {
     unsafe_local: true,
     heartbeat_ms: 50,
   }
+}
+
+///|
+async test "malformed assignment strings are rejected before execution" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let assignment = test_assignment([test_step("check", "touch executed")])
+    for
+      invalid in [
+        { ..assignment, attempt_id: "../1", },
+        { ..assignment, attempt_id: "9223372036854775808", },
+        { ..assignment, run_id: "0", },
+        { ..assignment, job_id: "01", },
+        { ..assignment, server_time_ms: "-1", },
+        { ..assignment, lease_until_ms: "60001", },
+      ] {
+      let server = fake_server()
+      try
+        ignore(
+          execute_assignment(invalid, test_options(launcher, workspace), (
+            operation,
+            body,
+            until,
+          ) => server.post(operation, body, until)),
+        )
+      catch {
+        InvalidConfiguration(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("accepted invalid assignment numbers")
+      }
+      assert_eq(server.execution_id, "")
+    }
+    assert_true(!@fs.exists(workspace + "/executed"))
+  })
+}
+
+///|
+async test "malformed lease strings stop runner before executing steps" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let server = fake_server()
+    let assignment = test_assignment([test_step("check", "touch executed")])
+    for
+      field in [
+        "lease_until_ms", "server_time_ms", "deadline_ms", "log_sequence",
+      ] {
+      for value in ["-1", "01", "1e3", "9223372036854775808"] {
+        let report = execute_assignment(
+          assignment,
+          test_options(launcher, workspace),
+          (operation, body, until) => {
+            let (state, sent) = server.post(operation, body, until)
+            let state = match field {
+              "lease_until_ms" => { ..state, lease_until_ms: value, }
+              "server_time_ms" => { ..state, server_time_ms: value, }
+              "deadline_ms" => { ..state, deadline_ms: value, }
+              _ => { ..state, log_sequence: value, }
+            }
+            (state, sent)
+          },
+        )
+        assert_eq(report.conclusion, "lost")
+        assert_true(!report.reported)
+        assert_true(!@fs.exists(workspace + "/executed"))
+      }
+    }
+  })
 }
 
 ///|

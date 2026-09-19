@@ -9,6 +9,7 @@ const path = require('node:path');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-provider-smoke-'));
 const binary = path.resolve('_build/native/debug/build/moonhub.exe');
 const providerToken = 'a'.repeat(64);
+const attemptId = '9007199254740993';
 const attemptTokenFile = path.join(root, 'attempt-token');
 const dockerArgsFile = path.join(root, 'docker-args');
 const cleanupFile = path.join(root, 'cleanup');
@@ -16,6 +17,7 @@ const dockerCalledFile = path.join(root, 'docker-called');
 const fakeDocker = path.join(root, 'docker');
 const tokenFile = path.join(root, 'provider-token');
 const workspace = path.join(root, 'workspace');
+const manifestFile = path.join(root, 'assignment.json');
 fs.mkdirSync(workspace);
 fs.writeFileSync(tokenFile, providerToken, { mode: 0o600 });
 fs.writeFileSync(fakeDocker, `#!/bin/sh
@@ -26,6 +28,7 @@ if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
 if [ "$1" = ps ]; then printf '%s\\n' deadbeef; exit 0; fi
 if [ "$1" = run ]; then
   case " $* " in *" --interactive "*) ;; *) exit 92;; esac
+  cp ${JSON.stringify(path.join(workspace, attemptId, 'assignment.json'))} ${JSON.stringify(manifestFile)}
   printf '%s\\n' "$*" > ${JSON.stringify(dockerArgsFile)}
   IFS= read -r token
   printf '%s' "$token" > ${JSON.stringify(attemptTokenFile)}
@@ -53,7 +56,7 @@ const server = http.createServer(async (req, res) => {
     assert.match(claimBody.attempt_token, /^[a-f0-9]{64}$/);
     claims += 1;
     const assignment = claims === 1 ? {
-      version: 1, attempt_id: '17', run_id: '1', job_id: '1',
+      version: 1, attempt_id: attemptId, run_id: '1', job_id: '1',
       repository: 'alice/demo', commit_sha: 'a'.repeat(40),
       lease_until_ms: String(Date.now() + 60000), server_time_ms: String(Date.now()), state: 'leased',
       job: {
@@ -94,7 +97,7 @@ function waitForExit(child) {
   child.stderr.on('data', chunk => { stderr += chunk; });
   child.once('close', (code, signal) => { childExit = { code, signal }; });
   const deadline = Date.now() + 15000;
-  while (!fs.existsSync(dockerArgsFile)) {
+  while (!fs.existsSync(attemptTokenFile) || claims < 2) {
     if (server.failure) throw server.failure;
     if (childExit) throw new Error(`provider exited before launching a container: ${JSON.stringify(childExit)}\nstdout=${stdout}\nstderr=${stderr}`);
     if (Date.now() > deadline) {
@@ -111,6 +114,9 @@ function waitForExit(child) {
   assert.equal(fs.readFileSync(cleanupFile, 'utf8').trim(), 'deadbeef');
   assert.equal(fs.readFileSync(attemptTokenFile, 'utf8').length, 64);
   const args = fs.readFileSync(dockerArgsFile, 'utf8');
+  assert.ok(args.includes(`--name moonhub-pipeline-${attemptId}`));
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  assert.equal(manifest.attempt_id, attemptId);
   assert.match(args, /--read-only/);
   assert.match(args, /--interactive/);
   assert.match(args, /--cap-drop ALL/);

@@ -22,7 +22,7 @@ fn test_options() -> Options {
 test "provider validates origins and builds a constrained runner command" {
   let options = test_options()
   validate_options(options)
-  let args = container_args(options, "/run/assignment.json", 42L)
+  let args = container_args(options, "/run/assignment.json", "42")
   assert_true(args.contains("--read-only"))
   assert_true(args.contains("--interactive"))
   assert_true(args.contains("--cap-drop"))

@@ -45,13 +45,15 @@ async fn Runtime::upload(
   let sequence = self.sequence + 1L
   let request : @protocol.LogRequest = {
     version: @protocol.version,
-    sequence,
+    sequence: sequence.to_string(),
     step_id,
     stream,
     text,
   }
   let state = self.request("logs", ToJson::to_json(request))
-  guard state.log_sequence == sequence else { raise InvalidResponse }
+  guard parse_runner_int64(state.log_sequence) == sequence else {
+    raise InvalidResponse
+  }
   self.sequence = sequence
   self.bytes += size
   self.check_live()

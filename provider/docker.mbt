@@ -1,5 +1,5 @@
 ///|
-fn container_name(attempt_id : Int64) -> String {
+fn container_name(attempt_id : String) -> String {
   "moonhub-pipeline-\{attempt_id}"
 }
 
@@ -7,7 +7,7 @@ fn container_name(attempt_id : Int64) -> String {
 fn container_args(
   options : Options,
   assignment_path : String,
-  attempt_id : Int64,
+  attempt_id : String,
 ) -> Array[String] {
   let args = [
     "run",
@@ -139,7 +139,8 @@ async fn execute_assignment(
   assignment : @protocol.Assignment,
   attempt_token : String,
 ) -> Unit {
-  let root = options.workspace_root + "/" + assignment.attempt_id.to_string()
+  let attempt_id = assignment.attempt_id
+  let root = options.workspace_root + "/" + attempt_id
   @fs.mkdir(root, permission=0o700) catch {
     _ => raise DockerFailure(125)
   }
@@ -160,7 +161,7 @@ async fn execute_assignment(
       ignore(
         @process.run(
           options.docker,
-          ["rm", "-f", container_name(assignment.attempt_id)],
+          ["rm", "-f", container_name(attempt_id)],
           inherit_env=false,
           extra_env={
             "PATH": "/usr/bin:/bin",
@@ -174,7 +175,7 @@ async fn execute_assignment(
       ignore(
         @process.run(
           options.docker,
-          ["rm", "-f", container_name(assignment.attempt_id)],
+          ["rm", "-f", container_name(attempt_id)],
           inherit_env=false,
           extra_env={
             "PATH": "/usr/bin:/bin",

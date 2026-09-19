@@ -31,10 +31,14 @@ pub fn Coordinator::append_log(
   request : @protocol.LogRequest,
 ) -> @protocol.LeaseState raise {
   check_version(request.version)
-  guard request.sequence > 0 && ["stdout", "stderr"].contains(request.stream) else {
+  let wire_sequence = parse_protocol_int64(
+    request.sequence,
+    "invalid log sequence",
+  )
+  guard wire_sequence > 0 && ["stdout", "stderr"].contains(request.stream) else {
     raise @domain.BadRequest(message="invalid log sequence or stream")
   }
-  guard request.sequence <= @protocol.max_log_chunks else { raise LogLimit }
+  guard wire_sequence <= @protocol.max_log_chunks else { raise LogLimit }
   let size = @utf8.encode(request.text).length()
   guard size > 0 && size <= @protocol.max_log_chunk_bytes else {
     raise LogLimit
@@ -51,7 +55,7 @@ pub fn Coordinator::append_log(
         }
         if tx.query_opt(
             "SELECT payload_hash FROM pipeline_log_chunk WHERE attempt_id = ? AND sequence = ?",
-            params=[id, request.sequence],
+            params=[id, wire_sequence],
           )
           is Some(existing) {
           guard (existing.get_name("payload_hash") : String) == hash else {
@@ -59,9 +63,9 @@ pub fn Coordinator::append_log(
           }
           return lease_state(row, (self.clock)())
         }
-        let sequence : Int64 = row.get_name("log_sequence")
+        let current_sequence : Int64 = row.get_name("log_sequence")
         let bytes : Int64 = row.get_name("log_bytes")
-        guard request.sequence == sequence + 1L else {
+        guard wire_sequence == current_sequence + 1L else {
           raise Conflict("log chunks must be uploaded in sequence")
         }
         guard bytes + size.to_int64() <= @protocol.max_log_bytes else {
@@ -94,7 +98,7 @@ pub fn Coordinator::append_log(
           "INSERT INTO pipeline_log_chunk (attempt_id, sequence, step_id, stream, content, payload_hash) VALUES (?, ?, ?, ?, ?, ?)",
           params=[
             id,
-            request.sequence,
+            wire_sequence,
             request.step_id,
             request.stream,
             content,
@@ -107,7 +111,7 @@ pub fn Coordinator::append_log(
         )
         let _ = tx.execute(
           "UPDATE pipeline_job_attempt SET log_sequence = ?, log_bytes = log_bytes + ? WHERE id = ?",
-          params=[request.sequence, size.to_int64(), id],
+          params=[wire_sequence, size.to_int64(), id],
         )
         lease_state(attempt_row(tx, id, token), (self.clock)())
       },
@@ -143,7 +147,7 @@ pub fn Coordinator::read_logs(
       params=[attempt_id, after],
     )
     .map(row => {
-      id: row.get_name("id"),
+      id: (row.get_name("id") : Int64).to_string(),
       step_id: row.get_name("step_id"),
       stream: row.get_name("stream"),
       text: row.get_name("content"),

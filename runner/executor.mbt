@@ -5,7 +5,7 @@ async fn validate_options(
 ) -> Options {
   guard assignment.version == @protocol.version &&
     assignment.state == "leased" &&
-    assignment.attempt_id > 0L &&
+    assignment.has_valid_numbers() &&
     assignment.job.steps.length() > 0 &&
     assignment.job.steps.length() <= 64 else {
     raise InvalidConfiguration("runner requires a fresh leased assignment")
@@ -318,7 +318,9 @@ async fn execute_assignment(
     guard state.state == "running" || state.cancel_requested else {
       raise Stopped("lost")
     }
-    guard state.log_sequence == 0L else { raise Stopped("lost") }
+    guard parse_runner_int64(state.log_sequence) == 0L else {
+      raise Stopped("lost")
+    }
     runtime.check_live()
     @fs.mkdir(options.workspace + "/.home", permission=0o700)
     @fs.mkdir(options.workspace + "/.tmp", permission=0o700)
@@ -396,7 +398,7 @@ async fn execute_assignment(
     let request : @protocol.CompleteRequest = {
       version: @protocol.version,
       conclusion: outcome,
-      last_log_sequence: runtime.sequence,
+      last_log_sequence: runtime.sequence.to_string(),
     }
     let state = Some(runtime.request("complete", ToJson::to_json(request))) catch {
       _ => None
@@ -424,17 +426,11 @@ pub async fn run(
     raise InvalidConfiguration("invalid attempt credential")
   }
   validate_server(options.server, options.allow_http)
+  let attempt_id = assignment.attempt_id
   let post = (operation, body, until) => {
-    post_retry(
-      options.server,
-      assignment.attempt_id,
-      token,
-      operation,
-      body,
-      until,
-    )
+    post_retry(options.server, attempt_id, token, operation, body, until)
   }
   execute_assignment(assignment, options, post, source=() => {
-    fetch_source(options.server, assignment.attempt_id, token)
+    fetch_source(options.server, attempt_id, token)
   })
 }

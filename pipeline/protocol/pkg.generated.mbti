@@ -19,6 +19,8 @@ pub let max_log_chunks : Int64
 
 pub let max_source_bytes : Int64
 
+pub fn parse_decimal(String) -> Int64?
+
 pub let version : Int
 
 // Errors
@@ -26,16 +28,17 @@ pub let version : Int
 // Types and methods
 pub(all) struct Assignment {
   version : Int
-  attempt_id : Int64
-  run_id : Int64
-  job_id : Int64
+  attempt_id : String
+  run_id : String
+  job_id : String
   repository : String
   commit_sha : String
-  lease_until_ms : Int64
-  server_time_ms : Int64
+  lease_until_ms : String
+  server_time_ms : String
   state : String
   job : JobPlan
 } derive(ToJson, @debug.Debug, @json.FromJson)
+pub fn Assignment::has_valid_numbers(Self) -> Bool
 
 pub(all) struct ClaimRequest {
   version : Int
@@ -46,7 +49,7 @@ pub(all) struct ClaimRequest {
 pub(all) struct CompleteRequest {
   version : Int
   conclusion : String
-  last_log_sequence : Int64
+  last_log_sequence : String
 } derive(ToJson, @json.FromJson)
 
 pub(all) struct JobPlan {
@@ -60,18 +63,18 @@ pub(all) struct JobPlan {
 pub(all) struct LeaseState {
   version : Int
   execution_id : String
-  attempt_id : Int64
+  attempt_id : String
   state : String
-  lease_until_ms : Int64
-  server_time_ms : Int64
-  deadline_ms : Int64
+  lease_until_ms : String
+  server_time_ms : String
+  deadline_ms : String
   cancel_requested : Bool
-  log_sequence : Int64
+  log_sequence : String
   conclusion : String
 } derive(ToJson, @debug.Debug, @json.FromJson)
 
 pub(all) struct LogChunk {
-  id : Int64
+  id : String
   step_id : String
   stream : String
   text : String
@@ -79,7 +82,7 @@ pub(all) struct LogChunk {
 
 pub(all) struct LogRequest {
   version : Int
-  sequence : Int64
+  sequence : String
   step_id : String
   stream : String
   text : String

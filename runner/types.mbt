@@ -18,6 +18,14 @@ pub(all) struct Options {
 }
 
 ///|
+fn parse_runner_int64(value : String) -> Int64 raise RunnerError {
+  match @protocol.parse_decimal(value) {
+    Some(value) => value
+    None => raise InvalidResponse
+  }
+}
+
+///|
 pub struct Report {
   conclusion : String
   reported : Bool

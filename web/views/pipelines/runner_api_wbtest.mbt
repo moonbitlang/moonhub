@@ -184,7 +184,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       assert_eq(assignment.job.steps[0].shell, "")
       assert_eq(assignment.job.steps[0].timeout_minutes, 0)
       let base = "/attempts/\{assignment.attempt_id}"
-      assert_eq(assignment.run_id, run.id)
+      assert_eq(@protocol.parse_decimal(assignment.run_id).unwrap(), run.id)
       assert_eq(
         post_json(
           port,
@@ -213,8 +213,14 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       let started : @protocol.LeaseState = @json.from_json(json)
       assert_eq(started.state, "running")
       assert_eq(started.conclusion, "")
-      assert_eq(started.deadline_ms, clock.val + 60000L)
-      assert_eq(started.server_time_ms, clock.val)
+      assert_eq(
+        @protocol.parse_decimal(started.deadline_ms).unwrap(),
+        clock.val + 60000L,
+      )
+      assert_eq(
+        @protocol.parse_decimal(started.server_time_ms).unwrap(),
+        clock.val,
+      )
       let (code, json) = post_json(
         port,
         base + "/heartbeat",
@@ -234,10 +240,21 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       )
       let chunk : @protocol.LogRequest = {
         version: 1,
-        sequence: 1L,
+        sequence: "1",
         step_id: "check",
         stream: "stdout",
         text: "hello <script>\n",
+      }
+      for sequence in ["", "-1", "+1", " 1", "01", "1e3", "9223372036854775808"] {
+        assert_eq(
+          post_json(
+            port,
+            base + "/logs",
+            ToJson::to_json({ ..chunk, sequence, }).stringify(),
+            token=attempt_token,
+          ).0,
+          400,
+        )
       }
       let body = ToJson::to_json(chunk).stringify()
       assert_eq(
@@ -250,19 +267,29 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       )
       assert_eq(
         coordinator
-        .read_logs(actor, repo, run.number, assignment.attempt_id)
+        .read_logs(
+          actor,
+          repo,
+          run.number,
+          @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+        )
         .length(),
         1,
       )
       assert_eq(
-        coordinator.read_logs(actor, repo, run.number, assignment.attempt_id)[0].text,
+        coordinator.read_logs(
+          actor,
+          repo,
+          run.number,
+          @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+        )[0].text,
         chunk.text,
       )
       assert_eq(
         post_json(
           port,
           base + "/logs",
-          ToJson::to_json({ ..chunk, sequence: 3L, }).stringify(),
+          ToJson::to_json({ ..chunk, sequence: "3", }).stringify(),
           token=attempt_token,
         ).0,
         409,
@@ -271,7 +298,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         post_json(
           port,
           base + "/logs",
-          ToJson::to_json({ ..chunk, sequence: 2L, text: "x".repeat(8193), }).stringify(),
+          ToJson::to_json({ ..chunk, sequence: "2", text: "x".repeat(8193), }).stringify(),
           token=attempt_token,
         ).0,
         413,
@@ -279,7 +306,30 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       let complete : @protocol.CompleteRequest = {
         version: 1,
         conclusion: "success",
-        last_log_sequence: 1L,
+        last_log_sequence: "1",
+      }
+      assert_eq(
+        post_json(
+          port,
+          base + "/complete",
+          "{\"version\":1,\"conclusion\":\"success\",\"last_log_sequence\":1}",
+          token=attempt_token,
+        ).0,
+        400,
+      )
+      for
+        last_log_sequence in [
+          "", "-1", "+1", " 1", "01", "1e3", "9223372036854775808",
+        ] {
+        assert_eq(
+          post_json(
+            port,
+            base + "/complete",
+            ToJson::to_json({ ..complete, last_log_sequence, }).stringify(),
+            token=attempt_token,
+          ).0,
+          400,
+        )
       }
       let body = ToJson::to_json(complete).stringify()
       let first = post_json(port, base + "/complete", body, token=attempt_token)

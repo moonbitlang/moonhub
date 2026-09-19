@@ -104,10 +104,11 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
   let root = ctx.resolve(@web_context.config_root)
   ctx.get("/attempts/:id/source", async fn(req, res) {
     let archive = try {
-      let id = @string.parse_int64(req.params.get("id").unwrap_or("")) catch {
-        _ => raise @domain.BadRequest(message="invalid attempt id")
-      }
-      guard id > 0L else {
+      guard @protocol.parse_decimal(
+          req.params.get("id").unwrap_or("").to_owned(),
+        )
+        is Some(id) &&
+        id > 0L else {
         raise @domain.BadRequest(message="invalid attempt id")
       }
       let token = bearer_token(req)
@@ -157,10 +158,11 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     ctx.post(
       "/attempts/:id/\{operation}",
       json_handler(req => {
-        let id = @string.parse_int64(req.params.get("id").unwrap_or("")) catch {
-          _ => raise @domain.BadRequest(message="invalid attempt id")
-        }
-        guard id > 0L else {
+        guard @protocol.parse_decimal(
+            req.params.get("id").unwrap_or("").to_owned(),
+          )
+          is Some(id) &&
+          id > 0L else {
           raise @domain.BadRequest(message="invalid attempt id")
         }
         let token = bearer_token(req)

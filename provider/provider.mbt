@@ -77,7 +77,7 @@ fn validate_assignment(
   assignment : @protocol.Assignment,
 ) -> Unit raise ProviderError {
   guard assignment.version == @protocol.version &&
-    assignment.attempt_id > 0L &&
+    assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
     assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&

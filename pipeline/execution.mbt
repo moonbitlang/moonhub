@@ -15,6 +15,14 @@ fn check_version(version : Int) -> Unit raise {
 }
 
 ///|
+fn parse_protocol_int64(value : String, message : String) -> Int64 raise {
+  match @protocol.parse_decimal(value) {
+    Some(value) => value
+    None => raise @domain.BadRequest(message~)
+  }
+}
+
+///|
 fn attempt_row(
   tx : @database.DbTransaction,
   id : Int64,
@@ -117,13 +125,17 @@ fn lease_state(
   {
     version: @protocol.version,
     execution_id: (row.get_name("execution_id") : String?).unwrap_or(""),
-    attempt_id: row.get_name("id"),
+    attempt_id: (row.get_name("id") : Int64).to_string(),
     state: row.get_name("status"),
-    lease_until_ms: (row.get_name("lease_until_ms") : Int64?).unwrap_or(0L),
-    server_time_ms: now,
-    deadline_ms: (row.get_name("deadline_ms") : Int64?).unwrap_or(0L),
+    lease_until_ms: (row.get_name("lease_until_ms") : Int64?)
+    .unwrap_or(0L)
+    .to_string(),
+    server_time_ms: now.to_string(),
+    deadline_ms: (row.get_name("deadline_ms") : Int64?)
+    .unwrap_or(0L)
+    .to_string(),
     cancel_requested: (row.get_name("cancel_at_ms") : Int64?) is Some(_),
-    log_sequence: row.get_name("log_sequence"),
+    log_sequence: (row.get_name("log_sequence") : Int64).to_string(),
     conclusion: (row.get_name("conclusion") : String?).unwrap_or(""),
   }
 }
@@ -366,13 +378,13 @@ pub fn Coordinator::claim(
         let job = attempt_job(row)
         Some({
           version: @protocol.version,
-          attempt_id: row.get_name("id"),
-          run_id: row.get_name("run_id"),
-          job_id: row.get_name("job_id"),
+          attempt_id: (row.get_name("id") : Int64).to_string(),
+          run_id: (row.get_name("run_id") : Int64).to_string(),
+          job_id: (row.get_name("job_id") : Int64).to_string(),
           repository: "\{owner}/\{name}",
           commit_sha: row.get_name("commit_sha"),
-          lease_until_ms: row.get_name("lease_until_ms"),
-          server_time_ms: now,
+          lease_until_ms: (row.get_name("lease_until_ms") : Int64).to_string(),
+          server_time_ms: now.to_string(),
           state: row.get_name("status"),
           job: {
             id: job.id,
@@ -494,6 +506,10 @@ pub fn Coordinator::complete(
   request : @protocol.CompleteRequest,
 ) -> @protocol.LeaseState raise {
   check_version(request.version)
+  let last_log_sequence = parse_protocol_int64(
+    request.last_log_sequence,
+    "invalid last log sequence",
+  )
   guard ["success", "failure", "cancelled", "timed_out"].contains(
     request.conclusion,
   ) else {
@@ -513,8 +529,7 @@ pub fn Coordinator::complete(
           return lease_state(row, (self.clock)())
         }
         let row = load_live_attempt(tx, id, token, (self.clock)())
-        guard (row.get_name("log_sequence") : Int64) ==
-          request.last_log_sequence else {
+        guard (row.get_name("log_sequence") : Int64) == last_log_sequence else {
           raise Conflict("completion does not match acknowledged log sequence")
         }
         guard (row.get_name("status") : String) == "running" ||

@@ -199,10 +199,15 @@ the attempt state, bound execution ID, acknowledged log sequence, lease deadline
 fixed job deadline, server time, cancellation flag, and conclusion when completed. Shared wire types
 live in `pipeline/protocol`; no workflow AST, HTTP, or database types enter that
 package. The wire plan uses an empty shell string for the implicit default and
-step timeout `0` for no separate step limit. All Int64 values (numeric IDs,
-millisecond timestamps, log sequence and cursor values) are decimal JSON strings
-to preserve their full precision in JavaScript and other JSON consumers. Version
-and timeout-minute fields remain JSON numbers. Lease `deadline_ms: "0"` means
+step timeout `0` for no separate step limit. Numeric IDs, millisecond timestamps,
+log sequences and cursors are explicit MoonBit `String` fields and decimal JSON
+strings, preserving their full precision in JavaScript and other JSON consumers.
+At computation/storage boundaries, parse canonical nonnegative decimal strings
+within the signed 64-bit range; reject signs, whitespace, leading zeros, and
+overflow. IDs must be positive. Database values and lease arithmetic remain
+`Int64`; wire types do not rely on its derived JSON representation. Version,
+timeout-minute and exit-code fields remain JSON numbers. The version 1 JSON
+format is unchanged. Lease `deadline_ms: "0"` means
 not yet started, and `conclusion: ""` means not completed. There are no
 language-specific Option/enum encodings in the wire schema.
 

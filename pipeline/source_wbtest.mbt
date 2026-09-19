@@ -5,7 +5,9 @@ async test "checkout requires a live authorized attempt and denies stale source 
       "leased", "expired", "completed", "cancelled", "revoked", "grant", "actor",
     ] {
     with_protocol_fixture((coordinator, pool, root, run, provider, clock) => {
-      let id = coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id
+      let id = @protocol.parse_decimal(
+        coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      ).unwrap()
       if reason != "leased" {
         ignore(coordinator.start(id, attempt_secret, 1))
         let archive = coordinator.read_source(root, id, attempt_secret)

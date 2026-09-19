@@ -75,7 +75,7 @@ async test "real runner streams logs before exit and reports persisted step outc
         assert_eq(
           source_status(
             listener.addr.port(),
-            assignment.attempt_id,
+            @protocol.parse_decimal(assignment.attempt_id).unwrap(),
             provider_token,
           ),
           401,
@@ -83,7 +83,7 @@ async test "real runner streams logs before exit and reports persisted step outc
         assert_eq(
           source_status(
             listener.addr.port(),
-            assignment.attempt_id,
+            @protocol.parse_decimal(assignment.attempt_id).unwrap(),
             attempt_token,
           ),
           409,
@@ -100,7 +100,12 @@ async test "real runner streams logs before exit and reports persisted step outc
         })
         @async.with_timeout(6000, () => {
           while coordinator
-                .read_logs(actor, repo, run.number, assignment.attempt_id)
+                .read_logs(
+                  actor,
+                  repo,
+                  run.number,
+                  @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+                )
                 .is_empty() {
             @async.sleep(10)
           }
@@ -114,7 +119,7 @@ async test "real runner streams logs before exit and reports persisted step outc
         assert_eq(
           source_status(
             listener.addr.port(),
-            assignment.attempt_id,
+            @protocol.parse_decimal(assignment.attempt_id).unwrap(),
             attempt_token,
           ),
           409,
@@ -125,7 +130,12 @@ async test "real runner streams logs before exit and reports persisted step outc
           workflow,
         )
         let logs = coordinator
-          .read_logs(actor, repo, run.number, assignment.attempt_id)
+          .read_logs(
+            actor,
+            repo,
+            run.number,
+            @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+          )
           .map(chunk => chunk.text)
           .join("")
         assert_eq(logs, "live-output\nfinished\n")
@@ -134,7 +144,7 @@ async test "real runner streams logs before exit and reports persisted step outc
           actor,
           repo,
           run.number,
-          assignment.attempt_id,
+          @protocol.parse_decimal(assignment.attempt_id).unwrap(),
         )
         assert_eq(steps.length(), 1)
         assert_eq(steps[0].state, "success")
@@ -229,7 +239,12 @@ async test "duplicate runner is fenced while original receives remote cancellati
         assert_true(report.reported)
         assert_true(!@fs.exists(workspace + "/survivor"))
         assert_eq(
-          coordinator.read_steps(actor, repo, run.number, assignment.attempt_id)[0].state,
+          coordinator.read_steps(
+            actor,
+            repo,
+            run.number,
+            @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+          )[0].state,
           "cancelled",
         )
       })
