@@ -30,6 +30,9 @@ fn validate_origin(
 fn validate_options(options : Options) -> Unit raise ProviderError {
   validate_origin(options.server, options.allow_http)
   validate_origin(options.runner_server, options.allow_http)
+  guard options.network != "host" && !options.network.has_prefix("container:") else {
+    raise InvalidConfiguration("runner requires its own network namespace")
+  }
   guard !options.runner_image.is_empty() &&
     options.runner_image.length() <= 256 &&
     options.runner_image

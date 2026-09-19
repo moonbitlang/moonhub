@@ -3,24 +3,26 @@ services:
     networks:
       default: null
       pipeline:
-        ipv4_address: 172.30.90.10
+        ipv4_address: ${MOONHUB_PIPELINE_PREFIX:-172.30.90}.10
 
   pipeline-docker:
     image: docker:27.5.1-dind
     privileged: true
+    entrypoint: ["dockerd"]
     command:
-      - --host=tcp://0.0.0.0:2375
-      - --host=unix:///var/run/docker.sock
+      - --host=unix:///run/moonhub-docker/docker.sock
+      - --group=10001
     environment:
       DOCKER_TLS_CERTDIR: ""
     volumes:
+      - pipeline-socket:/run/moonhub-docker
       - pipeline-control:/var/lib/moonhub/provider
       - pipeline-docker-data:/var/lib/docker
     networks:
       pipeline:
-        ipv4_address: 172.30.90.11
+        ipv4_address: ${MOONHUB_PIPELINE_PREFIX:-172.30.90}.11
     healthcheck:
-      test: ["CMD-SHELL", "docker -H tcp://127.0.0.1:2375 info >/dev/null 2>&1"]
+      test: ["CMD", "docker", "-H", "unix:///run/moonhub-docker/docker.sock", "info"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -42,23 +44,25 @@ services:
     command: ["--allow-http"]
     environment:
       MOONHUB_SERVER: http://web:8080
-      MOONHUB_RUNNER_SERVER: http://172.30.90.10:8080
-      MOONHUB_RUNNER_NETWORK: host
+      MOONHUB_RUNNER_SERVER: http://${MOONHUB_PIPELINE_PREFIX:-172.30.90}.10:8080
+      MOONHUB_RUNNER_NETWORK: bridge
       MOONHUB_RUNNER_IMAGE: ${MOONHUB_RUNNER_IMAGE:?Set MOONHUB_RUNNER_IMAGE to a registry image or digest}
       MOONHUB_RUNNER_HOST: ""
       MOONHUB_RUNNER_HOST_IP: ""
       MOONHUB_PROVIDER_WORKSPACE: /var/lib/moonhub/provider
-      DOCKER_HOST: tcp://pipeline-docker:2375
+      DOCKER_HOST: unix:///run/moonhub-docker/docker.sock
     secrets:
       - provider_token
     volumes:
+      - pipeline-socket:/run/moonhub-docker
       - pipeline-control:/var/lib/moonhub/provider
     networks:
       pipeline:
-        ipv4_address: 172.30.90.12
+        ipv4_address: ${MOONHUB_PIPELINE_PREFIX:-172.30.90}.12
     restart: unless-stopped
 
 volumes:
+  pipeline-socket:
   pipeline-control:
   pipeline-docker-data:
 
@@ -71,4 +75,4 @@ networks:
     name: ${MOONHUB_PIPELINE_NETWORK:-moonhub_pipeline}
     ipam:
       config:
-        - subnet: 172.30.90.0/24
+        - subnet: ${MOONHUB_PIPELINE_PREFIX:-172.30.90}.0/24

@@ -24,6 +24,7 @@ test "provider validates origins and builds a constrained runner command" {
   validate_options(options)
   let args = container_args(options, "/run/assignment.json", 42L)
   assert_true(args.contains("--read-only"))
+  assert_true(args.contains("--interactive"))
   assert_true(args.contains("--cap-drop"))
   assert_true(args.contains("ALL"))
   assert_true(args.contains("no-new-privileges"))
@@ -50,5 +51,13 @@ test "provider rejects unsafe runner server and partial host mappings" {
     err => raise err
   } noraise {
     _ => fail("accepted partial host mapping")
+  }
+  for network in ["host", "container:controller"] {
+    try validate_options({ ..options, network, }) catch {
+      InvalidConfiguration(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted shared network namespace")
+    }
   }
 }

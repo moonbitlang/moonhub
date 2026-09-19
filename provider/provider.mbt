@@ -15,7 +15,7 @@ async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
 async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
   let inspected = @process.run(
     options.docker,
-    ["image", "inspect", options.runner_image],
+    ["image", "inspect", "--format", "{{.Id}}", options.runner_image],
     inherit_env=false,
     extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
   ) catch {

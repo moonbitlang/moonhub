@@ -11,6 +11,7 @@ fn container_args(
 ) -> Array[String] {
   let args = [
     "run",
+    "--interactive",
     "--rm",
     "--name",
     container_name(attempt_id),
@@ -55,15 +56,16 @@ fn container_args(
 async fn read_bounded(reader : @process.ReadFromProcess, limit : Int) -> String {
   let bytes : Array[Byte] = []
   for ;; {
-    let chunk = reader.read_some(max_len=4096) catch { _ => None }
+    let chunk = reader.read_some(max_len=4096)
     match chunk {
       None => break
-      Some(chunk) => {
-        guard bytes.length() + chunk.length() <= limit else { break }
+      Some(chunk) =>
+        // Continue draining a noisy subprocess after reaching the retained limit.
         for byte in chunk {
-          bytes.push(byte)
+          if bytes.length() < limit {
+            bytes.push(byte)
+          }
         }
-      }
     }
   }
   @utf8.decode_lossy(Bytes::from_array(bytes))
@@ -111,7 +113,9 @@ async fn run_container(
         let output = output.wait()
         let diagnostic_text = diagnostic.wait()
         if code != 0 && !diagnostic_text.trim().is_empty() {
-          println("pipeline provider: docker: \{diagnostic_text.trim()}")
+          println(
+            "pipeline provider: docker: \{diagnostic_text.replace_all(old=attempt_token, new="[REDACTED]").trim()}",
+          )
         }
         let report = @json.parse(output.trim()) catch {
           _ => raise DockerFailure(code)

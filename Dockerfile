@@ -45,7 +45,7 @@ ENTRYPOINT ["/usr/local/bin/moonhub", "runner"]
 
 FROM debian:bookworm-slim AS provider
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates docker.io \
+    ca-certificates docker.io gosu \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 provider \
     && useradd --uid 10001 --gid provider --create-home provider \
@@ -53,9 +53,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chown provider:provider /var/lib/moonhub/provider
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
-USER 10001:10001
+COPY --chmod=755 deploy/provider-entrypoint.sh /usr/local/bin/moonhub-provider-entrypoint
 WORKDIR /var/lib/moonhub/provider
-ENTRYPOINT ["/usr/local/bin/moonhub", "provider"]
+ENTRYPOINT ["/usr/local/bin/moonhub-provider-entrypoint"]
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \

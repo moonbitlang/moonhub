@@ -369,8 +369,16 @@ no Docker daemon:
 moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
 ```
 
-Dynamic source checkout remains disabled. The provider creates one isolated
-container per ready DAG Job; a workflow's workspace is not shared across jobs.
+Each Runner now downloads a tar snapshot of its pinned commit before literal
+steps execute. Only a live, running, authorized attempt can read the source;
+completed, expired, cancelled and revoked credentials are rejected. The request
+is bounded to 30 seconds, 64 MiB and 10,000 regular files. The initial archive
+checkout rejects symlinks, submodules and runner-reserved paths (`.git`, `.home`,
+`.tmp`), preserves executable files and binary data, and does not create `.git`
+or fetch LFS objects. Git archive attributes apply. This is not yet an
+implementation of `actions/checkout` or arbitrary `uses` actions.
+The provider creates one isolated container per ready DAG Job; workspaces are
+not shared across jobs. Trusted local tests use the same source-fetch path.
 
 ## DAG Scheduling and Reruns (Step 5)
 
@@ -439,16 +447,17 @@ docker compose -f compose.yaml -f deploy/compose.pipeline.yaml \
   up -d --build --wait
 ```
 
-Only `pipeline-docker` is privileged. It exposes Docker TCP only on the private
-Compose network; the provider has no host Docker socket, and job containers use
-the DinD container's network namespace to reach Web without exposing ports on
-the host. Job containers are
+Only `pipeline-docker` is privileged. Docker has no TCP listener; a dedicated
+Unix socket volume is mounted only in DinD and the provider, never Web or jobs.
+Jobs use their own bridge network namespace to reach the internal Runner API.
+Job containers are
 created with dropped capabilities, no-new-privileges, read-only rootfs,
 resource limits, temporary filesystems, and no application volumes. The
-provider and DinD share only the assignment control volume required for the
-Docker daemon to read the manifest. The fixed pipeline subnet is
-`172.30.90.0/24`; change the overlay before deployment if it conflicts with
-the host network plan.
+provider and DinD share the socket and assignment control volumes. DinD image
+storage is persisted separately. The default pipeline subnet is `172.30.90.0/24`;
+set `MOONHUB_PIPELINE_PREFIX` and `MOONHUB_PIPELINE_NETWORK` when another isolated
+deployment already uses it. Provider initialization copies its file secret to a
+private runtime directory and then drops to UID/GID 10001.
 
 The provider smoke test uses a real provider binary and mock HTTP/Docker
 adapters:
@@ -471,9 +480,13 @@ MOONHUB_PROVIDER_TOKEN_FILE=/dev/null \
 node scripts/pipeline-deployment-smoke.cjs
 ```
 
-It checks that only `pipeline-docker` is privileged, the provider has no host
-Docker socket, the provider and DinD share only the assignment control volume,
-the internal Docker TCP endpoint is not published, and Web remains attached to
-both its normal SSH network and the private pipeline network. A full deployment
-run still requires a real pinned Runner image in the configured registry and is
-environment-dependent.
+It checks the privileged boundary, private Unix socket, bridge network and Web's
+normal SSH network. `node scripts/pipeline-e2e.cjs` exercises a separate real
+Compose project using prebuilt `moonhub:acceptance`, `moonhub-provider:acceptance`
+and `moonhub-runner:acceptance` images (overridable with the usual image variables).
+It initializes an account/repository, runs the upgrade script, force-pushes after
+dispatch, verifies source bytes and a native MoonBit build, cancels another run,
+and repeats upgrade/ensure while checking backups and persisted results. It
+retains only its named acceptance project and writes connection settings and
+test results under `_build/moonhub-acceptance-*` for inspection. No registry is
+needed when local Runner images are loaded into DinD by the deploy script.

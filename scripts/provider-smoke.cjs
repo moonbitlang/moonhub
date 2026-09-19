@@ -25,6 +25,7 @@ if [ "$1" = info ]; then exit 0; fi
 if [ "$1" = image ] && [ "$2" = inspect ]; then exit 0; fi
 if [ "$1" = ps ]; then printf '%s\\n' deadbeef; exit 0; fi
 if [ "$1" = run ]; then
+  case " $* " in *" --interactive "*) ;; *) exit 92;; esac
   printf '%s\\n' "$*" > ${JSON.stringify(dockerArgsFile)}
   IFS= read -r token
   printf '%s' "$token" > ${JSON.stringify(attemptTokenFile)}
@@ -111,6 +112,7 @@ function waitForExit(child) {
   assert.equal(fs.readFileSync(attemptTokenFile, 'utf8').length, 64);
   const args = fs.readFileSync(dockerArgsFile, 'utf8');
   assert.match(args, /--read-only/);
+  assert.match(args, /--interactive/);
   assert.match(args, /--cap-drop ALL/);
   assert.match(args, /no-new-privileges/);
   assert.match(args, /--pids-limit 256/);

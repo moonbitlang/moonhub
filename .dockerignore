@@ -22,3 +22,5 @@ testdata/repos/alice/*
 .tmp
 .repos
 .DS_Store
+backups
+deploy/deploy.env

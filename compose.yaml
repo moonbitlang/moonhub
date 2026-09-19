@@ -21,7 +21,7 @@ services:
     secrets:
       - root_password
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/login"]
+      test: ["CMD-SHELL", "test \"$$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/-/login)\" = 200"]
       interval: 10s
       timeout: 3s
       retries: 5

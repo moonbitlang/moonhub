@@ -308,8 +308,8 @@ identity. `docker compose down` retains the volumes; **`docker compose down -v`
 deletes the repositories, database, and SSH host keys**.
 
 For production, use the tracked deployment wrapper after pulling a clean Git
-revision. It builds images before stopping the running services, creates a
-volume backup, then performs the final service switch automatically:
+revision. It builds all images while services remain up, then stops the target
+services, creates a consistent volume backup, and starts the new release:
 
 ```sh
 ./deploy/deploy.sh upgrade
@@ -333,6 +333,30 @@ resolved Compose configuration. When pipelines are enabled, set
 provider may claim; the wrapper idempotently registers the provider after Web
 is healthy and before starting the provider service. The wrapper refuses a
 dirty Git worktree and never stops services before a successful build.
+
+The default settings file is `deploy/deploy.env` (Git-ignored); once configured,
+subsequent updates need only `git pull` followed by `./deploy/deploy.sh upgrade`.
+Use this file to persist ports, project name, secret paths and the pipeline
+toggle, so manual Compose commands cannot accidentally select another image.
+Set `MOONHUB_BUILD_IMAGES=0` only with prebuilt Web/provider/Runner images; all
+must be present locally before the script stops services. `MOONHUB_PULL=0`
+skips forced base-image refresh but does not guarantee an offline Docker build.
+Registry-free deployments load the local Runner image into the private DinD
+daemon through its Unix socket. Runner images must match the production CPU
+architecture.
+
+The first installation still requires root activation and creation of the
+repositories listed in `MOONHUB_PROVIDER_REPOSITORIES` before provider ensure
+can succeed. Start with pipelines disabled for that bootstrap; do not relax
+the active-administrator or repository-grant checks. Upgrades preserve paused
+provider state. Drain active jobs before upgrading.
+
+The `backup` command requires Web/SSH to be stopped. Backups include SQLite/WAL,
+repositories and SSH host keys with private file permissions. The wrapper does
+not provide a distributed atomic switch or automatic database rollback: a
+failure after stop returns nonzero and requires operator attention. After a
+migration, restore the matching backup before rolling back the application.
+Verify the deploy sequencing tests with `node scripts/deploy-script-test.cjs`.
 
 ## Verification
 

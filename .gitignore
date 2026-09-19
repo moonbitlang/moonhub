@@ -16,4 +16,5 @@ node_modules/
 deploy/secrets/
 deploy/ssh-import/
 backups/
+deploy/deploy.env
 **/id_ed25519
