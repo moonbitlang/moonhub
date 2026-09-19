@@ -63,8 +63,9 @@ All unknown fields are rejected before mapping. This includes `permissions`,
 `concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
 `outputs`, `uses`, and `with`. `${{ ... }}` expressions are rejected rather than
 executed literally. No field is silently stripped. `actions/checkout` is not
-yet accepted: a later delivery must implement and test the restricted checkout
-contract before enabling it. A pinned source commit is not an implicit checkout.
+yet accepted: a later delivery must implement and test the action contract
+before enabling it. The current Runner instead prepares a bounded archive of
+the pinned commit before executing literal steps.
 
 ```yaml
 name: Manual checks
@@ -398,7 +399,8 @@ It never reparses the current branch, so a force-push cannot change what the
 rerun executes. Active Runs cannot be implicitly rerun; cancellation and
 recovery remain explicit operations.
 
-No browser rerun page or per-repository concurrency policy exists yet.
+The Run detail page offers snapshot rerun. Per-repository concurrency policy is
+not yet implemented.
 
 ## Docker Provider (Step 4)
 

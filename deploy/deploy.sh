@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 
 DEPLOY_ENV=${MOONHUB_DEPLOY_ENV_FILE:-$ROOT/deploy/deploy.env}
@@ -12,8 +12,8 @@ if [ -n "${MOONHUB_DEPLOY_ENV_FILE:-}" ] && [ ! -f "$DEPLOY_ENV" ]; then
 fi
 if [ -f "$DEPLOY_ENV" ]; then
   # Operator-owned deployment settings: image policy, pipeline toggle and backup path.
-  # shellcheck disable=SC1090
   set -a
+  # shellcheck disable=SC1090
   . "$DEPLOY_ENV"
   set +a
 fi
@@ -195,6 +195,8 @@ load_runner_into_dind() {
 ensure_provider() {
   [ "$ENABLE_PIPELINES" = 1 ] || return 0
   printf 'Ensuring pipeline provider registration: %s\n' "$PROVIDER_NAME"
+  # These variables expand inside the container, not in the host shell.
+  # shellcheck disable=SC2016
   "${compose[@]}" exec -T --user git web sh -eu -c '
     umask 077
     token_file=$(mktemp /tmp/moonhub-provider-token.XXXXXX)

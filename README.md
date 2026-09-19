@@ -7,7 +7,8 @@ for the source layout and module initialization rules.
 
 Pipeline implementation is staged. Workflow validation, immutable run snapshots,
 an authenticated runner protocol, and a single-job Runner are implemented.
-Dynamic container provisioning and the UI are not yet implemented. See
+Docker provider, bounded source checkout and run/provider pages are available;
+full GitHub Actions compatibility is not yet implemented. See
 [the supported subset and delivery plan](docs/pipelines.md).
 
 ## Docker and Git SSH
