@@ -1,11 +1,24 @@
 ///|
+async fn source_status(port : Int, id : Int64, token : String) -> Int {
+  let client = @http.Client("http://127.0.0.1:\{port}")
+  defer client.close()
+  let response = client.get("/-/runner-api/v1/attempts/\{id}/source", extra_headers={
+    "Authorization": "Bearer " + token,
+  })
+  let body = client.read_all().text()
+  assert_true(response.headers.get("cache-control") is Some("no-store"))
+  assert_true(!body.contains(token))
+  return response.code
+}
+
+///|
 async test "real runner streams logs before exit and reports persisted step outcomes" {
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((_, launcher, workspace) => {
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       let workflow = @test_support.single_job_workflow.replace_all(
         old="echo fixture",
-        new="printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+        new="test -f .github/workflows/build.yml; test ! -d .git; grep -q live-output .github/workflows/build.yml; printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
       )
       ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
       let actor = @identity.active_user_by_name(pool, "alice")
@@ -31,12 +44,20 @@ async test "real runner streams logs before exit and reports persisted step outc
           attempt_token,
         })
         .unwrap()
+      // Move the branch after dispatch: checkout must still deliver the pinned snapshot.
+      ignore(
+        @test_support.workflow_commit(
+          repo.git_dir(root),
+          @test_support.single_job_workflow,
+        ),
+      )
       let app = @moonback.App(
         Module(ctx => {
           ctx.mount(
             "/-/runner-api/v1",
             App(
               Module(child => {
+                child.provide(@web_context.config_root, root)
                 child.provide(
                   @web_context.pipeline_coordinator_key, coordinator,
                 )
@@ -51,6 +72,22 @@ async test "real runner streams logs before exit and reports persisted step outc
         let listener = @moonback.listen(port=0)
         let serving = group.spawn(() => app.serve(listener))
         defer serving.cancel()
+        assert_eq(
+          source_status(
+            listener.addr.port(),
+            assignment.attempt_id,
+            provider_token,
+          ),
+          401,
+        )
+        assert_eq(
+          source_status(
+            listener.addr.port(),
+            assignment.attempt_id,
+            attempt_token,
+          ),
+          409,
+        )
         let running = group.spawn(() => {
           @runner.run(assignment, attempt_token, {
             server: "http://127.0.0.1:\{listener.addr.port()}",
@@ -74,7 +111,19 @@ async test "real runner streams logs before exit and reports persisted step outc
         )
         let result = running.wait()
         assert_eq(result.conclusion, "success")
+        assert_eq(
+          source_status(
+            listener.addr.port(),
+            assignment.attempt_id,
+            attempt_token,
+          ),
+          409,
+        )
         assert_true(result.reported)
+        assert_eq(
+          @fs.read_file(workspace + "/.github/workflows/build.yml").text(),
+          workflow,
+        )
         let logs = coordinator
           .read_logs(actor, repo, run.number, assignment.attempt_id)
           .map(chunk => chunk.text)
@@ -134,6 +183,7 @@ async test "duplicate runner is fenced while original receives remote cancellati
             "/-/runner-api/v1",
             App(
               Module(child => {
+                child.provide(@web_context.config_root, root)
                 child.provide(
                   @web_context.pipeline_coordinator_key, coordinator,
                 )

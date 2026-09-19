@@ -55,7 +55,7 @@ pub async fn with_production_test_app(async (@moonback.App, Int, @database.Datab
 
 pub async fn with_repository_test_app(async (Int, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit) -> Unit
 
-pub async fn with_ssh_settings_app(async (Int, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig) -> Unit
+pub async fn with_ssh_settings_app(async (Int, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig, repo_root? : String) -> Unit
 
 // Errors
 

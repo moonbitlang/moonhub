@@ -67,31 +67,28 @@ async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json 
 }
 
 ///|
+fn runner_error(err : Error) -> (Int, Json) {
+  let (status, code, message) = match err {
+    @domain.Unauthorized(message~) => (401, "unauthorized", message)
+    @domain.Forbidden(message~) => (403, "forbidden", message)
+    @domain.NotFound(message~) => (404, "not_found", message)
+    @domain.BadRequest(message~) => (400, "invalid_request", message)
+    @pipeline.Conflict(message) => (409, "conflict", message)
+    @pipeline.LogLimit | PayloadTooLarge =>
+      (413, "limit_exceeded", "request or log limit exceeded")
+    _ => (500, "internal_error", "runner request failed")
+  }
+  (status, { "version": 1, "error": { "code": code, "message": message } })
+}
+
+///|
 fn json_handler(
   handler : async (@moonback.Request) -> Json,
 ) -> @moonback.Handler {
   (req, res) => {
     let (status, json) = (200, handler(req)) catch {
       err if @async.is_cancellation_error(err) => raise err
-      err => {
-        let (status, code, message) = match err {
-          @domain.Unauthorized(message~) => (401, "unauthorized", message)
-          @domain.Forbidden(message~) => (403, "forbidden", message)
-          @domain.NotFound(message~) => (404, "not_found", message)
-          @domain.BadRequest(message~) => (400, "invalid_request", message)
-          @pipeline.Conflict(message) => (409, "conflict", message)
-          @pipeline.LogLimit | PayloadTooLarge =>
-            (413, "limit_exceeded", "request or log limit exceeded")
-          _ => {
-            println("runner API request failed")
-            (500, "internal_error", "runner request failed")
-          }
-        }
-        (
-          status,
-          { "version": 1, "error": { "code": code, "message": message } },
-        )
-      }
+      err => runner_error(err)
     }
     // Closing error connections avoids draining an oversized or unauthorized body.
     res.send_json(json, status~, headers={
@@ -104,20 +101,32 @@ fn json_handler(
 ///|
 pub let runner_api_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
-  let root = ctx.config().get_custom(@web_context.config_root)
+  let root = ctx.resolve(@web_context.config_root)
   ctx.get("/attempts/:id/source", async fn(req, res) {
-    let id = @string.parse_int64(req.params.get("id").unwrap_or("")) catch {
-      _ => raise @domain.BadRequest(message="invalid attempt id")
+    let archive = try {
+      let id = @string.parse_int64(req.params.get("id").unwrap_or("")) catch {
+        _ => raise @domain.BadRequest(message="invalid attempt id")
+      }
+      guard id > 0L else {
+        raise @domain.BadRequest(message="invalid attempt id")
+      }
+      let token = bearer_token(req)
+      coordinator.authenticate_attempt(id, token)
+      guard root is Some(root) else {
+        raise @domain.NotFound(message="source checkout is unavailable")
+      }
+      coordinator.read_source(root, id, token)
+    } catch {
+      err if @async.is_cancellation_error(err) => raise err
+      err => {
+        let (status, json) = runner_error(err)
+        res.send_json(json, status~, headers={
+          "Cache-Control": "no-store",
+          "Connection": "close",
+        })
+        return
+      }
     }
-    guard id > 0L else {
-      raise @domain.BadRequest(message="invalid attempt id")
-    }
-    let token = bearer_token(req)
-    coordinator.authenticate_attempt(id, token)
-    guard root is Some(root) else {
-      raise @domain.NotFound(message="source checkout is unavailable")
-    }
-    let archive = coordinator.read_source(root, id, token)
     let writer = res.respond(status=200, headers={
       "Cache-Control": "no-store",
       "Content-Type": "application/x-tar",

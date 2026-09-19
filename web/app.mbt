@@ -8,7 +8,6 @@ pub let app_module : @moonback.Module = Module(ctx => {
 
 ///|
 let runner_app_module : @moonback.Module = Module(ctx => {
-  ctx.use_(browser_resources_module)
   ctx.use_(pipeline_dependencies_module)
   ctx.use_(@pipeline_views.runner_api_module)
 })

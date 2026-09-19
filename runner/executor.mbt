@@ -263,16 +263,14 @@ async fn Runtime::cleanup_processes(self : Runtime) -> Unit {
 }
 
 ///|
-async fn extract_source(
-  workspace : String,
-  archive : String,
-) -> Unit raise RunnerError {
+async fn extract_source(workspace : String, archive : String) -> Unit {
   let code = @process.run(
     "tar",
-    ["-xf", archive, "-C", workspace, "--no-same-owner", "--no-overwrite-dir"],
+    ["-xkf", archive, "-C", workspace, "--no-same-owner"],
     inherit_env=false,
     extra_env={ "PATH": "/usr/bin:/bin" },
   ) catch {
+    err if @async.is_cancellation_error(err) => raise err
     _ => 125
   }
   guard code == 0 else { raise Stopped("failure") }
@@ -283,17 +281,7 @@ async fn execute_assignment(
   assignment : @protocol.Assignment,
   options : Options,
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
-) -> Report {
-  execute_assignment_internal(assignment, options, post, None, false)
-}
-
-///|
-async fn execute_assignment_internal(
-  assignment : @protocol.Assignment,
-  options : Options,
-  post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
-  source : (async () -> Bytes)?,
-  checkout : Bool,
+  source? : async () -> Bytes,
 ) -> Report {
   let options = validate_options(assignment, options)
   let scratch = @fs.tmpdir(prefix="moonhub-runner-")
@@ -344,12 +332,22 @@ async fn execute_assignment_internal(
     }
     @async.any([
       () => {
-        if checkout {
-          let archive = source.unwrap()()
-          let archive_path = scratch + "/source.tar"
-          @fs.write_file(archive_path, archive, permission=0o600)
-          extract_source(options.workspace, archive_path)
+        if source is Some(fetch) {
+          try {
+            let archive = @async.with_timeout(30000, fetch)
+            runtime.check_live()
+            let archive_path = scratch + "/source.tar"
+            @fs.write_file(archive_path, archive, permission=0o600)
+            extract_source(options.workspace, archive_path)
+          } catch {
+            err if @async.is_cancellation_error(err) => raise err
+            _ => {
+              runtime.upload("", "stderr", "runner: source checkout failed\n")
+              raise Stopped("failure")
+            }
+          }
         }
+        runtime.check_live()
         runtime.execute_steps(scratch)
       },
       () => runtime.monitor(),
@@ -436,15 +434,7 @@ pub async fn run(
       until,
     )
   }
-  if options.unsafe_local {
-    execute_assignment(assignment, options, post)
-  } else {
-    execute_assignment_internal(
-      assignment,
-      options,
-      post,
-      Some(() => fetch_source(options.server, assignment.attempt_id, token)),
-      true,
-    )
-  }
+  execute_assignment(assignment, options, post, source=() => {
+    fetch_source(options.server, assignment.attempt_id, token)
+  })
 }
