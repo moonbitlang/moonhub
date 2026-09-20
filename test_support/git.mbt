@@ -1,6 +1,6 @@
 ///|
 pub async fn with_git_test_repo(f : async (String, String) -> Unit) -> Unit {
-  let root = @fs.tmpdir(prefix="moonhub-git-")
+  let root = executable_tmpdir("moonhub-git-")
   defer @fs.rmdir(root, recursive=true)
   @fs.mkdir("\{root}/alice")
   let source = @fs.realpath("testdata/repos/alice/demo.git")

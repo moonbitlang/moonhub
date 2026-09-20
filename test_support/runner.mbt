@@ -2,7 +2,7 @@
 pub async fn with_runner_workspace(
   f : async (String, String, String) -> Unit,
 ) -> Unit {
-  let root = @fs.tmpdir(prefix="moonhub-runner-test-")
+  let root = executable_tmpdir("moonhub-runner-test-")
   defer @fs.rmdir(root, recursive=true)
   let launcher = "\{root}/step-launcher"
   let (code, output) = @process.collect_output_merged("cc", [
