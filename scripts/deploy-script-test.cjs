@@ -72,6 +72,12 @@ esac
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.commands.join('\n').includes('custom-admin'));
   assert.ok(!result.commands.some(line => line.includes(' build ')));
+  result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runner-selfhost', MOONBIT_VERSION: '0.10.14+7d59c7ec9' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.some(line => line.startsWith('build --target runner-selfhost --build-arg MOONBIT_VERSION=0.10.14+7d59c7ec9')));
+  result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runtime' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(line => / stop$/.test(line)));
   console.log('Deployment script tests passed: build-before-stop, image preflight, stopped backups, failure ordering, ensure and persistent settings.');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

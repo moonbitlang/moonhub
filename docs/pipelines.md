@@ -504,3 +504,45 @@ and repeats upgrade/ensure while checking backups and persisted results. It
 retains only its named acceptance project and writes connection settings and
 test results under `_build/moonhub-acceptance-*` for inspection. No registry is
 needed when local Runner images are loaded into DinD by the deploy script.
+
+## MoonHub Self-Hosting Checks
+
+`.github/workflows/moonhub.yml` runs a manual check of this repository using the
+existing archive checkout. It requires `self-hosted`, `linux` and `moonhub-build`
+provider labels. The `runner-selfhost` Docker target extends the regular Runner
+with Node/npm from the pinned assets image; neither Docker nor deployment
+credentials are exposed to jobs. MoonBit defaults to `0.10.14+7d59c7ec9` across
+Web, provider and Runner builds. Preserve the built images for recovery: upstream
+toolchain archives have limited retention.
+
+For the provider assigned to MoonHub, use these settings in `deploy/deploy.env`
+(replace the repository path with its registered namespace):
+
+```sh
+MOONHUB_ENABLE_PIPELINES=1
+MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost
+MOONHUB_PROVIDER_LABELS=self-hosted,linux,moonhub-build
+MOONHUB_PROVIDER_REPOSITORIES=moonhub/moonhub
+MOONHUB_RUNNER_MEMORY=4g
+MOONHUB_RUNNER_CPUS=2
+```
+
+`scripts/self-check.cjs` runs check/fmt/info in order, rejects modified or
+added/deleted MoonBit inputs and interfaces without requiring `.git`, checks
+package boundaries, builds frontend assets, then runs all native tests and builds
+the executable. The source checkout is not a deployment working tree. Production
+upgrades and Docker integration tests remain external to the job.
+
+After building `moonhub:acceptance`, `moonhub-provider:acceptance` and
+`moonhub-runner:selfhost` from a clean checkout, run:
+
+```sh
+MOONHUB_E2E_SELFHOST=1 node scripts/pipeline-e2e.cjs
+```
+
+This imports the committed MoonHub repository into a disposable instance, runs
+the real self-check workflow, and retains its commit/run receipt alongside the
+checkout, cancellation and upgrade acceptance results. Self-hosting mode defaults
+to loopback ports 18083/12225 and subnet 172.30.93.0/24; the E2E port/subnet
+overrides remain available. Run `node --test scripts/self-check-test.cjs` to check
+the archive-formatting guard independently.

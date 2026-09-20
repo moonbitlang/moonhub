@@ -37,7 +37,7 @@ services:
       context: .
       target: provider
       args:
-        MOONBIT_VERSION: ${MOONBIT_VERSION:-latest}
+        MOONBIT_VERSION: ${MOONBIT_VERSION:-0.10.14+7d59c7ec9}
     depends_on:
       web:
         condition: service_healthy
@@ -51,6 +51,9 @@ services:
       MOONHUB_RUNNER_IMAGE: ${MOONHUB_RUNNER_IMAGE:?Set MOONHUB_RUNNER_IMAGE to a registry image or digest}
       MOONHUB_RUNNER_HOST: ""
       MOONHUB_RUNNER_HOST_IP: ""
+      MOONHUB_RUNNER_MEMORY: ${MOONHUB_RUNNER_MEMORY:-512m}
+      MOONHUB_RUNNER_CPUS: ${MOONHUB_RUNNER_CPUS:-1}
+      MOONHUB_RUNNER_PIDS_LIMIT: ${MOONHUB_RUNNER_PIDS_LIMIT:-256}
       MOONHUB_PROVIDER_WORKSPACE: /var/lib/moonhub/provider
       DOCKER_HOST: unix:///run/moonhub-docker/docker.sock
     secrets:

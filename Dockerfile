@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS assets
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS assets
 WORKDIR /src/js
 COPY js/package.json js/package-lock.json ./
 RUN npm ci
@@ -6,7 +6,7 @@ COPY js/ ./
 RUN npm run build
 
 FROM debian:bookworm-slim AS toolchain
-ARG MOONBIT_VERSION=latest
+ARG MOONBIT_VERSION=0.10.14+7d59c7ec9
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl build-essential git libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -42,6 +42,14 @@ ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
 USER 10001:10001
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/moonhub", "runner"]
+
+FROM runner AS runner-selfhost
+USER root
+COPY --from=assets /usr/local/bin/node /usr/local/bin/node
+COPY --from=assets /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+USER 10001:10001
 
 FROM debian:bookworm-slim AS provider
 RUN apt-get update && apt-get install -y --no-install-recommends \

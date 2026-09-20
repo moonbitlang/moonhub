@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
+const selfHost = process.env.MOONHUB_E2E_SELFHOST === '1';
 const project = `moonhub-acceptance-${Date.now()}`;
 const output = path.join(root, '_build', project);
 fs.mkdirSync(output, { recursive: true, mode: 0o700 });
@@ -19,10 +20,13 @@ const settings = {
   MOONHUB_COMPOSE_PROJECT_NAME: project, MOONHUB_ENABLE_PIPELINES: '1', MOONHUB_BUILD_IMAGES: '0',
   MOONHUB_IMAGE: process.env.MOONHUB_IMAGE || 'moonhub:acceptance',
   MOONHUB_PROVIDER_IMAGE: process.env.MOONHUB_PROVIDER_IMAGE || 'moonhub-provider:acceptance',
-  MOONHUB_RUNNER_IMAGE: process.env.MOONHUB_RUNNER_IMAGE || 'moonhub-runner:acceptance',
-  MOONHUB_HTTP_PORT: process.env.MOONHUB_E2E_HTTP_PORT || '18082',
-  MOONHUB_SSH_PORT: process.env.MOONHUB_E2E_SSH_PORT || '12224', MOONHUB_SSH_BIND: '127.0.0.1',
-  MOONHUB_PIPELINE_NETWORK: project + '_pipeline', MOONHUB_PIPELINE_PREFIX: process.env.MOONHUB_E2E_PREFIX || '172.30.91',
+  MOONHUB_RUNNER_IMAGE: process.env.MOONHUB_RUNNER_IMAGE || (selfHost ? 'moonhub-runner:selfhost' : 'moonhub-runner:acceptance'),
+  MOONHUB_HTTP_PORT: process.env.MOONHUB_E2E_HTTP_PORT || (selfHost ? '18083' : '18082'),
+  MOONHUB_SSH_PORT: process.env.MOONHUB_E2E_SSH_PORT || (selfHost ? '12225' : '12224'), MOONHUB_SSH_BIND: '127.0.0.1',
+  MOONHUB_PIPELINE_NETWORK: project + '_pipeline', MOONHUB_PIPELINE_PREFIX: process.env.MOONHUB_E2E_PREFIX || (selfHost ? '172.30.93' : '172.30.91'),
+  MOONHUB_RUNNER_MEMORY: process.env.MOONHUB_RUNNER_MEMORY || (selfHost ? '4g' : '512m'),
+  MOONHUB_RUNNER_CPUS: process.env.MOONHUB_RUNNER_CPUS || (selfHost ? '2' : '1'),
+  MOONHUB_PROVIDER_LABELS: selfHost ? 'self-hosted,linux,moonhub-build' : 'self-hosted,linux',
   MOONHUB_ROOT_PASSWORD_FILE: path.join(output, 'root-password'),
   MOONHUB_PROVIDER_TOKEN_FILE: path.join(output, 'provider-token'), MOONHUB_PROVIDER_REPOSITORIES: 'root/demo',
   MOONHUB_SSH_IMPORT_DIR: path.join(output, 'imports'), MOONHUB_BACKUP_DIR: path.join(output, 'backups'),
@@ -93,18 +97,23 @@ async function setPaused(value) {
   const result = await http('/-/admin/pipelines/providers/1/pause', { csrf_token: csrf(page.body), paused: String(value) });
   assert.equal(result.code, 303);
 }
-async function dispatch() {
+async function dispatch(branch = 'pipeline', workflow = '.github/workflows/build.yml') {
   const form = await http('/root/demo/pipelines/new'); assert.equal(form.code, 200);
-  const created = await http('/root/demo/pipelines', { csrf_token: csrf(form.body), branch: 'pipeline', workflow: '.github/workflows/build.yml' });
+  const created = await http('/root/demo/pipelines', { csrf_token: csrf(form.body), branch, workflow });
   assert.equal(created.code, 303);
   assert.match(created.location, /^\/root\/demo\/pipelines\/\d+$/);
   return created.location;
 }
-async function waitRun(route, wanted) {
-  for (let i = 0; i < 80; i++) {
+async function waitRun(route, wanted, seconds = 80) {
+  for (let i = 0; i < seconds; i++) {
     const page = await http(route); assert.equal(page.code, 200);
-    if (page.body.includes(`data-state="${wanted}"`)) return page;
-    if (/data-state="(?:failure|lost|timed_out)"/.test(page.body)) throw new Error(`Run failed: ${route}`);
+    const state = page.body.match(/data-state="([^"]+)"/)?.[1];
+    if (state === wanted) return page;
+    if (['failure', 'lost', 'timed_out'].includes(state)) {
+      fs.writeFileSync(path.join(output, 'failed-run.html'), page.body, { mode: 0o600 });
+      throw new Error(`Run ${state}: ${route}; saved failed-run.html`);
+    }
+    if (i % 30 === 0) console.log(`Waiting for ${route}: ${state} (${i}s)`);
     await delay(1000);
   }
   throw new Error(`Run did not reach ${wanted}: ${route}`);
@@ -170,11 +179,28 @@ async function main() {
   await waitRun(cancelled, 'cancelled');
   await delay(1000);
   assert.equal(inner(['ps', '-aq']), '', 'cancelled Runner was not removed');
+  let selfCheck;
+  if (selfHost) {
+    const commit = run('git', ['rev-parse', 'HEAD']).trim();
+    const bundle = path.join(output, 'selfhost.bundle');
+    run('git', ['bundle', 'create', bundle, 'HEAD']);
+    run('docker', ['cp', bundle, web + ':/tmp/selfhost.bundle']);
+    run('docker', ['exec', web, 'chmod', '644', '/tmp/selfhost.bundle']);
+    git(['fetch', '/tmp/selfhost.bundle', 'HEAD:refs/heads/selfhost']);
+    const route = await dispatch('selfhost', '.github/workflows/moonhub.yml');
+    console.log(`Running MoonHub source ${commit}: ${base}${route}`);
+    const result = await waitRun(route, 'success', 1800);
+    assert.ok(result.body.includes(`MOONHUB_SELF_CHECK_OK:${commit}`), 'full source build never completed');
+    assert.ok(!result.body.includes(token));
+    await delay(1000);
+    assert.equal(inner(['ps', '-aq']), '', 'self-build Runner was not removed');
+    selfCheck = { commit, run: base + route };
+  }
   await upgrade();
   const providers = await http('/-/admin/pipelines/providers');
   assert.equal((providers.body.match(/<strong>dind<\/strong>/g) || []).length, 1, 'ensure duplicated provider');
   assert.ok((await http(route)).body.includes(`CHECKOUT_OK:${sha}`));
-  const receipt = { project, base, run: base + route, commit: sha, checks: ['pinned checkout', 'binary and executable files', 'native build', 'Docker API inaccessible', 'cancellation', 'container cleanup', 'stopped backups', 'repeat upgrade and ensure'] };
+  const receipt = { project, base, run: base + route, commit: sha, selfCheck, checks: ['pinned checkout', 'binary and executable files', 'native build', 'Docker API inaccessible', 'cancellation', 'container cleanup', 'stopped backups', 'repeat upgrade and ensure', ...(selfCheck ? ['MoonHub full-source self-check'] : [])] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt, null, 2));
   console.log(`Deployment settings retained at ${envFile}`);

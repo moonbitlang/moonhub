@@ -61,7 +61,7 @@ already activated administrator account.
 The image builds browser assets with `npm ci`, runs the MoonBit tests, and compiles
 the native executable on Linux. No host MoonBit or Node installation is needed. The build
 argument `MOONBIT_VERSION` can select an archived MoonBit toolchain release;
-its default is `latest`.
+its default is `0.10.14+7d59c7ec9`.
 
 ## Bind a Public Key
 

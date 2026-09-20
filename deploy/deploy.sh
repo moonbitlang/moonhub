@@ -32,6 +32,7 @@ RUNTIME_IMAGE=${MOONHUB_IMAGE:-moonhub:$RELEASE}
 PROVIDER_IMAGE=${MOONHUB_PROVIDER_IMAGE:-moonhub-provider:$RELEASE}
 RUNNER_IMAGE=${MOONHUB_RUNNER_IMAGE:-moonhub-runner:$RELEASE}
 BUILD_RUNNER=${MOONHUB_RUNNER_BUILD:-1}
+RUNNER_BUILD_TARGET=${MOONHUB_RUNNER_BUILD_TARGET:-runner}
 PULL_IMAGES=${MOONHUB_PULL:-1}
 BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
 
@@ -44,6 +45,10 @@ fi
 for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER"; do
   [[ "$toggle" = 0 || "$toggle" = 1 ]] || { printf 'Deployment switches must be 0 or 1\n' >&2; exit 1; }
 done
+case "$RUNNER_BUILD_TARGET" in
+  runner|runner-selfhost) ;;
+  *) printf 'Runner build target must be runner or runner-selfhost\n' >&2; exit 1 ;;
+esac
 
 lock_dir=${MOONHUB_DEPLOY_LOCK_DIR:-/tmp/moonhub-deploy.lock}
 if ! mkdir "$lock_dir" 2>/dev/null; then
@@ -71,6 +76,7 @@ Commands:
   config    Validate the resolved Compose configuration.
 
 Set MOONHUB_ENABLE_PIPELINES=1 to include DinD, provider and Runner deployment.
+Set MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost for MoonHub's own build workflow.
 Set MOONHUB_DEPLOY_ENV_FILE to an operator-owned env file for persistent settings.
 The default settings file is deploy/deploy.env (ignored by Git).
 When pipelines are enabled, set MOONHUB_PROVIDER_REPOSITORIES to a comma-separated
@@ -130,9 +136,11 @@ build_images() {
     if [ "$BUILD_RUNNER" = 1 ]; then
       printf 'Building Runner image: %s\n' "$RUNNER_IMAGE"
       if [ "$PULL_IMAGES" = 1 ]; then
-        docker build --pull --target runner -t "$RUNNER_IMAGE" "$ROOT"
+        docker build --pull --target "$RUNNER_BUILD_TARGET" \
+          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" -t "$RUNNER_IMAGE" "$ROOT"
       else
-        docker build --target runner -t "$RUNNER_IMAGE" "$ROOT"
+        docker build --target "$RUNNER_BUILD_TARGET" \
+          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" -t "$RUNNER_IMAGE" "$ROOT"
       fi
     else
       printf 'Using pre-published Runner image: %s\n' "$RUNNER_IMAGE"
