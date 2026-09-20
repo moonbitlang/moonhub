@@ -100,6 +100,7 @@ function seed(cancel = false, fail = false) {
   const tree = git(['mktree'], entries.join('\n') + '\n');
   const sha = git(['commit-tree', tree, '-m', 'Pinned checkout acceptance']);
   git(['update-ref', 'refs/heads/pipeline', sha]);
+  git(['symbolic-ref', 'HEAD', 'refs/heads/pipeline']);
   return sha;
 }
 async function setPaused(value) {
@@ -223,6 +224,7 @@ async function main() {
     run('docker', ['cp', bundle, web + ':/tmp/selfhost.bundle']);
     run('docker', ['exec', web, 'chmod', '644', '/tmp/selfhost.bundle']);
     git(['fetch', '/tmp/selfhost.bundle', 'HEAD:refs/heads/selfhost']);
+    git(['symbolic-ref', 'HEAD', 'refs/heads/selfhost']);
     const route = await dispatch('selfhost', '.github/workflows/moonhub.yml');
     console.log(`Running MoonHub source ${commit}: ${base}${route}`);
     const result = await waitRun(route, 'success', 1800);
@@ -235,6 +237,13 @@ async function main() {
   const providers = await http('/-/admin/pipelines/providers');
   assert.equal((providers.body.match(/<strong>dind<\/strong>/g) || []).length, 1, 'ensure duplicated provider');
   assert.ok((await http(route)).body.includes(`CHECKOUT_OK:${sha}`));
+  const files = await http('/root/demo');
+  assert.equal(files.code, 200);
+  assert.ok(files.body.includes('README.md'));
+  if (selfHost) assert.ok(files.body.includes('Dockerfile'));
+  const commits = await http('/root/demo/commits');
+  assert.equal(commits.code, 200);
+  assert.ok(commits.body.includes('/root/demo/commit/'));
   const receipt = { project, base, run: base + route, commit: sha, selfCheck, checks: ['pinned checkout', 'binary and executable files', 'native build', 'Docker API inaccessible', 'cancellation', 'container cleanup', 'private disk volumes', 'success/failure/cancellation volume cleanup', 'scoped orphan volume recovery', 'stopped backups', 'repeat upgrade and ensure', ...(selfCheck ? ['MoonHub full-source self-check'] : [])] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt, null, 2));

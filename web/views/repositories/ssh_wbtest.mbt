@@ -97,3 +97,74 @@ async test "new empty repositories have browsable files and commits pages" {
     })
   })
 }
+
+///|
+async test "dangling defaults preserve repository pages without changing HEAD" {
+  @web_testkit.with_repository_test_app((port, _, root, cookie, _) => {
+    let git_dir = root + "/alice/demo.git"
+    let sha = @gitops.run_git(git_dir, ["rev-parse", "master"])
+      .trim()
+      .to_owned()
+    ignore(
+      @gitops.run_git(git_dir, [
+        "update-ref", "refs/heads/feature/selfhost", sha,
+      ]),
+    )
+    ignore(@gitops.run_git(git_dir, ["update-ref", "-d", "refs/heads/master"]))
+    ignore(
+      @gitops.run_git(git_dir, ["symbolic-ref", "HEAD", "refs/heads/main"]),
+    )
+    for route in ["/alice/demo", "/alice/demo/tree", "/alice/demo/commits"] {
+      let (response, body) = @web_testkit.http_get_path_with_cookie(
+        port, route, cookie,
+      )
+      assert_eq(response.code, 200, msg=body)
+      assert_true(body.contains("feature/selfhost"))
+      assert_true(
+        body.contains(
+          if route.has_suffix("commits") {
+            "initial fixture commit"
+          } else {
+            "README.md"
+          },
+        ),
+      )
+    }
+    let (file, body) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/blob/feature/selfhost/README.md", cookie,
+    )
+    assert_eq(file.code, 200)
+    assert_true(body.contains("hello fixture moonhub"))
+    for
+      route in [
+        "/alice/demo?rev=missing", "/alice/demo/tree/missing", "/alice/demo/commits?rev=missing",
+      ] {
+      assert_eq(
+        @web_testkit.http_get_path_with_cookie(port, route, cookie).0.code,
+        404,
+      )
+    }
+    assert_eq(@gitops.default_ref(git_dir), "main")
+    // Retention refs alone are not an alternative public branch.
+    ignore(
+      @gitops.run_git(git_dir, [
+        "update-ref", "refs/moonhub/pipelines/private", sha,
+      ]),
+    )
+    ignore(
+      @gitops.run_git(git_dir, [
+        "update-ref", "-d", "refs/heads/feature/selfhost",
+      ]),
+    )
+    let (files, files_body) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo", cookie,
+    )
+    assert_eq(files.code, 200)
+    assert_true(files_body.contains("No files."))
+    let (commits, commits_body) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/commits", cookie,
+    )
+    assert_eq(commits.code, 200)
+    assert_true(commits_body.contains("No commits."))
+  })
+}

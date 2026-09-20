@@ -31,28 +31,87 @@ pub async fn run_git(git_dir : String, args : Array[String]) -> String {
 
 ///|
 pub async fn default_ref(git_dir : String) -> String {
-  let out = run_git(git_dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]) catch {
+  let out = run_git(git_dir, ["symbolic-ref", "--quiet", "HEAD"]) catch {
     GitCommandFailed(code=1, ..) => return "HEAD"
     err => raise err
   }
   let lines = @domain.split_lines(out)
   match lines.get(0) {
-    Some(line) => line
-    None => "HEAD"
+    Some(line) if line.has_prefix("refs/heads/") => line[11:].to_owned()
+    _ => "HEAD"
   }
 }
 
 ///|
 pub async fn is_unborn_default_ref(git_dir : String, rev : String) -> Bool {
-  rev == default_ref(git_dir) &&
-  run_git(git_dir, ["for-each-ref", "--count=1", "--format=%(refname)"]).is_empty()
+  rev == resolve_ref(git_dir, None) && commit_at_ref(git_dir, rev) is None
+}
+
+///|
+async fn commit_at_ref(git_dir : String, rev : String) -> String? {
+  let (code, output, diagnostic) = @process.collect_output(
+    "git",
+    git_args(git_dir, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      "--end-of-options",
+      rev + "^{commit}",
+    ]),
+  )
+  if code == 1 {
+    return None
+  }
+  guard code == 0 else {
+    raise GitCommandFailed(code~, output=diagnostic.text())
+  }
+  Some(output.text().trim().to_owned())
 }
 
 ///|
 pub async fn resolve_ref(git_dir : String, rev : String?) -> String {
   match rev {
     Some(v) if @domain.valid_repo_path(v) => v
-    _ => default_ref(git_dir)
+    _ => {
+      let configured = default_ref(git_dir)
+      if commit_at_ref(git_dir, "HEAD") is Some(sha) {
+        // A same-named tag must not shadow the branch selected by HEAD.
+        return if configured == "HEAD" ||
+          commit_at_ref(git_dir, configured) == Some(sha) {
+          configured
+        } else {
+          sha
+        }
+      }
+      // Browsing is read-only: choose a usable public ref without rewriting
+      // HEAD or falling back to hidden pipeline/merge retention refs.
+      for ref_prefix in ["refs/heads/", "refs/tags/"] {
+        let names = @domain.split_lines(
+          run_git(git_dir, [
+            "for-each-ref", "--sort=refname", "--format=%(refname:strip=2)", ref_prefix,
+          ]),
+        )
+        let preferred = if ref_prefix == "refs/heads/" {
+          ["main", "master"]
+        } else {
+          []
+        }
+        let candidates = [
+          ..preferred.filter(name => names.contains(name)),
+          ..names.filter(name => !preferred.contains(name)),
+        ]
+        for name in candidates {
+          if commit_at_ref(git_dir, ref_prefix + name) is Some(sha) {
+            return if commit_at_ref(git_dir, name) == Some(sha) {
+              name
+            } else {
+              sha
+            }
+          }
+        }
+      }
+      configured
+    }
   }
 }
 

@@ -35,6 +35,89 @@ async test "browse repository fixture" {
 }
 
 ///|
+async test "automatic browsing falls back without mutating a missing default branch" {
+  @test_support.with_git_test_repo((_, git_dir) => {
+    ignore(run_git(git_dir, ["symbolic-ref", "HEAD", "refs/heads/missing"]))
+    assert_eq(default_ref(git_dir), "missing")
+    assert_eq(resolve_ref(git_dir, None), "master")
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/main", "master"]))
+    assert_eq(resolve_ref(git_dir, None), "main")
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/selfhost", "master"]))
+    ignore(run_git(git_dir, ["symbolic-ref", "HEAD", "refs/heads/selfhost"]))
+    assert_eq(resolve_ref(git_dir, None), "selfhost")
+    ignore(run_git(git_dir, ["update-ref", "-d", "refs/heads/selfhost"]))
+    assert_eq(resolve_ref(git_dir, None), "main")
+    assert_eq(default_ref(git_dir), "selfhost")
+    assert_eq(resolve_ref(git_dir, Some("missing")), "missing")
+  })
+}
+
+///|
+async test "fallback handles slash branches ambiguous tags and detached HEAD" {
+  @test_support.with_git_test_repo((_, git_dir) => {
+    let sha = run_git(git_dir, ["rev-parse", "master"]).trim().to_owned()
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/z-last", sha]))
+    ignore(run_git(git_dir, ["update-ref", "refs/heads/feature/first", sha]))
+    ignore(run_git(git_dir, ["update-ref", "-d", "refs/heads/master"]))
+    assert_eq(resolve_ref(git_dir, None), "feature/first")
+    let blob = run_git(git_dir, ["rev-parse", sha + ":README.md"])
+      .trim()
+      .to_owned()
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/feature/first", blob]))
+    assert_eq(resolve_ref(git_dir, None), sha)
+    ignore(
+      run_git(git_dir, ["symbolic-ref", "HEAD", "refs/heads/feature/first"]),
+    )
+    assert_eq(resolve_ref(git_dir, None), sha)
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/HEAD", blob]))
+    assert_eq(resolve_ref(git_dir, None), sha)
+    ignore(run_git(git_dir, ["update-ref", "--no-deref", "HEAD", sha]))
+    assert_eq(resolve_ref(git_dir, None), "HEAD")
+  })
+}
+
+///|
+async test "tag-only repositories remain browsable but private retention refs are not defaults" {
+  @test_support.with_git_test_repo((_, git_dir) => {
+    let sha = run_git(git_dir, ["rev-parse", "master"]).trim().to_owned()
+    let blob = run_git(git_dir, ["rev-parse", "master:README.md"])
+      .trim()
+      .to_owned()
+    let tag = @gitops.merge_git(
+        git_dir,
+        ["mktag"],
+        input="object \{sha}\ntype commit\ntag release/v1\ntagger Test <test@example.invalid> 1704153600 +0000\n\nRelease\n",
+      )
+      .trim()
+      .to_owned()
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/00-blob", blob]))
+    ignore(run_git(git_dir, ["update-ref", "refs/tags/release/v1", tag]))
+    ignore(
+      run_git(git_dir, ["update-ref", "refs/moonhub/pipelines/private", sha]),
+    )
+    ignore(run_git(git_dir, ["update-ref", "-d", "refs/heads/master"]))
+    assert_eq(resolve_ref(git_dir, None), "release/v1")
+    assert_eq(list_commits(git_dir, resolve_ref(git_dir, None)).length(), 1)
+    ignore(run_git(git_dir, ["update-ref", "-d", "refs/tags/release/v1"]))
+    ignore(run_git(git_dir, ["update-ref", "-d", "refs/tags/00-blob"]))
+    assert_eq(resolve_ref(git_dir, None), "master")
+    assert_true(is_unborn_default_ref(git_dir, "master"))
+  })
+}
+
+///|
+async test "default fallback does not hide invalid repository errors" {
+  @test_support.with_git_test_repo((root, _) => {
+    try ignore(resolve_ref(root + "/missing.git", None)) catch {
+      GitCommandFailed(code=128, ..) => ()
+      err => raise err
+    } noraise {
+      _ => fail("invalid repository was treated as an empty repository")
+    }
+  })
+}
+
+///|
 async test "git command failures raise" {
   try
     read_blob("testdata/repos/alice/demo.git", "master", "missing.mbt")

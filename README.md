@@ -29,6 +29,11 @@ account menu, and configure the client-facing hostname and port there.
 Repository pages provide a
 **Clone** menu with the public SSH URL and a copy button; container-internal
 transport addresses remain separate.
+If the configured default branch has no commit, file and history pages fall
+back to an available branch (`main`, `master`, then name order), or a commit
+tag when no branch is available. Browsing never changes Git HEAD or selects
+private pipeline/merge retention refs. An explicitly requested missing revision
+still returns 404; repositories without a browsable commit show empty pages.
 Every repository belongs to a namespace, and every namespace has its own page at
 `/<name>`: a user's personal namespace, or an organization team. Team owners and
 admins create or import repositories there, and the page lists the existing
