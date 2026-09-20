@@ -4,6 +4,9 @@ umask 077
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
+# shellcheck source=deploy/recovery.sh
+. "$ROOT/deploy/recovery.sh"
+RECOVERY_TOOL_REVISION=$(git rev-parse HEAD)
 
 DEPLOY_ENV=${MOONHUB_DEPLOY_ENV_FILE:-$ROOT/deploy/deploy.env}
 if [ -n "${MOONHUB_DEPLOY_ENV_FILE:-}" ] && [ ! -f "$DEPLOY_ENV" ]; then
@@ -71,7 +74,7 @@ Usage: deploy/deploy.sh <command>
 Commands:
   upgrade   Build images, back up volumes, then switch services once.
   build     Build images only; running services are untouched.
-  backup    Back up /data and SSH host keys after services have been stopped.
+  backup    Back up stopped Web/SSH/provider; keep DinD running for image export.
   status    Show Compose service status.
   config    Validate the resolved Compose configuration.
 
@@ -155,33 +158,6 @@ build_images() {
   fi
 }
 
-backup_volumes() {
-  local stamp dir web_id ssh_id
-  stamp=$(date +%Y%m%d-%H%M%S)
-  mkdir -p "$BACKUP_ROOT"
-  dir=$(mktemp -d "$BACKUP_ROOT/$stamp-$RELEASE.XXXXXX")
-  web_id=$("${compose[@]}" ps -aq web)
-  ssh_id=$("${compose[@]}" ps -aq ssh)
-  local id running
-  for id in "$web_id" "$ssh_id"; do
-    [ -n "$id" ] || continue
-    running=$(docker inspect -f '{{.State.Running}}' "$id")
-    [ "$running" = false ] || { printf 'Stop Web/SSH before a consistent backup.\n' >&2; return 1; }
-  done
-  if [ -n "$web_id" ]; then
-    docker cp "$web_id:/data" "$dir/data"
-  else
-    printf 'Web service is not running; skipped /data backup.\n' >&2
-  fi
-  if [ -n "$ssh_id" ]; then
-    docker cp "$ssh_id:/var/lib/moonhub/ssh" "$dir/ssh-host-keys"
-  else
-    printf 'SSH service is not running; skipped host-key backup.\n' >&2
-  fi
-  git rev-parse HEAD > "$dir/git-revision"
-  printf 'Backup created: %s\n' "$dir"
-}
-
 wait_running() {
   local service=$1 id status
   id=$("${compose[@]}" ps -q "$service")
@@ -238,10 +214,13 @@ upgrade() {
     printf 'Refusing deployment from a dirty worktree. Commit or stash changes first.\n' >&2
     exit 1
   }
+  recovery_requirements
   build_images
+  prepare_backup
   printf 'All images ready. Stopping target services for backup and switch...\n'
+  quiesce_provider
   "${compose[@]}" stop
-  backup_volumes
+  finish_backup
   start_services
   "${compose[@]}" ps
   printf 'Deployment upgraded to %s\n' "$RELEASE"
@@ -250,7 +229,8 @@ upgrade() {
 backup() {
   validate_inputs true
   validate_compose
-  backup_volumes
+  prepare_backup
+  finish_backup
 }
 
 status() {

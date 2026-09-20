@@ -351,8 +351,20 @@ can succeed. Start with pipelines disabled for that bootstrap; do not relax
 the active-administrator or repository-grant checks. Upgrades preserve paused
 provider state. Drain active jobs before upgrading.
 
-The `backup` command requires Web/SSH to be stopped. Backups include SQLite/WAL,
-repositories and SSH host keys with private file permissions. The wrapper does
+The deployment wrapper additionally requires `jq` and `sha256sum` (or `shasum`).
+The `backup` command requires Web/SSH/provider to be stopped, but DinD must remain
+running so its deployed Runner image can be exported. Drain pipeline jobs first.
+Upgrades export existing images and configuration before stopping services; only
+the consistent data copy takes place during downtime. Backups include SQLite/WAL,
+repositories and SSH host keys in ownership-preserving tar streams, actual image
+IDs and image archives, container configuration, bootstrap/provider secrets and
+SSH import credentials. `manifest.json` distinguishes the recovery-tool revision
+from the deployed image identities in `images.json`; it never presents the new
+checkout as the old application version. `SHA256SUMS` covers bundle files.
+Incomplete bundles retain a `.partial-` prefix. Protect the entire backup as a
+secret and retain an off-host copy; image archives require substantial disk space.
+External reverse-proxy/TLS configuration is outside this Compose backup's scope.
+The wrapper does
 not provide a distributed atomic switch or automatic database rollback: a
 failure after stop returns nonzero and requires operator attention. After a
 migration, restore the matching backup before rolling back the application.

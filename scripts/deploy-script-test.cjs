@@ -9,6 +9,7 @@ try {
   fs.mkdirSync(path.join(root, 'deploy'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
+  for (const file of ['recovery.sh', 'recovery.jq']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
   fs.writeFileSync(path.join(root, '.gitignore'), 'bin/\nbackups/\n*.log\ndeploy/deploy.env\nsecret\n');
   const git = args => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   git(['init', '-q']);
@@ -16,23 +17,8 @@ try {
   git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture']);
   fs.writeFileSync(path.join(root, 'secret'), 'a'.repeat(64), { mode: 0o600 });
   const log = path.join(root, 'commands.log');
-  fs.writeFileSync(path.join(root, 'bin/docker'), `#!/bin/bash
-set -eu
-printf '%s\\n' "$*" >> "$TEST_LOG"
-case "$*" in
-  *"build "*) [ "\${TEST_FAIL:-}" != build ]; exit $? ;;
-  "image inspect "*) [ "\${TEST_FAIL:-}" != image ]; exit $? ;;
-  *"ps -aq web") echo web-id ;;
-  *"ps -aq ssh") echo ssh-id ;;
-  *"ps -q "*) echo running-id ;;
-  "inspect -f {{.State.Running}} "*) echo false ;;
-  "inspect -f {{.State.Status}} "*) echo running ;;
-  "cp "*) [ "\${TEST_FAIL:-}" != backup ]; mkdir -p "\${3}"; printf snapshot > "\${3}/test-data" ;;
-  *"exec -T --user git web sh "*) cat >/dev/null ;;
-  "save "*) printf image ;;
-  "exec -i "*) cat >/dev/null ;;
-esac
-`, { mode: 0o755 });
+  fs.copyFileSync(path.join(__dirname, 'fixtures/deploy-docker.cjs'), path.join(root, 'bin/docker'));
+  fs.chmodSync(path.join(root, 'bin/docker'), 0o755);
   const env = {
     ...process.env, PATH: path.join(root, 'bin') + ':' + process.env.PATH,
     TEST_LOG: log, MOONHUB_ROOT_PASSWORD_FILE: path.join(root, 'secret'),
@@ -62,11 +48,23 @@ esac
   assert.equal(builds.length, 3);
   assert.ok(builds.every(i => i < stop), 'build happened during downtime');
   assert.ok(lines.findIndex(line => line.startsWith('cp web-id:/data')) > stop);
+  assert.ok(lines.findIndex(line => line.startsWith('save ')) < stop, 'image export happened during downtime');
   const ensure = lines.findIndex(line => line.includes('pipeline-provider-ensure'));
   assert.ok(ensure > lines.findIndex(line => line.includes('up ') && line.includes('web ssh')));
   assert.ok(lines.findIndex(line => line.includes('--no-deps') && line.includes('pipeline-provider')) > ensure);
   assert.ok(!lines.join('\n').includes('a'.repeat(64)), 'token leaked into argv');
-  assert.ok(fs.readdirSync(path.join(root, 'backups')).some(dir => fs.existsSync(path.join(root, 'backups', dir, 'data/test-data'))));
+  const backup = fs.readdirSync(path.join(root, 'backups')).find(dir => !dir.startsWith('.partial-'));
+  const bundle = path.join(root, 'backups', backup);
+  assert.ok(fs.existsSync(path.join(bundle, 'data.tar')));
+  const recovered = JSON.parse(fs.readFileSync(path.join(bundle, 'compose.json')));
+  assert.equal(recovered.services.web.image, 'sha256:' + '1'.repeat(64));
+  assert.ok(!recovered.services.web.image.includes('new-tag'));
+  assert.ok(recovered.services.web.environment.includes('LITERAL=$$not_an_env'));
+  assert.ok(recovered.services['pipeline-provider'].environment.includes('MOONHUB_RUNNER_IMAGE=sha256:' + '4'.repeat(64)));
+  execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS'], { cwd: bundle, stdio: 'pipe' });
+  result = run({ TEST_FAIL: 'active-job' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(line => / stop$/.test(line)), 'active jobs stopped services');
   fs.writeFileSync(path.join(root, 'deploy/deploy.env'), 'MOONHUB_ROOT_USER=custom-admin\nMOONHUB_HTTP_PORT=18999\n');
   result = run({ MOONHUB_BUILD_IMAGES: '0' });
   assert.equal(result.status, 0, result.stderr);
