@@ -55,22 +55,32 @@ const csrf = html => { const found = html.match(/name="csrf_token" value="([a-f0
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let web, dind;
 const inner = args => run('docker', ['exec', dind, 'docker', '-H', 'unix:///run/moonhub-docker/docker.sock', ...args]).trim();
+async function waitCleanup() {
+  for (let n = 0; n < 60; n++) {
+    const containers = inner(['ps', '-aq']);
+    const volumes = inner(['volume', 'ls', '-q', '--filter', 'label=io.moonhub.pipeline.workspace=1']);
+    if (!containers && !volumes) return;
+    await delay(500);
+  }
+  throw new Error('provider did not remove job containers and disk workspaces');
+}
 function git(args, input) {
   return run('docker', ['exec', '-i', '--user', 'git', web, 'git', '--git-dir=/data/repos/root/demo.git',
     '-c', 'user.name=Acceptance', '-c', 'user.email=acceptance@example.invalid', ...args], { input }).trim();
 }
-function seed(cancel = false) {
+function seed(cancel = false, fail = false) {
   const script = [
     'test "$(id -u)" = 10001', 'test "$PPID" = 1', 'test ! -d .git',
     'test ! -e /var/run/docker.sock', 'test ! -e /run/moonhub-docker/docker.sock', 'test ! -e /data/moonhub.db',
     'test ! -e /run/secrets/provider_token', 'test -z "${DOCKER_HOST:-}"',
+    'test ! -e cross-job-sentinel', 'touch cross-job-sentinel',
     'if cat /proc/1/environ >/dev/null 2>&1; then exit 90; fi',
     `if curl --noproxy '*' -fsS --max-time 2 http://${settings.MOONHUB_PIPELINE_PREFIX}.11:2375/_ping; then exit 91; fi`,
     'grep -qx pinned-original README.md', 'test -x verify.sh', './verify.sh',
     'test "$(od -An -tx1 binary.dat | tr -d " \\n")" = 00ff8041',
     'moon run --strip -j 1 .',
     'printf "CHECKOUT_OK:%s\\n" "$GITHUB_SHA"',
-    cancel ? 'sleep 90' : 'sleep 6',
+    cancel ? 'sleep 90' : fail ? 'exit 1' : 'sleep 6',
   ];
   const workflow = ['name: Pinned checkout', 'on: workflow_dispatch', 'jobs:', '  build:',
     '    runs-on: [self-hosted, linux]', '    timeout-minutes: 2', '    steps:', '      - id: verify', '        shell: bash',
@@ -144,6 +154,7 @@ async function main() {
   git(['update-ref', 'refs/heads/pipeline', git(['commit-tree', replacement, '-m', 'Force push after dispatch'])]);
   await setPaused(0);
   let checkedContainer = false;
+  let firstWorkspace;
   for (let i = 0; i < 40; i++) {
     const ids = inner(['ps', '-q']);
     if (ids) {
@@ -153,6 +164,15 @@ async function main() {
       assert.equal(inspect.HostConfig.NetworkMode, 'bridge');
       assert.equal(inspect.HostConfig.ReadonlyRootfs, true);
       assert.ok(inspect.HostConfig.CapDrop.includes('ALL'));
+      assert.ok(inspect.HostConfig.Memory > 0);
+      assert.ok(inspect.HostConfig.NanoCpus > 0);
+      assert.ok(inspect.HostConfig.PidsLimit > 0);
+      assert.equal(inspect.HostConfig.Tmpfs['/workspace'], undefined);
+      const workspace = inspect.Mounts.find(m => m.Destination === '/workspace');
+      assert.equal(workspace.Type, 'volume');
+      assert.equal(workspace.RW, true);
+      assert.match(workspace.Name, /^moonhub-workspace-\d+-[a-f0-9]{32}$/);
+      firstWorkspace = workspace.Name;
       assert.deepEqual(inspect.Mounts.filter(m => m.Type === 'bind').map(m => m.Destination), ['/control/assignment.json']);
       checkedContainer = true; break;
     }
@@ -164,8 +184,7 @@ async function main() {
   assert.ok(done.body.includes('NATIVE_OK'));
   assert.ok(done.body.includes('EXECUTABLE_OK'));
   assert.ok(!done.body.includes(token));
-  await delay(1000);
-  assert.equal(inner(['ps', '-aq']), '', 'Runner was not removed');
+  await waitCleanup();
   seed(true);
   const cancelled = await dispatch();
   for (let i = 0; i < 40; i++) {
@@ -177,8 +196,25 @@ async function main() {
   const page = await http(cancelled);
   assert.equal((await http(cancelled + '/cancel', { csrf_token: csrf(page.body) })).code, 303);
   await waitRun(cancelled, 'cancelled');
-  await delay(1000);
-  assert.equal(inner(['ps', '-aq']), '', 'cancelled Runner was not removed');
+  await waitCleanup();
+  assert.equal(inner(['volume', 'ls', '-q', '--filter', `name=^${firstWorkspace}$`]), '');
+  seed(false, true);
+  await waitRun(await dispatch(), 'failure');
+  await waitCleanup();
+  // Reconcile both a referenced volume and a volume left between create/run.
+  inner(['volume', 'create', '--label', 'io.moonhub.pipeline.workspace=1', 'moonhub-workspace-stale']);
+  inner(['volume', 'create', '--label', 'io.moonhub.pipeline.workspace=1', 'moonhub-workspace-orphan']);
+  inner(['volume', 'create', 'moonhub-workspace-unrelated']);
+  inner(['create', '--name', 'moonhub-pipeline-stale', '--mount', 'type=volume,src=moonhub-workspace-stale,dst=/workspace', settings.MOONHUB_RUNNER_IMAGE]);
+  compose(['restart', 'pipeline-provider']);
+  for (let n = 0; n < 60; n++) {
+    if (!inner(['volume', 'ls', '-q', '--filter', 'label=io.moonhub.pipeline.workspace=1'])) break;
+    assert.ok(n < 59, 'provider did not recover orphan workspaces');
+    await delay(500);
+  }
+  assert.equal(inner(['volume', 'ls', '-q', '--filter', 'name=^moonhub-workspace-unrelated$']), 'moonhub-workspace-unrelated');
+  inner(['volume', 'rm', 'moonhub-workspace-unrelated']);
+  assert.equal(inner(['ps', '-aq']), '', 'stale container was not removed');
   let selfCheck;
   if (selfHost) {
     const commit = run('git', ['rev-parse', 'HEAD']).trim();
@@ -192,15 +228,14 @@ async function main() {
     const result = await waitRun(route, 'success', 1800);
     assert.ok(result.body.includes(`MOONHUB_SELF_CHECK_OK:${commit}`), 'full source build never completed');
     assert.ok(!result.body.includes(token));
-    await delay(1000);
-    assert.equal(inner(['ps', '-aq']), '', 'self-build Runner was not removed');
+    await waitCleanup();
     selfCheck = { commit, run: base + route };
   }
   await upgrade();
   const providers = await http('/-/admin/pipelines/providers');
   assert.equal((providers.body.match(/<strong>dind<\/strong>/g) || []).length, 1, 'ensure duplicated provider');
   assert.ok((await http(route)).body.includes(`CHECKOUT_OK:${sha}`));
-  const receipt = { project, base, run: base + route, commit: sha, selfCheck, checks: ['pinned checkout', 'binary and executable files', 'native build', 'Docker API inaccessible', 'cancellation', 'container cleanup', 'stopped backups', 'repeat upgrade and ensure', ...(selfCheck ? ['MoonHub full-source self-check'] : [])] };
+  const receipt = { project, base, run: base + route, commit: sha, selfCheck, checks: ['pinned checkout', 'binary and executable files', 'native build', 'Docker API inaccessible', 'cancellation', 'container cleanup', 'private disk volumes', 'success/failure/cancellation volume cleanup', 'scoped orphan volume recovery', 'stopped backups', 'repeat upgrade and ensure', ...(selfCheck ? ['MoonHub full-source self-check'] : [])] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt, null, 2));
   console.log(`Deployment settings retained at ${envFile}`);

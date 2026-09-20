@@ -119,6 +119,7 @@ pub async fn run(
   wait_for_docker(options)
   ensure_runner_image(options)
   cleanup_stale_containers(options)
+  cleanup_stale_workspaces(options)
   for ;; {
     let assignment = claim(options, provider_token) catch {
       err if @async.is_cancellation_error(err) => raise Stopped
@@ -136,6 +137,7 @@ pub async fn run(
       Some(claimed) => {
         validate_assignment(claimed.assignment)
         execute_assignment(options, claimed.assignment, claimed.attempt_token) catch {
+          CleanupFailure => raise CleanupFailure
           err if @async.is_cancellation_error(err) => raise Stopped
           _ => println("pipeline provider: runner container failed")
         }

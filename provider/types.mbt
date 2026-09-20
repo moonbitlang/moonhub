@@ -4,6 +4,7 @@ pub(all) suberror ProviderError {
   TransportFailure
   Rejected(Int)
   DockerFailure(Int)
+  CleanupFailure
   Stopped
 }
 

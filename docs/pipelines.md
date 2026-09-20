@@ -352,8 +352,10 @@ The separate `runner` Dockerfile target keeps the existing default Web/SSH image
 unchanged. It contains Bash, Git, a C toolchain, and the real MoonBit distribution.
 It runs as UID/GID 10001 and enters the Runner directly as PID 1. The provider
 must still apply mount, network, CPU, memory and PID limits when creating it.
-The workspace mount must allow execution of build outputs (`exec,nosuid,nodev`);
-the separate `/tmp` mount may use `noexec,nosuid,nodev`.
+The workspace mount must allow execution of build outputs. The job is non-root,
+with all capabilities dropped and `no-new-privileges`; `/tmp` remains a bounded
+`noexec,nosuid,nodev` tmpfs. The provider uses a disposable disk volume for
+`/workspace` (the standalone Runner smoke still uses a small tmpfs fixture).
 
 ```sh
 docker build --target runner -t moonhub:runner-step3 .
@@ -459,7 +461,8 @@ Unix socket volume is mounted only in DinD and the provider, never Web or jobs.
 Jobs use their own bridge network namespace to reach the internal Runner API.
 Job containers are
 created with dropped capabilities, no-new-privileges, read-only rootfs,
-resource limits, temporary filesystems, and no application volumes. The
+resource limits, a bounded `/tmp` tmpfs, a private disposable `/workspace` disk
+volume, and no application volumes. The
 provider and DinD share the socket and assignment control volumes. DinD image
 storage is persisted separately. The default pipeline subnet is `172.30.90.0/24`;
 set `MOONHUB_PIPELINE_PREFIX` and `MOONHUB_PIPELINE_NETWORK` when another isolated
@@ -486,6 +489,23 @@ its configured Docker daemon. This makes a provider restart recover stale DinD
 containers without touching unrelated workloads. The attempt lease remains the
 source of truth: stale containers are not retried as successful work, and an
 expired attempt is reconciled as lost by the Web service.
+
+Each assignment allocates a fresh `moonhub-workspace-<attempt>-<random>` volume
+with the `io.moonhub.pipeline.workspace=1` label. Docker initializes its empty
+mount from the Runner image's `/workspace` ownership so UID 10001 can write it.
+Successful, failed and cancelled runs remove the container and then its volume;
+cleanup failure stops the provider before more claims. Startup removes stale
+job containers first, then only labeled workspace volumes. A provider must have
+its own Docker daemon. No blanket volume prune is used, and workspaces are never
+reused across attempts.
+
+The volume uses the DinD data disk, not tmpfs. Standard Docker local volumes do
+not provide a portable per-volume size quota. There is currently no hard disk
+capacity limit per job; 20 GiB is the intended default when a quota-capable
+backend is added, not an enforced setting today. Use dedicated DinD storage and
+monitor free space; an untrusted job can otherwise exhaust that disk. Process
+memory, CPU and PID limits remain in force (filesystem page cache can still
+count toward memory usage).
 
 The deployment smoke validates the Compose topology without starting services:
 

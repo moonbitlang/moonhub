@@ -22,7 +22,9 @@ fn test_options() -> Options {
 test "provider validates origins and builds a constrained runner command" {
   let options = test_options()
   validate_options(options)
-  let args = container_args(options, "/run/assignment.json", "42")
+  let args = container_args(
+    options, "/run/assignment.json", "42", "moonhub-workspace-42-test",
+  )
   assert_true(args.contains("--read-only"))
   assert_true(args.contains("--interactive"))
   assert_true(args.contains("--cap-drop"))
@@ -35,6 +37,25 @@ test "provider validates origins and builds a constrained runner command" {
   assert_true(!args.contains("--privileged"))
   assert_true(!args.contains("/var/run/docker.sock"))
   assert_true(args.contains("registry.example/moonhub-runner:dev"))
+  assert_true(
+    args.contains("type=volume,src=moonhub-workspace-42-test,dst=/workspace"),
+  )
+}
+
+///|
+test "workspaces are isolated disk volumes while scratch memory stays bounded" {
+  let options = test_options()
+  let args = container_args(
+    options, "/run/assignment.json", "42", "moonhub-workspace-42-fresh",
+  )
+  assert_true(args.contains("/tmp:rw,noexec,nosuid,nodev,size=64m"))
+  assert_true(
+    args.contains("type=volume,src=moonhub-workspace-42-fresh,dst=/workspace"),
+  )
+  assert_true(!args.any(arg => arg.has_prefix("/workspace:")))
+  assert_true(!args.any(arg => arg.contains("volume-nocopy")))
+  assert_true(args.contains("--memory"))
+  assert_true(args.contains("--cpus"))
 }
 
 ///|

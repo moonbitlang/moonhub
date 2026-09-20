@@ -8,6 +8,7 @@ fn container_args(
   options : Options,
   assignment_path : String,
   attempt_id : String,
+  workspace_volume : String,
 ) -> Array[String] {
   let args = [
     "run",
@@ -28,8 +29,8 @@ fn container_args(
     options.cpus,
     "--tmpfs",
     "/tmp:rw,noexec,nosuid,nodev,size=64m",
-    "--tmpfs",
-    "/workspace:rw,exec,nosuid,nodev,size=1g,uid=10001,gid=10001,mode=0700",
+    "--mount",
+    "type=volume,src=\{workspace_volume},dst=/workspace",
     "--mount",
     "type=bind,src=\{assignment_path},dst=/control/assignment.json,readonly",
   ]
@@ -77,8 +78,14 @@ async fn run_container(
   assignment : @protocol.Assignment,
   attempt_token : String,
   assignment_path : String,
+  workspace_volume : String,
 ) -> AssignmentResult {
-  let args = container_args(options, assignment_path, assignment.attempt_id)
+  let args = container_args(
+    options,
+    assignment_path,
+    assignment.attempt_id,
+    workspace_volume,
+  )
   @async.with_timeout(
     assignment.job.timeout_minutes * 60000 + 90000,
     () => {
@@ -147,6 +154,13 @@ async fn execute_assignment(
   defer (@async.protect_from_cancel(() => @fs.rmdir(root, recursive=true)) catch {
     _ => ()
   })
+  let workspace_volume = "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
+  // Protect cleanup from both runner failure and provider cancellation. An
+  // uncertain cleanup is fatal: restarting must reconcile before more claims.
+  defer @async.protect_from_cancel(() => {
+    cleanup_assignment(options, attempt_id, workspace_volume)
+  })
+  create_workspace(options, workspace_volume)
   let assignment_path = root + "/assignment.json"
   @fs.write_file(
     assignment_path,
@@ -155,36 +169,11 @@ async fn execute_assignment(
     permission=0o600,
   )
   let result = run_container(
-    options, assignment, attempt_token, assignment_path,
+    options, assignment, attempt_token, assignment_path, workspace_volume,
   ) catch {
-    Stopped => {
-      ignore(
-        @process.run(
-          options.docker,
-          ["rm", "-f", container_name(attempt_id)],
-          inherit_env=false,
-          extra_env={
-            "PATH": "/usr/bin:/bin",
-            "DOCKER_HOST": options.docker_host,
-          },
-        ),
-      )
-      raise Stopped
-    }
-    _ => {
-      ignore(
-        @process.run(
-          options.docker,
-          ["rm", "-f", container_name(attempt_id)],
-          inherit_env=false,
-          extra_env={
-            "PATH": "/usr/bin:/bin",
-            "DOCKER_HOST": options.docker_host,
-          },
-        ),
-      )
-      raise DockerFailure(125)
-    }
+    err if @async.is_cancellation_error(err) => raise err
+    Stopped => raise Stopped
+    _ => raise DockerFailure(125)
   }
   guard result.reported else { raise DockerFailure(result.code) }
 }
