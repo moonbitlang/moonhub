@@ -33,7 +33,8 @@ assert.ok(provider.volumes.some(volume => volume.target === '/var/lib/moonhub/pr
 assert.ok(dind.volumes.some(volume => volume.target === '/var/lib/moonhub/provider'));
 assert.ok(!provider.volumes.some(volume => volume.source === '/var/run/docker.sock'));
 assert.ok(!dind.volumes.some(volume => volume.source === '/var/run/docker.sock'));
-assert.deepEqual(dind.entrypoint, ['dockerd']);
+assert.ok(dind.entrypoint == null, 'retain the official DinD initialization');
+assert.equal(dind.command[0], 'dockerd', 'skip automatic TCP listener arguments');
 assert.ok(!dind.command.some(value => value.includes('tcp://')));
 assert.ok(dind.command.includes('--host=unix:///run/moonhub-docker/docker.sock'));
 assert.ok(provider.volumes.some(volume => volume.target === '/run/moonhub-docker'));

@@ -466,6 +466,13 @@ set `MOONHUB_PIPELINE_PREFIX` and `MOONHUB_PIPELINE_NETWORK` when another isolat
 deployment already uses it. Provider initialization copies its file secret to a
 private runtime directory and then drops to UID/GID 10001.
 
+Retain the official DinD entrypoint and pass `dockerd` explicitly as the first
+command argument. This runs its cgroup nesting initialization without adding
+default TCP listeners. Do not bypass initialization or disable job resource
+limits to work around nested cgroup failures. `node scripts/dind-smoke.cjs`
+verifies enforced CPU, memory and PID limits on cgroup v2 before and after a
+daemon restart, using a disposable Compose project and locally cached DinD image.
+
 The provider smoke test uses a real provider binary and mock HTTP/Docker
 adapters:
 

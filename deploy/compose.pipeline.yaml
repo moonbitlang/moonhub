@@ -8,8 +8,10 @@ services:
   pipeline-docker:
     image: docker:27.5.1-dind
     privileged: true
-    entrypoint: ["dockerd"]
+    # Keep the image entrypoint for cgroup nesting. Explicit dockerd prevents
+    # the entrypoint from adding its default TCP listeners.
     command:
+      - dockerd
       - --host=unix:///run/moonhub-docker/docker.sock
       - --group=10001
     environment:
