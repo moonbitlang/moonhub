@@ -3,7 +3,34 @@ const { test } = require('node:test');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { snapshotInputs, assertUnchanged } = require('./self-check.cjs');
+
+test('cold jobs initialize the registry before check and stop at the first failure', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-self-check-'));
+  try {
+    fs.mkdirSync(path.join(root, 'scripts'));
+    fs.mkdirSync(path.join(root, 'bin'));
+    fs.copyFileSync(path.join(__dirname, 'self-check.cjs'), path.join(root, 'scripts/self-check.cjs'));
+    const log = path.join(root, 'commands');
+    fs.writeFileSync(path.join(root, 'bin/moon'), `#!/bin/sh
+printf '%s\\n' "$*" >> "$TEST_LOG"
+case "$1" in
+  version) exit 0 ;;
+  update) touch "$TEST_LOG.registry" ;;
+  check) test -f "$TEST_LOG.registry" || exit 99; exit 7 ;;
+  *) exit 98 ;;
+esac
+`, { mode: 0o755 });
+    const result = spawnSync(process.execPath, ['scripts/self-check.cjs'], {
+      cwd: root, encoding: 'utf8',
+      env: { ...process.env, TEST_LOG: log, PATH: path.join(root, 'bin') + ':' + process.env.PATH },
+    });
+    assert.notEqual(result.status, 0);
+    assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['version --all', 'update', 'check --deny-warn']);
+    assert.match(result.stderr, /status: 7/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test('archive inputs detect content changes and added/deleted interfaces without Git', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-self-check-'));

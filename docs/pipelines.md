@@ -527,7 +527,8 @@ MOONHUB_RUNNER_MEMORY=4g
 MOONHUB_RUNNER_CPUS=2
 ```
 
-`scripts/self-check.cjs` runs check/fmt/info in order, rejects modified or
+`scripts/self-check.cjs` initializes the registry in the fresh job HOME, then
+runs check/fmt/info in order, rejects modified or
 added/deleted MoonBit inputs and interfaces without requiring `.git`, checks
 package boundaries, builds frontend assets, then runs all native tests and builds
 the executable. The source checkout is not a deployment working tree. Production

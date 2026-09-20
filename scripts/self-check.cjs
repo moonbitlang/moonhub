@@ -33,6 +33,7 @@ function main() {
   const root = path.resolve(__dirname, '..');
   const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit', timeout: 1800000 });
   run('moon', ['version', '--all']);
+  run('moon', ['update']);
   const before = snapshotInputs(root);
   run('moon', ['check', '--deny-warn']);
   run('moon', ['fmt']);
