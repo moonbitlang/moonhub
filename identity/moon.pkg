@@ -4,7 +4,7 @@ import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "moonbitlang/core/env",
-  "Lfan-ke/moondb",
+  "moonbitstack/moondb",
   "moonbitlang/core/encoding/utf8",
 }
 

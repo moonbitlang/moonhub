@@ -19,8 +19,8 @@ import {
   "moonbitlang/async@0.21.3",
   "moonbitlang/x@0.5.5",
   "moonbitlang/moonback@0.7.0",
-  "Lfan-ke/moondb@0.1.7",
-  "Lfan-ke/moon-sqlite@0.2.2",
+  "moonbitstack/moondb@0.1.8",
+  "moonbitstack/moonsqlite@0.3.0",
   "nexacodes/email@0.1.0",
   "moonbitlang/moonback@0.8.2",
 }

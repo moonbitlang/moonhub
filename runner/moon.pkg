@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/core/debug",
   "hackwaly/moonhub/pipeline/protocol",
   "moonbitlang/async",
   "moonbitlang/async/fs",

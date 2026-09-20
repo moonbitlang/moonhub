@@ -36,6 +36,9 @@ pub enum Conclusion {
   Lost
   Skipped
 } derive(Eq, @debug.Debug)
+pub fn Conclusion::equal(Self, Self) -> Bool
+pub fn Conclusion::not_equal(Self, Self) -> Bool
+pub fn Conclusion::to_repr(Self) -> @debug.Repr
 
 pub struct Coordinator {
   // private fields
@@ -70,6 +73,7 @@ pub struct JobRun {
   conclusion : Conclusion?
   attempt_id : Int64?
 } derive(@debug.Debug)
+pub fn JobRun::to_repr(Self) -> @debug.Repr
 
 pub enum JobState {
   Waiting
@@ -78,6 +82,9 @@ pub enum JobState {
   Running
   Completed
 } derive(Eq, @debug.Debug)
+pub fn JobState::equal(Self, Self) -> Bool
+pub fn JobState::not_equal(Self, Self) -> Bool
+pub fn JobState::to_repr(Self) -> @debug.Repr
 
 pub struct Provider {
   id : Int64
@@ -86,6 +93,7 @@ pub struct Provider {
   revoked : Bool
   labels : Array[String]
 } derive(@debug.Debug)
+pub fn Provider::to_repr(Self) -> @debug.Repr
 
 pub struct Run {
   id : Int64
@@ -104,12 +112,16 @@ pub struct Run {
   conclusion : Conclusion?
   created_at : String
 } derive(@debug.Debug)
+pub fn Run::to_repr(Self) -> @debug.Repr
 
 pub enum RunState {
   Queued
   Running
   Completed
 } derive(Eq, @debug.Debug)
+pub fn RunState::equal(Self, Self) -> Bool
+pub fn RunState::not_equal(Self, Self) -> Bool
+pub fn RunState::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

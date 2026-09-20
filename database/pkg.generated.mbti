@@ -2,8 +2,8 @@
 package "hackwaly/moonhub/database"
 
 import {
-  "Lfan-ke/moondb",
   "moonbitlang/async",
+  "moonbitstack/moondb",
 }
 
 // Values

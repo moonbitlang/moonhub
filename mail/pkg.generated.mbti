@@ -30,8 +30,10 @@ pub fn start_mail_worker(@database.Database, @async.TaskGroup[Unit]) -> Unit
 
 // Errors
 type MailConfigError derive(@debug.Debug)
+pub fn MailConfigError::to_repr(Self) -> @debug.Repr
 
 type MailDeliveryError derive(@debug.Debug)
+pub fn MailDeliveryError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
 pub struct EmailOutboxMessage {

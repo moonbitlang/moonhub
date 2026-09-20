@@ -75,6 +75,9 @@ pub(all) enum RepoOperation {
   Read
   Write
 } derive(Eq, @debug.Debug)
+pub fn RepoOperation::equal(Self, Self) -> Bool
+pub fn RepoOperation::not_equal(Self, Self) -> Bool
+pub fn RepoOperation::to_repr(Self) -> @debug.Repr
 
 pub struct RepositoryJob {
   id : Int64
@@ -113,7 +116,10 @@ pub(all) struct SshEndpoint {
 } derive(Eq, @debug.Debug)
 pub fn SshEndpoint::authority(Self) -> String
 pub fn SshEndpoint::clone_url(Self, @domain.RepoId) -> String
+pub fn SshEndpoint::equal(Self, Self) -> Bool
 pub fn SshEndpoint::from_fields(String, String) -> Self raise
+pub fn SshEndpoint::not_equal(Self, Self) -> Bool
+pub fn SshEndpoint::to_repr(Self) -> @debug.Repr
 
 pub struct SshImportSource {
   url : String

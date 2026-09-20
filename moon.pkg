@@ -8,7 +8,7 @@ import {
   "moonbitlang/async/fs",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
-  "Lfan-ke/moondb",
+  "moonbitstack/moondb",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/ssh",
   "moonbitlang/async/stdio",

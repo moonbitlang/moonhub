@@ -33,6 +33,8 @@ pub struct Report {
   reported : Bool
   steps : Array[@protocol.StepState]
 } derive(ToJson, @debug.Debug)
+pub fn Report::to_json(Self) -> Json
+pub fn Report::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

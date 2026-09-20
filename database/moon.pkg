@@ -3,8 +3,8 @@ import {
   "hackwaly/moonhub/domain",
   "moonbitlang/core/env",
   "moonbitlang/async/fs",
-  "Lfan-ke/moondb",
-  "Lfan-ke/moon-sqlite" @sqlite,
+  "moonbitstack/moondb",
+  "moonbitstack/moonsqlite" @sqlite,
 }
 
 import {

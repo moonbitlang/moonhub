@@ -17,6 +17,7 @@ pub fn parse(String) -> Workflow raise InvalidWorkflow
 pub suberror InvalidWorkflow {
   InvalidWorkflow(String)
 } derive(@debug.Debug)
+pub fn InvalidWorkflow::to_repr(Self) -> @debug.Repr
 
 // Types and methods
 pub struct Job {
@@ -27,6 +28,9 @@ pub struct Job {
   timeout_minutes : Int
   steps : Array[Step]
 } derive(ToJson, @debug.Debug, @json.FromJson)
+pub fn Job::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Job::to_json(Self) -> Json
+pub fn Job::to_repr(Self) -> @debug.Repr
 
 pub struct Step {
   id : String
@@ -37,11 +41,17 @@ pub struct Step {
   env : Map[String, String]
   timeout_minutes : Int?
 } derive(ToJson, @debug.Debug, @json.FromJson)
+pub fn Step::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Step::to_json(Self) -> Json
+pub fn Step::to_repr(Self) -> @debug.Repr
 
 pub struct Workflow {
   name : String
   jobs : Array[Job]
 } derive(ToJson, @debug.Debug, @json.FromJson)
+pub fn Workflow::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Workflow::to_json(Self) -> Json
+pub fn Workflow::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

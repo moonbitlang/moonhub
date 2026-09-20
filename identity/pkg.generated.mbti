@@ -2,9 +2,9 @@
 package "hackwaly/moonhub/identity"
 
 import {
-  "Lfan-ke/moondb",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
+  "moonbitstack/moondb",
 }
 
 // Values

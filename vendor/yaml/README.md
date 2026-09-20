@@ -18,6 +18,8 @@ Toolchain compatibility changes replace deprecated `Array::new` and
 assertions as `guard!`. These preserve the upstream assertion behavior rather
 than disabling compiler warnings. Trait method calls use explicit dispatch
 instead of deprecated implicit promotion. The parser/lexer algorithms are unchanged.
+Public trait-derived methods are explicitly exported with `pub extend`, and
+blackbox tests qualify the package's types with `@yaml` for newer toolchains.
 Formatting and generated interfaces follow the project's current toolchain.
 
 On upgrade, verify this patch, run the upstream tests and pipeline parser tests,

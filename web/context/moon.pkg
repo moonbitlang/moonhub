@@ -15,7 +15,7 @@ import {
 }
 
 import {
-  "Lfan-ke/moondb",
+  "moonbitstack/moondb",
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/test_support",
   "hackwaly/moonhub/web/assets" @web_assets,

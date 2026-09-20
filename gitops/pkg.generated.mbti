@@ -49,12 +49,16 @@ pub fn valid_commit_sha(String) -> Bool
 pub(all) suberror GitError {
   GitCommandFailed(code~ : Int, output~ : String)
 }
+pub fn GitError::output(Self, &Logger) -> Unit
+pub fn GitError::to_string(Self) -> String
 pub impl Show for GitError
 
 pub suberror GitOperationError {
   Failure(message~ : String)
   InternalFailure(details~ : String)
 }
+pub fn GitOperationError::output(Self, &Logger) -> Unit
+pub fn GitOperationError::to_string(Self) -> String
 pub impl Show for GitOperationError
 
 // Types and methods
