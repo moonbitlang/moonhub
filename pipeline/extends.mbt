@@ -4,6 +4,18 @@
 pub extend Provider with @debug.Debug::{to_repr}
 
 ///|
+pub extend ProviderScope with Eq::{not_equal, equal}
+
+///|
+pub extend ProviderScope with @debug.Debug::{to_repr}
+
+///|
+pub extend QueueReason with Eq::{not_equal, equal}
+
+///|
+pub extend QueueReason with @debug.Debug::{to_repr}
+
+///|
 pub extend RunState with Eq::{not_equal, equal}
 
 ///|

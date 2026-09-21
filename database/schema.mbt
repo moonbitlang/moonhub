@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 10L
+pub let database_schema_version : Int64 = 11L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -47,6 +47,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
   let runner_migration = @fs.read_file("db/migrations/009_runner_steps.sql").text()
   let password_reset_migration = @fs.read_file(
     "db/migrations/010_password_resets.sql",
+  ).text()
+  let provider_scope_migration = @fs.read_file(
+    "db/migrations/011_provider_scope.sql",
   ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -87,7 +90,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 10L {
         tx.driver.exec_script(password_reset_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 10")
+      if version < 11L {
+        tx.driver.exec_script(provider_scope_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 11")
     })
   })
 }

@@ -82,8 +82,8 @@ fn attempt_authorized(
   let provider_id : Int64? = row.get_name("provider_id")
   guard provider_id is Some(provider_id) else { return false }
   tx.query_opt(
-    "SELECT p.id FROM pipeline_provider p JOIN pipeline_provider_repository g ON g.provider_id = p.id JOIN repository repo ON repo.id = g.repository_id JOIN \"user\" u ON u.id = ? LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id WHERE p.id = ? AND g.repository_id = ? AND p.revoked = 0 AND repo.ready = 1 AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))",
-    params=[actor_id, provider_id, repository_id],
+    "SELECT p.id FROM pipeline_provider p JOIN repository repo ON repo.id = ? JOIN \"user\" u ON u.id = ? LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id WHERE p.id = ? AND (p.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = p.id AND g.repository_id = repo.id)) AND p.revoked = 0 AND repo.ready = 1 AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))",
+    params=[repository_id, actor_id, provider_id],
   )
   is Some(_)
 }
@@ -156,6 +156,12 @@ fn renew_lease(
     until = cancel_at + @protocol.cancel_grace_ms
   }
   let id : Int64 = row.get_name("id")
+  ignore(
+    tx.execute("UPDATE pipeline_provider SET last_seen_ms = ? WHERE id = ?", params=[
+      now,
+      (row.get_name("provider_id") : Int64),
+    ]),
+  )
   let _ = tx.execute(
     "UPDATE pipeline_job_attempt SET lease_until_ms = ? WHERE id = ?",
     params=[until, id],
@@ -281,6 +287,12 @@ pub fn Coordinator::claim(
         let now = (self.clock)()
         let provider = authenticate_provider(tx, token)
         let provider_id : Int64 = provider.get_name("id")
+        ignore(
+          tx.execute(
+            "UPDATE pipeline_provider SET last_seen_ms = ? WHERE id = ?",
+            params=[now, provider_id],
+          ),
+        )
         advance_all_runs(tx)
         let hash = @identity.hash_token(request.attempt_token)
         let previous = tx.query_opt(
@@ -327,12 +339,13 @@ pub fn Coordinator::claim(
             let job = tx.query_opt(
               (
                 #|SELECT j.id, j.run_id FROM pipeline_job j JOIN pipeline_run r ON r.id = j.run_id
-                #|JOIN pipeline_provider_repository g ON g.repository_id = r.repository_id AND g.provider_id = ?
+                #|JOIN pipeline_provider provider ON provider.id = ?
                 #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
                 #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
                 #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
                 #|AND r.definition_version = ?
                 #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
+                #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
                 #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
                 #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
                 #|ORDER BY j.id LIMIT 1

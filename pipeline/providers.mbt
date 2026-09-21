@@ -25,7 +25,40 @@ pub struct Provider {
   paused : Bool
   revoked : Bool
   labels : Array[String]
+  scope : ProviderScope
+  repositories : Array[String]
+  last_seen_ms : Int64?
+  online : Bool
 } derive(Debug)
+
+///|
+pub enum ProviderScope {
+  SelectedRepositories
+  AllRepositories
+} derive(Eq, Debug)
+
+///|
+pub fn ProviderScope::parse(value : String) -> ProviderScope raise {
+  match value {
+    "selected" => SelectedRepositories
+    "all" => AllRepositories
+    _ =>
+      raise @domain.BadRequest(
+        message="Provider scope must be selected or all.",
+      )
+  }
+}
+
+///|
+pub fn ProviderScope::value(self : ProviderScope) -> String {
+  match self {
+    SelectedRepositories => "selected"
+    AllRepositories => "all"
+  }
+}
+
+///|
+let provider_contact_window_ms : Int64 = 60000L
 
 ///|
 fn check_token(token : String) -> Unit raise {
@@ -52,13 +85,30 @@ fn require_provider_admin(
 fn provider_from_row(
   client : @database.DbClient,
   row : @database.DbRow,
+  now : Int64,
 ) -> Provider raise {
   let id : Int64 = row.get_name("id")
+  let seen : Int64? = row.get_name("last_seen_ms")
   {
     id,
     name: row.get_name("name"),
     paused: row.get_name("paused"),
     revoked: row.get_name("revoked"),
+    scope: ProviderScope::parse(row.get_name("repository_scope")),
+    repositories: client
+    .query_all(
+      "SELECT t.name_key AS owner, r.name FROM pipeline_provider_repository g JOIN repository r ON r.id = g.repository_id JOIN team t ON t.id = r.team_id WHERE g.provider_id = ? ORDER BY t.name_key, r.name",
+      params=[id],
+    )
+    .map(repo => {
+      let owner : String = repo.get_name("owner")
+      let name : String = repo.get_name("name")
+      owner + "/" + name
+    }),
+    last_seen_ms: seen,
+    online: seen is Some(seen) &&
+    seen <= now &&
+    now - seen < provider_contact_window_ms,
     labels: client
     .query_all(
       "SELECT label FROM pipeline_provider_label WHERE provider_id = ? ORDER BY label",
@@ -76,6 +126,7 @@ pub fn Coordinator::create_provider(
   token : String,
   labels : Array[String],
   repositories : Array[@domain.RepoId],
+  scope? : ProviderScope = SelectedRepositories,
 ) -> Provider raise {
   require_provider_admin(self.pool, actor)
   check_token(token)
@@ -83,6 +134,11 @@ pub fn Coordinator::create_provider(
     raise @domain.BadRequest(message="invalid provider name")
   }
   let labels = normalize_provider_labels(labels)
+  guard scope != AllRepositories || repositories.is_empty() else {
+    raise @domain.BadRequest(
+      message="All-repository scope cannot include a repository list.",
+    )
+  }
   let repository_ids = repositories.map(repo => {
     @repository.repository_scope(self.pool, actor, repo).id
   })
@@ -103,8 +159,8 @@ pub fn Coordinator::create_provider(
         }
         let id : Int64 = tx
           .query_one(
-            "INSERT INTO pipeline_provider (name, token_hash) VALUES (?, ?) RETURNING id",
-            params=[name, @identity.hash_token(token)],
+            "INSERT INTO pipeline_provider (name, token_hash, repository_scope) VALUES (?, ?, ?) RETURNING id",
+            params=[name, @identity.hash_token(token), scope.value()],
           )
           .get_name("id")
         for label in labels {
@@ -119,7 +175,13 @@ pub fn Coordinator::create_provider(
             params=[id, repository_id],
           )
         }
-        { id, name, paused: false, revoked: false, labels, }
+        provider_from_row(
+          client,
+          tx.query_one("SELECT * FROM pipeline_provider WHERE id = ?", params=[
+            id,
+          ]),
+          (self.clock)(),
+        )
       },
       immediate=true,
     )
@@ -207,6 +269,7 @@ pub fn Coordinator::ensure_provider(
   token : String,
   labels : Array[String],
   repositories : Array[@domain.RepoId],
+  scope? : ProviderScope? = None,
 ) -> Provider raise {
   require_provider_admin(self.pool, actor)
   check_token(token)
@@ -214,6 +277,11 @@ pub fn Coordinator::ensure_provider(
     raise @domain.BadRequest(message="invalid provider name")
   }
   let labels = normalize_provider_labels(labels)
+  guard scope != Some(AllRepositories) || repositories.is_empty() else {
+    raise @domain.BadRequest(
+      message="All-repository scope cannot include a repository list.",
+    )
+  }
   let repository_ids = repositories.map(repo => {
     @repository.repository_scope(self.pool, actor, repo).id
   })
@@ -261,11 +329,29 @@ pub fn Coordinator::ensure_provider(
             params=[id, repository_id],
           )
         }
+        if scope is Some(scope) {
+          ignore(
+            tx.execute(
+              "UPDATE pipeline_provider SET repository_scope = ? WHERE id = ?",
+              params=[scope.value(), id],
+            ),
+          )
+          if scope == AllRepositories {
+            ignore(
+              tx.execute(
+                "DELETE FROM pipeline_provider_repository WHERE provider_id = ?",
+                params=[id],
+              ),
+            )
+          }
+          cancel_unscoped_attempts(tx, id, (self.clock)())
+        }
         provider_from_row(
           client,
           tx.query_one("SELECT * FROM pipeline_provider WHERE id = ?", params=[
             id,
           ]),
+          (self.clock)(),
         )
       },
       immediate=true,
@@ -282,21 +368,7 @@ pub fn Coordinator::list_providers(
   self.pool.with_client(client => {
     client
     .query_all("SELECT * FROM pipeline_provider ORDER BY id")
-    .map(row => {
-      let id : Int64 = row.get_name("id")
-      {
-        id,
-        name: row.get_name("name"),
-        paused: row.get_name("paused"),
-        revoked: row.get_name("revoked"),
-        labels: client
-        .query_all(
-          "SELECT label FROM pipeline_provider_label WHERE provider_id = ? ORDER BY label",
-          params=[id],
-        )
-        .map(label => label.get_name("label")),
-      }
-    })
+    .map(row => provider_from_row(client, row, (self.clock)()))
   })
 }
 
@@ -388,11 +460,16 @@ pub fn Coordinator::set_provider_repository(
     client.with_transaction(
       tx => {
         guard tx.query_opt(
-            "SELECT id FROM pipeline_provider WHERE id = ? AND revoked = 0",
+            "SELECT repository_scope FROM pipeline_provider WHERE id = ? AND revoked = 0",
             params=[provider_id],
           )
-          is Some(_) else {
+          is Some(provider) else {
           raise @domain.NotFound(message="provider not found")
+        }
+        guard (provider.get_name("repository_scope") : String) == "selected" else {
+          raise @domain.BadRequest(
+            message="Select repository scope before changing individual grants.",
+          )
         }
         if allowed {
           let _ = tx.execute(
