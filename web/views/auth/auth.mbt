@@ -20,13 +20,15 @@ pub let auth_module : @moonback.Module = Module(ctx => {
   })
   ctx.post("/-/login", async fn(req, res) {
     let form = @web_context.read_form(req)
-    let name_key = @web_context.required_form_value(
-      form, "name_key", "name_key",
-    )
+    let identifier = @web_context.required_form_value(
+        form, "name_key", "username or email",
+      )
+      .trim()
+      .to_owned()
     let password = @web_context.required_form_value(
       form, "password", "password",
     )
-    match @identity.authenticate_user(pool, name_key, password) {
+    match @identity.authenticate_user(pool, identifier, password) {
       Some(login) => {
         let location = if login.invitation is Some(_) {
           "/-/change-password"
@@ -40,7 +42,11 @@ pub let auth_module : @moonback.Module = Module(ctx => {
       }
       None =>
         res.send_html(
-          render_login(asset_path_map, Some("invalid username or password")),
+          render_login(
+            asset_path_map,
+            Some("Invalid username, email, or password."),
+            identifier~,
+          ),
           status=401,
         )
     }

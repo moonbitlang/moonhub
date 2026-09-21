@@ -111,7 +111,7 @@ async function seed() {
 
 async function login(page) {
   await page.goto(`${url}/login`);
-  await page.getByLabel('Username', { exact: true }).fill(username);
+  await page.getByLabel('Username or email', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForURL(`${url}/`);

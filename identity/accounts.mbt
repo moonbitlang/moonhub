@@ -46,18 +46,27 @@ pub fn ensure_root_invitation(
 ///|
 pub fn authenticate_user(
   pool : @database.Database,
-  name_key : String,
+  identifier : String,
   password : String,
 ) -> LoginResult? raise {
+  // Usernames cannot contain '@'; the lookup column is never user-supplied SQL.
+  let (column, identifier) = if identifier.contains("@") {
+    ("email", @domain.normalize_email(identifier))
+  } else {
+    ("name_key", identifier.trim().to_owned())
+  }
+  guard !identifier.is_empty() else { return None }
   pool.with_client(client => {
     client.with_transaction(tx => {
       let user_sql =
-        #|SELECT id, name_key, display_name, is_site_admin, password_hash
-        #|FROM "user"
-        #|WHERE name_key = ?
-        #|  AND status = 'active'
-      match tx.query_opt(user_sql, params=[name_key]) {
+        $|SELECT id, name_key, display_name, is_site_admin, password_hash, status
+        $|FROM "user"
+        $|WHERE \{column} = ?
+      match tx.query_opt(user_sql, params=[identifier]) {
         Some(row) => {
+          guard (row.get_name("status") : String) == "active" else {
+            return None
+          }
           let password_hash : String = row.get_name("password_hash")
           guard verify_password(password, password_hash) else { return None }
           let user : @domain.CurrentUser = {
@@ -72,15 +81,15 @@ pub fn authenticate_user(
         }
         None => {
           let invitation_sql =
-            #|SELECT id, name_key, display_name, password_hash
-            #|FROM invitation
-            #|WHERE name_key = ?
-            #|  AND status = 'sent'
-            #|  AND expires_at > datetime('now')
-            #|  AND password_hash <> ''
-            #|ORDER BY id DESC
-            #|LIMIT 1
-          match tx.query_opt(invitation_sql, params=[name_key]) {
+            $|SELECT id, name_key, display_name, password_hash
+            $|FROM invitation
+            $|WHERE \{column} = ?
+            $|  AND status = 'sent'
+            $|  AND expires_at > datetime('now')
+            $|  AND password_hash <> ''
+            $|ORDER BY id DESC
+            $|LIMIT 1
+          match tx.query_opt(invitation_sql, params=[identifier]) {
             None => None
             Some(row) => {
               let password_hash : String = row.get_name("password_hash")

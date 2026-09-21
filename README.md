@@ -139,6 +139,11 @@ Press `Ctrl-C` in the terminal running `moon run` to stop the server.
 
 ## Email Delivery
 
+Sign in using either your username or full account email address. Email matching
+ignores case and surrounding whitespace; passwords remain case-sensitive and are
+not trimmed. Pending invitees can also sign in with their invitation email and
+one-time password, then set a permanent password to activate the account.
+
 When an invitee cannot receive email, a site administrator (the root role) can
 open **Teams > team > Invitations > View sign-in details** to retrieve the
 original invitation email, including its one-time password and expiry time.

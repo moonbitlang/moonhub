@@ -2,6 +2,7 @@
 fn render_login(
   asset_path_map : Map[String, String],
   message : String?,
+  identifier? : String = "",
 ) -> @moonback.Html {
   @web_ui.layout(
     "Sign in",
@@ -9,12 +10,15 @@ fn render_login(
     Html(b => {
       b <+ "<section class=\"auth-card\"><h1>Sign in</h1>"
       match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
+        Some(message) =>
+          b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
         None => ()
       }
       b <+
         #|<form class="form-stack" method="post" action="/-/login">
-        #|<label class="field"><span>Username</span><input name="name_key" autocomplete="username" required></label>
+      b <+
+        "<label class=\"field\"><span>Username or email</span><input name=\"name_key\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" value=\"\{identifier}\" required></label>"
+      b <+
         #|<label class="field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
         #|<p class="form-actions"><button type="submit">Sign in</button></p>
         #|</form>

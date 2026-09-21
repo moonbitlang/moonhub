@@ -94,7 +94,7 @@ async function main() {
   const oldContext = await browser.newContext();
   const oldPage = await oldContext.newPage();
   await oldPage.goto(`${url}/-/login`);
-  await oldPage.getByLabel('Username', { exact: true }).fill('preview');
+  await oldPage.getByLabel('Username or email', { exact: true }).fill('preview');
   await oldPage.getByLabel('Password', { exact: true }).fill(password);
   await oldPage.getByRole('button', { name: 'Sign in', exact: true }).click();
   await oldPage.waitForURL('**/-/change-password');
@@ -143,7 +143,13 @@ async function main() {
   await oldPage.goto(url + '/');
   await oldPage.waitForURL('**/-/login');
   await page.getByRole('link', { name: 'Sign in', exact: true }).click();
-  await page.getByLabel('Username', { exact: true }).fill('preview');
+  await page.getByLabel('Username or email', { exact: true }).fill(`  ${email.toUpperCase()}  `);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'Invalid username, email, or password.' }).waitFor();
+  assert.equal(await page.getByLabel('Username or email', { exact: true }).inputValue(), email.toUpperCase());
+  assert.equal(await page.getByLabel('Password', { exact: true }).inputValue(), '');
+  await capture(page, 'login-validation');
   await page.getByLabel('Password', { exact: true }).fill(newPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForURL(url + '/');
@@ -162,7 +168,7 @@ async function main() {
     }, null, 2) + '\n', { mode: 0o600 });
     console.log(`Preview: ${url}/-/forgot-password`);
   }
-  console.log('Password recovery browser smoke passed: file delivery, validation, password reset, session revocation, new login, no-JS forms, and 15 desktop/mobile screenshots.');
+  console.log('Password recovery browser smoke passed: file delivery, validation, password reset, session revocation, email login, old-password rejection, no-JS forms, and 18 desktop/mobile screenshots.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
