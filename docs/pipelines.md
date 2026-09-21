@@ -444,10 +444,34 @@ docker compose exec -T web sh -eu -c '
 ```
 
 Site administrators can also manage providers at
-`/-/admin/pipelines/providers`: create a provider, pause/resume it, or revoke
-it. The browser shows a newly generated provider token only in the creation
+`/-/admin/pipelines/providers`: create a provider, edit its labels, pause/resume
+it, or revoke it. **Edit labels** replaces the provider's label set atomically;
+`self-hosted` and `linux` remain required (up to 8 labels, each 1-64 ASCII letters,
+digits, underscores or hyphens; case is normalized). Token, repository grants,
+name and paused state are unchanged. Revoked providers cannot be edited.
+
+The next provider claim uses the updated labels, so newly matching queued jobs
+do not need to be rerun or re-registered. Existing leased/running attempts that
+no longer match are marked for cancellation in the same transaction. Runner
+heartbeats observe this and stop execution; still-matching work is untouched.
+Cancellation must finish (or its lease/cancellation grace expire) before that
+provider claims its next job. Re-adding a removed label does not undo an issued
+cancellation. If the Runner cannot confirm completion before the grace period,
+the attempt is `lost`, not falsely reported as successfully cancelled.
+
+Deployment `pipeline-provider-ensure` remains additive: labels configured in
+`MOONHUB_PROVIDER_LABELS` will be added again on a later upgrade. Update that
+operator setting too when permanently removing a provisioned label.
+The browser shows a newly generated provider token only in the creation
 response; store it in the provider secret immediately. Existing deployments
 may continue using the CLI flow above for non-interactive provisioning.
+
+`node scripts/provider-labels-browser-smoke.cjs` verifies label editing against
+an isolated local server (build the native executable and frontend assets first).
+It covers validation round-trips, save/cancel, paused state and desktop/mobile
+layouts. `MOONHUB_KEEP_PREVIEW=1` retains its local preview and writes connection
+details to `_build/provider-labels-browser/preview.json` without touching an
+existing deployment.
 
 Start the provider and DinD services with a pinned Runner image available from
 the configured registry. A digest is preferred over a mutable tag:

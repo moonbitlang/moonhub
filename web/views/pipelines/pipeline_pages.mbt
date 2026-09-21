@@ -45,6 +45,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         @web_context.request_form_token(req, "pipeline-providers"),
         None,
         None,
+        labels_saved=req.query().get("labels_saved") == Some("1"),
       ),
       headers=@web_context.private_page_headers(),
     )
@@ -101,6 +102,76 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         None,
       ),
       headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.get("/-/admin/pipelines/providers/:id/labels", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    let provider = coordinator
+      .list_providers(actor)
+      .iter()
+      .find_first(provider => provider.id == id && !provider.revoked)
+    guard provider is Some(provider) else {
+      raise @domain.NotFound(message="provider not found")
+    }
+    res.send_html(
+      render_provider_labels(
+        assets,
+        actor,
+        provider,
+        @web_context.request_form_token(req, "pipeline-providers"),
+        provider.labels.join(","),
+        None,
+      ),
+      headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers/:id/labels", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    let form = @web_context.protected_form(req, "pipeline-providers")
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    let provider = coordinator
+      .list_providers(actor)
+      .iter()
+      .find_first(provider => provider.id == id && !provider.revoked)
+    guard provider is Some(provider) else {
+      raise @domain.NotFound(message="provider not found")
+    }
+    let value = form.get("labels").unwrap_or("")
+    let labels = value
+      .split(",")
+      .map(label => label.trim().to_owned())
+      .collect()
+    coordinator.set_provider_labels(actor, id, labels) catch {
+      @domain.BadRequest(message~) => {
+        res.send_html(
+          render_provider_labels(
+            assets,
+            actor,
+            provider,
+            @web_context.request_form_token(req, "pipeline-providers"),
+            value,
+            Some(message),
+          ),
+          status=400,
+          headers=@web_context.private_page_headers(),
+        )
+        return
+      }
+      err => raise err
+    }
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/admin/pipelines/providers?labels_saved=1",
+      ),
     )
   })
   ctx.post("/-/admin/pipelines/providers/:id/pause", async fn(req, res) {

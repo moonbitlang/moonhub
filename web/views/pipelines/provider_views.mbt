@@ -6,6 +6,7 @@ fn render_provider_admin(
   csrf : String,
   token : String?,
   error : String?,
+  labels_saved? : Bool = false,
 ) -> @moonback.Html {
   @web_ui.layout(
     "Pipeline providers",
@@ -16,6 +17,10 @@ fn render_provider_admin(
       if error is Some(error) {
         b <+
           "<p class=\"flash-error\" role=\"alert\">\{pipeline_html(error)}</p>"
+      }
+      if labels_saved {
+        b <+
+          "<p class=\"settings-success\" role=\"status\">Provider labels saved.</p>"
       }
       if token is Some(token) {
         b <+
@@ -36,6 +41,8 @@ fn render_provider_admin(
           "<li><div class=\"mr-list-title\"><strong>\{pipeline_html(provider.name)}</strong><span class=\"mr-state\" data-state=\"\{state}\">\{state}</span></div><p class=\"muted\">#\{provider.id.to_string()} · labels \{pipeline_html(provider.labels.join(", "))}</p><div class=\"mr-actions\">"
         if !provider.revoked {
           b <+
+            "<a href=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/labels\" aria-label=\"Edit labels for \{provider.name}\">Edit labels</a>"
+          b <+
             "<form method=\"post\" action=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/pause\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"paused\" value=\"\{if provider.paused { "0" } else { "1" }}\"><button type=\"submit\">\{if provider.paused { "Resume" } else { "Pause" }}</button></form><form method=\"post\" action=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/revoke\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button class=\"danger-button\" type=\"submit\">Revoke</button></form>"
         }
         b <+ "</div></li>"
@@ -44,6 +51,39 @@ fn render_provider_admin(
         b <+ "<li class=\"muted\">No providers registered.</li>"
       }
       b <+ "</ul></section>"
+    }),
+    head_end=@web_assets.repository_assets_head(assets),
+    current_user=Some(user),
+    navigation=@web_ui.SiteNavigation("pipeline-providers"),
+  )
+}
+
+///|
+fn render_provider_labels(
+  assets : Map[String, String],
+  user : @domain.CurrentUser,
+  provider : @pipeline.Provider,
+  csrf : String,
+  labels : String,
+  error : String?,
+) -> @moonback.Html {
+  @web_ui.layout(
+    "Edit provider labels",
+    assets,
+    Html(b => {
+      b <+
+        "<section class=\"repository-form\"><a href=\"/-/admin/pipelines/providers\">Pipeline providers</a><h1>Edit provider labels</h1><p class=\"page-subtitle\">\{provider.name} · #\{provider.id.to_string()}</p>"
+      if error is Some(message) {
+        b <+
+          "<p class=\"flash-error\" id=\"provider-label-error\" role=\"alert\">\{message}</p>"
+      }
+      b <+
+        "<form class=\"form-stack\" method=\"post\" action=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/labels\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"field\"><label for=\"provider-labels\">Labels</label><input id=\"provider-labels\" name=\"labels\" value=\"\{labels}\" required maxlength=\"519\" spellcheck=\"false\" autocapitalize=\"none\" aria-describedby=\"provider-label-impact"
+      if error is Some(_) {
+        b <+ " provider-label-error\" aria-invalid=\"true"
+      }
+      b <+
+        "\"></div><p class=\"settings-notice\" id=\"provider-label-impact\">Jobs that no longer match these labels will be cancelled, including running jobs.</p><div class=\"form-actions\"><button type=\"submit\"><span class=\"ui-icon\" data-icon=\"check\" aria-hidden=\"true\"></span>Save labels</button><a href=\"/-/admin/pipelines/providers\">Cancel</a></div></form></section>"
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),
