@@ -129,28 +129,64 @@ pub fn Coordinator::read_logs(
   attempt_id : Int64,
   after? : Int64 = 0L,
 ) -> Array[@protocol.LogChunk] raise {
+  self.read_log_page(actor, repo, run_number, attempt_id, after~).chunks
+}
+
+///|
+pub struct LogPage {
+  chunks : Array[@protocol.LogChunk]
+  next_cursor : String
+  has_more : Bool
+  complete : Bool
+} derive(Debug)
+
+///|
+pub fn Coordinator::read_log_page(
+  self : Coordinator,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  run_number : Int64,
+  attempt_id : Int64,
+  after? : Int64 = 0L,
+) -> LogPage raise {
   let run = get_run(self.pool, actor, repo, run_number)
   guard after >= 0L else {
     raise @domain.BadRequest(message="invalid log cursor")
   }
   self.pool.with_client(client => {
-    guard client.query_opt(
-        "SELECT a.id FROM pipeline_job_attempt a JOIN pipeline_job j ON j.id = a.job_id WHERE a.id = ? AND j.run_id = ?",
-        params=[attempt_id, run.id],
+    // Completion and the final flushed log tail must come from one snapshot.
+    client.with_transaction(tx => {
+      guard tx.query_opt(
+          "SELECT a.status FROM pipeline_job_attempt a JOIN pipeline_job j ON j.id = a.job_id WHERE a.id = ? AND j.run_id = ?",
+          params=[attempt_id, run.id],
+        )
+        is Some(attempt) else {
+        raise @domain.NotFound(message="attempt not found")
+      }
+      let rows = tx.query_all(
+        "SELECT id, step_id, stream, content FROM pipeline_log_chunk WHERE attempt_id = ? AND id > ? ORDER BY id LIMIT 101",
+        params=[attempt_id, after],
       )
-      is Some(_) else {
-      raise @domain.NotFound(message="attempt not found")
-    }
-    client
-    .query_all(
-      "SELECT id, step_id, stream, content FROM pipeline_log_chunk WHERE attempt_id = ? AND id > ? ORDER BY id LIMIT 100",
-      params=[attempt_id, after],
-    )
-    .map(row => {
-      id: (row.get_name("id") : Int64).to_string(),
-      step_id: row.get_name("step_id"),
-      stream: row.get_name("stream"),
-      text: row.get_name("content"),
+      let has_more = rows.length() > 100
+      if has_more {
+        ignore(rows.pop())
+      }
+      let chunks : Array[@protocol.LogChunk] = rows.map(row => {
+        id: (row.get_name("id") : Int64).to_string(),
+        step_id: row.get_name("step_id"),
+        stream: row.get_name("stream"),
+        text: row.get_name("content"),
+      })
+      {
+        chunks,
+        next_cursor: chunks
+        .last()
+        .map(chunk => chunk.id)
+        .unwrap_or(after.to_string()),
+        has_more,
+        complete: (attempt.get_name("status") : String) == "completed" &&
+        !has_more,
+      }
     })
   })
 }

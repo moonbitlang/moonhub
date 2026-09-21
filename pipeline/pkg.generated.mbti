@@ -56,6 +56,7 @@ pub fn Coordinator::heartbeat(Self, Int64, String, Int) -> @protocol.LeaseState 
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise
 pub fn Coordinator::new(@database.Database, clock? : () -> Int64) -> Self
 pub fn Coordinator::queue_reasons(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Map[String, QueueReason] raise
+pub fn Coordinator::read_log_page(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> LogPage raise
 pub fn Coordinator::read_logs(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> Array[@protocol.LogChunk] raise
 pub async fn Coordinator::read_source(Self, String, Int64, String) -> Bytes
 pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
@@ -88,6 +89,14 @@ pub enum JobState {
 pub fn JobState::equal(Self, Self) -> Bool
 pub fn JobState::not_equal(Self, Self) -> Bool
 pub fn JobState::to_repr(Self) -> @debug.Repr
+
+pub struct LogPage {
+  chunks : Array[@protocol.LogChunk]
+  next_cursor : String
+  has_more : Bool
+  complete : Bool
+} derive(@debug.Debug)
+pub fn LogPage::to_repr(Self) -> @debug.Repr
 
 pub struct Provider {
   id : Int64

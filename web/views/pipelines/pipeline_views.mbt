@@ -2,7 +2,7 @@
 priv struct PipelineJobPage {
   job : @pipeline.JobRun
   steps : Array[@protocol.StepState]
-  logs : Array[@protocol.LogChunk]
+  logs : @pipeline.LogPage?
   reason : @pipeline.QueueReason?
 }
 
@@ -171,19 +171,22 @@ fn render_pipeline_detail(
     assets,
     Html(b => {
       b <+
-        "<div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Pipelines</a> / #\{run.number.to_string()}</p><h2>\{pipeline_html(run.workflow_name)}</h2></div><span class=\"mr-state\" data-state=\"\{result}\">\{result}</span></div>"
+        "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Pipelines</a> / #\{run.number.to_string()}</p><h2>\{pipeline_html(run.workflow_name)}</h2></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{result}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
       b <+
         "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha)}</span> · created \{pipeline_html(run.created_at)}</p>"
       if manager {
         b <+ "<div class=\"mr-actions\">"
-        if run.state is @pipeline.Queued || run.state is @pipeline.Running {
-          b <+
-            "<form method=\"post\" action=\"\{base}/cancel\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button class=\"danger-button\" type=\"submit\">Cancel run</button></form>"
-        }
+        b <+ "<form data-run-cancel method=\"post\" action=\"\{base}/cancel\""
         if run.state is @pipeline.Completed {
-          b <+
-            "<form method=\"post\" action=\"\{base}/rerun\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button type=\"submit\">Rerun snapshot</button></form>"
+          b <+ " hidden"
         }
+        b <+
+          "><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button class=\"danger-button\" type=\"submit\">Cancel run</button></form><form data-run-rerun method=\"post\" action=\"\{base}/rerun\""
+        if !(run.state is @pipeline.Completed) {
+          b <+ " hidden"
+        }
+        b <+
+          "><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button type=\"submit\">Rerun snapshot</button></form>"
         b <+ "</div>"
       }
       b <+ "<ol class=\"mr-list\">"
@@ -192,38 +195,54 @@ fn render_pipeline_detail(
         let conclusion = pipeline_conclusion(page.job.conclusion)
         let display = if conclusion.is_empty() { state } else { conclusion }
         b <+
-          "<li><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-state=\"\{display}\">\{display}</span></div>"
-        if page.reason is Some(reason) {
+          "<li data-pipeline-job=\"\{page.job.id.to_string()}\" data-attempt-id=\"\{page.job.attempt_id.map(id => id.to_string()).unwrap_or("")}\"><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-job-state data-state=\"\{display}\">\{display}</span></div>"
+        b <+ "<p class=\"settings-notice\" data-queue-reason"
+        if page.reason is None {
+          b <+ " hidden"
+        }
+        b <+ ">\{page.reason.map(queue_reason_text).unwrap_or("")}</p>"
+        if run.definition.jobs
+          .iter()
+          .find_first(job => job.id == page.job.job_key)
+          is Some(definition) {
+          b <+ "<p class=\"muted provider-access-summary\" data-required-labels"
+          if page.reason is None {
+            b <+ " hidden"
+          }
+          b <+ ">Required labels: \{definition.runs_on.join(", ")}</p>"
+        }
+        b <+ "<ul class=\"pipeline-steps\" data-job-steps"
+        if page.steps.is_empty() {
+          b <+ " hidden"
+        }
+        b <+ ">"
+        for step in page.steps {
           b <+
-            "<p class=\"settings-notice\" data-queue-reason>\{queue_reason_text(reason)}</p>"
-          if run.definition.jobs
-            .iter()
-            .find_first(job => job.id == page.job.job_key)
-            is Some(definition) {
-            b <+
-              "<p class=\"muted provider-access-summary\">Required labels: \{definition.runs_on.join(", ")}</p>"
-          }
+            "<li data-step-id=\"\{step.step_id}\"><span class=\"path\">\{pipeline_html(step.step_id)}</span> <span class=\"muted\" data-step-exit>exit \{step.exit_code.to_string()}</span> <span class=\"mr-state\" data-step-state data-state=\"\{step.state}\">\{step.state}</span></li>"
         }
-        if !page.steps.is_empty() {
-          b <+ "<ul class=\"pipeline-steps\">"
-          for step in page.steps {
-            b <+
-              "<li><span class=\"path\">\{pipeline_html(step.step_id)}</span><span class=\"muted\">exit \{step.exit_code.to_string()}</span> <span class=\"mr-state\" data-state=\"\{step.state}\">\{step.state}</span></li>"
-          }
-          b <+ "</ul>"
+        b <+ "</ul>"
+        let chunks = page.logs.map(logs => logs.chunks).unwrap_or([])
+        b <+
+          "<details class=\"pipeline-logs\" data-log-cursor=\"\{page.logs.map(logs => logs.next_cursor).unwrap_or("0")}\" data-log-complete=\"\{page.logs.map(logs => logs.complete).unwrap_or(true).to_string()}\" data-log-more=\"\{page.logs.map(logs => logs.has_more).unwrap_or(false).to_string()}\""
+        if chunks.is_empty() {
+          b <+ " hidden"
         }
-        if !page.logs.is_empty() {
-          b <+ "<details class=\"pipeline-logs\"><summary>Logs</summary><pre>"
-          for log in page.logs {
-            b <+ "\{pipeline_html(log.text)}"
-          }
-          b <+ "</pre></details>"
+        b <+ "><summary>Logs</summary><pre>"
+        for log in chunks {
+          b <+ "\{log.text}"
         }
+        b <+ "</pre></details>"
         b <+ "</li>"
       }
-      b <+ "</ol>"
+      b <+ "</ol></section>"
     }),
-    head_end=@web_assets.repository_assets_head(assets),
+    head_end=Html(b => {
+      b <+ "\{@web_assets.repository_assets_head(assets)}"
+      let script = @web_assets.vite_manifest_entry_path(
+        assets, "src/pipeline-logs.ts",
+      )
+      b <+ "<script type=\"module\" src=\"\{script}\"></script>"
+    }),
     current_user=Some(user),
     navigation=@web_ui.RepositoryNavigation(scope.repo, "pipelines", manager),
   )

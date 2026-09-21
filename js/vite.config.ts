@@ -20,6 +20,7 @@ export default defineConfig({
         app_styles: resolve(__dirname, "src/app.css"),
         "app-shell": resolve(__dirname, "src/app-shell.ts"),
         "repo-clone": resolve(__dirname, "src/repo-clone.ts"),
+        "pipeline-logs": resolve(__dirname, "src/pipeline-logs.ts"),
         "custom-elements": resolve(__dirname, "src/custom-elements.tsx"),
       },
       output: {

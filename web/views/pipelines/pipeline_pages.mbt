@@ -50,6 +50,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.use_(pipeline_updates_module)
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     guard actor.is_site_admin else {
@@ -403,14 +404,16 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           pages.push({
             job,
             steps: [],
-            logs: [],
+            logs: None,
             reason: reasons.get(job.job_key),
           })
         Some(attempt_id) =>
           pages.push({
             job,
             steps: coordinator.read_steps(actor, scope.repo, number, attempt_id),
-            logs: coordinator.read_logs(actor, scope.repo, number, attempt_id),
+            logs: Some(
+              coordinator.read_log_page(actor, scope.repo, number, attempt_id),
+            ),
             reason: reasons.get(job.job_key),
           })
       }
@@ -426,9 +429,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         manager,
         @web_context.request_form_token(req, "pipelines:" + run.id.to_string()),
       ),
-      headers=@web_context.private_page_headers(
-        refresh=run.state is @pipeline.Queued || run.state is @pipeline.Running,
-      ),
+      headers=@web_context.private_page_headers(),
     )
   })
   ctx.post("/:owner/:repo/pipelines/:number/cancel", async fn(req, res) {

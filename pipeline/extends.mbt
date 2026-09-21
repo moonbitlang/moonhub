@@ -38,3 +38,6 @@ pub extend Run with @debug.Debug::{to_repr}
 
 ///|
 pub extend JobRun with @debug.Debug::{to_repr}
+
+///|
+pub extend LogPage with @debug.Debug::{to_repr}

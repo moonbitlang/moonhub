@@ -263,8 +263,39 @@ credentials never belong in logs. General workflow secrets are not yet supported
 
 `Coordinator.read_logs` rechecks repository access and attempt/run scope, returns
 at most 100 records with stable cursor IDs, and never renders log text as HTML.
-Browser log routes arrive in step 6. Persistence uses SQLite in this stage;
+`Coordinator.read_log_page` additionally returns `next_cursor`, `has_more` and
+`complete`. Attempt state and log records are read in one database snapshot:
+`complete` is true only after the attempt has terminated and this page reaches
+the end, including any suffix flushed during termination. Cursor IDs, unlike
+runner upload sequences, also cover these flushed records.
+
+Pipeline detail pages are initially server-rendered, then updated by JavaScript
+without reloading the document. Browser-session endpoints are:
+
+- `GET /:owner/:repo/pipelines/:number/updates`: run, job, step and queue state.
+- `GET /:owner/:repo/pipelines/:number/attempts/:attempt/logs?after=0`:
+  a bounded incremental log page. All IDs and cursors are decimal strings.
+
+These endpoints require repository read access and use `Cache-Control: no-store`;
+runner/provider tokens do not authorize browser requests. Polling is serialized
+at two-second intervals, with immediate continuation for a log backlog. Each
+completed log stream stops independently. Once the run is terminal and every
+stream has reached `complete`, all polling stops. Opening a completed run still
+drains any log pages beyond the initial server-rendered page before stopping.
+Transient failures retry with capped backoff, revoked access stops requests,
+hidden tabs pause, and navigation cancels outstanding requests.
+
+Log text is appended through text nodes, preserving expanded sections and reading
+position. Only an open log already at the bottom follows new output. No log
+contents or UI state are stored in browser storage. Without JavaScript the page
+remains a static snapshot that can be reloaded manually. Persistence uses SQLite;
 retention policy and external storage are not implemented.
+
+After building the native executable and frontend assets,
+`node scripts/pipeline-logs-browser-smoke.cjs` verifies incremental rendering,
+completion/backlog stopping, final redaction-tail delivery, retry and pause
+behavior on an isolated local server. `MOONHUB_KEEP_PREVIEW=1` retains that server
+and writes connection details to `_build/pipeline-logs-browser/preview.json`.
 
 ### Additional Acceptance
 

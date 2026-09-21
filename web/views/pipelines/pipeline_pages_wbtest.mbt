@@ -104,3 +104,154 @@ async test "site admins can create, pause, and revoke pipeline providers" {
     )
   })
 }
+
+///|
+async test "pipeline polling uses browser authorization cursors and final log completion without page refresh" {
+  @test_support.with_git_test_repo((root, _) => {
+    @web_testkit.with_ssh_settings_app(
+      (port, pool, cookie, bob, _) => {
+        let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+        ignore(
+          @test_support.workflow_commit(
+            repo.git_dir(root),
+            @test_support.single_job_workflow,
+          ),
+        )
+        let actor = @identity.active_user_by_name(pool, "alice")
+        let run = @pipeline.create_run(
+          pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+        )
+        let coordinator = @pipeline.Coordinator::new(pool)
+        ignore(
+          coordinator.create_provider(
+            @identity.active_user_by_name(pool, "admin"),
+            "logs",
+            "a".repeat(64),
+            ["self-hosted", "linux"],
+            [repo],
+          ),
+        )
+        let token = "b".repeat(64)
+        let assignment = coordinator
+          .claim("a".repeat(64), {
+            version: 1,
+            request_id: "c".repeat(32),
+            attempt_token: token,
+          })
+          .unwrap()
+        let attempt = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+        ignore(coordinator.start(attempt, token, 1))
+        ignore(
+          coordinator.append_log(attempt, token, {
+            version: 1,
+            sequence: "1",
+            step_id: "check",
+            stream: "stdout",
+            text: "live logs\n",
+          }),
+        )
+        let route = "/alice/demo/pipelines/" + run.number.to_string()
+        let logs_path = route + "/attempts/" + assignment.attempt_id + "/logs"
+        for endpoint in [route + "/updates", logs_path] {
+          let (anonymous, _) = @web_testkit.http_get_path(port, endpoint)
+          assert_eq(anonymous.code, 303)
+          let (denied, _) = @web_testkit.http_get_path_with_cookie(
+            port, endpoint, bob,
+          )
+          assert_eq(denied.code, 404)
+        }
+        for after in ["-1", "01", "1e3", "9223372036854775808"] {
+          let (invalid, _) = @web_testkit.http_get_path_with_cookie(
+            port,
+            logs_path + "?after=" + after,
+            cookie,
+          )
+          assert_eq(invalid.code, 400)
+        }
+        let other = @pipeline.create_run(
+          pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+        )
+        let (mismatched, _) = @web_testkit.http_get_path_with_cookie(
+          port,
+          "/alice/demo/pipelines/" +
+          other.number.to_string() +
+          "/attempts/" +
+          assignment.attempt_id +
+          "/logs",
+          cookie,
+        )
+        assert_eq(mismatched.code, 404)
+        let mut cursor = "0"
+        for completed in [false, true] {
+          if completed {
+            ignore(
+              coordinator.complete(attempt, token, {
+                version: 1,
+                conclusion: "success",
+                last_log_sequence: "1",
+              }),
+            )
+          }
+          let (response, body) = @web_testkit.http_get_path_with_cookie(
+            port, route, cookie,
+          )
+          assert_eq(response.code, 200)
+          assert_eq(response.headers.get("refresh"), None)
+          assert_true(
+            body.contains("data-pipeline-job=\"" + assignment.job_id + "\""),
+          )
+          assert_true(
+            body.contains("data-attempt-id=\"" + assignment.attempt_id + "\""),
+          )
+          assert_true(body.contains("src=\"/assets/pipeline-logs-"))
+          assert_true(body.contains("live logs"))
+          let (updates, json) = @web_testkit.http_get_path_with_cookie(
+            port,
+            route + "/updates",
+            cookie,
+          )
+          assert_eq(updates.code, 200)
+          assert_eq(updates.headers.get("cache-control"), Some("no-store"))
+          guard @json.parse(json)
+            is Object({ "state": String(state), "jobs": Array(jobs), .. }) else {
+            fail("invalid run update")
+          }
+          assert_eq(state, if completed { "completed" } else { "running" })
+          assert_eq(jobs.length(), 1)
+          guard jobs[0]
+            is Object(
+              { "id": String(job_id), "attempt_id": String(attempt_id), .. }
+            ) else {
+            fail("numeric IDs leaked into browser JSON")
+          }
+          assert_eq(job_id, assignment.job_id)
+          assert_eq(attempt_id, assignment.attempt_id)
+          let (logs, json) = @web_testkit.http_get_path_with_cookie(
+            port,
+            logs_path + "?after=" + cursor,
+            cookie,
+          )
+          assert_eq(logs.code, 200)
+          assert_eq(logs.headers.get("cache-control"), Some("no-store"))
+          guard @json.parse(json)
+            is Object(
+              {
+                "complete": done,
+                "next_cursor": String(next),
+                "has_more": more,
+                "chunks": Array(chunks),
+                ..
+              }
+            ) else {
+            fail("invalid log page")
+          }
+          assert_eq(done, ToJson::to_json(completed))
+          assert_eq(more, ToJson::to_json(false))
+          assert_eq(chunks.length(), if completed { 0 } else { 1 })
+          cursor = next
+        }
+      },
+      repo_root=root,
+    )
+  })
+}
