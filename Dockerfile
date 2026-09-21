@@ -5,7 +5,13 @@ RUN npm ci
 COPY js/ ./
 RUN npm run build
 
-FROM debian:bookworm-slim AS toolchain
+FROM debian:bookworm-slim AS debian-base
+ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
+ARG DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
+COPY deploy/configure-apt.sh /tmp/configure-apt.sh
+RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
+
+FROM debian-base AS toolchain
 ARG MOONBIT_VERSION=0.10.14+7d59c7ec9
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl build-essential git libssl-dev \
@@ -25,7 +31,7 @@ COPY --from=assets /src/assets/ /src/assets/
 RUN mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
     && moon test --target native --strip -j 1 --deny-warn && moon build --target native --release --deny-warn
 
-FROM debian:bookworm-slim AS runner
+FROM debian-base AS runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash ca-certificates curl git build-essential libssl3 util-linux \
     && rm -rf /var/lib/apt/lists/* \
@@ -51,7 +57,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 USER 10001:10001
 
-FROM debian:bookworm-slim AS provider
+FROM debian-base AS provider
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates docker.io gosu \
     && rm -rf /var/lib/apt/lists/* \
@@ -65,7 +71,7 @@ COPY --chmod=755 deploy/provider-entrypoint.sh /usr/local/bin/moonhub-provider-e
 WORKDIR /var/lib/moonhub/provider
 ENTRYPOINT ["/usr/local/bin/moonhub-provider-entrypoint"]
 
-FROM debian:bookworm-slim AS runtime
+FROM debian-base AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git gosu openssh-server libssl3 tini \
     && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \

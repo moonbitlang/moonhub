@@ -147,10 +147,16 @@ build_images() {
       printf 'Building Runner image: %s\n' "$RUNNER_IMAGE"
       if [ "$PULL_IMAGES" = 1 ]; then
         docker build --pull --target "$RUNNER_BUILD_TARGET" \
-          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" -t "$RUNNER_IMAGE" "$ROOT"
+          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
+          --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
+          --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
+          -t "$RUNNER_IMAGE" "$ROOT"
       else
         docker build --target "$RUNNER_BUILD_TARGET" \
-          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" -t "$RUNNER_IMAGE" "$ROOT"
+          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
+          --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
+          --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
+          -t "$RUNNER_IMAGE" "$ROOT"
       fi
     else
       printf 'Using pre-published Runner image: %s\n' "$RUNNER_IMAGE"

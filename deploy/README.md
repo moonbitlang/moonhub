@@ -63,6 +63,35 @@ the native executable on Linux. No host MoonBit or Node installation is needed. 
 argument `MOONBIT_VERSION` can select an archived MoonBit toolchain release;
 its default is `0.10.14+7d59c7ec9`.
 
+### Debian Package Mirrors
+
+All Debian stages (toolchain, Web/SSH, provider and Runner) default to the USTC
+mirror, including `bookworm-security`. The existing upgrade command needs no
+additional settings. This changes only APT downloads, not Docker Hub, npm or
+MoonBit package downloads, and no public mirror guarantees every network path.
+
+HTTP is used to bootstrap `ca-certificates` in the slim base image. Package
+authenticity remains verified against Debian's bundled archive signing keys;
+signature checks and Release expiry checks are not disabled. Mirrored security
+updates can lag upstream. APT uses a 30-second connection/data timeout and at
+most two retries per download; any failed index fetch fails the build. These
+limits are not a total build timeout.
+
+To override the defaults, set both variables in `deploy/deploy.env`, for example
+to return to Debian's upstream endpoints:
+
+```sh
+DEBIAN_MIRROR=http://deb.debian.org/debian
+DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+```
+
+Compose and `deploy.sh` forward these as build arguments to every Debian stage.
+Direct `docker build` accepts the same names through `--build-arg`. HTTPS mirrors
+require CA certificates to already be available in the base image; do not disable
+certificate verification to work around bootstrap failures. Failed builds leave
+the running deployment untouched. Verify the configuration with
+`node scripts/apt-config-test.cjs` and `node scripts/deploy-script-test.cjs`.
+
 ## Bind a Public Key
 
 The first version accepts OpenSSH **Ed25519** user keys. Private keys remain on
