@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-deploy-test-'));
 try {
@@ -22,6 +23,8 @@ try {
   const log = path.join(root, 'commands.log');
   fs.copyFileSync(path.join(__dirname, 'fixtures/deploy-docker.cjs'), path.join(root, 'bin/docker'));
   fs.chmodSync(path.join(root, 'bin/docker'), 0o755);
+  fs.copyFileSync(path.join(__dirname, 'fixtures/deploy-docker.cjs'), path.join(root, 'bin/moonhub'));
+  fs.chmodSync(path.join(root, 'bin/moonhub'), 0o755);
   const env = {
     ...process.env, PATH: path.join(root, 'bin') + ':' + process.env.PATH,
     TEST_LOG: log, MOONHUB_ROOT_PASSWORD_FILE: path.join(root, 'secret'),
@@ -30,12 +33,18 @@ try {
     MOONHUB_ENABLE_PIPELINES: '1', MOONHUB_PULL: '0', MOONHUB_USE_CN_MIRRORS: '',
     MOONHUB_BASE_IMAGE: '', MOONHUB_BASE_REBUILD: '0', DOCKER_DEFAULT_PLATFORM: '',
     MOONBIT_VERSION: '', DEBIAN_MIRROR: '', DEBIAN_SECURITY_MIRROR: '',
+    MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
   };
   function run(extra = {}, command = 'upgrade') {
     fs.writeFileSync(log, '');
     fs.rmSync(log + '.base', { force: true });
     const result = spawnSync('bash', ['deploy/deploy.sh', ...[command].flat()], { cwd: root, env: { ...env, ...extra }, encoding: 'utf8' });
     return { ...result, commands: fs.readFileSync(log, 'utf8').split('\n') };
+  }
+  function ensureArgs(result) {
+    const line = result.commands.find(line => line.startsWith('provider-ensure-argv '));
+    assert.ok(line, 'provider ensure was not invoked');
+    return JSON.parse(line.slice('provider-ensure-argv '.length));
   }
   let result = run({ TEST_FAIL: 'build' });
   assert.notEqual(result.status, 0);
@@ -65,6 +74,7 @@ try {
   assert.ok(ensure > lines.findIndex(line => line.includes('up ') && line.includes('web ssh')));
   assert.ok(lines.findIndex(line => line.includes('--no-deps') && line.includes('pipeline-provider')) > ensure);
   assert.ok(!lines.join('\n').includes('a'.repeat(64)), 'token leaked into argv');
+  assert.ok(!ensureArgs(result).includes('--scope'), 'default upgrade overwrote saved provider scope');
   const backup = fs.readdirSync(path.join(root, 'backups')).find(dir => !dir.startsWith('.partial-'));
   const bundle = path.join(root, 'backups', backup);
   assert.ok(fs.existsSync(path.join(bundle, 'data.tar')));
@@ -74,16 +84,54 @@ try {
   assert.ok(recovered.services.web.environment.includes('LITERAL=$$not_an_env'));
   assert.ok(recovered.services['pipeline-provider'].environment.some(value => /^MOONHUB_RUNNER_IMAGE=sha256:[a-f0-9]{64}$/.test(value)));
   execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS'], { cwd: bundle, stdio: 'pipe' });
+  // Exercise recovery of older backups that did not record a scope setting.
+  const manifestPath = path.join(bundle, 'manifest.json');
+  const legacyManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  assert.equal(legacyManifest.provider_scope, '');
+  delete legacyManifest.provider_scope;
+  fs.writeFileSync(manifestPath, JSON.stringify(legacyManifest));
+  const manifestHash = createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex');
+  const checksumPath = path.join(bundle, 'SHA256SUMS');
+  fs.writeFileSync(checksumPath, fs.readFileSync(checksumPath, 'utf8').split('\n').map(line =>
+    line.endsWith('  ./manifest.json') ? `${manifestHash}  ./manifest.json` : line).join('\n'));
+  result = run({ MOONHUB_PROVIDER_SCOPE: 'selected', MOONHUB_PROVIDER_REPOSITORIES: 'alice/demo,bob/service' });
+  assert.equal(result.status, 0, result.stderr);
+  const selectedArgs = ensureArgs(result);
+  assert.equal(selectedArgs[selectedArgs.indexOf('--scope') + 1], 'selected');
+  assert.equal(selectedArgs[selectedArgs.indexOf('--repositories') + 1], 'alice/demo,bob/service');
+  const sharedRoot = path.join(root, 'backups/shared');
+  result = run({ MOONHUB_PROVIDER_SCOPE: 'all', MOONHUB_BACKUP_DIR: sharedRoot });
+  assert.equal(result.status, 0, result.stderr);
+  const sharedArgs = ensureArgs(result);
+  assert.equal(sharedArgs[sharedArgs.indexOf('--scope') + 1], 'all');
+  assert.equal(sharedArgs[sharedArgs.indexOf('--repositories') + 1], '');
+  const sharedBundle = path.join(sharedRoot, fs.readdirSync(sharedRoot)[0]);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(sharedBundle, 'manifest.json'))).provider_scope, 'all');
+  result = run({ TEST_FRESH: '1' }, ['restore', sharedBundle, '--project', 'shared', '--http-port', '19005', '--ssh-port', '19006', '--pipeline-prefix', '172.30.97']);
+  assert.equal(result.status, 0, result.stderr);
+  const sharedStates = path.join(sharedRoot, 'recovered');
+  const sharedState = fs.readdirSync(sharedStates).find(entry => fs.existsSync(path.join(sharedStates, entry, 'upgrade.env')));
+  assert.ok(fs.readFileSync(path.join(sharedStates, sharedState, 'upgrade.env'), 'utf8').includes("MOONHUB_PROVIDER_SCOPE='all'"));
+  for (const invalid of [
+    { MOONHUB_PROVIDER_SCOPE: 'invalid' },
+    { MOONHUB_PROVIDER_SCOPE: 'all', MOONHUB_PROVIDER_REPOSITORIES: 'alice/demo' },
+  ]) {
+    result = run(invalid);
+    assert.notEqual(result.status, 0);
+    assert.equal(result.commands.length, 1, 'invalid provider scope reached Docker');
+  }
   result = run({ TEST_FAIL: 'active-job' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'active jobs stopped services');
   result = run({ TEST_BAD_MOUNT: '1' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'unsupported mount stopped services');
-  fs.writeFileSync(path.join(root, 'deploy/deploy.env'), 'MOONHUB_ROOT_USER=custom-admin\nMOONHUB_HTTP_PORT=18999\n');
+  fs.writeFileSync(path.join(root, 'deploy/deploy.env'), 'MOONHUB_ROOT_USER=custom-admin\nMOONHUB_HTTP_PORT=18999\nMOONHUB_PROVIDER_SCOPE=all\n');
   result = run({ MOONHUB_BUILD_IMAGES: '0' });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.commands.join('\n').includes('custom-admin'));
+  const configuredArgs = ensureArgs(result);
+  assert.equal(configuredArgs[configuredArgs.indexOf('--scope') + 1], 'all');
   assert.ok(!result.commands.some(line => line.includes(' build ')));
   result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runner-selfhost', MOONBIT_VERSION: '0.10.14+7d59c7ec9' });
   assert.equal(result.status, 0, result.stderr);
@@ -144,6 +192,7 @@ try {
   assert.equal(restored.services.web.networks.pipeline.ipv4_address, '172.30.98.10');
   assert.ok(restored.volumes.data.name.startsWith('recovered-'));
   assert.ok(fs.readFileSync(path.join(state, 'upgrade.env'), 'utf8').includes('MOONHUB_DATA_VOLUME='));
+  assert.ok(!fs.readFileSync(path.join(state, 'upgrade.env'), 'utf8').includes('MOONHUB_PROVIDER_SCOPE='), 'recovery introduced an explicit scope');
   result = run({ TEST_FAIL: 'extract' }, ['restore', bundle, '--replace']);
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => line.startsWith('stop ') || line.includes(' up ')), 'failed extraction touched current services');
@@ -175,7 +224,7 @@ try {
   result = run({ TEST_FRESH: '1' }, ['restore', bundle]);
   assert.notEqual(result.status, 0);
   assert.equal(result.commands.length, 1, 'corrupt backup reached Docker');
-  console.log('Deployment script tests passed: build-before-stop, image preflight, recovery bundles, basic/pipeline restores, corruption rejection, failure ordering and protected replacement.');
+  console.log('Deployment script tests passed: provider scopes and CLI forwarding, build-before-stop, image preflight, recovery bundles, legacy/basic/pipeline restores, corruption rejection, failure ordering and protected replacement.');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }

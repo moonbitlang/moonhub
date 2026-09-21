@@ -79,9 +79,11 @@ prepare_backup() {
   jq -n --arg project "$PROJECT" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg revision "${RECOVERY_TOOL_REVISION:-unknown}" --arg runner "$runner" \
     --arg provider_name "${PROVIDER_NAME:-dind}" --arg provider_labels "${PROVIDER_LABELS:-self-hosted,linux}" \
+    --arg provider_scope "${PROVIDER_SCOPE:-}" \
     --arg provider_repositories "${PROVIDER_REPOSITORIES:-}" --arg runner_target "${RUNNER_BUILD_TARGET:-runner}" \
     '{format: 1, project: $project, created_at: $created, recovery_tool_revision: $revision,
       runner_image: $runner, provider_name: $provider_name, provider_labels: $provider_labels,
+      provider_scope: $provider_scope,
       provider_repositories: $provider_repositories, runner_build_target: $runner_target}' > "$BACKUP_DIR/manifest.json"
   printf 'Recovery images/configuration prepared: %s\n' "$BACKUP_DIR"
 }
@@ -275,6 +277,7 @@ restore_backup() {
     + (if .services["pipeline-provider"] then {
        MOONHUB_PROVIDER_TOKEN_FILE: binding("pipeline-provider"; "/run/secrets/provider_token"),
        MOONHUB_PROVIDER_NAME: $manifest[0].provider_name, MOONHUB_PROVIDER_LABELS: $manifest[0].provider_labels,
+       MOONHUB_PROVIDER_SCOPE: ($manifest[0].provider_scope // ""),
        MOONHUB_PROVIDER_REPOSITORIES: $manifest[0].provider_repositories,
        MOONHUB_RUNNER_BUILD_TARGET: $manifest[0].runner_build_target,
        MOONHUB_RUNNER_MEMORY: env("pipeline-provider"; "MOONHUB_RUNNER_MEMORY"),

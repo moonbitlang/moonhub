@@ -483,6 +483,14 @@ the attempt is `lost`, not falsely reported as successfully cancelled.
 Deployment `pipeline-provider-ensure` remains additive: labels configured in
 `MOONHUB_PROVIDER_LABELS` will be added again on a later upgrade. Update that
 operator setting too when permanently removing a provisioned label.
+Both provider CLI commands accept `--scope selected|all`. Create defaults to
+selected; ensure without `--scope` preserves existing scope (or uses selected
+for a new provider). Selected repository grants are also additive in ensure;
+use **Edit access** for replacement or removal. Explicit `--scope all` requires
+an empty repository list and clears selected grants. Set
+`MOONHUB_PROVIDER_SCOPE=all` and clear `MOONHUB_PROVIDER_REPOSITORIES` in
+`deploy/deploy.env` to provision a shared provider through `deploy.sh upgrade`.
+Omitting the scope environment variable preserves edits made in Administration.
 The browser shows a newly generated provider token only in the creation
 response; store it in the provider secret immediately. Existing deployments
 may continue using the CLI flow above for non-interactive provisioning.
@@ -590,6 +598,7 @@ For the provider assigned to MoonHub, use these settings in `deploy/deploy.env`
 MOONHUB_ENABLE_PIPELINES=1
 MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost
 MOONHUB_PROVIDER_LABELS=self-hosted,linux,moonhub-build
+MOONHUB_PROVIDER_SCOPE=selected
 MOONHUB_PROVIDER_REPOSITORIES=moonhub/moonhub
 MOONHUB_RUNNER_MEMORY=4g
 MOONHUB_RUNNER_CPUS=2

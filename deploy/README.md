@@ -432,9 +432,26 @@ For repeat deployments, put operator settings such as
 operator-owned file and set `MOONHUB_DEPLOY_ENV_FILE` to that path. Use
 `./deploy/deploy.sh build` to build without downtime, `backup` to create a
 backup only, `status` to inspect services, and `config` to validate the
-resolved Compose configuration. When pipelines are enabled, set
-`MOONHUB_PROVIDER_REPOSITORIES` to the comma-separated repositories that the
-provider may claim; the wrapper idempotently registers the provider after Web
+resolved Compose configuration. For a provider shared by all current and future
+repositories, persist these settings in `deploy/deploy.env`:
+
+```sh
+MOONHUB_ENABLE_PIPELINES=1
+MOONHUB_PROVIDER_SCOPE=all
+MOONHUB_PROVIDER_REPOSITORIES=
+```
+
+Use `MOONHUB_PROVIDER_SCOPE=selected` with a comma-separated
+`MOONHUB_PROVIDER_REPOSITORIES` list for restricted access. If scope is unset,
+new providers default to selected and existing providers keep their saved scope,
+including changes made through Administration. Existing selected grants remain
+additive during deployment; remove grants through **Edit access** and update the
+deployment list too. Explicit scope settings are applied on every upgrade.
+All-repository scope with a nonempty repository list is rejected before building
+or stopping services. Labels and requester authorization still apply in both
+scopes.
+
+The wrapper idempotently registers the provider after Web
 is healthy and before starting the provider service. The wrapper refuses a
 dirty Git worktree and never stops services before a successful build.
 
@@ -449,11 +466,16 @@ Registry-free deployments load the local Runner image into the private DinD
 daemon through its Unix socket. Runner images must match the production CPU
 architecture.
 
-The first installation still requires root activation and creation of the
-repositories listed in `MOONHUB_PROVIDER_REPOSITORIES` before provider ensure
-can succeed. Start with pipelines disabled for that bootstrap; do not relax
+The first installation still requires root activation. Selected repositories
+listed in `MOONHUB_PROVIDER_REPOSITORIES` must exist before provider ensure
+can succeed; all-repository scope does not require pre-creating repositories.
+Start with pipelines disabled for root bootstrap; do not relax
 the active-administrator or repository-grant checks. Upgrades preserve paused
 provider state. Drain active jobs before upgrading.
+
+Recovery preserves saved provider scope in the database. The generated
+`upgrade.env` also preserves an explicitly configured scope for subsequent
+upgrades; older backups without this setting leave scope unchanged.
 
 The deployment wrapper additionally requires `jq` and `sha256sum` (or `shasum`).
 The `backup` command requires Web/SSH/provider to be stopped, but DinD must remain

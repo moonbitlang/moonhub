@@ -5,6 +5,12 @@ const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const a = process.argv.slice(2);
+if (a[0] === 'pipeline-provider-ensure') {
+  const tokenFile = a[a.indexOf('--token-file') + 1];
+  if (!/^[a-f0-9]{64}$/.test(fs.readFileSync(tokenFile, 'utf8').trim())) process.exit(1);
+  fs.appendFileSync(process.env.TEST_LOG, 'provider-ensure-argv ' + JSON.stringify(a) + '\n');
+  process.exit(0);
+}
 const line = a.join(' ');
 fs.appendFileSync(process.env.TEST_LOG, line + '\n');
 if (a[0] === 'compose' && a.includes('build')) {
@@ -70,4 +76,7 @@ else if (line.includes('docker.sock save ')) {
 else if (line.startsWith('save ')) out('image');
 else if (line.startsWith('run ')) { fs.readFileSync(0); if (fail === 'extract') process.exit(1); }
 else if (line.includes(' up ') && fail === 'start') process.exit(1);
-else if (line.includes('exec -T --user git web sh ') || line.startsWith('exec -i ')) fs.readFileSync(0);
+else if (line.includes('exec -T --user git web sh ')) {
+  execFileSync('sh', a.slice(a.indexOf('sh') + 1), { input: fs.readFileSync(0) });
+}
+else if (line.startsWith('exec -i ')) fs.readFileSync(0);

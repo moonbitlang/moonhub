@@ -36,6 +36,7 @@ ROOT_PASSWORD_FILE=${MOONHUB_ROOT_PASSWORD_FILE:-$ROOT/deploy/secrets/root_passw
 PROVIDER_TOKEN_FILE=${MOONHUB_PROVIDER_TOKEN_FILE:-$ROOT/deploy/secrets/provider_token}
 PROVIDER_NAME=${MOONHUB_PROVIDER_NAME:-dind}
 PROVIDER_LABELS=${MOONHUB_PROVIDER_LABELS:-self-hosted,linux}
+PROVIDER_SCOPE=${MOONHUB_PROVIDER_SCOPE:-}
 PROVIDER_REPOSITORIES=${MOONHUB_PROVIDER_REPOSITORIES:-}
 RELEASE=${MOONHUB_RELEASE_TAG:-$(git rev-parse --short=12 HEAD)}
 RUNTIME_IMAGE=${MOONHUB_IMAGE:-moonhub:$RELEASE}
@@ -64,6 +65,14 @@ case "$RUNNER_BUILD_TARGET" in
   runner|runner-selfhost) ;;
   *) printf 'Runner build target must be runner or runner-selfhost\n' >&2; exit 1 ;;
 esac
+case "$PROVIDER_SCOPE" in
+  ''|selected|all) ;;
+  *) printf 'MOONHUB_PROVIDER_SCOPE must be selected or all, or unset to preserve existing scope\n' >&2; exit 1 ;;
+esac
+if [ "$PROVIDER_SCOPE" = all ] && [ -n "$PROVIDER_REPOSITORIES" ]; then
+  printf 'MOONHUB_PROVIDER_REPOSITORIES must be empty when MOONHUB_PROVIDER_SCOPE=all\n' >&2
+  exit 1
+fi
 
 lock_dir=${MOONHUB_DEPLOY_LOCK_DIR:-/tmp/moonhub-deploy.lock}
 if ! mkdir "$lock_dir" 2>/dev/null; then
@@ -100,8 +109,10 @@ Set MOONHUB_USE_CN_MIRRORS=1 for domestic Debian/MoonBit sources (default: 0).
 Set MOONHUB_BASE_REBUILD=1 to refresh the dependency base, including security updates.
 Set MOONHUB_DEPLOY_ENV_FILE to an operator-owned env file for persistent settings.
 The default settings file is deploy/deploy.env (ignored by Git).
-When pipelines are enabled, set MOONHUB_PROVIDER_REPOSITORIES to a comma-separated
-repository list such as alice/demo; an empty list registers a provider with no work.
+Set MOONHUB_PROVIDER_SCOPE=all to share the provider across current and future repos.
+For selected scope, set MOONHUB_PROVIDER_REPOSITORIES to a comma-separated list.
+Omitting scope preserves existing access; new providers default to selected.
+An empty selected repository list registers a new provider with no work.
 EOF
 }
 
@@ -193,10 +204,12 @@ ensure_provider() {
     token_file=$(mktemp /tmp/moonhub-provider-token.XXXXXX)
     trap "rm -f \"$token_file\"" EXIT
     cat > "$token_file"
-    moonhub pipeline-provider-ensure \
-      --name "$1" --token-file "$token_file" \
+    scope=$5
+    set -- --name "$1" --token-file "$token_file" \
       --labels "$2" --repositories "$3" --admin "$4"
-  ' moonhub-provider-ensure "$PROVIDER_NAME" "$PROVIDER_LABELS" "$PROVIDER_REPOSITORIES" "${MOONHUB_ROOT_USER:-root}" < "$PROVIDER_TOKEN_FILE"
+    if [ -n "$scope" ]; then set -- "$@" --scope "$scope"; fi
+    moonhub pipeline-provider-ensure "$@"
+  ' moonhub-provider-ensure "$PROVIDER_NAME" "$PROVIDER_LABELS" "$PROVIDER_REPOSITORIES" "${MOONHUB_ROOT_USER:-root}" "$PROVIDER_SCOPE" < "$PROVIDER_TOKEN_FILE"
 }
 
 start_services() {

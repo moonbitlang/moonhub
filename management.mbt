@@ -77,6 +77,12 @@ fn management_command() -> @argparse.Command {
           OptionArg("labels", long="labels", default_values=[
             "self-hosted,linux",
           ]),
+          OptionArg(
+            "scope",
+            long="scope",
+            default_values=["selected"],
+            about="Repository access: selected or all.",
+          ),
           OptionArg("repositories", long="repositories", default_values=[""]),
           OptionArg("admin", long="admin", default_values=["root"]),
         ],
@@ -90,6 +96,11 @@ fn management_command() -> @argparse.Command {
           OptionArg("labels", long="labels", default_values=[
             "self-hosted,linux",
           ]),
+          OptionArg(
+            "scope",
+            long="scope",
+            about="Repository access: selected or all. Omit to preserve existing scope.",
+          ),
           OptionArg("repositories", long="repositories", default_values=[""]),
           OptionArg("admin", long="admin", default_values=["root"]),
         ],
@@ -266,6 +277,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           token,
           labels,
           repositories,
+          scope=@pipeline.ProviderScope::parse(cli_value(options, "scope")),
         )
         println("Registered pipeline provider \{provider.id}:\{provider.name}")
       }
@@ -300,6 +312,10 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           token,
           labels,
           repositories,
+          scope=match single_value(options, "scope") {
+            Some(value) => Some(@pipeline.ProviderScope::parse(value))
+            None => None
+          },
         )
         println("Ensured pipeline provider \{provider.id}:\{provider.name}")
       }
