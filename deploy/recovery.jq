@@ -56,7 +56,10 @@ else
    volumes: ([.[] | mounts[] | select(.type == "volume") | {key: .source, value: {}}] | from_entries),
    networks: ($networks[0] | map({key: .Labels["com.docker.compose.network"], value:
      (if .Labels["com.docker.compose.network"] == "pipeline" then
-       {name: .Name, ipam: {config: .IPAM.Config}} else {} end)}) | from_entries)}
+       {name: .Name, ipam: {config: [.IPAM.Config[] | {
+         subnet: .Subnet, gateway: .Gateway, ip_range: .IPRange,
+         aux_addresses: .AuxiliaryAddresses} | with_entries(select(.value != null and .value != ""))]}}
+       else {} end)}) | from_entries)}
   | .services.ssh.depends_on = {web: {condition: "service_healthy"}}
   | if .services["pipeline-provider"] then
       .services["pipeline-provider"].depends_on = {

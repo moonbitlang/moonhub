@@ -370,11 +370,86 @@ failure after stop returns nonzero and requires operator attention. After a
 migration, restore the matching backup before rolling back the application.
 Verify the deploy sequencing tests with `node scripts/deploy-script-test.cjs`.
 
+## Restore And Rollback
+
+Backups made by the recovery-enabled wrapper are self-contained: no source
+checkout, MoonBit, Node, registry or live MoonHub is needed to restore. The host
+needs Bash, Docker/Compose, `jq` and `sha256sum`/`shasum`, on the same CPU
+architecture as the saved images. Use only trusted backups: checksums detect
+accidental corruption, not tampering by someone who can rewrite the bundle.
+Keep enough free host and Docker disk space for image archives and a second copy
+of the data. Protect backups and recovery state with private permissions, and
+copy completed bundles off-host. A backup on the failed disk is not recovery.
+
+From a checkout, restore with:
+
+```sh
+./deploy/deploy.sh restore /srv/backups/20260921-010000.ABCDEF
+```
+
+Or, when MoonHub and the checkout are unavailable, use the bundled entry point:
+
+```sh
+bash /srv/backups/20260921-010000.ABCDEF/recovery.sh restore /srv/backups/20260921-010000.ABCDEF
+```
+
+The original Compose project and ports are used by default. If it already has
+containers, the command refuses to proceed unless `--replace` is supplied.
+Replacement first exports the target's exact images/configuration, drains/stops
+its provider, stops writers, and creates a protection backup. Data is restored
+into **new volumes** before switching containers; old volumes are never deleted.
+This command is also the rollback command: restore both the old data and its
+matching image IDs, not just an old executable against a migrated database.
+Do not use the same mutable image tag as a rollback identifier.
+Image archives carry content-derived `moonhub-recovery` transport tags so Docker
+classic and containerd stores can resolve their different ID representations;
+the restored Compose file is pinned to the loaded local IDs, not those tags.
+
+For an isolated rehearsal, specify another project and unused ports/subnet:
+
+```sh
+./deploy/deploy.sh restore /srv/backups/20260921-010000.ABCDEF \
+  --project moonhub-rehearsal --http-port 18085 --ssh-port 12227 \
+  --pipeline-prefix 172.30.95
+```
+
+Explicit port overrides bind to loopback. `--pipeline-prefix` is required for a
+different project only when the backup includes pipelines. Choose a subnet that
+does not overlap another Docker network. Restored settings in SQLite, including
+public URLs, email delivery and SSH display addresses, are preserved: isolate
+egress during a rehearsal and adjust those settings before treating the copy as
+a different public instance. Never expose two writable copies as the same site.
+
+Completed restore prints a durable recovery directory containing `compose.json`,
+copied credentials, and `upgrade.env`. Keep this directory outside `_build` and
+do not delete it while its services use the bind-mounted files. Use the printed
+Compose command for start/stop/status of the restored release. For subsequent
+normal upgrades, use the printed `MOONHUB_DEPLOY_ENV_FILE=.../upgrade.env` with
+`deploy.sh upgrade`: it contains the **new volume names**, port/network settings
+and secret paths. Review provider labels/repository grants and build policy before
+upgrading. Do not reuse an old settings file pointing at the pre-restore volumes.
+`MOONHUB_RECOVERY_STATE_DIR` overrides the default sibling `recovered/` directory.
+
+Recovery does not restore in-flight job containers, workspace volumes, Docker
+build caches or DinD storage. Drain jobs first; their durable records/logs remain
+in SQLite and runner images are reloaded into a new DinD volume. Provider tokens,
+IDs, grants and paused state are restored without provider re-registration.
+The wrapper supports the tracked Web/SSH and optional provider/DinD topology;
+unknown services or mounts are rejected instead of silently omitted. Old
+directory-only backups lack images/configuration and require manual recovery.
+
+Restore errors are fail-closed, not automatic rollback. Extraction/preflight
+errors leave the running target alone; errors after the switch require operator
+attention. The printed protection backup and original volumes remain available.
+After verifying the restored instance and an off-host backup, operators can
+explicitly remove obsolete volumes; never run an indiscriminate volume prune.
+
 ## Verification
 
 ```sh
 moon test --strip -j 1
 bash scripts/docker-smoke.sh
+node scripts/deploy-script-test.cjs
 ```
 
 Native tests use the temporary [compiler workaround](../README.md#temporary-compiler-workaround),

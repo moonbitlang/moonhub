@@ -6,6 +6,11 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 # shellcheck source=deploy/recovery.sh
 . "$ROOT/deploy/recovery.sh"
+if [ "${1:-}" = restore ]; then
+  shift
+  restore_backup "$@"
+  exit
+fi
 RECOVERY_TOOL_REVISION=$(git rev-parse HEAD)
 
 DEPLOY_ENV=${MOONHUB_DEPLOY_ENV_FILE:-$ROOT/deploy/deploy.env}
@@ -75,6 +80,8 @@ Commands:
   upgrade   Build images, back up volumes, then switch services once.
   build     Build images only; running services are untouched.
   backup    Back up stopped Web/SSH/provider; keep DinD running for image export.
+  restore <backup> [--replace] [--project NAME --http-port PORT --ssh-port PORT --pipeline-prefix A.B.C]
+            Restore exact saved images and data; --replace first backs up the target.
   status    Show Compose service status.
   config    Validate the resolved Compose configuration.
 

@@ -68,8 +68,11 @@ services:
 
 volumes:
   pipeline-socket:
+    name: ${MOONHUB_PIPELINE_SOCKET_VOLUME:-${COMPOSE_PROJECT_NAME}_pipeline-socket}
   pipeline-control:
+    name: ${MOONHUB_PIPELINE_CONTROL_VOLUME:-${COMPOSE_PROJECT_NAME}_pipeline-control}
   pipeline-docker-data:
+    name: ${MOONHUB_PIPELINE_DOCKER_VOLUME:-${COMPOSE_PROJECT_NAME}_pipeline-docker-data}
 
 secrets:
   provider_token:

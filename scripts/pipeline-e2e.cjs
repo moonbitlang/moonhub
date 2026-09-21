@@ -138,15 +138,15 @@ async function upgrade() {
 }
 async function main() {
   for (const image of [settings.MOONHUB_IMAGE, settings.MOONHUB_PROVIDER_IMAGE, settings.MOONHUB_RUNNER_IMAGE]) run('docker', ['image', 'inspect', image]);
-  compose(['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '180', 'web', 'ssh', 'pipeline-docker']);
+  compose(['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '180', 'web', 'ssh']);
   web = compose(['ps', '-q', 'web']);
   assert.equal((await http('/-/login', { name_key: 'root', password })).code, 303);
   assert.equal((await http('/-/change-password', { new_password: password, confirm_password: password })).code, 303);
   compose(['exec', '-T', '--user', 'git', 'web', 'moonhub', 'repo-create', 'root/demo']);
   await upgrade();
   const backups = fs.readdirSync(settings.MOONHUB_BACKUP_DIR);
-  assert.ok(backups.some(dir => fs.existsSync(path.join(settings.MOONHUB_BACKUP_DIR, dir, 'data/moonhub.db'))));
-  assert.ok(backups.some(dir => fs.existsSync(path.join(settings.MOONHUB_BACKUP_DIR, dir, 'ssh-host-keys/ssh_host_ed25519_key'))));
+  assert.ok(backups.some(dir => !dir.startsWith('.partial-') && fs.existsSync(path.join(settings.MOONHUB_BACKUP_DIR, dir, 'data.tar'))));
+  assert.ok(backups.some(dir => !dir.startsWith('.partial-') && fs.existsSync(path.join(settings.MOONHUB_BACKUP_DIR, dir, 'ssh-host-keys.tar'))));
   await setPaused(1);
   const sha = seed();
   const route = await dispatch();

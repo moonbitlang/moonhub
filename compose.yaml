@@ -49,7 +49,9 @@ services:
 
 volumes:
   data:
+    name: ${MOONHUB_DATA_VOLUME:-${COMPOSE_PROJECT_NAME}_data}
   ssh-host-keys:
+    name: ${MOONHUB_SSH_KEYS_VOLUME:-${COMPOSE_PROJECT_NAME}_ssh-host-keys}
 
 secrets:
   root_password:
