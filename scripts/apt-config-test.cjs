@@ -53,6 +53,14 @@ try {
   const mainDockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.ok(mainDockerfile.includes('ARG MOONHUB_BASE_IMAGE=moonhub-base:local'));
   assert.ok(mainDockerfile.includes('FROM ${MOONHUB_BASE_IMAGE} AS base'));
+  const sharedBase = mainDockerfile.split('FROM base AS assets')[0];
+  const basePath = sharedBase.match(/^ENV PATH="([^"]+)"$/m)?.[1].split(':');
+  assert.ok(basePath, 'shared application base must restore administrative PATH');
+  for (const directory of ['/opt/moon/bin', '/usr/local/sbin', '/usr/local/bin', '/usr/sbin', '/usr/bin', '/sbin', '/bin']) {
+    assert.ok(basePath.includes(directory), `shared application base PATH is missing ${directory}`);
+  }
+  assert.ok(sharedBase.includes('RUN --network=none command -v groupadd && command -v useradd && command -v usermod && command -v gosu'));
+  assert.ok(mainDockerfile.includes('ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"\nUSER 10001:10001'), 'job Runner must retain its narrower PATH');
   assert.ok(mainDockerfile.includes('RUN --network=none npm run build'));
   assert.ok(mainDockerfile.includes('RUN --network=none mkdir -p /out'));
   assert.ok(dockerfile.includes('RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh'));

@@ -1,5 +1,8 @@
 ARG MOONHUB_BASE_IMAGE=moonhub-base:local
 FROM ${MOONHUB_BASE_IMAGE} AS base
+# The dependency base's minimal PATH excludes administration tools needed below.
+ENV PATH="/opt/moon/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+RUN --network=none command -v groupadd && command -v useradd && command -v usermod && command -v gosu
 
 FROM base AS assets
 WORKDIR /src/js
