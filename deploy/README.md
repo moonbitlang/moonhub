@@ -60,7 +60,7 @@ Keep it available for subsequent Compose starts. Replacing it does not reset an
 already activated administrator account.
 
 The base installs dependencies with `npm ci`; the application image builds browser
-assets, runs the MoonBit tests, and compiles the native executable on Linux. No
+assets and compiles the native executable on Linux, without running tests. No
 host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
 to select an archived MoonBit toolchain release;
 its default is `0.10.14+7d59c7ec9`.
@@ -557,8 +557,12 @@ node scripts/deploy-script-test.cjs
 node scripts/recovery-e2e.cjs
 ```
 
-Native tests use the temporary [compiler workaround](../README.md#temporary-compiler-workaround),
-including during Docker image builds. Production release builds are unchanged.
+Tests run separately from Docker image builds, through the commands above or the
+MoonHub self-check workflow. Run them before deploying a revision; a successful
+image build is not a test result. Native tests use the temporary
+[compiler workaround](../README.md#temporary-compiler-workaround).
+Production image builds retain `moon build --target native --release --deny-warn`
+and the C launcher's compiler warnings as errors.
 
 The smoke test builds the image and uses a uniquely named Compose project,
 temporary bootstrap secret, dynamic loopback ports, and disposable volumes. It

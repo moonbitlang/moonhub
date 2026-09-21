@@ -87,7 +87,7 @@ formatting, and production release builds do not need this workaround.
 
 After upgrading MoonBit, verify that an unstripped native build and the full
 test suite complete promptly before removing `--strip` from development
-commands, the Docker test step, and `AGENTS.md`. A new version alone is not
+commands, the self-check script, and `AGENTS.md`. A new version alone is not
 confirmation that the issue is fixed.
 
 ### Local Server

@@ -12,9 +12,8 @@ RUN --network=none npm run build
 FROM base AS build
 COPY . .
 COPY --from=assets /src/assets/ /src/assets/
-# Temporary moonc native debug-info workaround; see README.md.
 RUN --network=none mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
-    && moon test --target native --strip -j 1 --deny-warn && moon build --target native --release --deny-warn
+    && moon build --target native --release --deny-warn
 
 FROM base AS runner
 RUN groupadd --gid 10001 runner \

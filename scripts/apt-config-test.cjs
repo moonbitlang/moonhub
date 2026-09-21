@@ -63,6 +63,8 @@ try {
   assert.ok(mainDockerfile.includes('ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"\nUSER 10001:10001'), 'job Runner must retain its narrower PATH');
   assert.ok(mainDockerfile.includes('RUN --network=none npm run build'));
   assert.ok(mainDockerfile.includes('RUN --network=none mkdir -p /out'));
+  assert.ok(mainDockerfile.includes('moon build --target native --release --deny-warn'));
+  assert.ok(!/\bmoon\s+test\b/.test(mainDockerfile), 'image assembly must not execute the test suite');
   assert.ok(dockerfile.includes('RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh'));
   console.log('APT configuration tests passed: domestic/default source switch, security updates, signatures, fail-fast policy, overrides and all Debian stages.');
 } finally {
