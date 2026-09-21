@@ -348,8 +348,9 @@ expiry; external side effects remain outside exactly-once guarantees.
 
 ### Image and Acceptance
 
-The separate `runner` Dockerfile target keeps the existing default Web/SSH image
-unchanged. It contains Bash, Git, a C toolchain, and the real MoonBit distribution.
+The `runner` Dockerfile target shares the locally cached dependency base with
+Web/SSH and provider. It contains Bash, Git, a C toolchain, Node/npm and the real
+MoonBit distribution.
 It runs as UID/GID 10001 and enters the Runner directly as PID 1. The provider
 must still apply mount, network, CPU, memory and PID limits when creating it.
 The workspace mount must allow execution of build outputs. The job is non-root,
@@ -358,6 +359,7 @@ with all capabilities dropped and `no-new-privileges`; `/tmp` remains a bounded
 `/workspace` (the standalone Runner smoke still uses a small tmpfs fixture).
 
 ```sh
+./deploy/deploy.sh build-base
 docker build --target runner -t moonhub:runner-step3 .
 node scripts/runner-container-smoke.cjs
 ```
@@ -529,9 +531,10 @@ needed when local Runner images are loaded into DinD by the deploy script.
 
 `.github/workflows/moonhub.yml` runs a manual check of this repository using the
 existing archive checkout. It requires `self-hosted`, `linux` and `moonhub-build`
-provider labels. The `runner-selfhost` Docker target extends the regular Runner
-with Node/npm from the pinned assets image; neither Docker nor deployment
-credentials are exposed to jobs. MoonBit defaults to `0.10.14+7d59c7ec9` across
+provider labels. The `runner-selfhost` target remains compatible with existing
+settings; the shared dependency base now includes Node/npm in both Runner
+targets. Docker CLI binaries are also present in the shared base, but jobs have
+no Docker socket or deployment credentials. MoonBit defaults to `0.10.14+7d59c7ec9` across
 Web, provider and Runner builds. Preserve the built images for recovery: upstream
 toolchain archives have limited retention.
 

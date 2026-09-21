@@ -6,6 +6,8 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 # shellcheck source=deploy/recovery.sh
 . "$ROOT/deploy/recovery.sh"
+# shellcheck source=deploy/base-image.sh
+. "$ROOT/deploy/base-image.sh"
 if [ "${1:-}" = restore ]; then
   shift
   restore_backup "$@"
@@ -44,6 +46,7 @@ RUNNER_BUILD_TARGET=${MOONHUB_RUNNER_BUILD_TARGET:-runner}
 PULL_IMAGES=${MOONHUB_PULL:-1}
 BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
 USE_CN_MIRRORS=${MOONHUB_USE_CN_MIRRORS:-0}
+REBUILD_BASE=${MOONHUB_BASE_REBUILD:-0}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
@@ -51,7 +54,7 @@ if [ "$ENABLE_PIPELINES" = 1 ]; then
   compose+=( -f "$ROOT/deploy/compose.pipeline.yaml" )
 fi
 
-for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER"; do
+for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER" "$REBUILD_BASE"; do
   [[ "$toggle" = 0 || "$toggle" = 1 ]] || { printf 'Deployment switches must be 0 or 1\n' >&2; exit 1; }
 done
 [[ "$USE_CN_MIRRORS" = 0 || "$USE_CN_MIRRORS" = 1 ]] || {
@@ -83,7 +86,8 @@ Usage: deploy/deploy.sh <command>
 
 Commands:
   upgrade   Build images, back up volumes, then switch services once.
-  build     Build images only; running services are untouched.
+  build     Build application images only; running services are untouched.
+  build-base Build the dependency base only, or reuse it if already present.
   backup    Back up stopped Web/SSH/provider; keep DinD running for image export.
   restore <backup> [--replace] [--project NAME --http-port PORT --ssh-port PORT --pipeline-prefix A.B.C]
             Restore exact saved images and data; --replace first backs up the target.
@@ -93,6 +97,7 @@ Commands:
 Set MOONHUB_ENABLE_PIPELINES=1 to include DinD, provider and Runner deployment.
 Set MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost for MoonHub's own build workflow.
 Set MOONHUB_USE_CN_MIRRORS=1 for domestic Debian/MoonBit sources (default: 0).
+Set MOONHUB_BASE_REBUILD=1 to refresh the dependency base, including security updates.
 Set MOONHUB_DEPLOY_ENV_FILE to an operator-owned env file for persistent settings.
 The default settings file is deploy/deploy.env (ignored by Git).
 When pipelines are enabled, set MOONHUB_PROVIDER_REPOSITORIES to a comma-separated
@@ -140,42 +145,23 @@ build_images() {
     fi
     return
   fi
+  ensure_base_image
   printf 'Building Web/SSH image: %s\n' "$RUNTIME_IMAGE"
-  if [ "$PULL_IMAGES" = 1 ]; then
-    "${compose[@]}" build --pull web
-  else
-    "${compose[@]}" build web
-  fi
+  # Never pull a local base tag from a registry during an application build.
+  "${compose[@]}" build web
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     # Fetch dependencies before entering the downtime window.
     if [ "$PULL_IMAGES" = 1 ]; then "${compose[@]}" pull pipeline-docker; fi
     if [ "$BUILD_RUNNER" = 1 ]; then
       printf 'Building Runner image: %s\n' "$RUNNER_IMAGE"
-      if [ "$PULL_IMAGES" = 1 ]; then
-        docker build --pull --target "$RUNNER_BUILD_TARGET" \
-          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
-          --build-arg "MOONHUB_USE_CN_MIRRORS=$USE_CN_MIRRORS" \
-          --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
-          --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
-          -t "$RUNNER_IMAGE" "$ROOT"
-      else
-        docker build --target "$RUNNER_BUILD_TARGET" \
-          --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
-          --build-arg "MOONHUB_USE_CN_MIRRORS=$USE_CN_MIRRORS" \
-          --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
-          --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
-          -t "$RUNNER_IMAGE" "$ROOT"
-      fi
+      docker build --target "$RUNNER_BUILD_TARGET" --platform "$DOCKER_DEFAULT_PLATFORM" \
+        --build-arg "MOONHUB_BASE_IMAGE=$MOONHUB_BASE_IMAGE" -t "$RUNNER_IMAGE" "$ROOT"
     else
       printf 'Using pre-published Runner image: %s\n' "$RUNNER_IMAGE"
       docker pull "$RUNNER_IMAGE"
     fi
     printf 'Building provider image: %s\n' "$PROVIDER_IMAGE"
-    if [ "$PULL_IMAGES" = 1 ]; then
-      "${compose[@]}" build --pull pipeline-provider
-    else
-      "${compose[@]}" build pipeline-provider
-    fi
+    "${compose[@]}" build pipeline-provider
   fi
 }
 
@@ -267,6 +253,7 @@ config() {
 case "${1:-upgrade}" in
   upgrade) upgrade ;;
   build) build_images ;;
+  build-base) ensure_base_image ;;
   backup) backup ;;
   status) status ;;
   config) config ;;

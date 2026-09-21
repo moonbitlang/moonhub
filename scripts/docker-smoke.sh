@@ -94,6 +94,7 @@ wait_repository_operation() {
 }
 
 if [ "${MOONHUB_SMOKE_SKIP_BUILD:-0}" != 1 ]; then
+  bash deploy/deploy.sh build-base
   "${compose[@]}" build web
 fi
 "${compose[@]}" up --no-build -d --wait --wait-timeout 180

@@ -42,18 +42,19 @@ try {
   result = configure({ DEBIAN_MIRROR: 'http://deb.debian.org/debian', DEBIAN_SECURITY_MIRROR: 'https://deb.debian.org/debian-security' });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.readFileSync(sources, 'utf8'), stanza('http://deb.debian.org/debian', 'bookworm bookworm-updates') + '\n' + stanza('https://deb.debian.org/debian-security', 'bookworm-security'));
-  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+  const dockerfile = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8');
   assert.ok(dockerfile.includes('ARG MOONHUB_USE_CN_MIRRORS=0'));
   for (const compose of ['compose.yaml', 'deploy/compose.pipeline.yaml']) {
-    assert.ok(fs.readFileSync(path.join(root, compose), 'utf8').includes('MOONHUB_USE_CN_MIRRORS: ${MOONHUB_USE_CN_MIRRORS:-0}'));
+    assert.ok(fs.readFileSync(path.join(root, compose), 'utf8').includes('MOONHUB_BASE_IMAGE: ${MOONHUB_BASE_IMAGE:-moonhub-base:local}'));
   }
-  for (const [key, value] of Object.entries(args)) {
-    assert.ok(dockerfile.includes(`ARG ${key}=${value}`));
-    for (const compose of ['compose.yaml', 'deploy/compose.pipeline.yaml']) {
-      assert.ok(fs.readFileSync(path.join(root, compose), 'utf8').includes(`${key}: \${${key}:-${value}}`));
-    }
-  }
-  for (const stage of ['toolchain', 'runner', 'provider', 'runtime']) assert.ok(dockerfile.includes(`FROM debian-base AS ${stage}`));
+  for (const [key, value] of Object.entries(args)) assert.ok(dockerfile.includes(`ARG ${key}=${value}`));
+  assert.ok(dockerfile.includes('RUN moon update && moon tree --package'));
+  assert.ok(dockerfile.includes('RUN npm ci --no-audit --no-fund'));
+  const mainDockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+  assert.ok(mainDockerfile.includes('ARG MOONHUB_BASE_IMAGE=moonhub-base:local'));
+  assert.ok(mainDockerfile.includes('FROM ${MOONHUB_BASE_IMAGE} AS base'));
+  assert.ok(mainDockerfile.includes('RUN --network=none npm run build'));
+  assert.ok(mainDockerfile.includes('RUN --network=none mkdir -p /out'));
   assert.ok(dockerfile.includes('RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh'));
   console.log('APT configuration tests passed: domestic/default source switch, security updates, signatures, fail-fast policy, overrides and all Debian stages.');
 } finally {

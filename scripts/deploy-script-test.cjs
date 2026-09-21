@@ -7,9 +7,12 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-deploy-test-'));
 try {
   fs.mkdirSync(path.join(root, 'deploy'));
+  fs.mkdirSync(path.join(root, 'js'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
-  for (const file of ['recovery.sh', 'recovery.jq']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
+  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
+  for (const file of ['moon.mod', 'moon.pkg', '.dockerignore']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
+  for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../js', file), path.join(root, 'js', file));
   fs.writeFileSync(path.join(root, '.gitignore'), 'bin/\nbackups/\n*.log\ndeploy/deploy.env\nsecret\n');
   const git = args => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   git(['init', '-q']);
@@ -25,9 +28,12 @@ try {
     MOONHUB_PROVIDER_TOKEN_FILE: path.join(root, 'secret'),
     MOONHUB_DEPLOY_LOCK_DIR: path.join(root, 'lock'),
     MOONHUB_ENABLE_PIPELINES: '1', MOONHUB_PULL: '0', MOONHUB_USE_CN_MIRRORS: '',
+    MOONHUB_BASE_IMAGE: '', MOONHUB_BASE_REBUILD: '0', DOCKER_DEFAULT_PLATFORM: '',
+    MOONBIT_VERSION: '', DEBIAN_MIRROR: '', DEBIAN_SECURITY_MIRROR: '',
   };
   function run(extra = {}, command = 'upgrade') {
     fs.writeFileSync(log, '');
+    fs.rmSync(log + '.base', { force: true });
     const result = spawnSync('bash', ['deploy/deploy.sh', ...[command].flat()], { cwd: root, env: { ...env, ...extra }, encoding: 'utf8' });
     return { ...result, commands: fs.readFileSync(log, 'utf8').split('\n') };
   }
@@ -47,12 +53,14 @@ try {
   const builds = lines.map((line, i) => line.includes(' build ') || line.startsWith('build ') ? i : -1).filter(i => i >= 0);
   assert.equal(builds.length, 3);
   const runnerBuild = lines.find(line => line.startsWith('build '));
-  assert.ok(runnerBuild.includes('--build-arg MOONHUB_USE_CN_MIRRORS=0 '));
-  assert.ok(runnerBuild.includes('--build-arg DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian '));
-  assert.ok(runnerBuild.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security '));
+  assert.ok(runnerBuild.includes('--build-arg MOONHUB_BASE_IMAGE=moonhub-base:'));
+  const baseImage = runnerBuild.match(/MOONHUB_BASE_IMAGE=(\S+)/)[1];
+  assert.deepEqual(lines.filter(line => line.startsWith('compose-base ')), [`compose-base ${baseImage}`, `compose-base ${baseImage}`]);
   assert.ok(builds.every(i => i < stop), 'build happened during downtime');
   assert.ok(lines.findIndex(line => line.startsWith('cp web-id:/data')) > stop);
   assert.ok(lines.findIndex(line => line.startsWith('save ')) < stop, 'image export happened during downtime');
+  assert.ok(lines.some(line => line.startsWith('info --format')));
+  assert.ok(!lines.some(line => line.includes('base.Dockerfile')), 'existing dependency base was rebuilt');
   const ensure = lines.findIndex(line => line.includes('pipeline-provider-ensure'));
   assert.ok(ensure > lines.findIndex(line => line.includes('up ') && line.includes('web ssh')));
   assert.ok(lines.findIndex(line => line.includes('--no-deps') && line.includes('pipeline-provider')) > ensure);
@@ -79,28 +87,45 @@ try {
   assert.ok(!result.commands.some(line => line.includes(' build ')));
   result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runner-selfhost', MOONBIT_VERSION: '0.10.14+7d59c7ec9' });
   assert.equal(result.status, 0, result.stderr);
-  assert.ok(result.commands.some(line => line.startsWith('build --target runner-selfhost --build-arg MOONBIT_VERSION=0.10.14+7d59c7ec9')));
+  assert.ok(result.commands.some(line => line.startsWith('build --target runner-selfhost --platform linux/amd64 --build-arg MOONHUB_BASE_IMAGE=moonhub-base:')));
   fs.appendFileSync(path.join(root, 'deploy/deploy.env'), 'DEBIAN_MIRROR=http://deb.debian.org/debian\nDEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security\n');
   for (const pull of ['0', '1']) {
     for (const mirrors of ['0', '1']) {
-      result = run({ MOONHUB_PULL: pull, MOONHUB_USE_CN_MIRRORS: mirrors }, 'build');
+      result = run({ TEST_BASE_MISSING: '1', MOONHUB_PULL: pull, MOONHUB_USE_CN_MIRRORS: mirrors }, 'build');
       assert.equal(result.status, 0, result.stderr);
-      const runner = result.commands.find(line => line.startsWith('build '));
-      assert.ok(runner.includes(`--build-arg MOONHUB_USE_CN_MIRRORS=${mirrors} `));
-      assert.ok(runner.includes('--build-arg DEBIAN_MIRROR=http://deb.debian.org/debian '));
-      assert.ok(runner.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security '));
+      const base = result.commands.find(line => line.startsWith('build ') && line.includes('base.Dockerfile'));
+      assert.ok(base.includes(`--build-arg MOONHUB_USE_CN_MIRRORS=${mirrors} `));
+      assert.ok(base.includes('--build-arg DEBIAN_MIRROR=http://deb.debian.org/debian '));
+      assert.ok(base.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security '));
+      assert.equal(base.includes('--pull'), pull === '1');
+      assert.ok(!result.commands.some(line => /build.*--pull/.test(line) && !line.includes('base.Dockerfile')), 'application build tried pulling the local base');
     }
   }
   result = run({ MOONHUB_USE_CN_MIRRORS: 'true' });
   assert.notEqual(result.status, 0);
   assert.equal(result.commands.length, 1, 'invalid source switch reached Docker');
   fs.appendFileSync(path.join(root, 'deploy/deploy.env'), 'MOONHUB_USE_CN_MIRRORS=1\n');
-  result = run({}, 'build');
+  result = run({ TEST_BASE_MISSING: '1' }, 'build');
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.commands.some(line => line.startsWith('build ') && line.includes('--build-arg MOONHUB_USE_CN_MIRRORS=1 ')));
   result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runtime' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)));
+  result = run({ TEST_BASE_MISSING: '1' }, 'build');
+  assert.equal(result.status, 0, result.stderr);
+  const baseBuild = result.commands.find(line => line.includes('base.Dockerfile'));
+  assert.ok(baseBuild);
+  assert.ok(baseBuild.includes('--build-arg MOONHUB_USE_CN_MIRRORS=1'));
+  assert.ok(baseBuild.includes('--build-arg DEBIAN_MIRROR=http://deb.debian.org/debian'));
+  assert.equal(result.commands.filter(line => line.includes('base.Dockerfile')).length, 1);
+  result = run({ TEST_BASE_MISSING: '1', TEST_FAIL: 'base-build' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(line => / stop$/.test(line) || line.startsWith('stop ')), 'base failure stopped services');
+  assert.ok(!result.commands.some(line => line.startsWith('compose-base ')), 'base failure built application');
+  result = run({ MOONHUB_BASE_REBUILD: '1' }, 'build');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.commands.filter(line => line.includes('base.Dockerfile')).length, 1);
+  assert.ok(result.commands.find(line => line.includes('base.Dockerfile')).includes('--no-cache'));
   result = run({}, ['restore', bundle]);
   assert.notEqual(result.status, 0, 'restore replaced an existing deployment without confirmation');
   assert.ok(!result.commands.some(line => line.startsWith('stop ') || line.includes(' up ')));

@@ -7,6 +7,9 @@ const { createHash } = require('node:crypto');
 const a = process.argv.slice(2);
 const line = a.join(' ');
 fs.appendFileSync(process.env.TEST_LOG, line + '\n');
+if (a[0] === 'compose' && a.includes('build')) {
+  fs.appendFileSync(process.env.TEST_LOG, 'compose-base ' + process.env.MOONHUB_BASE_IMAGE + '\n');
+}
 const fail = process.env.TEST_FAIL;
 const id = n => 'sha256:' + String(n).repeat(64);
 const config = '{}';
@@ -31,12 +34,18 @@ const containers = roles.map((role, i) => ({
 if (process.env.TEST_BAD_MOUNT === '1') containers[0].Mounts.push(bind('/unsupported-secret'));
 if (process.env.TEST_BASIC === '1') for (const c of containers) delete c.NetworkSettings.Networks.old_pipeline;
 function out(value) { console.log(typeof value === 'string' ? value : JSON.stringify(value)); }
-if (/(^| )build /.test(line)) { process.exit(fail === 'build' ? 1 : 0); }
+if (/(^| )build /.test(line)) {
+  if (fail === 'build' || (fail === 'base-build' && line.includes('base.Dockerfile'))) process.exit(1);
+  if (line.includes('base.Dockerfile')) fs.writeFileSync(process.env.TEST_LOG + '.base', 'built');
+  process.exit(0);
+}
 if (line.startsWith('image inspect ')) {
   if (fail === 'image') process.exit(1);
+  if (process.env.TEST_BASE_MISSING === '1' && line.includes('moonhub-base:') && !fs.existsSync(process.env.TEST_LOG + '.base')) process.exit(1);
   if (a[2] === '-f') out(process.env.TEST_STORAGE_CHANGE === '1' ? id(9) : a.at(-1).replace('moonhub-recovery:', 'sha256:'));
   else out([{ Id: id(1) }]);
 }
+else if (line.startsWith('info --format')) out('linux/amd64');
 else if (line.startsWith('network inspect ')) out((process.env.TEST_BASIC === '1' ? ['default'] : ['default', 'pipeline']).map(key => ({ Name: 'old_' + key, Labels: { 'com.docker.compose.network': key }, IPAM: { Config: [{ Subnet: '172.30.90.0/24' }] } })));
 else if (line.startsWith('ps -aq --filter')) { if (process.env.TEST_FRESH !== '1') out(roles.map(r => r + '-id').join('\n')); }
 else if (line.startsWith('inspect -f {{.State.Running}}')) out(a.at(-1) === 'pipeline-docker-id' ? 'true' : 'false');

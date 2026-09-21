@@ -37,10 +37,7 @@ services:
       context: .
       target: provider
       args:
-        MOONBIT_VERSION: ${MOONBIT_VERSION:-0.10.14+7d59c7ec9}
-        MOONHUB_USE_CN_MIRRORS: ${MOONHUB_USE_CN_MIRRORS:-0}
-        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}
-        DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}
+        MOONHUB_BASE_IMAGE: ${MOONHUB_BASE_IMAGE:-moonhub-base:local}
     depends_on:
       web:
         condition: service_healthy

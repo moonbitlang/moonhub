@@ -53,7 +53,7 @@ process.exit(Number(process.env.TEST_DOWNLOAD_FAIL || 0));
   assert.ok(!fs.existsSync(installed), 'failed download executed a partial installer');
   assert.equal(run({ TEST_INSTALL_FAIL: '17' }).status, 17);
   assert.ok(!fs.existsSync(path.join(moonHome, 'config.json')), 'failed installation rewrote registry configuration');
-  const dockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
+  const dockerfile = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8');
   assert.ok(dockerfile.includes('COPY deploy/install-moonbit.sh /tmp/moonhub-install-moonbit.sh'));
   assert.ok(dockerfile.includes('RUN sh /tmp/moonhub-install-moonbit.sh "$MOONBIT_VERSION"'));
   console.log('MoonBit installation tests passed: regional switch, pinned version, validation, download/install failures and temporary file cleanup.');

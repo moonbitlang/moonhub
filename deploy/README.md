@@ -45,6 +45,7 @@ From the repository root, create a bootstrap secret **once**:
 ```sh
 mkdir -p deploy/secrets
 (umask 077; openssl rand -base64 32 > deploy/secrets/root_password)
+./deploy/deploy.sh build-base
 docker compose up -d --build --wait
 ```
 
@@ -58,10 +59,54 @@ The secret file is ignored by Git and excluded from the Docker build context.
 Keep it available for subsequent Compose starts. Replacing it does not reset an
 already activated administrator account.
 
-The image builds browser assets with `npm ci`, runs the MoonBit tests, and compiles
-the native executable on Linux. No host MoonBit or Node installation is needed. The build
-argument `MOONBIT_VERSION` can select an archived MoonBit toolchain release;
+The base installs dependencies with `npm ci`; the application image builds browser
+assets, runs the MoonBit tests, and compiles the native executable on Linux. No
+host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
+to select an archived MoonBit toolchain release;
 its default is `0.10.14+7d59c7ec9`.
+
+### Dependency Base Image
+
+`deploy.sh` builds one local dependency base image before application images.
+The base contains the Debian packages, MoonBit toolchain, Mooncakes dependencies,
+and npm dependencies needed by the build. Its tag is derived from the target
+platform, dependency manifests, toolchain version and mirror mode. A normal
+source-code upgrade therefore reuses the existing base and does not repeat the
+long network steps. The application build runs its compile and frontend build
+with networking disabled. Dependencies and toolchain binaries remain in this
+single shared base for all roles, so runtime images are intentionally larger.
+`runner-selfhost` is kept as a compatible target name; both runner targets now
+include Node/npm.
+
+The base is local to the production Docker daemon; it is not a registry and does
+not need to be published. `upgrade` and `build` create it automatically only if
+the derived tag is missing:
+
+```sh
+./deploy/deploy.sh build-base
+./deploy/deploy.sh build
+```
+
+Use `MOONHUB_BASE_REBUILD=1 ./deploy/deploy.sh build-base` to force a refresh,
+for example to pick up newer Debian security packages or a refreshed Mooncakes
+index. A cached base does not acquire security updates automatically: refresh it
+on the operator's regular patch schedule, then run `upgrade`.
+`MOONHUB_BASE_IMAGE` can select an operator-built **local** image instead; it is
+checked, never downloaded or rebuilt. Do not combine it with `MOONHUB_BASE_REBUILD`.
+An explicit base must match this checkout's dependencies and target architecture;
+its source configuration is already baked in, so the CN switch cannot change it.
+
+`MOONHUB_PULL=1` applies to the base's parent only when creating or forcing the
+base, and still applies to the DinD/pre-published Runner images. Application
+builds never use `--pull` for the locally generated base. Use Docker's local
+daemon builder; a remote builder with a separate image store cannot see these
+local images. No registry is introduced by this workflow.
+
+`build-base` also creates the convenience tag `moonhub-base:local` for direct
+Docker/Compose builds. Run it first (with the desired mirror settings) before
+manual `docker build` or `docker compose ... --build`; `deploy.sh build/upgrade`
+select the dependency-specific tag themselves. `MOONHUB_BUILD_IMAGES=0` continues
+to use only the prebuilt application images and does not require the base image.
 
 ### Build Download Sources
 
@@ -73,24 +118,29 @@ endpoints with one environment variable:
 env MOONHUB_USE_CN_MIRRORS=1 MOONHUB_ENABLE_PIPELINES=1 ./deploy/deploy.sh upgrade
 ```
 
-| Setting | Debian packages and security updates | MoonBit installation |
-| --- | --- | --- |
-| Unset or `0` | `deb.debian.org` | `cli.moonbitlang.com` |
-| `1` | `mirrors.ustc.edu.cn` | `cli.moonbitlang.cn` |
+| Setting | Debian packages and security updates | MoonBit installation | Mooncakes index/packages |
+| --- | --- | --- | --- |
+| Unset or `0` | `deb.debian.org` | `cli.moonbitlang.com` | Official defaults |
+| `1` | `mirrors.ustc.edu.cn` | `cli.moonbitlang.cn` | USTC mirror |
 
 For persistent settings, add `MOONHUB_USE_CN_MIRRORS=1` to `deploy/deploy.env`
 (or the file selected by `MOONHUB_DEPLOY_ENV_FILE`). As with other deployment
 settings, the settings file overrides the inherited shell environment. Only
 `0` and `1` are accepted; invalid values fail before any service is stopped.
-`deploy.sh` forwards the switch to Web/SSH, provider and Runner builds internally;
+`deploy.sh` includes the switch in the base image identity used by all roles;
 operators do not need to pass Docker build arguments themselves.
 
 The `.cn` installer is the official installer linked from the MoonBit Chinese
 download page. It downloads both the version-pinned toolchain and core from
 `cli.moonbitlang.cn`, rather than fetching only the script there and downloading
-archives from `.com`. Failed script downloads are not executed. This switch
-does not change Docker Hub, npm or the `moon update` package registry, and no
-public mirror guarantees every network path.
+archives from `.com`. Failed script downloads are not executed. The installer
+also writes the image's Mooncakes `config.json`: domestic mode uses
+`https://mirrors.ustc.edu.cn/mooncakes.git` for the index and
+`https://mirrors.ustc.edu.cn/mooncakes` for downloads, with the API remaining
+`https://mooncakes.io`. Runner jobs inherit this configuration into their private
+Moon homes. Do not set `MOONCAKES_REGISTRY` to the mirror: its inferred index URL
+would be incorrect. The switch does not change Docker Hub or npm, and no public
+mirror guarantees every network path.
 
 HTTP is used to bootstrap `ca-certificates` in the slim base image. Package
 authenticity remains verified against Debian's bundled archive signing keys;
@@ -112,8 +162,8 @@ HTTPS mirrors
 require CA certificates to already be available in the base image; do not disable
 certificate verification to work around bootstrap failures. Failed builds leave
 the running deployment untouched. Verify the configuration with
-`node scripts/apt-config-test.cjs`, `node scripts/moonbit-install-test.cjs` and
-`node scripts/deploy-script-test.cjs`.
+`node scripts/apt-config-test.cjs`, `node scripts/moonbit-install-test.cjs`,
+`node scripts/base-image-test.cjs` and `node scripts/deploy-script-test.cjs`.
 
 ## Bind a Public Key
 
@@ -353,7 +403,9 @@ merge recovery, limits and permissions.
 SMTP variables from the top-level `.env.example` are forwarded only to `web`;
 the default transport writes invitation messages under `/data/mail_outbox`.
 
-Rebuild and upgrade with `docker compose up -d --build --wait`. Take a backup before
+For manual Compose builds, refresh/check the dependency base with
+`./deploy/deploy.sh build-base` before `docker compose up -d --build --wait`.
+Prefer the deployment wrapper below for production. Take a backup before
 upgrading: stop both services and back up both named volumes, including all SQLite
 files. Preserve the SSH host-key volume on restore to avoid changing the server
 identity. `docker compose down` retains the volumes; **`docker compose down -v`
