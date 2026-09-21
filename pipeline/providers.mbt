@@ -82,24 +82,7 @@ pub fn Coordinator::create_provider(
   guard @domain.valid_segment(name) && name.length() <= 64 else {
     raise @domain.BadRequest(message="invalid provider name")
   }
-  let labels = labels.map(label => label.to_lower())
-  guard labels.contains("self-hosted") &&
-    labels.contains("linux") &&
-    labels.length() <= 8 &&
-    labels.all(label => {
-      !label.is_empty() &&
-      label.length() <= 64 &&
-      label
-      .iter()
-      .all(ch => {
-        ch.is_ascii_alphabetic() ||
-        ch.is_ascii_digit() ||
-        ch == '_' ||
-        ch == '-'
-      })
-    }) else {
-    raise @domain.BadRequest(message="invalid provider labels")
-  }
+  let labels = normalize_provider_labels(labels)
   let repository_ids = repositories.map(repo => {
     @repository.repository_scope(self.pool, actor, repo).id
   })
@@ -144,19 +127,7 @@ pub fn Coordinator::create_provider(
 }
 
 ///|
-pub fn Coordinator::ensure_provider(
-  self : Coordinator,
-  actor : @domain.CurrentUser,
-  name : String,
-  token : String,
-  labels : Array[String],
-  repositories : Array[@domain.RepoId],
-) -> Provider raise {
-  require_provider_admin(self.pool, actor)
-  check_token(token)
-  guard @domain.valid_segment(name) && name.length() <= 64 else {
-    raise @domain.BadRequest(message="invalid provider name")
-  }
+fn normalize_provider_labels(labels : Array[String]) -> Array[String] raise {
   let labels = labels.map(label => label.to_lower())
   guard labels.contains("self-hosted") &&
     labels.contains("linux") &&
@@ -173,8 +144,76 @@ pub fn Coordinator::ensure_provider(
         ch == '-'
       })
     }) else {
-    raise @domain.BadRequest(message="invalid provider labels")
+    raise @domain.BadRequest(
+      message="Use up to 8 labels (1-64 letters, digits, underscores or hyphens each), including self-hosted and linux.",
+    )
   }
+  labels
+}
+
+///|
+pub fn Coordinator::set_provider_labels(
+  self : Coordinator,
+  actor : @domain.CurrentUser,
+  id : Int64,
+  labels : Array[String],
+) -> Unit raise {
+  require_provider_admin(self.pool, actor)
+  let labels = normalize_provider_labels(labels)
+  let now = (self.clock)()
+  self.pool.with_client(client => {
+    client.with_transaction(
+      tx => {
+        guard tx.query_opt(
+            "SELECT id FROM pipeline_provider WHERE id = ? AND revoked = 0",
+            params=[id],
+          )
+          is Some(_) else {
+          raise @domain.NotFound(message="provider not found")
+        }
+        let _ = tx.execute(
+          "DELETE FROM pipeline_provider_label WHERE provider_id = ?",
+          params=[id],
+        )
+        for label in labels {
+          let _ = tx.execute(
+            "INSERT OR IGNORE INTO pipeline_provider_label (provider_id, label) VALUES (?, ?)",
+            params=[id, label],
+          )
+        }
+        // Match claim's all-labels rule and cancel obsolete leases atomically.
+        let _ = tx.execute(
+          (
+            #|UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, ?)
+            #|WHERE provider_id = ? AND status <> 'completed'
+            #|AND EXISTS (SELECT 1 FROM pipeline_job_label required
+            #|  WHERE required.job_id = pipeline_job_attempt.job_id
+            #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label current
+            #|    WHERE current.provider_id = pipeline_job_attempt.provider_id AND current.label = required.label))
+          ),
+          params=[now, id],
+        )
+      },
+      immediate=true,
+    )
+  })
+}
+
+///|
+pub fn Coordinator::ensure_provider(
+  self : Coordinator,
+  actor : @domain.CurrentUser,
+  name : String,
+  token : String,
+  labels : Array[String],
+  repositories : Array[@domain.RepoId],
+) -> Provider raise {
+  require_provider_admin(self.pool, actor)
+  check_token(token)
+  guard @domain.valid_segment(name) && name.length() <= 64 else {
+    raise @domain.BadRequest(message="invalid provider name")
+  }
+  let labels = normalize_provider_labels(labels)
   let repository_ids = repositories.map(repo => {
     @repository.repository_scope(self.pool, actor, repo).id
   })

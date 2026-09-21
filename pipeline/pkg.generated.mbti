@@ -59,6 +59,7 @@ pub fn Coordinator::read_logs(Self, @domain.CurrentUser, @domain.RepoId, Int64, 
 pub async fn Coordinator::read_source(Self, String, Int64, String) -> Bytes
 pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
 pub fn Coordinator::revoke_provider(Self, @domain.CurrentUser, Int64) -> Unit raise
+pub fn Coordinator::set_provider_labels(Self, @domain.CurrentUser, Int64, Array[String]) -> Unit raise
 pub fn Coordinator::set_provider_paused(Self, @domain.CurrentUser, Int64, Bool) -> Unit raise
 pub fn Coordinator::set_provider_repository(Self, @domain.CurrentUser, Int64, @domain.RepoId, Bool) -> Unit raise
 pub fn Coordinator::start(Self, Int64, String, Int, execution_id? : String) -> @protocol.LeaseState raise
