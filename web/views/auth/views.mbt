@@ -17,7 +17,8 @@ fn render_login(
         #|<label class="field"><span>Username</span><input name="name_key" autocomplete="username" required></label>
         #|<label class="field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
         #|<p class="form-actions"><button type="submit">Sign in</button></p>
-        #|</form></section>
+        #|</form>
+        #|<p><a href="/-/forgot-password">Forgot password?</a></p></section>
     }),
     body_class="auth-main",
   )

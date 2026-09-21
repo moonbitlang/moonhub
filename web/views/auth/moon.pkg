@@ -5,6 +5,7 @@ import {
   "hackwaly/moonhub/web/context" @web_context,
   "hackwaly/moonhub/web/ui" @web_ui,
   "moonbitlang/moonback",
+  "moonbitlang/async/http",
 }
 
 import {

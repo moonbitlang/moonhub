@@ -44,13 +44,19 @@ pub fn lookup_invitation_session(@database.Database, String) -> InvitationSessio
 
 pub fn lookup_session_user(@database.Database, String) -> @domain.CurrentUser? raise
 
+pub fn new_password_error(String) -> String?
+
 pub fn personal_namespace(@database.Database, @domain.CurrentUser) -> TeamSummary? raise
 
 pub fn random_hex(Int) -> String
 
+pub fn request_password_reset(@database.Database, String) -> Unit raise
+
 pub fn require_team_member_access(@database.Database, @domain.CurrentUser, TeamSummary) -> Unit raise
 
 pub fn resend_invitation_email(@database.Database, @domain.CurrentUser, Int64, Int64) -> Bool raise
+
+pub fn reset_password(@database.Database, String, String, String) -> Bool raise
 
 pub fn revoke_invitation(@database.Database, @domain.CurrentUser, Int64, Int64) -> Bool raise
 

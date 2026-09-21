@@ -258,6 +258,21 @@ pub fn claim_next_email(
 ) -> EmailOutboxMessage? raise {
   pool.with_client(client => {
     client.with_transaction(tx => {
+      let _ = tx.execute(
+        (
+          #|UPDATE email_outbox SET body = 'Password reset code is no longer valid.',
+          #|  status = CASE WHEN status = 'pending' THEN 'failed' ELSE status END,
+          #|  locked_at = NULL, locked_by = NULL
+          #|WHERE template = 'password_reset'
+          #|  AND body <> 'Password reset code is no longer valid.'
+          #|  AND NOT EXISTS (
+          #|    SELECT 1 FROM password_reset AS r JOIN "user" AS u ON u.id = r.user_id
+          #|    WHERE r.id = email_outbox.password_reset_id AND r.used_at IS NULL
+          #|      AND r.expires_at > datetime('now') AND u.status = 'active'
+          #|      AND u.email = r.email
+          #|  )
+        ),
+      )
       let picked = tx.query_opt(
         (
           #|SELECT id, to_email, subject, body
@@ -400,6 +415,8 @@ pub fn mark_email_delivered(
         #|SET status = 'sent',
         #|    sent_at = datetime('now'),
         #|    provider_message_id = ?,
+        #|    body = CASE WHEN template = 'password_reset'
+        #|      THEN 'Password reset code removed after delivery.' ELSE body END,
         #|    locked_at = NULL,
         #|    locked_by = NULL,
         #|    last_error = NULL

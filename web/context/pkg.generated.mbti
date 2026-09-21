@@ -88,6 +88,8 @@ pub let session_cookie_name : String
 
 pub fn url_escape_path(String) -> String
 
+pub fn valid_form_token(String, String) -> Bool
+
 // Errors
 
 // Types and methods

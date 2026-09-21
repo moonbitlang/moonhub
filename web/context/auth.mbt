@@ -180,7 +180,9 @@ pub fn auth_middleware(pool : @database.Database) -> @moonback.Middleware {
 pub fn require_login_middleware() -> @moonback.Middleware {
   Middleware(next => {
     (req, res) => {
-      if req.path == "/-/login" {
+      if req.path == "/-/login" ||
+        req.path == "/-/forgot-password" ||
+        req.path == "/-/reset-password" {
         next(req, res)
       } else if current_invitation_from_request(req) is Some(_) {
         if req.path == "/-/change-password" || req.path == "/-/logout" {

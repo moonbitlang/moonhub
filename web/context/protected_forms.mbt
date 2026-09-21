@@ -21,7 +21,7 @@ pub fn request_form_token(
 }
 
 ///|
-fn valid_form_token(expected : String, supplied : String) -> Bool {
+pub fn valid_form_token(expected : String, supplied : String) -> Bool {
   guard expected.length() == 64 && supplied.length() == 64 else { return false }
   let mut difference = 0
   for i = 0; i < expected.length(); i = i + 1 {

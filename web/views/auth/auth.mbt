@@ -1,5 +1,6 @@
 ///|
 pub let auth_module : @moonback.Module = Module(ctx => {
+  ctx.use_(password_recovery_module)
   let asset_path_map = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
   ctx.get("/-/login", async fn(req, res) {

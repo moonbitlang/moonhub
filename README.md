@@ -147,8 +147,28 @@ unaccepted, unrevoked, unexpired invitations with a stored email are available;
 users' permanent passwords are never shown. Details are fetched only on an
 explicit, CSRF-protected action and are returned with `Cache-Control: no-store`.
 
-Invitation emails are queued in `email_outbox` and delivered by the background
-mail worker. The default transport writes `.eml` files to `_build/mail_outbox`:
+### Password Recovery
+
+Choose **Forgot password?** on the sign-in page (`/-/forgot-password`) and enter
+the email associated with an active account. Enter the emailed reset code and a
+new password at `/-/reset-password`. Codes are single-use and expire after 30
+minutes; successful recovery revokes all existing login sessions and reset codes.
+The account also receives a password-change notification.
+Requests return the same message for unknown, disabled, and throttled accounts.
+Each account can receive at most one code per minute and five per hour. Pending
+invitations must still use their invitation credentials; accounts without a
+deliverable email cannot use email recovery.
+
+Recovery uses the configured mail transport below, not a separate email service.
+Only code hashes are kept in `password_reset`; queued mail necessarily contains
+the code until delivery, when it is removed from the database outbox body. The
+file transport retains its `.eml` files, so protect those files like credentials.
+
+### Transport
+
+Invitation and password recovery emails are queued in `email_outbox` and delivered
+by the background mail worker. The default transport writes `.eml` files to
+`_build/mail_outbox`:
 
 ```sh
 MAIL_OUTBOX_DIR=_build/mail_outbox
