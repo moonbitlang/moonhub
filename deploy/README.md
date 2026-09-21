@@ -450,6 +450,7 @@ explicitly remove obsolete volumes; never run an indiscriminate volume prune.
 moon test --strip -j 1
 bash scripts/docker-smoke.sh
 node scripts/deploy-script-test.cjs
+node scripts/recovery-e2e.cjs
 ```
 
 Native tests use the temporary [compiler workaround](../README.md#temporary-compiler-workaround),
@@ -464,3 +465,17 @@ unknown keys, restart persistence, and revocation on
 both new and existing SSH connections after web revocation. Its cleanup removes only its own test
 containers and volumes. Set `MOONHUB_SMOKE_SKIP_BUILD=1` to test an already built
 `moonhub:local` image.
+
+The recovery drill uses existing `moonhub:acceptance`,
+`moonhub-provider:acceptance` and `moonhub-runner:acceptance` images (override with
+`MOONHUB_IMAGE`, `MOONHUB_PROVIDER_IMAGE`, `MOONHUB_RUNNER_IMAGE`). It uses ports
+18084/12226 for its source and 18085/12227 for the restored instance, and subnets
+172.30.94.0/24 and 172.30.95.0/24. `MOONHUB_RECOVERY_SOURCE_PORT`,
+`MOONHUB_RECOVERY_SOURCE_SSH`, `MOONHUB_RECOVERY_TARGET_PORT`,
+`MOONHUB_RECOVERY_TARGET_SSH`, `MOONHUB_RECOVERY_SOURCE_PREFIX` and
+`MOONHUB_RECOVERY_TARGET_PREFIX` override them. It validates login, repository
+files/commits, MR and pipeline records, a strict-host-key SSH clone, a new DinD
+job, corruption rejection, replacement rollback and subsequent upgrade volume
+names. It retains the restored project and private receipt/credentials under
+`backups/moonhub-recovery-*` for inspection; source containers remain stopped.
+No existing preview is modified.
