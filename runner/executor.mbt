@@ -326,10 +326,10 @@ async fn execute_assignment(
     @fs.mkdir(options.workspace + "/.tmp", permission=0o700)
     let moon_home = options.workspace + "/.home/.moon"
     @fs.mkdir(moon_home, permission=0o700)
-    for directory in ["bin", "lib", "include"] {
-      let installed = "/opt/moon/" + directory
+    for entry in ["bin", "lib", "include", "config.json"] {
+      let installed = "/opt/moon/" + entry
       if @fs.exists(installed) {
-        @fs.symlink(target=installed, moon_home + "/" + directory)
+        @fs.symlink(target=installed, moon_home + "/" + entry)
       }
     }
     @async.any([

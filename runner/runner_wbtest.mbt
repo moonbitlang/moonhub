@@ -254,6 +254,16 @@ async test "steps share workspace but not shell environment and upload both stre
     assert_true(
       server.logs.any(log => log.step_id == "two" && log.text.contains("second")),
     )
+    let installed_config = "/opt/moon/config.json"
+    let job_config = workspace + "/.home/.moon/config.json"
+    if @fs.exists(installed_config) {
+      assert_eq(
+        @fs.read_file(job_config).text(),
+        @fs.read_file(installed_config).text(),
+      )
+    } else {
+      assert_false(@fs.exists(job_config))
+    }
   })
 }
 
