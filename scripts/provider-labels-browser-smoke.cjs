@@ -26,7 +26,7 @@ async function capture(page, state) {
     });
     const layout = await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
-      const controls = [...document.querySelectorAll('main a, main button, main input:not([type=hidden])')].filter(e => e.checkVisibility());
+      const controls = [...document.querySelectorAll('main a, main button, main select, main input:not([type=hidden])')].filter(e => e.checkVisibility());
       const outside = controls.filter(e => { const r = e.getBoundingClientRect(); return r.left < -1 || r.right > width + 1; }).map(e => e.textContent || e.id);
       const overlaps = [];
       for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
@@ -111,6 +111,32 @@ async function main() {
   await labels.fill('self-hosted,linux');
   await page.getByRole('button', { name: 'Save labels', exact: true }).click();
   await page.getByRole('button', { name: 'Resume', exact: true }).waitFor();
+  execFileSync(binary, ['repo-create', 'root/demo'], { cwd: temp, env, stdio: 'pipe' });
+  await page.getByRole('link', { name: 'Edit access for dind', exact: true }).click();
+  const scope = page.getByLabel('Repository scope', { exact: true });
+  const repositories = page.getByLabel('Repositories (selected scope only)', { exact: true });
+  assert.equal(await scope.inputValue(), 'selected');
+  await repositories.fill('root/<missing>');
+  await page.getByRole('button', { name: 'Save access', exact: true }).click();
+  await page.getByRole('alert').waitFor();
+  assert.equal(await repositories.inputValue(), 'root/<missing>');
+  await capture(page, 'access-invalid');
+  await repositories.fill('root/demo');
+  await page.getByRole('button', { name: 'Save access', exact: true }).click();
+  await page.getByText('Selected repositories: root/demo', { exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Edit access for dind', exact: true }).click();
+  await scope.selectOption('all');
+  await capture(page, 'access-edit');
+  await page.getByRole('button', { name: 'Save access', exact: true }).click();
+  await page.getByText('All repositories (including new repositories)', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Resume', exact: true }).waitFor();
+  await capture(page, 'access-shared');
+  await page.getByRole('link', { name: 'Edit access for dind', exact: true }).click();
+  assert.equal(await repositories.inputValue(), '');
+  await scope.selectOption('selected');
+  await page.getByRole('button', { name: 'Save access', exact: true }).click();
+  await page.getByText('Selected repositories: none', { exact: true }).waitFor();
+  await page.getByText('Never connected', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   if (process.env.MOONHUB_KEEP_PREVIEW === '1') {
     fs.writeFileSync(path.join(output, 'preview.json'), JSON.stringify({ base, pid: server.pid, directory: temp, username: 'root', passwordFile: path.join(temp, 'password') }, null, 2), { mode: 0o600 });
@@ -118,7 +144,7 @@ async function main() {
     server.unref();
     console.log(`Local provider-labels preview retained: ${base}/-/admin/pipelines/providers; credentials: ${path.join(output, 'preview.json')}`);
   }
-  console.log('Provider label browser tests passed: edit, validation round-trip, save, cancel, paused state, desktop/mobile layout.');
+  console.log('Provider browser tests passed: labels, selected/all repository access, validation round-trip, save, cancel, paused state, desktop/mobile layout.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (browser) await browser.close();

@@ -27,6 +27,24 @@ fn require_pipeline_manager(
 }
 
 ///|
+fn parse_provider_access(
+  scope : String,
+  repositories : String,
+) -> (@pipeline.ProviderScope, Array[@domain.RepoId]) raise {
+  let scope = @pipeline.ProviderScope::parse(scope)
+  let repos : Array[@domain.RepoId] = []
+  if scope is @pipeline.SelectedRepositories {
+    for path in repositories.split(",") {
+      let path = path.trim()
+      if !path.is_empty() {
+        repos.push(@domain.parse_transport_repo(path.to_owned()))
+      }
+    }
+  }
+  (scope, repos)
+}
+
+///|
 pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let assets = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
@@ -46,6 +64,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         None,
         None,
         labels_saved=req.query().get("labels_saved") == Some("1"),
+        scope_saved=req.query().get("scope_saved") == Some("1"),
       ),
       headers=@web_context.private_page_headers(),
     )
@@ -64,18 +83,26 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
       .filter(label => !label.trim().is_empty())
       .map(label => label.trim().to_owned())
       .collect()
-    let repositories : Array[@domain.RepoId] = []
-    for path in form.get("repositories").unwrap_or("").split(",") {
-      let path = path.trim()
-      if !path.is_empty() {
-        repositories.push(@domain.parse_transport_repo(path.to_owned()))
-      }
-    }
     let token = @identity.random_hex(32)
-    let _ = coordinator.create_provider(
-      actor, name, token, labels, repositories,
-    ) catch {
-      @domain.BadRequest(message~) | @pipeline.Conflict(message) => {
+    try {
+      let (scope, repositories) = parse_provider_access(
+        form.get("scope").unwrap_or("selected"),
+        form.get("repositories").unwrap_or(""),
+      )
+      ignore(
+        coordinator.create_provider(
+          actor,
+          name,
+          token,
+          labels,
+          repositories,
+          scope~,
+        ),
+      )
+    } catch {
+      @domain.BadRequest(message~)
+      | @domain.NotFound(message~)
+      | @pipeline.Conflict(message) => {
         res.send_html(
           render_provider_admin(
             assets,
@@ -84,6 +111,12 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
             @web_context.request_form_token(req, "pipeline-providers"),
             None,
             Some(message),
+            registration={
+              "name": name,
+              "labels": form.get("labels").unwrap_or(""),
+              "scope": form.get("scope").unwrap_or("selected"),
+              "repositories": form.get("repositories").unwrap_or(""),
+            },
           ),
           status=400,
           headers=@web_context.private_page_headers(),
@@ -126,6 +159,80 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         None,
       ),
       headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.get("/-/admin/pipelines/providers/:id/access", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    let provider = coordinator
+      .list_providers(actor)
+      .iter()
+      .find_first(p => p.id == id && !p.revoked)
+    guard provider is Some(provider) else {
+      raise @domain.NotFound(message="provider not found")
+    }
+    res.send_html(
+      render_provider_access(
+        assets,
+        actor,
+        provider,
+        @web_context.request_form_token(req, "pipeline-providers"),
+        provider.scope.value(),
+        provider.repositories.join(","),
+        None,
+      ),
+      headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers/:id/access", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    guard actor.is_site_admin else {
+      raise @domain.Forbidden(message="site administrator required")
+    }
+    let form = @web_context.protected_form(req, "pipeline-providers")
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    let provider = coordinator
+      .list_providers(actor)
+      .iter()
+      .find_first(p => p.id == id && !p.revoked)
+    guard provider is Some(provider) else {
+      raise @domain.NotFound(message="provider not found")
+    }
+    let scope_value = form.get("scope").unwrap_or("")
+    let repositories_value = form.get("repositories").unwrap_or("")
+    try {
+      let (scope, repositories) = parse_provider_access(
+        scope_value, repositories_value,
+      )
+      coordinator.set_provider_scope(actor, id, scope, repositories)
+    } catch {
+      @domain.BadRequest(message~) | @domain.NotFound(message~) => {
+        res.send_html(
+          render_provider_access(
+            assets,
+            actor,
+            provider,
+            @web_context.request_form_token(req, "pipeline-providers"),
+            scope_value,
+            repositories_value,
+            Some(message),
+          ),
+          status=400,
+          headers=@web_context.private_page_headers(),
+        )
+        return
+      }
+      err => raise err
+    }
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/admin/pipelines/providers?scope_saved=1",
+      ),
     )
   })
   ctx.post("/-/admin/pipelines/providers/:id/labels", async fn(req, res) {
@@ -288,15 +395,23 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let number = pipeline_number(req)
     let run = @pipeline.get_run(pool, actor, scope.repo, number)
     let jobs = @pipeline.list_jobs(pool, actor, scope.repo, number)
+    let reasons = coordinator.queue_reasons(actor, scope.repo, number)
     let pages : Array[PipelineJobPage] = []
     for job in jobs {
       match job.attempt_id {
-        None => pages.push({ job, steps: [], logs: [], })
+        None =>
+          pages.push({
+            job,
+            steps: [],
+            logs: [],
+            reason: reasons.get(job.job_key),
+          })
         Some(attempt_id) =>
           pages.push({
             job,
             steps: coordinator.read_steps(actor, scope.repo, number, attempt_id),
             logs: coordinator.read_logs(actor, scope.repo, number, attempt_id),
+            reason: reasons.get(job.job_key),
           })
       }
     }

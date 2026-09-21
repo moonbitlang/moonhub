@@ -289,6 +289,7 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mr-title .muted { font-weight: 400; }
 .mr-actions, .mr-event-heading, .mr-shas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .mr-actions form { margin: 0; }
+.provider-access-summary { overflow-wrap: anywhere; }
 .mr-actions > a:not(.button-link) { font-size: 13px; }
 .mr-actions button { color: var(--color-text); background: var(--color-surface); border-color: var(--color-border); }
 .mr-actions button:hover { background: var(--color-surface-subtle); }

@@ -3,6 +3,27 @@ priv struct PipelineJobPage {
   job : @pipeline.JobRun
   steps : Array[@protocol.StepState]
   logs : Array[@protocol.LogChunk]
+  reason : @pipeline.QueueReason?
+}
+
+///|
+fn queue_reason_text(reason : @pipeline.QueueReason) -> String {
+  match reason {
+    @pipeline.WaitingDependencies => "Waiting for dependency jobs to succeed."
+    @pipeline.RequesterUnavailable =>
+      "The requester no longer has permission to run this job, or the repository is not ready."
+    @pipeline.NoAuthorizedProvider =>
+      "No provider is authorized for this repository."
+    @pipeline.NoMatchingLabels =>
+      "No authorized provider matches all required job labels."
+    @pipeline.ProvidersPaused => "All matching providers are paused."
+    @pipeline.ProvidersBusy =>
+      "All matching providers are busy with another job."
+    @pipeline.NoRecentProviderContact =>
+      "No idle matching provider has contacted the server in the last minute."
+    @pipeline.AwaitingClaim =>
+      "Waiting for an available provider to claim this job."
+  }
 }
 
 ///|
@@ -172,6 +193,17 @@ fn render_pipeline_detail(
         let display = if conclusion.is_empty() { state } else { conclusion }
         b <+
           "<li><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-state=\"\{display}\">\{display}</span></div>"
+        if page.reason is Some(reason) {
+          b <+
+            "<p class=\"settings-notice\" data-queue-reason>\{queue_reason_text(reason)}</p>"
+          if run.definition.jobs
+            .iter()
+            .find_first(job => job.id == page.job.job_key)
+            is Some(definition) {
+            b <+
+              "<p class=\"muted provider-access-summary\">Required labels: \{definition.runs_on.join(", ")}</p>"
+          }
+        }
         if !page.steps.is_empty() {
           b <+ "<ul class=\"pipeline-steps\">"
           for step in page.steps {

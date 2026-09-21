@@ -444,8 +444,29 @@ docker compose exec -T web sh -eu -c '
 ```
 
 Site administrators can also manage providers at
-`/-/admin/pipelines/providers`: create a provider, edit its labels, pause/resume
-it, or revoke it. **Edit labels** replaces the provider's label set atomically;
+`/-/admin/pipelines/providers`: create a provider, edit its labels or repository
+access, pause/resume it, or revoke it. **Edit access** offers two scopes:
+
+- **Selected repositories**: only the listed repositories may use this provider.
+  An empty list allows no jobs. This is the default, including migrated providers.
+- **All repositories**: all current and future repositories may use this
+  provider, without individual grants. Labels still have to match, and the
+  workflow requester must still be authorized to run jobs in the repository.
+
+Saving access atomically replaces the scope and selected repository list. Newly
+eligible queued jobs can be claimed without rerunning them. Assigned jobs outside
+the new scope are marked for cancellation; unassigned jobs remain queued. Tokens,
+labels and paused state are preserved. Only site administrators may change scope.
+Do not share a provider across repositories whose job code you do not trust with
+its execution environment.
+
+Provider state and connectivity are shown separately: active/paused/revoked is
+administrative state, while recent contact means a claim or lease renewal within
+the last minute. Run detail pages explain queue blockers, including authorization,
+labels, paused/busy providers and missing recent contact, without exposing
+provider identities or other repositories' grants.
+
+**Edit labels** replaces the provider's label set atomically;
 `self-hosted` and `linux` remain required (up to 8 labels, each 1-64 ASCII letters,
 digits, underscores or hyphens; case is normalized). Token, repository grants,
 name and paused state are unchanged. Revoked providers cannot be edited.
@@ -466,9 +487,9 @@ The browser shows a newly generated provider token only in the creation
 response; store it in the provider secret immediately. Existing deployments
 may continue using the CLI flow above for non-interactive provisioning.
 
-`node scripts/provider-labels-browser-smoke.cjs` verifies label editing against
+`node scripts/provider-labels-browser-smoke.cjs` verifies label and access editing against
 an isolated local server (build the native executable and frontend assets first).
-It covers validation round-trips, save/cancel, paused state and desktop/mobile
+It covers selected/all scopes, validation round-trips, save/cancel, paused state and desktop/mobile
 layouts. `MOONHUB_KEEP_PREVIEW=1` retains its local preview and writes connection
 details to `_build/provider-labels-browser/preview.json` without touching an
 existing deployment.
