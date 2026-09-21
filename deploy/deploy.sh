@@ -43,6 +43,7 @@ BUILD_RUNNER=${MOONHUB_RUNNER_BUILD:-1}
 RUNNER_BUILD_TARGET=${MOONHUB_RUNNER_BUILD_TARGET:-runner}
 PULL_IMAGES=${MOONHUB_PULL:-1}
 BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
+USE_CN_MIRRORS=${MOONHUB_USE_CN_MIRRORS:-0}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
@@ -53,6 +54,9 @@ fi
 for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER"; do
   [[ "$toggle" = 0 || "$toggle" = 1 ]] || { printf 'Deployment switches must be 0 or 1\n' >&2; exit 1; }
 done
+[[ "$USE_CN_MIRRORS" = 0 || "$USE_CN_MIRRORS" = 1 ]] || {
+  printf 'MOONHUB_USE_CN_MIRRORS must be 0 or 1\n' >&2; exit 1;
+}
 case "$RUNNER_BUILD_TARGET" in
   runner|runner-selfhost) ;;
   *) printf 'Runner build target must be runner or runner-selfhost\n' >&2; exit 1 ;;
@@ -71,6 +75,7 @@ export MOONHUB_PROVIDER_IMAGE="$PROVIDER_IMAGE"
 export MOONHUB_RUNNER_IMAGE="$RUNNER_IMAGE"
 export MOONHUB_ROOT_PASSWORD_FILE="$ROOT_PASSWORD_FILE"
 export MOONHUB_PROVIDER_TOKEN_FILE="$PROVIDER_TOKEN_FILE"
+export MOONHUB_USE_CN_MIRRORS="$USE_CN_MIRRORS"
 
 usage() {
   cat <<'EOF'
@@ -87,6 +92,7 @@ Commands:
 
 Set MOONHUB_ENABLE_PIPELINES=1 to include DinD, provider and Runner deployment.
 Set MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost for MoonHub's own build workflow.
+Set MOONHUB_USE_CN_MIRRORS=1 for domestic Debian/MoonBit sources (default: 0).
 Set MOONHUB_DEPLOY_ENV_FILE to an operator-owned env file for persistent settings.
 The default settings file is deploy/deploy.env (ignored by Git).
 When pipelines are enabled, set MOONHUB_PROVIDER_REPOSITORIES to a comma-separated
@@ -148,12 +154,14 @@ build_images() {
       if [ "$PULL_IMAGES" = 1 ]; then
         docker build --pull --target "$RUNNER_BUILD_TARGET" \
           --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
+          --build-arg "MOONHUB_USE_CN_MIRRORS=$USE_CN_MIRRORS" \
           --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
           --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
           -t "$RUNNER_IMAGE" "$ROOT"
       else
         docker build --target "$RUNNER_BUILD_TARGET" \
           --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
+          --build-arg "MOONHUB_USE_CN_MIRRORS=$USE_CN_MIRRORS" \
           --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
           --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
           -t "$RUNNER_IMAGE" "$ROOT"

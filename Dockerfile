@@ -6,6 +6,7 @@ COPY js/ ./
 RUN npm run build
 
 FROM debian:bookworm-slim AS debian-base
+ARG MOONHUB_USE_CN_MIRRORS=0
 ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
 ARG DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
@@ -16,9 +17,8 @@ ARG MOONBIT_VERSION=0.10.14+7d59c7ec9
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl build-essential git libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh -o /tmp/install-moonbit.sh \
-    && bash /tmp/install-moonbit.sh "$MOONBIT_VERSION" \
-    && rm /tmp/install-moonbit.sh
+COPY deploy/install-moonbit.sh /tmp/moonhub-install-moonbit.sh
+RUN sh /tmp/moonhub-install-moonbit.sh "$MOONBIT_VERSION" && rm /tmp/moonhub-install-moonbit.sh
 ENV PATH="/root/.moon/bin:${PATH}"
 WORKDIR /src
 

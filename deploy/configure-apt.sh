@@ -1,6 +1,18 @@
 #!/bin/sh
 set -eu
 
+case "${MOONHUB_USE_CN_MIRRORS:-0}" in
+  0)
+    DEBIAN_MIRROR=http://deb.debian.org/debian
+    DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+    ;;
+  1)
+    DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}
+    DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}
+    ;;
+  *) printf 'MOONHUB_USE_CN_MIRRORS must be 0 or 1\n' >&2; exit 1 ;;
+esac
+
 # HTTP bootstraps ca-certificates in Debian slim. APT still verifies archives
 # using Debian's bundled signing keys; never mark the mirror as trusted.
 for mirror in "$DEBIAN_MIRROR" "$DEBIAN_SECURITY_MIRROR"; do

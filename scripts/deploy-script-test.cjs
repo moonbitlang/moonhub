@@ -24,7 +24,7 @@ try {
     TEST_LOG: log, MOONHUB_ROOT_PASSWORD_FILE: path.join(root, 'secret'),
     MOONHUB_PROVIDER_TOKEN_FILE: path.join(root, 'secret'),
     MOONHUB_DEPLOY_LOCK_DIR: path.join(root, 'lock'),
-    MOONHUB_ENABLE_PIPELINES: '1', MOONHUB_PULL: '0',
+    MOONHUB_ENABLE_PIPELINES: '1', MOONHUB_PULL: '0', MOONHUB_USE_CN_MIRRORS: '',
   };
   function run(extra = {}, command = 'upgrade') {
     fs.writeFileSync(log, '');
@@ -47,6 +47,7 @@ try {
   const builds = lines.map((line, i) => line.includes(' build ') || line.startsWith('build ') ? i : -1).filter(i => i >= 0);
   assert.equal(builds.length, 3);
   const runnerBuild = lines.find(line => line.startsWith('build '));
+  assert.ok(runnerBuild.includes('--build-arg MOONHUB_USE_CN_MIRRORS=0 '));
   assert.ok(runnerBuild.includes('--build-arg DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian '));
   assert.ok(runnerBuild.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security '));
   assert.ok(builds.every(i => i < stop), 'build happened during downtime');
@@ -81,12 +82,22 @@ try {
   assert.ok(result.commands.some(line => line.startsWith('build --target runner-selfhost --build-arg MOONBIT_VERSION=0.10.14+7d59c7ec9')));
   fs.appendFileSync(path.join(root, 'deploy/deploy.env'), 'DEBIAN_MIRROR=http://deb.debian.org/debian\nDEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security\n');
   for (const pull of ['0', '1']) {
-    result = run({ MOONHUB_PULL: pull }, 'build');
-    assert.equal(result.status, 0, result.stderr);
-    const runner = result.commands.find(line => line.startsWith('build '));
-    assert.ok(runner.includes('--build-arg DEBIAN_MIRROR=http://deb.debian.org/debian '));
-    assert.ok(runner.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security '));
+    for (const mirrors of ['0', '1']) {
+      result = run({ MOONHUB_PULL: pull, MOONHUB_USE_CN_MIRRORS: mirrors }, 'build');
+      assert.equal(result.status, 0, result.stderr);
+      const runner = result.commands.find(line => line.startsWith('build '));
+      assert.ok(runner.includes(`--build-arg MOONHUB_USE_CN_MIRRORS=${mirrors} `));
+      assert.ok(runner.includes('--build-arg DEBIAN_MIRROR=http://deb.debian.org/debian '));
+      assert.ok(runner.includes('--build-arg DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security '));
+    }
   }
+  result = run({ MOONHUB_USE_CN_MIRRORS: 'true' });
+  assert.notEqual(result.status, 0);
+  assert.equal(result.commands.length, 1, 'invalid source switch reached Docker');
+  fs.appendFileSync(path.join(root, 'deploy/deploy.env'), 'MOONHUB_USE_CN_MIRRORS=1\n');
+  result = run({}, 'build');
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.some(line => line.startsWith('build ') && line.includes('--build-arg MOONHUB_USE_CN_MIRRORS=1 ')));
   result = run({ MOONHUB_RUNNER_BUILD_TARGET: 'runtime' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)));

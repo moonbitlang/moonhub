@@ -63,12 +63,34 @@ the native executable on Linux. No host MoonBit or Node installation is needed. 
 argument `MOONBIT_VERSION` can select an archived MoonBit toolchain release;
 its default is `0.10.14+7d59c7ec9`.
 
-### Debian Package Mirrors
+### Build Download Sources
 
-All Debian stages (toolchain, Web/SSH, provider and Runner) default to the USTC
-mirror, including `bookworm-security`. The existing upgrade command needs no
-additional settings. This changes only APT downloads, not Docker Hub, npm or
-MoonBit package downloads, and no public mirror guarantees every network path.
+`deploy.sh` uses official sources by default. Set `MOONHUB_USE_CN_MIRRORS=1`
+to switch both Debian packages and MoonBit toolchain downloads to domestic
+endpoints with one environment variable:
+
+```sh
+env MOONHUB_USE_CN_MIRRORS=1 MOONHUB_ENABLE_PIPELINES=1 ./deploy/deploy.sh upgrade
+```
+
+| Setting | Debian packages and security updates | MoonBit installation |
+| --- | --- | --- |
+| Unset or `0` | `deb.debian.org` | `cli.moonbitlang.com` |
+| `1` | `mirrors.ustc.edu.cn` | `cli.moonbitlang.cn` |
+
+For persistent settings, add `MOONHUB_USE_CN_MIRRORS=1` to `deploy/deploy.env`
+(or the file selected by `MOONHUB_DEPLOY_ENV_FILE`). As with other deployment
+settings, the settings file overrides the inherited shell environment. Only
+`0` and `1` are accepted; invalid values fail before any service is stopped.
+`deploy.sh` forwards the switch to Web/SSH, provider and Runner builds internally;
+operators do not need to pass Docker build arguments themselves.
+
+The `.cn` installer is the official installer linked from the MoonBit Chinese
+download page. It downloads both the version-pinned toolchain and core from
+`cli.moonbitlang.cn`, rather than fetching only the script there and downloading
+archives from `.com`. Failed script downloads are not executed. This switch
+does not change Docker Hub, npm or the `moon update` package registry, and no
+public mirror guarantees every network path.
 
 HTTP is used to bootstrap `ca-certificates` in the slim base image. Package
 authenticity remains verified against Debian's bundled archive signing keys;
@@ -77,20 +99,21 @@ updates can lag upstream. APT uses a 30-second connection/data timeout and at
 most two retries per download; any failed index fetch fails the build. These
 limits are not a total build timeout.
 
-To override the defaults, set both variables in `deploy/deploy.env`, for example
-to return to Debian's upstream endpoints:
+With domestic sources enabled, `DEBIAN_MIRROR` and `DEBIAN_SECURITY_MIRROR`
+can override the two APT URLs in `deploy/deploy.env`. Their defaults are:
 
 ```sh
-DEBIAN_MIRROR=http://deb.debian.org/debian
-DEBIAN_SECURITY_MIRROR=http://deb.debian.org/debian-security
+DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
+DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
 ```
 
-Compose and `deploy.sh` forward these as build arguments to every Debian stage.
-Direct `docker build` accepts the same names through `--build-arg`. HTTPS mirrors
+`MOONHUB_USE_CN_MIRRORS=0` ignores these overrides and uses the official sources.
+HTTPS mirrors
 require CA certificates to already be available in the base image; do not disable
 certificate verification to work around bootstrap failures. Failed builds leave
 the running deployment untouched. Verify the configuration with
-`node scripts/apt-config-test.cjs` and `node scripts/deploy-script-test.cjs`.
+`node scripts/apt-config-test.cjs`, `node scripts/moonbit-install-test.cjs` and
+`node scripts/deploy-script-test.cjs`.
 
 ## Bind a Public Key
 
