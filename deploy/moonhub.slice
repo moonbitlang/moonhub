@@ -1,0 +1,13 @@
+[Unit]
+Description=MoonHub aggregate resource budget
+
+[Slice]
+CPUAccounting=yes
+MemoryAccounting=yes
+CPUQuota=400%
+MemoryMax=8G
+MemorySwapMax=0
+TasksMax=1024
+
+[Install]
+WantedBy=multi-user.target

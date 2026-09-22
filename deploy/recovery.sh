@@ -158,6 +158,10 @@ restore_backup() {
   [ "$listed" = "$actual" ] || { printf 'Backup checksum inventory is incomplete or contains extra files\n' >&2; return 1; }
   (cd "$source" && "${checksum[@]}" -c SHA256SUMS >/dev/null)
   jq -e '.format == 1 and (.project | type == "string")' "$source/manifest.json" >/dev/null
+  if jq -e '[.services[].cgroup_parent // ""] | any(. != "")' "$source/compose.json" >/dev/null; then
+    printf 'This shared-host backup needs a provisioned resource slice and fresh bounded DinD storage; automatic generic restore is refused.\n' >&2
+    return 1
+  fi
   local original pipelines runner
   original=$(jq -r .project "$source/manifest.json")
   project=${project:-$original}

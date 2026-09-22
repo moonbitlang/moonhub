@@ -506,6 +506,47 @@ Verify the deploy sequencing tests with `node scripts/deploy-script-test.cjs`.
 
 ## Restore And Rollback
 
+### Shared Hosts
+
+`MOONHUB_SHARED_HOST=1` selects `compose.shared-host.yaml`. This opt-in profile
+requires prebuilt images (`MOONHUB_BUILD_IMAGES=0`), a dedicated systemd cgroup v2
+slice (`MOONHUB_CGROUP_PARENT=moonhub.slice`) and bounded DinD storage
+(`MOONHUB_DIND_STORAGE_DIR=/srv/moonhub/dind/docker`). It refuses unrestricted
+host-side image builds. The tracked `moonhub.slice` caps all attached workloads
+at 4 CPUs, 8 GiB RAM, no swap and 1024 tasks. Services also have individual
+limits and rotated logs; the provider is a single instance. Verify the actual
+nested job cgroup before allowing work, not just the Compose configuration.
+
+On a compatible host, `sudo bash deploy/setup-shared-host.sh` provisions only
+MoonHub's own units and a preallocated 12 GiB ext4 loop filesystem. It requires
+34 GiB free before allocation and never formats an existing unexpected file.
+The inner Docker store and workspaces share this 12 GiB total, including images;
+it is not a 20 GiB per-job quota. The `docker` subdirectory exists only inside the
+mounted filesystem so a missing mount fails closed. This avoids changing the
+shared Docker daemon's data-root or restarting other services. Root filesystem
+capacity for outer images, backups and application data still needs monitoring.
+
+Backups preserve resource-limit metadata. Generic automated restore refuses
+shared-host snapshots because a fresh bounded storage area and resource slice
+must be provisioned before restoring them; do not restore them with an older
+recovery script that silently discards limits.
+
+`deploy/identity-transfer.py export SOURCE DESTINATION` exports only users,
+teams, membership, invitation and user SSH public-key records from a read-only SQLite snapshot.
+`import ... --schema-root db --schema-version 11|12` creates a fresh database
+with those identities; it refuses existing destinations. Password hashes are
+preserved, including public-key revocation state, but server SSH host keys,
+sessions, password resets, mail settings/outbox,
+repositories and pipelines are excluded. Export files are sensitive and mode
+0600; transfer them over SSH without displaying contents. Existing users log
+in with their old passwords and use their existing SSH keys. Verify
+the helper with `python3 scripts/identity-transfer-test.py`.
+When Python is absent from the old Web image, `export-identities.cjs` performs
+the same export using Node 24's SQLite API and the shared `identity-tables.json`
+allowlist. It reads a transaction snapshot and outputs counts only.
+
+### Standard Restores
+
 Backups made by the recovery-enabled wrapper are self-contained: no source
 checkout, MoonBit, Node, registry or live MoonHub is needed to restore. The host
 needs Bash, Docker/Compose, `jq` and `sha256sum`/`shasum`, on the same CPU

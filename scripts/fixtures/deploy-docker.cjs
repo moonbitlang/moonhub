@@ -39,6 +39,11 @@ const containers = roles.map((role, i) => ({
 }));
 if (process.env.TEST_BAD_MOUNT === '1') containers[0].Mounts.push(bind('/unsupported-secret'));
 if (process.env.TEST_BASIC === '1') for (const c of containers) delete c.NetworkSettings.Networks.old_pipeline;
+if (process.env.TEST_RESOURCE_LIMITS === '1') for (const c of containers) Object.assign(c.HostConfig, {
+  CgroupParent: 'moonhub.slice', CgroupnsMode: 'private', NanoCpus: 500000000,
+  Memory: 536870912, MemorySwap: 536870912, PidsLimit: 128,
+  LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
+});
 function out(value) { console.log(typeof value === 'string' ? value : JSON.stringify(value)); }
 if (/(^| )build /.test(line)) {
   if (fail === 'build' || (fail === 'base-build' && line.includes('base.Dockerfile'))) process.exit(1);

@@ -1,0 +1,43 @@
+x-common: &common
+  cgroup_parent: ${MOONHUB_CGROUP_PARENT:?Set a dedicated systemd slice with aggregate CPU and memory limits}
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  web:
+    <<: *common
+    cpus: 0.75
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
+  ssh:
+    <<: *common
+    cpus: 0.25
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
+  pipeline-provider:
+    <<: *common
+    cpus: 0.25
+    mem_limit: 256m
+    memswap_limit: 256m
+    pids_limit: 128
+    scale: 1
+  pipeline-docker:
+    <<: *common
+    cgroup: private
+    cpus: 2.5
+    mem_limit: 5g
+    memswap_limit: 5g
+    pids_limit: 512
+
+volumes:
+  pipeline-docker-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MOONHUB_DIND_STORAGE_DIR:?Set a directory inside a capacity-limited filesystem}

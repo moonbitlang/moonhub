@@ -34,6 +34,7 @@ try {
     MOONHUB_BASE_IMAGE: '', MOONHUB_BASE_REBUILD: '0', DOCKER_DEFAULT_PLATFORM: '',
     MOONBIT_VERSION: '', DEBIAN_MIRROR: '', DEBIAN_SECURITY_MIRROR: '',
     MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
+    MOONHUB_SHARED_HOST: '0', MOONHUB_CGROUP_PARENT: '', MOONHUB_DIND_STORAGE_DIR: '',
   };
   function run(extra = {}, command = 'upgrade') {
     fs.writeFileSync(log, '');
@@ -49,6 +50,15 @@ try {
   let result = run({ TEST_FAIL: 'build' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'build failure stopped services');
+  result = run({ MOONHUB_SHARED_HOST: '1' });
+  assert.notEqual(result.status, 0);
+  assert.equal(result.commands.length, 1, 'shared-host profile permitted unrestricted builds');
+  result = run({ MOONHUB_SHARED_HOST: '1', MOONHUB_BUILD_IMAGES: '0', MOONHUB_CGROUP_PARENT: 'moonhub.slice', MOONHUB_DIND_STORAGE_DIR: root });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.some(line => line.includes('compose.shared-host.yaml')));
+  result = run({ MOONHUB_SHARED_HOST: '1', MOONHUB_BUILD_IMAGES: '0', MOONHUB_CGROUP_PARENT: 'moonhub.slice', MOONHUB_DIND_STORAGE_DIR: root }, 'build-base');
+  assert.notEqual(result.status, 0);
+  assert.equal(result.commands.length, 1, 'shared-host build-base bypassed build isolation');
   result = run({ MOONHUB_BUILD_IMAGES: '0', TEST_FAIL: 'image' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'missing image stopped services');
@@ -214,6 +224,18 @@ try {
   result = run({ TEST_FRESH: '1' }, ['restore', basic, '--project', 'basic', '--http-port', '19003', '--ssh-port', '19004']);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!result.commands.join('\n').includes('pipeline-docker'), 'basic restore started DinD');
+  const limitedRoot = path.join(root, 'backups/limited');
+  result = run({ TEST_RESOURCE_LIMITS: '1', MOONHUB_BACKUP_DIR: limitedRoot });
+  assert.equal(result.status, 0, result.stderr);
+  const limitedBundle = path.join(limitedRoot, fs.readdirSync(limitedRoot)[0]);
+  const limited = JSON.parse(fs.readFileSync(path.join(limitedBundle, 'compose.json')));
+  assert.equal(limited.services.web.cgroup_parent, 'moonhub.slice');
+  assert.equal(limited.services.web.cpus, 0.5);
+  assert.equal(limited.services.web.mem_limit, 536870912);
+  assert.equal(limited.services.web.logging.options['max-size'], '10m');
+  result = run({ TEST_FRESH: '1' }, ['restore', limitedBundle]);
+  assert.notEqual(result.status, 0, 'generic restore silently discarded bounded storage');
+  assert.equal(result.commands.length, 1, 'limited restore reached Docker without a provisioned resource profile');
   const checksums = fs.readFileSync(path.join(bundle, 'SHA256SUMS'), 'utf8');
   fs.writeFileSync(path.join(bundle, 'SHA256SUMS'), checksums.split('\n').filter(line => !line.endsWith('./data.tar')).join('\n'));
   result = run({ TEST_FRESH: '1' }, ['restore', bundle]);

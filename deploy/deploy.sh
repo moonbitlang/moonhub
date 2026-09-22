@@ -48,14 +48,24 @@ PULL_IMAGES=${MOONHUB_PULL:-1}
 BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
 USE_CN_MIRRORS=${MOONHUB_USE_CN_MIRRORS:-0}
 REBUILD_BASE=${MOONHUB_BASE_REBUILD:-0}
+SHARED_HOST=${MOONHUB_SHARED_HOST:-0}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
 if [ "$ENABLE_PIPELINES" = 1 ]; then
   compose+=( -f "$ROOT/deploy/compose.pipeline.yaml" )
 fi
+if [ "$SHARED_HOST" = 1 ]; then
+  [ "${1:-upgrade}" != build-base ] || { printf 'Shared-host dependency builds must run on a separate bounded builder\n' >&2; exit 1; }
+  [ "$ENABLE_PIPELINES" = 1 ] || { printf 'Shared-host profile requires pipelines enabled\n' >&2; exit 1; }
+  [ "$BUILD_IMAGES" = 0 ] || { printf 'Shared-host deployment requires prebuilt images; unrestricted host builds are disabled\n' >&2; exit 1; }
+  [ -n "${MOONHUB_CGROUP_PARENT:-}" ] && [ -d "${MOONHUB_DIND_STORAGE_DIR:-}" ] || {
+    printf 'Shared-host deployment requires a configured cgroup parent and bounded DinD storage directory\n' >&2; exit 1;
+  }
+  compose+=( -f "$ROOT/deploy/compose.shared-host.yaml" )
+fi
 
-for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER" "$REBUILD_BASE"; do
+for toggle in "$ENABLE_PIPELINES" "$PULL_IMAGES" "$BUILD_IMAGES" "$BUILD_RUNNER" "$REBUILD_BASE" "$SHARED_HOST"; do
   [[ "$toggle" = 0 || "$toggle" = 1 ]] || { printf 'Deployment switches must be 0 or 1\n' >&2; exit 1; }
 done
 [[ "$USE_CN_MIRRORS" = 0 || "$USE_CN_MIRRORS" = 1 ]] || {

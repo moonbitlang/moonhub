@@ -1,0 +1,12 @@
+[Unit]
+Description=Capacity-limited MoonHub DinD disk
+Before=docker.service
+
+[Mount]
+What=/srv/moonhub/dind.ext4
+Where=/srv/moonhub/dind
+Type=ext4
+Options=loop,nodev,nosuid
+
+[Install]
+WantedBy=local-fs.target
