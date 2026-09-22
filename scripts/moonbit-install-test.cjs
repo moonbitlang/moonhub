@@ -43,7 +43,7 @@ process.exit(Number(process.env.TEST_DOWNLOAD_FAIL || 0));
     assert.equal(fs.readFileSync(installed, 'utf8'), version + '\n');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(moonHome, 'config.json'))), host === 'cn' ? {
       download: 'https://mirrors.ustc.edu.cn/mooncakes', index: 'https://mirrors.ustc.edu.cn/mooncakes.git', api: 'https://mooncakes.io',
-    } : {});
+    } : { download: 'https://download.mooncakes.io', index: 'https://mooncakes.io/git/index', api: 'https://mooncakes.io' });
   }
   for (const bad of ['true', '2', ' 1']) {
     assert.notEqual(run({ MOONHUB_USE_CN_MIRRORS: bad }).status, 0);

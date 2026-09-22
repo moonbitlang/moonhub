@@ -23,5 +23,5 @@ mkdir -p "$moon_home"
 if [ "${MOONHUB_USE_CN_MIRRORS:-0}" = 1 ]; then
   printf '%s\n' '{"download":"https://mirrors.ustc.edu.cn/mooncakes","index":"https://mirrors.ustc.edu.cn/mooncakes.git","api":"https://mooncakes.io"}' > "$moon_home/config.json"
 else
-  printf '%s\n' '{}' > "$moon_home/config.json"
+  printf '%s\n' '{"download":"https://download.mooncakes.io","index":"https://mooncakes.io/git/index","api":"https://mooncakes.io"}' > "$moon_home/config.json"
 fi
