@@ -11,7 +11,7 @@ try {
   fs.mkdirSync(path.join(root, 'js'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
-  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
+  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
   for (const file of ['moon.mod', 'moon.pkg', '.dockerignore']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../js', file), path.join(root, 'js', file));
   fs.writeFileSync(path.join(root, '.gitignore'), 'bin/\nbackups/\n*.log\ndeploy/deploy.env\nsecret\n');
@@ -36,10 +36,14 @@ try {
     MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
     MOONHUB_SHARED_HOST: '0', MOONHUB_CGROUP_PARENT: '', MOONHUB_DIND_STORAGE_DIR: '',
   };
-  function run(extra = {}, command = 'upgrade') {
+  function run(extra = {}, command = 'upgrade', answer) {
     fs.writeFileSync(log, '');
     fs.rmSync(log + '.base', { force: true });
-    const result = spawnSync('bash', ['deploy/deploy.sh', ...[command].flat()], { cwd: root, env: { ...env, ...extra }, encoding: 'utf8' });
+    fs.rmSync(log + '.job-stopped', { force: true });
+    const terminal = answer !== undefined;
+    const executable = terminal ? 'python3' : 'bash';
+    const args = terminal ? [path.join(__dirname, 'fixtures/pty-run.py'), answer, 'bash', 'deploy/deploy.sh', command] : ['deploy/deploy.sh', ...[command].flat()];
+    const result = spawnSync(executable, args, { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', input: answer, timeout: 30000 });
     return { ...result, commands: fs.readFileSync(log, 'utf8').split('\n') };
   }
   function ensureArgs(result) {
@@ -52,7 +56,7 @@ try {
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'build failure stopped services');
   result = run({ MOONHUB_SHARED_HOST: '1' });
   assert.notEqual(result.status, 0);
-  assert.equal(result.commands.length, 1, 'shared-host profile permitted unrestricted builds');
+  assert.ok(!result.commands.some(line => line.includes(' build ')), 'shared-host profile permitted unrestricted builds');
   result = run({ MOONHUB_SHARED_HOST: '1', MOONHUB_BUILD_IMAGES: '0', MOONHUB_CGROUP_PARENT: 'moonhub.slice', MOONHUB_DIND_STORAGE_DIR: root });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.commands.some(line => line.includes('compose.shared-host.yaml')));
@@ -133,6 +137,27 @@ try {
   result = run({ TEST_FAIL: 'active-job' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'active jobs stopped services');
+  assert.ok(!result.commands.some(line => line.startsWith('stop ')), 'unconfirmed interruption stopped a provider');
+  assert.ok(result.commands.some(line => line.startsWith('unpause ')), 'declined noninteractive upgrade left claims frozen');
+  result = run({ TEST_ACTIVE: '1' }, 'upgrade', 'n\n');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /Continue upgrade\? \[y\/N\]/, result.stderr + (result.error?.message || ''));
+  assert.ok(!result.commands.some(line => line.startsWith('stop ') || / stop$/.test(line)), 'negative answer interrupted work');
+  assert.ok(result.commands.some(line => line.startsWith('unpause ')));
+  result = run({ TEST_ACTIVE: '1' }, 'upgrade', 'yes\n');
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  assert.ok(result.commands.some(line => line.includes('docker.sock stop -t 15')));
+  result = run({ TEST_LEASED: '1' });
+  assert.notEqual(result.status, 0, 'leased attempt without a container bypassed confirmation');
+  assert.ok(!result.commands.some(line => line.startsWith('stop ')));
+  result = run({ TEST_ACTIVE: '1' }, ['upgrade', '--interrupt-jobs']);
+  assert.equal(result.status, 0, result.stderr);
+  const interrupt = result.commands.findIndex(line => line.includes('docker.sock stop -t 15'));
+  assert.ok(interrupt > result.commands.findIndex(line => line.startsWith('build ')), 'job was interrupted before builds finished');
+  assert.ok(interrupt < result.commands.findIndex(line => line.startsWith('cp web-id:/data')), 'job was not interrupted before data backup');
+  result = run({ TEST_FAIL: 'backup' });
+  assert.notEqual(result.status, 0);
+  assert.ok(result.commands.some(line => line === 'start pipeline-provider-id'), 'backup failure did not restore original provider');
   result = run({ TEST_BAD_MOUNT: '1' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'unsupported mount stopped services');

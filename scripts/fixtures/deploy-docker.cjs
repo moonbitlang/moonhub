@@ -59,11 +59,22 @@ if (line.startsWith('image inspect ')) {
 else if (line.startsWith('info --format')) out('linux/amd64');
 else if (line.startsWith('network inspect ')) out((process.env.TEST_BASIC === '1' ? ['default'] : ['default', 'pipeline']).map(key => ({ Name: 'old_' + key, Labels: { 'com.docker.compose.network': key }, IPAM: { Config: [{ Subnet: '172.30.90.0/24' }] } })));
 else if (line.startsWith('ps -aq --filter')) { if (process.env.TEST_FRESH !== '1') out(roles.map(r => r + '-id').join('\n')); }
+else if (line.startsWith('ps -q --filter')) {
+  if (process.env.TEST_FRESH !== '1' && process.env.TEST_BASIC !== '1') {
+    const service = a.at(-1).split('=').at(-1); out(service + '-id');
+  }
+}
+else if (line.startsWith('inspect -f {{.State.Paused}}')) out('false');
 else if (line.startsWith('inspect -f {{.State.Running}}')) out(a.at(-1) === 'pipeline-docker-id' ? 'true' : 'false');
 else if (line.startsWith('inspect -f {{.State.Status}}')) out('running');
 else if (line.startsWith('inspect ')) out(containers);
 else if (line.includes('image inspect -f {{.Id}}')) out('sha256:' + runnerHash);
-else if (line.includes('docker.sock ps -aq') && fail === 'active-job') out('active-job');
+else if (line.includes('docker.sock ps -aq') && (fail === 'active-job' || process.env.TEST_ACTIVE === '1') && !fs.existsSync(process.env.TEST_LOG + '.job-stopped')) out('active-job');
+else if (line.includes('docker.sock stop -t')) fs.writeFileSync(process.env.TEST_LOG + '.job-stopped', 'stopped');
+else if (line.includes('exec -i --user git') && line.includes('node --no-warnings')) {
+  fs.readFileSync(0);
+  out(fail === 'active-job' || process.env.TEST_ACTIVE === '1' || process.env.TEST_LEASED === '1' ? '1' : '0');
+}
 else if (line.startsWith('cp ')) {
   if (fail === 'backup') process.exit(1);
   if (a[2] === '-') process.stdout.write('archive');

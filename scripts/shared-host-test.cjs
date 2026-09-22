@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
 const config = JSON.parse(execFileSync('docker', ['compose', '--env-file', '/dev/null', '-p', 'moonhub-shared-test',
   '-f', 'compose.yaml', '-f', 'deploy/compose.pipeline.yaml', '-f', 'deploy/compose.shared-host.yaml', 'config', '--format', 'json'], {
@@ -22,4 +23,7 @@ assert.ok(memory <= 8 * 1024 ** 3);
 assert.equal(config.services['pipeline-provider'].scale, 1);
 assert.equal(config.services['pipeline-docker'].cgroup, 'private');
 assert.equal(config.volumes['pipeline-docker-data'].driver_opts.device, '/srv/moonhub/dind/docker');
+const slice = fs.readFileSync(path.join(__dirname, '../deploy/moonhub.slice'), 'utf8');
+assert.ok(slice.includes('CPUQuota=400%'));
+assert.ok(slice.includes('MemoryMax=10G'));
 console.log('Shared-host profile verified: aggregate budget, per-service limits, private cgroup namespace, single provider and bounded storage mapping.');

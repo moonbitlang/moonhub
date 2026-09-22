@@ -509,13 +509,60 @@ Verify the deploy sequencing tests with `node scripts/deploy-script-test.cjs`.
 ### Shared Hosts
 
 `MOONHUB_SHARED_HOST=1` selects `compose.shared-host.yaml`. This opt-in profile
-requires prebuilt images (`MOONHUB_BUILD_IMAGES=0`), a dedicated systemd cgroup v2
+uses a dedicated systemd cgroup v2
 slice (`MOONHUB_CGROUP_PARENT=moonhub.slice`) and bounded DinD storage
-(`MOONHUB_DIND_STORAGE_DIR=/srv/moonhub/dind/docker`). It refuses unrestricted
-host-side image builds. The tracked `moonhub.slice` caps all attached workloads
-at 4 CPUs, 8 GiB RAM, no swap and 1024 tasks. Services also have individual
+(`MOONHUB_DIND_STORAGE_DIR=/srv/moonhub/dind/docker`). The tracked
+`moonhub.slice` caps all attached workloads
+at 4 CPUs, 10 GiB RAM, no swap and 1024 tasks. Services also have individual
 limits and rotated logs; the provider is a single instance. Verify the actual
 nested job cgroup before allowing work, not just the Compose configuration.
+
+Set `MOONHUB_BUILD_IMAGES=1` and remove explicit `MOONHUB_IMAGE`,
+`MOONHUB_PROVIDER_IMAGE`, `MOONHUB_RUNNER_IMAGE`, `MOONHUB_RELEASE_TAG` and
+`MOONHUB_BASE_IMAGE` overrides to build the checked-out commit. A dedicated
+BuildKit container is hard-limited to 2 CPUs, 4 GiB RAM (no swap), 512 tasks and
+the same resource slice. The worker executes one build step at a time. It has
+its own labeled cache volume, no published API port, no host Docker socket,
+no application volumes and no deployment credentials. It is privileged to
+support nested build workers and therefore remains part of the trusted host
+control plane, not an untrusted job sandbox. Pipeline jobs continue while images
+build; both workloads share the aggregate 4 CPU/10 GiB budget. The builder stops
+on success/failure; its cache remains for subsequent upgrades. Cache GC targets
+4 GiB, not a hard disk quota. Keep at least 12 GiB free for build/backup headroom.
+
+Bake links the dependency-base target directly into Web/provider/Runner builds;
+no registry or local-base image export/import is required. Build inputs come
+from `git archive HEAD`, excluding operator files. All output images are tagged
+with the commit and checked against `org.opencontainers.image.revision` before
+switching. `MOONHUB_BUILDKIT_IMAGE` can pin the trusted builder image by digest;
+the default is `moby/buildkit:buildx-stable-1`. Shared-host `build-base` remains
+disabled because the linked dependency base is managed by the application build.
+`MOONHUB_BUILD_IMAGES=0` still supports explicitly pinned prebuilt images.
+
+After configuring server Git authentication and the self-hosted repository as
+`origin`, normal updates are:
+
+```sh
+git pull --ff-only
+./deploy/deploy.sh upgrade
+```
+
+Only after successful builds does upgrade briefly freeze provider claims and
+check both allocated attempts and job containers. Jobs themselves continue in
+DinD during the confirmation. Active jobs require a `y`/`yes` response; Enter,
+EOF or noninteractive execution refuse interruption and resume the provider.
+For unattended deployments, `upgrade --interrupt-jobs` explicitly authorizes
+interruption. Accepted interruption stops jobs with a 15-second grace period;
+unconfirmed completions may become `lost`, and snapshot reruns remain explicit.
+Backups and the Web/SSH switch happen afterwards. A backup failure restarts the
+old provider without stopping Web/SSH; a failure after switching requires
+operator recovery. No deployment path modifies other Compose projects.
+
+Existing shared-host installations with an 8 GiB slice must deliberately update
+their `moonhub.slice` to 10 GiB before enabling concurrent builds. Keep a GitHub
+or bundle recovery source because pulling from MoonHub requires its Git service
+to be available. Do not change the site's SSH host identity or disable host-key
+checking merely to make the deployment clone authenticate.
 
 On a compatible host, `sudo bash deploy/setup-shared-host.sh` provisions only
 MoonHub's own units and a preallocated 12 GiB ext4 loop filesystem. It requires

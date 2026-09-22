@@ -1,0 +1,4 @@
+[worker.oci]
+  max-parallelism = 1
+  gc = true
+  gckeepstorage = 4096

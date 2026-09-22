@@ -13,7 +13,7 @@ FROM base AS build
 COPY . .
 COPY --from=assets /src/assets/ /src/assets/
 RUN --network=none mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
-    && moon build --target native --release --deny-warn
+    && moon build --target native --release --deny-warn -j 1
 
 FROM base AS runner
 RUN groupadd --gid 10001 runner \

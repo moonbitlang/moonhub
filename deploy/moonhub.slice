@@ -5,7 +5,7 @@ Description=MoonHub aggregate resource budget
 CPUAccounting=yes
 MemoryAccounting=yes
 CPUQuota=400%
-MemoryMax=8G
+MemoryMax=10G
 MemorySwapMax=0
 TasksMax=1024
 

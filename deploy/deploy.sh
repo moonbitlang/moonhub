@@ -8,12 +8,20 @@ cd "$ROOT"
 . "$ROOT/deploy/recovery.sh"
 # shellcheck source=deploy/base-image.sh
 . "$ROOT/deploy/base-image.sh"
+# shellcheck source=deploy/shared-build.sh
+. "$ROOT/deploy/shared-build.sh"
 if [ "${1:-}" = restore ]; then
   shift
   restore_backup "$@"
   exit
 fi
 RECOVERY_TOOL_REVISION=$(git rev-parse HEAD)
+ALLOW_INTERRUPT=0
+if [ "${2:-}" = --interrupt-jobs ] && [ "${1:-}" = upgrade ] && [ "$#" = 2 ]; then
+  ALLOW_INTERRUPT=1
+elif [ "$#" -gt 1 ]; then
+  printf 'Only upgrade accepts --interrupt-jobs\n' >&2; exit 1
+fi
 
 DEPLOY_ENV=${MOONHUB_DEPLOY_ENV_FILE:-$ROOT/deploy/deploy.env}
 if [ -n "${MOONHUB_DEPLOY_ENV_FILE:-}" ] && [ ! -f "$DEPLOY_ENV" ]; then
@@ -29,6 +37,7 @@ if [ -f "$DEPLOY_ENV" ]; then
 fi
 
 PROJECT=${MOONHUB_COMPOSE_PROJECT_NAME:-moonhub}
+[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { printf 'Invalid Compose project name\n' >&2; exit 1; }
 ENABLE_PIPELINES=${MOONHUB_ENABLE_PIPELINES:-0}
 WAIT_TIMEOUT=${MOONHUB_DEPLOY_WAIT_TIMEOUT:-300}
 BACKUP_ROOT=${MOONHUB_BACKUP_DIR:-$ROOT/backups}
@@ -39,6 +48,7 @@ PROVIDER_LABELS=${MOONHUB_PROVIDER_LABELS:-self-hosted,linux}
 PROVIDER_SCOPE=${MOONHUB_PROVIDER_SCOPE:-}
 PROVIDER_REPOSITORIES=${MOONHUB_PROVIDER_REPOSITORIES:-}
 RELEASE=${MOONHUB_RELEASE_TAG:-$(git rev-parse --short=12 HEAD)}
+CONFIGURED_IMAGES="${MOONHUB_IMAGE:-}${MOONHUB_PROVIDER_IMAGE:-}${MOONHUB_RUNNER_IMAGE:-}"
 RUNTIME_IMAGE=${MOONHUB_IMAGE:-moonhub:$RELEASE}
 PROVIDER_IMAGE=${MOONHUB_PROVIDER_IMAGE:-moonhub-provider:$RELEASE}
 RUNNER_IMAGE=${MOONHUB_RUNNER_IMAGE:-moonhub-runner:$RELEASE}
@@ -58,7 +68,6 @@ fi
 if [ "$SHARED_HOST" = 1 ]; then
   [ "${1:-upgrade}" != build-base ] || { printf 'Shared-host dependency builds must run on a separate bounded builder\n' >&2; exit 1; }
   [ "$ENABLE_PIPELINES" = 1 ] || { printf 'Shared-host profile requires pipelines enabled\n' >&2; exit 1; }
-  [ "$BUILD_IMAGES" = 0 ] || { printf 'Shared-host deployment requires prebuilt images; unrestricted host builds are disabled\n' >&2; exit 1; }
   [ -n "${MOONHUB_CGROUP_PARENT:-}" ] && [ -d "${MOONHUB_DIND_STORAGE_DIR:-}" ] || {
     printf 'Shared-host deployment requires a configured cgroup parent and bounded DinD storage directory\n' >&2; exit 1;
   }
@@ -89,7 +98,24 @@ if ! mkdir "$lock_dir" 2>/dev/null; then
   printf 'Another deployment is already running: %s\n' "$lock_dir" >&2
   exit 1
 fi
-cleanup_lock() { rmdir "$lock_dir" 2>/dev/null || true; }
+BUILD_STAGE=''
+SHARED_BUILDER_CONTAINER=''
+SHARED_BUILDER_NAME=''
+PAUSED_PROVIDER=''
+STOPPED_PROVIDER=''
+SWITCH_STARTED=0
+cleanup_lock() {
+  local status=$?
+  if [ -n "$SHARED_BUILDER_CONTAINER" ]; then docker stop "$SHARED_BUILDER_CONTAINER" >/dev/null 2>&1 || true; fi
+  if [ -n "$SHARED_BUILDER_NAME" ]; then docker buildx rm "$SHARED_BUILDER_NAME" >/dev/null 2>&1 || true; fi
+  if [ -n "$BUILD_STAGE" ]; then rm -rf -- "$BUILD_STAGE"; fi
+  if [ -n "$STOPPED_PROVIDER" ] && [ "$SWITCH_STARTED" = 0 ]; then
+    docker start "$STOPPED_PROVIDER" >/dev/null || printf 'Provider restart failed; inspect its state.\n' >&2
+  fi
+  if [ -n "$PAUSED_PROVIDER" ]; then docker unpause "$PAUSED_PROVIDER" >/dev/null 2>&1 || true; fi
+  rmdir "$lock_dir" 2>/dev/null || true
+  return "$status"
+}
 trap cleanup_lock EXIT
 
 export MOONHUB_IMAGE="$RUNTIME_IMAGE"
@@ -104,7 +130,7 @@ usage() {
 Usage: deploy/deploy.sh <command>
 
 Commands:
-  upgrade   Build images, back up volumes, then switch services once.
+  upgrade [--interrupt-jobs] Build first, confirm active job interruption, back up, then switch.
   build     Build application images only; running services are untouched.
   build-base Build the dependency base only, or reuse it if already present.
   backup    Back up stopped Web/SSH/provider; keep DinD running for image export.
@@ -117,6 +143,8 @@ Set MOONHUB_ENABLE_PIPELINES=1 to include DinD, provider and Runner deployment.
 Set MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost for MoonHub's own build workflow.
 Set MOONHUB_USE_CN_MIRRORS=1 for domestic Debian/MoonBit sources (default: 0).
 Set MOONHUB_BASE_REBUILD=1 to refresh the dependency base, including security updates.
+Shared-host builds use a dedicated 2 CPU / 4 GiB BuildKit under moonhub.slice (10 GiB total).
+Without --interrupt-jobs, active jobs require interactive confirmation; noninteractive runs refuse.
 Set MOONHUB_DEPLOY_ENV_FILE to an operator-owned env file for persistent settings.
 The default settings file is deploy/deploy.env (ignored by Git).
 Set MOONHUB_PROVIDER_SCOPE=all to share the provider across current and future repos.
@@ -164,6 +192,13 @@ build_images() {
       docker image inspect "$RUNNER_IMAGE" >/dev/null
       docker image inspect docker:27.5.1-dind >/dev/null
     fi
+    return
+  fi
+  [ -z "$(git status --porcelain --untracked-files=normal)" ] || {
+    printf 'Refusing image build from a dirty worktree.\n' >&2; return 1;
+  }
+  if [ "$SHARED_HOST" = 1 ]; then
+    build_shared_images
     return
   fi
   ensure_base_image
@@ -239,6 +274,59 @@ start_services() {
   wait_running ssh
 }
 
+confirm_pipeline_interruption() {
+  local answer
+  [ "$ALLOW_INTERRUPT" = 1 ] && return 0
+  if [ ! -t 0 ]; then
+    printf 'Active Pipeline jobs prevent the switch. Re-run interactively or explicitly use upgrade --interrupt-jobs.\n' >&2
+    return 1
+  fi
+  printf 'Active Pipeline jobs will be interrupted and may need snapshot reruns. Continue upgrade? [y/N] ' >&2
+  read -r answer
+  case "$answer" in y|Y|yes|YES) ALLOW_INTERRUPT=1 ;; *) printf 'Upgrade cancelled; built images retained.\n' >&2; return 1 ;; esac
+}
+
+prepare_pipeline_switch() {
+  [ "$ENABLE_PIPELINES" = 1 ] || return 0
+  local dind provider web jobs attempts=0
+  dind=$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter label=com.docker.compose.service=pipeline-docker)
+  [ -n "$dind" ] || return 0
+  provider=$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter label=com.docker.compose.service=pipeline-provider)
+  if [ -n "$provider" ]; then
+    [ "$(docker inspect -f '{{.State.Paused}}' "$provider")" = false ] || {
+      printf 'Provider was already externally paused; leave it unchanged and retry later.\n' >&2; return 1;
+    }
+    # Freeze claims only at the switch boundary. Job containers live in DinD
+    # and continue independently while the operator decides.
+    docker pause "$provider" >/dev/null
+    PAUSED_PROVIDER=$provider
+  fi
+  web=$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter label=com.docker.compose.service=web)
+  [ -n "$web" ] || { printf 'Web must be running to check active attempts.\n' >&2; return 1; }
+  attempts=$(docker exec -i --user git "$web" node --no-warnings - "$PROVIDER_NAME" < "$ROOT/deploy/active-attempts.cjs")
+  [[ "$attempts" =~ ^[0-9]+$ ]] || { printf 'Invalid active attempt count\n' >&2; return 1; }
+  jobs=$(docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock ps -aq)
+  if [ -n "$jobs" ] || [ "$attempts" -gt 0 ]; then confirm_pipeline_interruption; fi
+  if [ -n "$provider" ]; then
+    STOPPED_PROVIDER=$provider
+    docker stop "$provider" >/dev/null
+    PAUSED_PROVIDER=''
+  fi
+  if [ -n "$jobs" ]; then
+    local job_ids=()
+    while IFS= read -r id; do job_ids+=("$id"); done <<< "$jobs"
+    docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock stop -t 15 "${job_ids[@]}" >/dev/null
+    for id in "${job_ids[@]}"; do
+      if docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock container inspect "$id" >/dev/null 2>&1; then
+        docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock rm "$id" >/dev/null
+      fi
+    done
+  fi
+  [ -z "$(docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock ps -aq)" ] || {
+    printf 'Job cleanup is incomplete; Web/SSH remain running.\n' >&2; return 1;
+  }
+}
+
 upgrade() {
   [ -z "$(git status --porcelain --untracked-files=normal)" ] || {
     printf 'Refusing deployment from a dirty worktree. Commit or stash changes first.\n' >&2
@@ -246,14 +334,17 @@ upgrade() {
   }
   recovery_requirements
   build_images
+  prepare_pipeline_switch
   prepare_backup
   printf 'All images ready. Stopping target services for backup and switch...\n'
   quiesce_provider
+  SWITCH_STARTED=1
   "${compose[@]}" stop
   finish_backup
   start_services
   "${compose[@]}" ps
-  printf 'Deployment upgraded to %s\n' "$RELEASE"
+  STOPPED_PROVIDER=''
+  printf 'Deployment running Web=%s Provider=%s Runner=%s (checkout %s)\n' "$RUNTIME_IMAGE" "$PROVIDER_IMAGE" "$RUNNER_IMAGE" "$RECOVERY_TOOL_REVISION"
 }
 
 backup() {
