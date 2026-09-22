@@ -473,6 +473,14 @@ Start with pipelines disabled for root bootstrap; do not relax
 the active-administrator or repository-grant checks. Upgrades preserve paused
 provider state. Drain active jobs before upgrading.
 
+After upgrading Web and SSH together, automatic push workflows can be enabled
+per repository on its Pipelines page with **Run push workflows**. The setting
+defaults off. The image installs executable `pre-receive` and
+`reference-transaction` hooks; custom/non-Docker SSH deployments must install
+both from `deploy/hooks` in the trusted hook directory. The automatic trigger
+worker runs in Web and resumes persisted events after restart. See
+`docs/pipelines.md` for supported push filters and the owner/admin-only policy.
+
 Recovery preserves saved provider scope in the database. The generated
 `upgrade.env` also preserves an explicitly configured scope for subsequent
 upgrades; older backups without this setting leave scope unchanged.

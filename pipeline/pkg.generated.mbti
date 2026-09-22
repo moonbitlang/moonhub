@@ -21,6 +21,10 @@ pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Arr
 
 pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> Run
 
+pub async fn run_next_push_event(@database.Database, String) -> Bool
+
+pub fn start_push_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
 // Errors
 pub suberror ExecutionError {
   Conflict(String)

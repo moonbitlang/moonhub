@@ -78,9 +78,10 @@ SSH pushes, merges and MR state changes share a per-repository filesystem lock.
 Writes wait up to 15 seconds for an existing writer. This requires local shared
 storage and is not a multi-host HA deployment.
 
-For non-Docker SSH deployments, install `deploy/hooks/pre-receive` in a trusted
-directory and supply `MOONHUB_HOOKS_PATH` and `MOONHUB_BIN` to SSH sessions.
-Missing hooks fail closed. Docker installs the hook automatically.
+For non-Docker SSH deployments, install `deploy/hooks/pre-receive` and
+`deploy/hooks/reference-transaction` as executable files in a trusted directory
+and supply `MOONHUB_HOOKS_PATH` and `MOONHUB_BIN` to SSH sessions.
+Missing or non-executable hooks fail closed. Docker installs both automatically.
 
 ## Recovery
 

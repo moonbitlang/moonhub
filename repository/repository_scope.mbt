@@ -36,5 +36,7 @@ pub async fn[A] with_repository_write(
   let lock = @gitops.repository_write_lock(git_dir)
   defer lock.close()
   authorize_repository(pool, actor, repo, Write)
-  f(repository_scope(pool, actor, repo), git_dir)
+  let scope = repository_scope(pool, actor, repo)
+  recover_ref_events_locked(pool, scope, git_dir)
+  f(scope, git_dir)
 }

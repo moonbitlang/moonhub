@@ -221,22 +221,93 @@ fn parse_run_defaults(
 }
 
 ///|
-fn parse_trigger(value : @yaml.Yaml?) -> Unit raise InvalidWorkflow {
-  match value {
-    Some(String("workflow_dispatch")) => ()
-    Some(Array([String("workflow_dispatch")])) => ()
-    Some(Map(fields)) => {
-      check_fields(fields, ["workflow_dispatch"], "on")
-      match fields.get("workflow_dispatch") {
-        Some(Null) => ()
-        Some(Map(options)) if options.is_empty() => ()
-        _ =>
-          raise InvalidWorkflow("on requires workflow_dispatch without inputs")
+fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
+  let fields : Map[String, @yaml.Yaml] = match value {
+    Some(String(name)) => Map([(name, @yaml.Null)])
+    Some(Array(items)) => {
+      let fields : Map[String, @yaml.Yaml] = Map([])
+      for item in items {
+        guard item is String(name) && !fields.contains(name) else {
+          raise InvalidWorkflow("on requires unique trigger names")
+        }
+        fields[name] = @yaml.Null
+      }
+      fields
+    }
+    Some(Map(fields)) => fields
+    _ => raise InvalidWorkflow("on requires push or workflow_dispatch")
+  }
+  guard !fields.is_empty() else {
+    raise InvalidWorkflow("on requires a trigger")
+  }
+  check_fields(fields, ["push", "workflow_dispatch"], "on")
+  if fields.get("workflow_dispatch") is Some(options) {
+    guard options is Null || (options is Map(options) && options.is_empty()) else {
+      raise InvalidWorkflow("workflow_dispatch inputs are not supported")
+    }
+  }
+  let branches : Array[String] = []
+  if fields.get("push") is Some(value) && !(value is Null) {
+    let options = yaml_as_obj(value, "on.push")
+    check_fields(options, ["branches"], "on.push")
+    if options.get("branches") is Some(value) {
+      guard value is Array(_) else {
+        raise InvalidWorkflow("on.push.branches requires a list")
+      }
+      let names = yaml_as_string_list(Some(value), "on.push.branches")
+      guard !names.is_empty() && names.length() <= 64 else {
+        raise InvalidWorkflow("on.push.branches requires 1 to 64 exact names")
+      }
+      for name in names {
+        guard name.length() <= 200 &&
+          !name.contains("..") &&
+          !name.contains("@{") &&
+          !name.contains("//") &&
+          !name.has_prefix("/") &&
+          !name.has_suffix("/") &&
+          !name.has_suffix(".") &&
+          name
+          .split("/")
+          .all(part => !part.has_prefix(".") && !part.has_suffix(".lock")) &&
+          name
+          .iter()
+          .all(ch => {
+            ch.to_int() > 32 &&
+            ch.to_int() != 127 &&
+            !['*', '?', '[', ']', '!', '+', '\\', '~', '^', ':', '$'].contains(
+              ch,
+            )
+          }) else {
+          raise InvalidWorkflow(
+            "on.push.branches supports exact branch names only; glob patterns are not yet supported",
+          )
+        }
+        branches.push(name)
       }
     }
-    _ =>
-      raise InvalidWorkflow("only the workflow_dispatch trigger is supported")
   }
+  {
+    dispatch: fields.contains("workflow_dispatch"),
+    push: fields.contains("push"),
+    branches,
+  }
+}
+
+///|
+pub struct Triggers {
+  dispatch : Bool
+  push : Bool
+  branches : Array[String]
+}
+
+///|
+pub fn triggers(source : String) -> Triggers raise InvalidWorkflow {
+  parse_trigger(yaml_as_obj(read_yaml(source), "workflow").get("on"))
+}
+
+///|
+pub fn Triggers::matches_push(self : Triggers, branch : String) -> Bool {
+  self.push && (self.branches.is_empty() || self.branches.contains(branch))
 }
 
 ///|
@@ -360,7 +431,7 @@ fn parse_job(
 pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   let fields = yaml_as_obj(read_yaml(source), "workflow")
   check_fields(fields, ["name", "on", "env", "defaults", "jobs"], "workflow")
-  parse_trigger(fields.get("on"))
+  ignore(parse_trigger(fields.get("on")))
   let env = yaml_to_string_map(fields.get("env"), "env")
   let defaults = parse_run_defaults(fields.get("defaults"), "defaults")
   guard fields.get("jobs") is Some(value) else {

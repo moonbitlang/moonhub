@@ -166,6 +166,7 @@ async fn main {
       "ssh-authorized-key"
       | "ssh-serve"
       | "ssh-pre-receive"
+      | "ssh-ref-transaction"
       | "ssh-key-add"
       | "ssh-key-list"
       | "ssh-key-revoke"
@@ -184,7 +185,8 @@ async fn main {
             | @gitops.Failure(message~) => message
             _ =>
               if command == Some("ssh-serve") ||
-                command == Some("ssh-pre-receive") {
+                command == Some("ssh-pre-receive") ||
+                command == Some("ssh-ref-transaction") {
                 @domain.internal_error_message
               } else {
                 err.to_string()

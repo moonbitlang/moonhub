@@ -308,6 +308,7 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mr-list p .path { margin-inline: 4px; }
 .mr-list + .mr-actions { justify-content: flex-end; }
 .pipeline-steps { margin: 14px 0 0; padding: 0 0 0 20px; color: var(--color-muted); font-size: 13px; }
+.pipeline-push-settings { margin-block: 24px; }
 .pipeline-steps li { padding: 5px 0; }
 .pipeline-logs { margin-top: 14px; border-top: 1px solid var(--color-border-muted); }
 .pipeline-logs summary { padding: 10px 0; color: var(--color-muted); cursor: pointer; font-size: 12px; font-weight: 600; }

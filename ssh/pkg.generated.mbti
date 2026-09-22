@@ -17,6 +17,8 @@ pub fn own_active_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> Use
 
 pub fn parse_ssh_public_key(String) -> SshPublicKey raise
 
+pub async fn record_ref_transaction(@database.Database, Int64, @domain.RepoId, String, String) -> Unit
+
 pub fn revoke_own_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
 
 pub async fn serve_git_ssh(@database.Database, Int64, String) -> Int

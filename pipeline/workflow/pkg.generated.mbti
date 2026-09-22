@@ -13,6 +13,8 @@ pub let max_source_bytes : Int
 
 pub fn parse(String) -> Workflow raise InvalidWorkflow
 
+pub fn triggers(String) -> Triggers raise InvalidWorkflow
+
 // Errors
 pub suberror InvalidWorkflow {
   InvalidWorkflow(String)
@@ -44,6 +46,13 @@ pub struct Step {
 pub fn Step::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Step::to_json(Self) -> Json
 pub fn Step::to_repr(Self) -> @debug.Repr
+
+pub struct Triggers {
+  dispatch : Bool
+  push : Bool
+  branches : Array[String]
+}
+pub fn Triggers::matches_push(Self, String) -> Bool
 
 pub struct Workflow {
   name : String

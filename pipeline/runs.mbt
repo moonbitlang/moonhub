@@ -99,6 +99,7 @@ fn insert_run_snapshot(
   pin : String,
   source : String,
   definition : @workflow.Workflow,
+  event_id? : Int64 = 0L,
 ) -> Run raise {
   let number : Int64 = tx
     .query_one(
@@ -107,7 +108,7 @@ fn insert_run_snapshot(
     )
     .get_name("number")
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0)) RETURNING *",
     params=[
       repository_id,
       number,
@@ -120,6 +121,7 @@ fn insert_run_snapshot(
       @workflow.format_version.to_int64(),
       source,
       ToJson::to_json(definition).stringify(),
+      event_id,
     ],
   )
   let run = Run::from_row(row)
@@ -200,6 +202,11 @@ pub async fn create_run(
     let source = read_workflow_source(git_dir, sha, workflow_path)
     let definition = @workflow.parse(source) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
+    }
+    guard @workflow.triggers(source).dispatch else {
+      raise @domain.BadRequest(
+        message="workflow does not allow manual dispatch",
+      )
     }
     // Git subprocesses yield. Recheck permissions after the final await and
     // before the synchronous database transaction publishes the snapshot.

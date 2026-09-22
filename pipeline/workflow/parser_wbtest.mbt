@@ -142,15 +142,18 @@ test "unsupported execution semantics fail closed at every mapping level" {
     expect_invalid(basic_workflow + "\n        " + field, "not supported")
   }
   expect_invalid(
-    basic_workflow.replace_all(old="on: workflow_dispatch", new="on: push"),
-    "trigger",
+    basic_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: pull_request",
+    ),
+    "not supported",
   )
   expect_invalid(
     basic_workflow.replace_all(
       old="on: workflow_dispatch",
       new="on: {workflow_dispatch: {inputs: {}}}",
     ),
-    "without inputs",
+    "inputs are not supported",
   )
   expect_invalid(
     basic_workflow.replace_all(

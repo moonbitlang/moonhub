@@ -14,15 +14,15 @@ unchanged.
 | `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
-| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration |
+| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events and recovery |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules and merge worker |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, provider grants, atomic claims, leases, logs, cancellation and result persistence |
+| `pipeline` | Authorized run snapshots, push-event consumption, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Docker provider claim loop and constrained ephemeral-container adapter; no database dependency |
 | `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
-| `ssh` | SSH keys, authentication, Git transport and pre-receive entry point |
+| `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
 | `web/ui` | Shared page layout, navigation and reusable presentation |
@@ -128,6 +128,13 @@ have separate Moonback containers, so their composition roots initialize their
 own resources. Only these composition roots read custom bootstrap config.
 The server owns database and worker lifetimes; providers borrow the database
 and never close it.
+
+Repository ref-update events are below Pipeline in the dependency graph. SSH
+hooks and the merge worker record them without importing Pipeline. The Pipeline
+worker consumes their immutable commit IDs under the shared repository lock and
+creates deduplicated workflow runs. Recovery of prepared Git updates happens
+before subsequent managed writes, independently of workflow parsing. Web owns
+the push worker lifecycle and the repository-level opt-in form.
 
 Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.

@@ -32,6 +32,12 @@ fn management_command() -> @argparse.Command {
         PositionArg("id"),
         PositionArg("repository"),
       ]),
+      @argparse.Command("ssh-ref-transaction", hidden=true, positionals=[
+        PositionArg("id"),
+        PositionArg("repository"),
+        PositionArg("push-id"),
+        PositionArg("phase"),
+      ]),
       @argparse.Command(
         "ssh-key-add",
         about="Bind an Ed25519 public key to an active user.",
@@ -174,6 +180,14 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           pool,
           cli_key_id(options),
           cli_value(matches, "root"),
+        )
+      "ssh-ref-transaction" =>
+        @ssh.record_ref_transaction(
+          pool,
+          cli_key_id(options),
+          @domain.parse_transport_repo(cli_value(options, "repository")),
+          cli_value(options, "push-id"),
+          cli_value(options, "phase"),
         )
       "ssh-pre-receive" =>
         @ssh.check_received_refs(

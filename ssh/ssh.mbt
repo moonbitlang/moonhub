@@ -178,6 +178,13 @@ pub async fn serve_git_ssh(
     None
   }
   defer (if write_lock is Some(lock) { lock.close() })
+  if request.operation == @repository.Write {
+    @repository.recover_ref_events_locked(
+      pool,
+      @repository.repository_scope(pool, user, request.repo),
+      git_dir,
+    )
+  }
   let git_command = match request.operation {
     @repository.Read => "upload-pack"
     @repository.Write => "receive-pack"
@@ -189,12 +196,18 @@ pub async fn serve_git_ssh(
     let hooks = @env.get_env_var("MOONHUB_HOOKS_PATH").unwrap_or(
       "/usr/local/lib/moonhub/hooks",
     )
-    guard @fs.kind("\{hooks}/pre-receive", follow_symlink=false) is Regular else {
-      raise @domain.BadRequest(message="Moonhub receive hook is not installed")
+    for name in ["pre-receive", "reference-transaction"] {
+      guard @fs.kind("\{hooks}/\{name}", follow_symlink=false) is Regular &&
+        @fs.can_execute("\{hooks}/\{name}") else {
+        raise @domain.BadRequest(
+          message="Moonhub receive hooks must be installed and executable",
+        )
+      }
     }
     protected_args.push("-c")
     protected_args.push("core.hooksPath=\{hooks}")
     environment["MOONHUB_KEY_ID"] = key_id.to_string()
+    environment["MOONHUB_PUSH_ID"] = @identity.random_hex(16)
     environment["MOONHUB_REPOSITORY"] = request.repo.path()
     environment["DB_PATH"] = @env.get_env_var("DB_PATH").unwrap_or("moonhub.db")
     environment["MOONHUB_BIN"] = @env.get_env_var("MOONHUB_BIN").unwrap_or(
@@ -213,7 +226,7 @@ pub async fn serve_git_ssh(
     )
   })
   @signal.set_global_cancellation_signals([SIGINT, SIGTERM, SIGHUP])
-  @process.run(
+  let code = @process.run(
     @env.get_env_var("MOONHUB_GIT").unwrap_or("git"),
     [
       "-c", "receive.fsckObjects=true", "-c", "receive.maxInputSize=1073741824",
@@ -225,4 +238,12 @@ pub async fn serve_git_ssh(
     stdout=@stdio.stdout,
     stderr=@stdio.stderr,
   )
+  if request.operation == @repository.Write {
+    @repository.recover_ref_events_locked(
+      pool,
+      @repository.repository_scope(pool, user, request.repo),
+      git_dir,
+    )
+  }
+  code
 }

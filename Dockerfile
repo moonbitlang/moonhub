@@ -56,6 +56,7 @@ COPY deploy/sshd_config /etc/ssh/moonhub_sshd_config
 COPY --chmod=755 deploy/entrypoint.sh /usr/local/bin/moonhub-entrypoint
 COPY --chmod=755 deploy/import-ssh.sh /usr/local/bin/moonhub-import-ssh
 COPY --chmod=755 deploy/hooks/pre-receive /usr/local/lib/moonhub/hooks/pre-receive
+COPY --chmod=755 deploy/hooks/reference-transaction /usr/local/lib/moonhub/hooks/reference-transaction
 ENV DB_PATH=/data/moonhub.db \
     MOONHUB_REPO_ROOT=/data/repos \
     MOONHUB_SSH_IMPORT_ROOT=/run/moonhub/ssh-import \

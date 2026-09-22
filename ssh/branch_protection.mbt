@@ -4,6 +4,16 @@ pub async fn check_received_refs(
   key_id : Int64,
   repo : @domain.RepoId,
 ) -> Unit {
+  @collaboration.authorize_received_refs(
+    pool,
+    ssh_key_user(pool, key_id),
+    repo,
+    read_ref_updates(),
+  )
+}
+
+///|
+async fn read_ref_updates() -> String {
   let bytes = FixedArray::make(1048577, b'\x00')
   let mut length = 0
   while length < bytes.length() {
@@ -23,10 +33,23 @@ pub async fn check_received_refs(
   let updates = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
     _ => raise @domain.BadRequest(message="invalid ref update encoding")
   }
-  @collaboration.authorize_received_refs(
+  updates
+}
+
+///|
+pub async fn record_ref_transaction(
+  pool : @database.Database,
+  key_id : Int64,
+  repo : @domain.RepoId,
+  source_key : String,
+  phase : String,
+) -> Unit {
+  @repository.record_received_transaction(
     pool,
     ssh_key_user(pool, key_id),
     repo,
-    updates,
+    source_key,
+    phase,
+    read_ref_updates(),
   )
 }

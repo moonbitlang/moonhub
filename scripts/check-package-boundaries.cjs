@@ -27,7 +27,7 @@ const allowed = {
   provider: ['pipeline/protocol'],
   'pipeline/workflow': ['vendor/yaml'],
   'vendor/yaml': [],
-  ssh: ['domain', 'database', 'gitops', 'repository', 'collaboration'],
+  ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
     'domain', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline',
     'web/assets', 'web/context', 'web/views/auth', 'web/views/account',

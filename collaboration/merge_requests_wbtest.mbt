@@ -6,6 +6,7 @@ async test "merge requests require version-bound approval and publish a two-pare
     let alice = @identity.active_user_by_name(pool, "alice")
     let admin = @identity.active_user_by_name(pool, "admin")
     let scope = @repository.repository_scope(pool, alice, repo)
+    @repository.set_pipeline_push_enabled(pool, root, alice, repo, true)
     let original = @gitops.branch_sha(git_dir, "master")
     let source = @test_support.merge_test_commit(
       git_dir, "feature/one", original, "feature\n",
@@ -50,6 +51,11 @@ async test "merge requests require version-bound approval and publish a two-pare
     let merged = require_merge_request(pool, scope, 1L)
     assert_eq(merged.status, "merged", msg=merged.job_error)
     assert_eq(merged.job_status, "succeeded")
+    let events = @repository.list_ref_events(pool, alice, repo)
+    assert_eq(events.length(), 1)
+    assert_eq(events[0].state, "ready")
+    assert_eq(events[0].reference, "refs/heads/master")
+    assert_eq(events[0].commit_sha, merged.merged_sha)
     assert_eq(@gitops.branch_sha(git_dir, "master"), merged.merged_sha)
     assert_eq(
       @gitops.merge_git(git_dir, [
@@ -229,6 +235,7 @@ async test "merge recovery uses its atomic receipt even after a later target pus
     let git_dir = repo.git_dir(root)
     let alice = @identity.active_user_by_name(pool, "alice")
     let scope = @repository.repository_scope(pool, alice, repo)
+    @repository.set_pipeline_push_enabled(pool, root, alice, repo, true)
     let base = @gitops.branch_sha(git_dir, "master")
     let source = @test_support.merge_test_commit(
       git_dir, "feature", base, "source\n",
@@ -270,6 +277,9 @@ async test "merge recovery uses its atomic receipt even after a later target pus
     let merged = require_merge_request(pool, scope, mr.number)
     assert_eq(merged.status, "merged")
     assert_eq(merged.merged_sha, result)
+    let events = @repository.list_ref_events(pool, alice, repo)
+    assert_eq(events.length(), 1)
+    assert_eq(events[0].commit_sha, result)
     assert_eq(@gitops.branch_sha(git_dir, "master"), advanced)
     assert_true(!run_next_merge_job(pool, root))
     let count : Int64 = pool.with_client(client => {

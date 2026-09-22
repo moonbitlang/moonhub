@@ -95,6 +95,9 @@ fn render_pipeline_list(
   scope : @repository.RepositoryScope,
   runs : Array[@pipeline.Run],
   manager : Bool,
+  push_enabled : Bool,
+  csrf : String,
+  events : Array[@repository.RefEventStatus],
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) + "/pipelines"
   @web_ui.layout(
@@ -116,6 +119,27 @@ fn render_pipeline_list(
         b <+ "<li class=\"muted\">No pipeline runs yet.</li>"
       }
       b <+ "</ul>"
+      if manager {
+        b <+
+          "<section class=\"repository-form pipeline-push-settings\"><h2>Automatic workflows</h2><form class=\"form-stack\" method=\"post\" action=\"\{base}/settings\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label><input type=\"checkbox\" name=\"push_enabled\" value=\"1\""
+        if push_enabled {
+          b <+ " checked"
+        }
+        b <+
+          "> Run push workflows</label><p class=\"settings-notice\">Enables execution of repository code pushed or merged by repository owners and administrators. Provider access and labels still apply.</p><button type=\"submit\"><span class=\"ui-icon\" data-icon=\"check\" aria-hidden=\"true\"></span>Save settings</button></form></section>"
+      }
+      if !events.is_empty() {
+        b <+ "<section><h2>Recent push events</h2><ul class=\"mr-list\">"
+        for event in events {
+          b <+
+            "<li class=\"provider-access-summary\"><span class=\"path\">\{event.reference}</span> <span class=\"muted\">\{event.commit_sha[:12].to_owned()} · \{event.state}</span>"
+          if !event.error.is_empty() {
+            b <+ "<p class=\"flash-error\">\{event.error}</p>"
+          }
+          b <+ "</li>"
+        }
+        b <+ "</ul></section>"
+      }
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),

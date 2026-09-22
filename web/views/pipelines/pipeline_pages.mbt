@@ -327,8 +327,30 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         scope,
         @pipeline.list_runs(pool, actor, scope.repo),
         manager,
+        @repository.pipeline_push_enabled(pool, actor, scope.repo),
+        @web_context.request_form_token(req, "pipelines:settings"),
+        @repository.list_ref_events(pool, actor, scope.repo),
       ),
       headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/:owner/:repo/pipelines/settings", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let scope = pipeline_scope(pool, actor, req)
+    require_pipeline_manager(pool, actor, scope)
+    let form = @web_context.protected_form(req, "pipelines:settings")
+    @repository.set_pipeline_push_enabled(
+      pool,
+      root,
+      actor,
+      scope.repo,
+      form.get("push_enabled") == Some("1"),
+    )
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location=@web_ui.repo_link(scope.repo) + "/pipelines",
+      ),
     )
   })
   ctx.get("/:owner/:repo/pipelines/new", async fn(req, res) {

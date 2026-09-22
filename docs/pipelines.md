@@ -35,8 +35,11 @@ a run resolves the branch once, then reads the workflow from that exact commit.
 
 Supported configuration:
 
-- `name`; `on: workflow_dispatch`, its one-element list form, or a mapping with
-  `workflow_dispatch: null` / `{}`. Dispatch inputs are not yet supported.
+- `name`; `on: workflow_dispatch`, `on: push`, lists of these triggers, or a
+  mapping containing either/both. Dispatch inputs are not yet supported.
+  Push triggers handle branch creation/updates only. `push.branches` accepts
+  1-64 exact branch names; omitted means all branches. Globs, negation, tag,
+  path and PR filters are rejected, not silently approximated.
 - Static `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
 - Job labels must include `self-hosted`; the execution target is Linux. Labels
@@ -309,6 +312,65 @@ connections competing for a job, database close/reopen, reordered/duplicate
 logs, credential redaction, log quotas, cancellation/result races, revoked
 permissions, expired/old credentials, fixed deadlines, and migration 7 -> 8
 including backfilled labels. No Docker daemon or external service is needed.
+
+## Automatic Push Workflows
+
+Automatic execution is opt-in per repository. A repository owner or administrator
+can enable **Run push workflows** on its Pipelines page. Existing repositories
+remain disabled after migration 012. Only pushes by repository owners/admins or
+site administrators are eligible, preserving the existing execution trust policy;
+ordinary contributors can still push, but their pushes do not automatically run
+code. The requester must remain authorized when the event is processed and when
+a provider claims it. Provider scopes and label matching still apply. No fork or
+external-contributor execution is enabled.
+
+```yaml
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+```
+
+SSH branch updates and successful in-app merges create durable repository events.
+Tag pushes, branch deletion and unchanged refs do not create jobs. Workflow files
+and sources are read from the event's exact new commit, never the branch's later
+tip. At most 64 workflow files are inspected for an event; each matching workflow
+gets an independent immutable run. Unsupported workflow files are reported in
+**Recent push events** without preventing other valid workflows from running.
+This includes GitHub-only workflows in the same `.github/workflows` directory.
+Disabling automatic execution prevents pending events from creating new runs;
+it does not cancel already-created runs. Enabling it does not replay older pushes.
+
+The deployment-owned `reference-transaction` hook records the intent during
+Git's `prepared` phase. `committed` and `aborted` callbacks confirm its outcome;
+the optional newer `preparing` phase is ignored. The SSH parent holds the
+repository write lock across receive-pack and event recovery. Before another
+managed write, recovery confirms unacknowledged intents against the current ref
+and pins successful commits under `refs/moonhub/push-events/`. If neither old nor
+new value matches, writes fail closed for inspection instead of guessing. This
+relies on all writes going through MoonHub's shared per-repository lock; direct
+external ref edits are not supported. Merge events are recorded alongside merge
+completion and recover from the existing atomic merge receipt.
+
+The background worker handles persisted events after restart. A unique
+event/workflow key makes replay idempotent; each run also owns a distinct source
+pin. Temporary processing errors retry after 30 seconds without starving other
+repositories. Events and retained pins are currently not pruned automatically.
+Public trigger status does not expose internal exception details.
+
+Upgrade Web and SSH together: both trusted hooks (`pre-receive` and
+`reference-transaction`) must be installed and executable; missing or
+non-executable hooks fail closed. Docker installs both automatically. The hooks
+never come from the pushed repository. `.github/workflows/moonhub.yml` now allows
+pushes to `master` as well as manual dispatch; enabling the repository setting is
+still an explicit operator action.
+
+`node scripts/pipeline-push-smoke.cjs` runs the native SSH command, actual
+receive-pack and deployment hooks with an isolated database. Its local transport
+shim replaces SSH networking only. It covers opt-in, two pushes while Web is
+stopped, multiple workflows, fixed SHAs, restart/no-op deduplication and filters.
+`MOONHUB_KEEP_PREVIEW=1` retains the preview under
+`_build/pipeline-push-smoke/preview.json`. No production deployment is touched.
 
 ## Single-job Runner (Step 3)
 

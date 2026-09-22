@@ -24,11 +24,21 @@ pub fn effective_ssh_endpoint(@database.Database, SshAddressConfig) -> SshEndpoi
 
 pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String, String, String, addresses? : SshAddressConfig) -> @domain.RepoId
 
+pub fn list_ref_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RefEventStatus] raise
+
 pub fn namespace_repositories(@database.Database, @domain.CurrentUser, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
 
 pub let no_ssh_address_config : SshAddressConfig
 
 pub fn pin_legacy_repository_source(@database.Database, @domain.CurrentUser, RepositoryJob, SshAddressConfig) -> RepositoryJob raise
+
+pub fn pipeline_push_enabled(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Bool raise
+
+pub fn record_merged_ref(@database.DbTransaction, Int64, Int64, Int64, String, String) -> Unit raise
+
+pub fn record_received_transaction(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, String) -> Unit raise
+
+pub async fn recover_ref_events_locked(@database.Database, RepositoryScope, String) -> Unit
 
 pub fn repo_import_config_from_env() -> RepoImportConfig? raise
 
@@ -50,6 +60,8 @@ pub async fn run_next_repository_job(@database.Database, String, RepoImportConfi
 
 pub fn save_ssh_endpoint(@database.Database, @domain.CurrentUser, SshAddressConfig, String, String) -> Unit raise
 
+pub async fn set_pipeline_push_enabled(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Bool) -> Unit
+
 pub fn ssh_address_config_from_env() -> SshAddressConfig raise
 
 pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
@@ -65,6 +77,13 @@ pub async fn[A] with_repository_write(@database.Database, String, @domain.Curren
 // Errors
 
 // Types and methods
+pub struct RefEventStatus {
+  reference : String
+  commit_sha : String
+  state : String
+  error : String
+}
+
 pub(all) struct RepoImportConfig {
   credentials_root : String
   ssh_wrapper : String

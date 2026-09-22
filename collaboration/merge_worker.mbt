@@ -16,6 +16,14 @@ fn finish_merge(
         params=[mr.id],
       )
       if changed == 1 {
+        @repository.record_merged_ref(
+          tx,
+          mr.repository_id,
+          actor_id,
+          mr.id,
+          mr.target,
+          sha,
+        )
         merge_activity(tx, mr, actor_id, "merged", body=sha)
       }
     })
@@ -148,6 +156,7 @@ pub async fn run_next_merge_job(
   let git_dir = @repository.resolve_repository_dir(root, scope.repo)
   let lock = @gitops.repository_write_lock(git_dir)
   defer lock.close()
+  @repository.recover_ref_events_locked(pool, scope, git_dir)
   let mr = require_merge_request(pool, scope, row.get_name("number"))
   if mr.job_status != "pending" && mr.job_status != "running" {
     return false
