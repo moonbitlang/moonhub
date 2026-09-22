@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { snapshotInputs, assertUnchanged } = require('./self-check.cjs');
+const { snapshotInputs, assertUnchanged, runStage } = require('./self-check.cjs');
 
 test('cold jobs initialize the registry before check and stop at the first failure', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-self-check-'));
@@ -28,8 +28,27 @@ esac
     });
     assert.notEqual(result.status, 0);
     assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['version --all', 'update', 'check --deny-warn']);
-    assert.match(result.stderr, /status: 7/);
+    assert.match(result.stderr, /MoonBit check: exit 7/);
+    assert.match(result.stdout, /START Mooncakes index/);
+    assert.match(result.stdout, /PASS Mooncakes index \(\d+\.\ds\)/);
+    assert.match(result.stdout, /FAIL MoonBit check/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('stages report progress and terminate a stalled process group at the deadline', async () => {
+  const messages = [];
+  await assert.rejects(runStage('Stalled download', process.execPath,
+    ['-e', "require('node:child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' }); setInterval(() => {}, 1000)"],
+    { cwd: os.tmpdir(), timeoutMs: 250, progressMs: 50, log: message => messages.push(message) }), /Stalled download: timed out/);
+  assert.ok(messages.some(message => message.includes('RUNNING Stalled download')));
+  assert.ok(messages.at(-1).includes('FAIL Stalled download: timed out'));
+});
+
+test('stage startup failures are reported and reject immediately', async () => {
+  const messages = [];
+  await assert.rejects(runStage('Missing tool', '/nonexistent-moonhub-test-command', [],
+    { cwd: os.tmpdir(), timeoutMs: 10000, log: message => messages.push(message) }), /ENOENT/);
+  assert.ok(messages.some(message => message.includes('FAIL Missing tool')));
 });
 
 test('archive inputs detect content changes and added/deleted interfaces without Git', () => {

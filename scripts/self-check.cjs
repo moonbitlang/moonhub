@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
+const { performance } = require('node:perf_hooks');
 
 // Archive checkouts have no Git index. Track both content and the file set so
 // fmt/info cannot silently modify, remove, or introduce generated interfaces.
@@ -29,24 +30,62 @@ function assertUnchanged(before, after) {
   assert.equal(changed.length, 0, 'moon fmt/info changed inputs:\n' + changed.join('\n'));
 }
 
-function main() {
+function runStage(name, command, args, { cwd, timeoutMs, progressMs = 30000, log = console.log }) {
+  const started = performance.now();
+  const elapsed = () => ((performance.now() - started) / 1000).toFixed(1) + 's';
+  log(`[self-check] START ${name} (timeout ${timeoutMs / 1000}s)`);
+  return new Promise((resolve, reject) => {
+    // The runner uses Linux. A separate group lets a stage deadline stop npm's
+    // child processes too, instead of leaving installers behind after failure.
+    const child = spawn(command, args, { cwd, stdio: 'inherit', detached: true });
+    let timedOut = false;
+    const progress = setInterval(() => log(`[self-check] RUNNING ${name} (${elapsed()})`), progressMs);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      if (child.pid) {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch (error) {
+          if (error.code !== 'ESRCH') child.kill('SIGKILL');
+        }
+      }
+    }, timeoutMs);
+    const cleanup = () => { clearInterval(progress); clearTimeout(timeout); };
+    child.once('error', error => {
+      cleanup();
+      log(`[self-check] FAIL ${name} (${elapsed()}): ${error.message}`);
+      reject(error);
+    });
+    child.once('close', (code, signal) => {
+      cleanup();
+      if (!timedOut && code === 0) {
+        log(`[self-check] PASS ${name} (${elapsed()})`);
+        resolve();
+      } else {
+        const error = new Error(`${name}: ${timedOut ? 'timed out' : `exit ${code}, signal ${signal || 'none'}`} after ${elapsed()}`);
+        log(`[self-check] FAIL ${error.message}`);
+        reject(error);
+      }
+    });
+  });
+}
+
+async function main() {
   const root = path.resolve(__dirname, '..');
-  const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit', timeout: 1800000 });
-  run('moon', ['version', '--all']);
-  run('moon', ['update']);
+  const run = (name, command, args, timeoutMs = 300000) => runStage(name, command, args, { cwd: root, timeoutMs });
+  await run('Toolchain versions', 'moon', ['version', '--all'], 30000);
+  await run('Mooncakes index', 'moon', ['update']);
   const before = snapshotInputs(root);
-  run('moon', ['check', '--deny-warn']);
-  run('moon', ['fmt']);
-  run('moon', ['info']);
+  await run('MoonBit check', 'moon', ['check', '--deny-warn']);
+  await run('MoonBit format', 'moon', ['fmt']);
+  await run('MoonBit interfaces', 'moon', ['info']);
   assertUnchanged(before, snapshotInputs(root));
-  run(process.execPath, ['scripts/check-package-boundaries.cjs']);
-  run(process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs']);
-  run('npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
-  run('npm', ['run', 'build', '--prefix', 'js']);
-  run('moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn']);
-  run('moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn']);
+  await run('Package boundaries', process.execPath, ['scripts/check-package-boundaries.cjs']);
+  await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs']);
+  await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
+  await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
+  await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
+  await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }
 
-module.exports = { snapshotInputs, assertUnchanged };
-if (require.main === module) main();
+module.exports = { snapshotInputs, assertUnchanged, runStage };
+if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

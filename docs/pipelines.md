@@ -636,6 +636,11 @@ MOONHUB_RUNNER_CPUS=2
 ```
 
 `scripts/self-check.cjs` initializes the registry in the fresh job HOME, then
+prints each stage's start, result and elapsed time, with a progress line every
+30 seconds while a command is running. Dependency installation has a five-minute
+stage deadline; native tests and compilation each have ten minutes. The workflow's
+30-minute job deadline still bounds the entire run. A stage timeout terminates
+its process group and fails the check without starting later stages. It then
 runs check/fmt/info in order, rejects modified or
 added/deleted MoonBit inputs and interfaces without requiring `.git`, checks
 package boundaries, builds frontend assets, then runs all native tests and builds
