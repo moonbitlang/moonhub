@@ -1,0 +1,7 @@
+{
+  "user": ["id", "name_key", "display_name", "email", "password_hash", "is_site_admin", "status", "created_at", "updated_at"],
+  "team": ["id", "name_key", "display_name", "kind", "created_at", "updated_at"],
+  "team_member": ["team_id", "user_id", "role", "created_at"],
+  "invitation": ["id", "kind", "email", "name_key", "display_name", "password_hash", "is_site_admin", "team_id", "team_role", "invited_by_user_id", "accepted_user_id", "status", "created_at", "expires_at", "accepted_at", "revoked_at"],
+  "ssh_key": ["id", "user_id", "title", "public_key", "fingerprint", "created_at", "last_used_at", "revoked_at"]
+}

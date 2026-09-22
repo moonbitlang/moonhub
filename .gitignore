@@ -18,3 +18,4 @@ deploy/ssh-import/
 backups/
 deploy/deploy.env
 **/id_ed25519
+__pycache__/
