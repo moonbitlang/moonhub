@@ -20,6 +20,11 @@ const fs = require('node:fs'), a = process.argv.slice(2);
 fs.appendFileSync(process.env.TEST_LOG, JSON.stringify(a) + '\\n');
 if (a[0] === 'info') console.log(a.includes('{{.CgroupDriver}}/{{.CgroupVersion}}') ? 'systemd/2' : 'linux/x86_64');
 else if (a[0] === 'container' && a[1] === 'inspect') process.exit(1);
+else if (a[0] === 'image' && a[1] === 'inspect') {
+  if (fs.existsSync(process.env.TEST_BAKE) && process.env.TEST_FAIL !== '1') console.log(process.env.TEST_REVISION);
+  else process.exit(1);
+}
+else if (a[0] === 'run') { /* record the bounded builder invocation */ }
 else if (a[0] === 'buildx' && a[1] === 'bake') {
  const file=a[a.indexOf('--file')+1]; fs.copyFileSync(file, process.env.TEST_BAKE);
  if(process.env.TEST_FAIL==='1') process.exit(1);
@@ -54,11 +59,14 @@ else if (a[0] === 'buildx' && a[1] === 'bake') {
   }
   assert.equal(plan.target['dependency-base'].args.MOONHUB_USE_CN_MIRRORS, '0');
   assert.ok(result.commands.some(a => a[0] === 'stop' && a[1] === 'moonhub-test-buildkit'));
+  result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.commands.filter(a => a[0] === 'run').length, 0, 'same-commit images were rebuilt');
   result = run({ CONFIGURED_IMAGES: 'moonhub:old' });
   assert.notEqual(result.status, 0);
   assert.equal(result.commands.length, 0);
   result = run({ TEST_FAIL: '1' });
   assert.notEqual(result.status, 0);
-  assert.ok(!result.commands.some(a => a[0] === 'image'), 'failed build was accepted as a new release');
+  assert.ok(!result.commands.some(a => a[0] === 'stop'), 'failed build stopped the builder unexpectedly');
   console.log('Bounded build tests passed: 2 CPU/4 GiB isolation, committed context, linked base target, commit labels and failure rejection.');
 } finally { fs.rmSync(root, { recursive: true, force: true }); }

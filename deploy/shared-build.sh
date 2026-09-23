@@ -48,6 +48,16 @@ build_shared_images() {
     printf 'Unset fixed image/release overrides for commit-addressed shared builds.\n' >&2; return 1;
   }
   [ "$BUILD_RUNNER" = 1 ] || { printf 'Shared builds must build the matching Runner.\n' >&2; return 1; }
+  local image revision
+  local all_ready=1
+  for image in "$RUNTIME_IMAGE" "$PROVIDER_IMAGE" "$RUNNER_IMAGE"; do
+    revision=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image" 2>/dev/null || true)
+    if [ "$revision" != "$RECOVERY_TOOL_REVISION" ]; then all_ready=0; break; fi
+  done
+  if [ "$all_ready" = 1 ]; then
+    printf 'Reusing already-built images for committed source %s\n' "$RECOVERY_TOOL_REVISION"
+    return 0
+  fi
   local platform available
   platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
   case "$platform" in
