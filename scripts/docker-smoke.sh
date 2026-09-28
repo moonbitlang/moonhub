@@ -101,27 +101,27 @@ fi
 refresh_endpoints
 
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
-  -c "$tmp/cookies" -d 'name_key=root&password=bootstrapSmokePassword123' "$http/login")
+  -c "$tmp/cookies" -d 'name_key=root&password=bootstrapSmokePassword123' "$http/-/login")
 test "$status" = 303
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" -c "$tmp/cookies" \
-  -d 'new_password=activatedSmokePassword123&confirm_password=activatedSmokePassword123' "$http/change-password")
+  -d 'new_password=activatedSmokePassword123&confirm_password=activatedSmokePassword123' "$http/-/change-password")
 test "$status" = 303
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp/key"
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/admin/settings/ssh" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/-/admin/settings/ssh" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" -d 'host=127.0.0.1' \
-  --data-urlencode "port=$ssh_port" "$http/admin/settings/ssh")
+  --data-urlencode "port=$ssh_port" "$http/-/admin/settings/ssh")
 test "$status" = 303
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys/new" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/-/settings/ssh-keys/new" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" --data-urlencode 'title=Smoke' \
-  --data-urlencode "public_key@$tmp/key.pub" "$http/settings/ssh-keys")
+  --data-urlencode "public_key@$tmp/key.pub" "$http/-/settings/ssh-keys")
 test "$status" = 303
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/-/settings/ssh-keys" > "$tmp/settings"
 revoke_path=$(settings_value revoke < "$tmp/settings")
 "${compose[@]}" exec -T --user git web moonhub repo-create root/demo
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
@@ -158,7 +158,7 @@ grep -q 'README.md' "$tmp/response"
 
 # Team creation and an empty repository are exercised through their web forms.
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
-  -b "$tmp/cookies" -d 'name_key=smoke-team&display_name=Smoke%20Team' "$http/teams")
+  -b "$tmp/cookies" -d 'name_key=smoke-team&display_name=Smoke%20Team' "$http/-/teams")
 test "$status" = 303
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/-/repositories/new" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
@@ -174,11 +174,11 @@ git -C "$tmp/source" branch feature/import
 git -C "$tmp/source" tag import-v1
 git -C "$tmp/source" push origin feature/import import-v1
 ssh-keygen -q -t ed25519 -N '' -f "$tmp/import-key"
-curl --fail --silent --show-error -b "$tmp/cookies" "$http/settings/ssh-keys/new" > "$tmp/settings"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/-/settings/ssh-keys/new" > "$tmp/settings"
 csrf=$(settings_value csrf < "$tmp/settings")
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -b "$tmp/cookies" --data-urlencode "csrf_token=$csrf" --data-urlencode 'title=Import source access' \
-  --data-urlencode "public_key@$tmp/import-key.pub" "$http/settings/ssh-keys")
+  --data-urlencode "public_key@$tmp/import-key.pub" "$http/-/settings/ssh-keys")
 test "$status" = 303
 mkdir -p "$MOONHUB_SSH_IMPORT_DIR/smoke-team"
 cp "$tmp/import-key" "$MOONHUB_SSH_IMPORT_DIR/smoke-team/id_ed25519"
@@ -199,7 +199,21 @@ status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http
   --data-urlencode "source_url=$url" "$http/smoke-team/-/repositories/import")
 test "$status" = 303
 wait_repository_operation imported Failed
-grep -Eq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' "$tmp/operation"
+grep -Fq 'Repository operation failed. Please retry or contact a site administrator.' "$tmp/operation"
+if grep -Eq 'Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' "$tmp/operation"; then
+  printf '%s\n' 'Private SSH diagnostics were exposed in the status page' >&2
+  exit 1
+fi
+# Verify the private failure reason through the trusted container, not the UI.
+"${compose[@]}" exec -T --user git web node --no-warnings -e '
+const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(process.env.DB_PATH, { readOnly: true });
+const job = db.prepare("SELECT j.last_error FROM repository_job j JOIN repository r ON r.id = j.repository_id WHERE r.name = ?").get("imported");
+if (!/Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED/.test(job?.last_error || "")) {
+  throw new Error("The rejected import did not record a host-verification failure");
+}
+db.close();
+'
 if git ls-remote "ssh://git@127.0.0.1:$ssh_port/smoke-team/imported.git" > "$tmp/denied" 2>&1; then
   printf '%s\n' 'An incomplete import was exposed over SSH' >&2
   exit 1

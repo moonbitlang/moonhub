@@ -133,3 +133,17 @@ strict host checking, forwarding denial and multiplexed revocation, using only
 disposable containers/volumes. Both modes cover browser forms at desktop and
 mobile widths and reject authorization cached while a receive hook waits for
 input. The general Docker smoke retains user-key transport regression coverage.
+
+## Deployment Acceptance Record
+
+On 2026-09-28, `compiler/moonhub` was upgraded to implementation commit
+`bf29034e932460d0a108c4f7c895be9cb5ea9e3a`, with matching Web/SSH, Provider and
+Runner images and a pre-upgrade recovery backup. Repository deploy key ID 1
+(`moonhub-server-repository-deploy`) was registered read-only. Its fingerprint is
+`SHA256:7XiXGrszgcKwcJ97GpY1hke21N6mijRz5qfxOgsX6XM`.
+
+The deployment clone now pins that identity and uses strict host verification.
+`git pull --ff-only` succeeded before and after revoking root-account SSH key
+ID 2 (`moonhub-server-deploy`); an explicit authentication attempt with the old
+key was rejected. All 329 MoonBit tests, focused real-OpenSSH/browser acceptance
+and the general Docker SSH/import/revocation regression passed.
