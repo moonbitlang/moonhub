@@ -12,6 +12,7 @@ import {
   "hackwaly/moonhub/repository",
   "moonbitlang/async/signal",
   "moonbitlang/async/stdio",
+  "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
 }
 

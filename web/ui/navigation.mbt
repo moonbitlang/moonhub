@@ -140,6 +140,8 @@ fn render_sidebar(
         if manager {
           b <+
             "\{render_navigation_item(base + "/settings/branches", "Branch protection", "settings", active == "settings")}"
+          b <+
+            "\{render_navigation_item(base + "/settings/deploy-keys", "Deploy keys", "key", active == "deploy-keys")}"
         }
         b <+ "</nav>"
       }

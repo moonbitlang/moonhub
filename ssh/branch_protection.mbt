@@ -1,14 +1,14 @@
 ///|
 pub async fn check_received_refs(
   pool : @database.Database,
-  key_id : Int64,
+  credential : SshCredential,
   repo : @domain.RepoId,
 ) -> Unit {
-  @collaboration.authorize_received_refs(
+  let updates = read_ref_updates()
+  @collaboration.check_received_ref_rules(
     pool,
-    ssh_key_user(pool, key_id),
-    repo,
-    read_ref_updates(),
+    authorize_git_operation(pool, credential, repo, @repository.Write),
+    updates,
   )
 }
 
@@ -39,17 +39,31 @@ async fn read_ref_updates() -> String {
 ///|
 pub async fn record_ref_transaction(
   pool : @database.Database,
-  key_id : Int64,
+  credential : SshCredential,
   repo : @domain.RepoId,
   source_key : String,
   phase : String,
 ) -> Unit {
-  @repository.record_received_transaction(
-    pool,
-    ssh_key_user(pool, key_id),
-    repo,
-    source_key,
-    phase,
-    read_ref_updates(),
-  )
+  let updates = read_ref_updates()
+  ignore(authorize_git_operation(pool, credential, repo, @repository.Write))
+  match credential {
+    UserKey(id) =>
+      @repository.record_received_transaction(
+        pool,
+        ssh_key_user(pool, id),
+        repo,
+        source_key,
+        phase,
+        updates,
+      )
+    DeployKey(_) => {
+      guard ["preparing", "prepared", "committed", "aborted"].contains(phase) else {
+        raise @domain.BadRequest(message="invalid reference transaction phase")
+      }
+      // pre-receive validates client refs. This trusted Git transaction may
+      // additionally report HEAD as a side effect of updating its branch.
+      // A repository credential is never a Pipeline execution principal.
+      // Do not attribute this push to its creator or create runnable ref events.
+    }
+  }
 }

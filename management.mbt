@@ -75,6 +75,40 @@ fn management_command() -> @argparse.Command {
         ],
       ),
       @argparse.Command(
+        "deploy-key-add",
+        about="Bind a new Ed25519 public key to exactly one repository.",
+        positionals=[PositionArg("repository")],
+        options=[
+          OptionArg("actor", long="actor", required=true),
+          OptionArg("title", long="title", required=true),
+          OptionArg(
+            "file",
+            long="file",
+            required=true,
+            about="Public key file.",
+          ),
+        ],
+        flags=[
+          FlagArg(
+            "write",
+            long="write",
+            about="Explicitly grant push access; defaults to read-only.",
+          ),
+        ],
+      ),
+      @argparse.Command(
+        "deploy-key-list",
+        about="List repository deploy keys.",
+        positionals=[PositionArg("repository")],
+        options=[OptionArg("actor", long="actor", required=true)],
+      ),
+      @argparse.Command(
+        "deploy-key-revoke",
+        about="Revoke a repository deploy key for subsequent operations.",
+        positionals=[PositionArg("repository"), PositionArg("id")],
+        options=[OptionArg("actor", long="actor", required=true)],
+      ),
+      @argparse.Command(
         "pipeline-provider-create",
         about="Register a Docker pipeline provider from a token file.",
         options=[
@@ -178,13 +212,13 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
       "ssh-serve" =>
         return @ssh.serve_git_ssh(
           pool,
-          cli_key_id(options),
+          @ssh.SshCredential::parse(cli_value(options, "id")),
           cli_value(matches, "root"),
         )
       "ssh-ref-transaction" =>
         @ssh.record_ref_transaction(
           pool,
-          cli_key_id(options),
+          @ssh.SshCredential::parse(cli_value(options, "id")),
           @domain.parse_transport_repo(cli_value(options, "repository")),
           cli_value(options, "push-id"),
           cli_value(options, "phase"),
@@ -192,7 +226,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
       "ssh-pre-receive" =>
         @ssh.check_received_refs(
           pool,
-          cli_key_id(options),
+          @ssh.SshCredential::parse(cli_value(options, "id")),
           @domain.parse_transport_repo(cli_value(options, "repository")),
         )
       "ssh-key-add" => {
@@ -259,6 +293,47 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           options.flags.get("import").unwrap_or(false),
         )
         println("Registered \{repo.path()}")
+      }
+      "deploy-key-add" | "deploy-key-list" | "deploy-key-revoke" => {
+        let repo = @domain.parse_transport_repo(
+          cli_value(options, "repository"),
+        )
+        let actor = @identity.active_user_by_name(
+          pool,
+          cli_value(options, "actor"),
+        )
+        match command {
+          "deploy-key-add" => {
+            let path = cli_value(options, "file")
+            guard @fs.kind(path, follow_symlink=false) is Regular &&
+              @fs.file_size(path) <= 16384L else {
+              raise @domain.BadRequest(
+                message="public key file must be a regular small file",
+              )
+            }
+            let key = @ssh.parse_ssh_public_key(@fs.read_file(path).text())
+            let id = @ssh.add_repository_deploy_key(
+              pool,
+              actor,
+              repo,
+              cli_value(options, "title"),
+              key,
+              write_access=options.flags.get("write").unwrap_or(false),
+            )
+            println("\{id}\t\{repo.path()}\t\{key.fingerprint}")
+          }
+          "deploy-key-revoke" => {
+            let id = cli_key_id(options)
+            @ssh.revoke_repository_deploy_key(pool, actor, repo, id)
+            println("Revoked deploy key \{id} for \{repo.path()}")
+          }
+          _ =>
+            for key in @ssh.repository_deploy_keys(pool, actor, repo) {
+              println(
+                "\{key.id}\t\{key.title}\t\{key.fingerprint}\twrite=\{key.write_access}\tcreator=\{key.creator}\t\{key.created_at}\t\{key.last_used_at.unwrap_or("-")}\t\{key.revoked_at.unwrap_or("-")}",
+              )
+            }
+        }
       }
       "pipeline-provider-create" => {
         let token_path = cli_value(options, "token-file")

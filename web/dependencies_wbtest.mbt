@@ -5,7 +5,8 @@ async test "feature modules fail during initialization when assets are not injec
       @auth_views.auth_module, @account_views.profile_module, @account_views.ssh_keys_module,
       @settings_views.site_settings_module, @repository_views.index_module, @namespace_views.teams_module,
       @namespace_views.namespaces_module, @repository_views.repositories_module,
-      @merge_request_views.merge_requests_module, @issue_views.issues_module, @repository_views.repo_browser_module,
+      @repository_views.deploy_keys_module, @merge_request_views.merge_requests_module,
+      @issue_views.issues_module, @repository_views.repo_browser_module,
     ] {
     try {
       let app = @moonback.App(module_)

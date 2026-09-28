@@ -580,7 +580,7 @@ recovery script that silently discards limits.
 
 `deploy/identity-transfer.py export SOURCE DESTINATION` exports only users,
 teams, membership, invitation and user SSH public-key records from a read-only SQLite snapshot.
-`import ... --schema-root db --schema-version 11|12` creates a fresh database
+`import ... --schema-root db --schema-version 11|12|13` creates a fresh database
 with those identities; it refuses existing destinations. Password hashes are
 preserved, including public-key revocation state, but server SSH host keys,
 sessions, password resets, mail settings/outbox,
@@ -667,6 +667,11 @@ After verifying the restored instance and an off-host backup, operators can
 explicitly remove obsolete volumes; never run an indiscriminate volume prune.
 
 ## Verification
+
+For deployment clones, use [repository-scoped deploy keys](../docs/deploy-keys.md)
+instead of a root/user SSH key. The guide covers server-side generation, strict
+host verification, read-only registration, rotation and the temporary root-key
+migration. Web and SSH must be upgraded together for schema 13.
 
 ```sh
 moon test --strip -j 1

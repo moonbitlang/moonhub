@@ -21,7 +21,7 @@ class TransferTest(unittest.TestCase):
                 for migration in sorted((ROOT / "db/migrations").glob("*.sql")):
                     db.executescript(migration.read_text())
                 db.executescript("""
-                    PRAGMA user_version = 12;
+                    PRAGMA user_version = 13;
                     INSERT INTO "user" (id, name_key, display_name, email, password_hash, is_site_admin) VALUES (5, 'root', 'Root', 'root@example.invalid', 'private-hash-fixture', 1);
                     INSERT INTO "user" (id, name_key, display_name, password_hash, status) VALUES (8, 'disabled', 'Disabled', 'other-hash-fixture', 'disabled');
                     INSERT INTO team (id, name_key, display_name, kind) VALUES (4, 'compiler', 'Compiler', 'org');
@@ -31,6 +31,7 @@ class TransferTest(unittest.TestCase):
                     INSERT INTO ssh_key (user_id, title, public_key, fingerprint) VALUES (5, 'laptop', 'key-fixture', 'key-fingerprint');
                     INSERT INTO ssh_key (user_id, title, public_key, fingerprint, revoked_at) VALUES (5, 'revoked', 'revoked-key-fixture', 'revoked-fingerprint', '2026-01-01');
                     INSERT INTO repository (team_id, name) VALUES (4, 'do-not-copy-repo');
+                    INSERT INTO repository_deploy_key (repository_id, creator_id, title, public_key, fingerprint) VALUES (1, 5, 'do-not-copy-deploy-key', 'deploy-public-key', 'deploy-fingerprint');
                 """)
             counts = transfer.export_identities(old, package)
             self.assertEqual(counts, {"user": 2, "team": 1, "team_member": 1, "invitation": 1, "ssh_key": 2})
@@ -58,6 +59,11 @@ class TransferTest(unittest.TestCase):
             with sqlite3.connect(node_import) as db:
                 self.assertEqual(db.execute('SELECT password_hash FROM "user" WHERE id = 5').fetchone()[0], 'private-hash-fixture')
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM ssh_key WHERE revoked_at IS NOT NULL").fetchone()[0], 1)
+            current_import = Path(directory, "current-import.db")
+            self.assertEqual(transfer.import_identities(package, current_import, ROOT / "db", 13), counts)
+            with sqlite3.connect(current_import) as db:
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 13)
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM repository_deploy_key").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

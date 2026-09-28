@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 12L
+pub let database_schema_version : Int64 = 13L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -52,6 +52,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
     "db/migrations/011_provider_scope.sql",
   ).text()
   let push_migration = @fs.read_file("db/migrations/012_pipeline_push.sql").text()
+  let deploy_key_migration = @fs.read_file(
+    "db/migrations/013_repository_deploy_keys.sql",
+  ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -97,7 +100,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 12L {
         tx.driver.exec_script(push_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 12")
+      if version < 13L {
+        tx.driver.exec_script(deploy_key_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 13")
     })
   })
 }

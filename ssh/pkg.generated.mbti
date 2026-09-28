@@ -4,30 +4,58 @@ package "hackwaly/moonhub/ssh"
 import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/repository",
 }
 
 // Values
+pub fn add_repository_deploy_key(@database.Database, @domain.CurrentUser, @domain.RepoId, String, SshPublicKey, write_access? : Bool) -> Int64 raise
+
 pub fn add_ssh_key(@database.Database, @domain.CurrentUser, String, SshPublicKey) -> Int64 raise
 
 pub fn authorized_ssh_key(@database.Database, SshPublicKey) -> String? raise
 
-pub async fn check_received_refs(@database.Database, Int64, @domain.RepoId) -> Unit
+pub async fn check_received_refs(@database.Database, SshCredential, @domain.RepoId) -> Unit
 
 pub fn own_active_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> UserSshKey raise
 
 pub fn parse_ssh_public_key(String) -> SshPublicKey raise
 
-pub async fn record_ref_transaction(@database.Database, Int64, @domain.RepoId, String, String) -> Unit
+pub async fn record_ref_transaction(@database.Database, SshCredential, @domain.RepoId, String, String) -> Unit
+
+pub fn repository_deploy_keys(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[DeployKey] raise
+
+pub fn require_deploy_key_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> @repository.RepositoryScope raise
 
 pub fn revoke_own_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
 
-pub async fn serve_git_ssh(@database.Database, Int64, String) -> Int
+pub fn revoke_repository_deploy_key(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
+
+pub async fn serve_git_ssh(@database.Database, SshCredential, String) -> Int
+
+pub fn set_repository_deploy_key_access(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Bool) -> Unit raise
 
 pub fn user_ssh_keys(@database.Database, @domain.CurrentUser) -> Array[UserSshKey] raise
 
 // Errors
 
 // Types and methods
+pub struct DeployKey {
+  id : Int64
+  title : String
+  fingerprint : String
+  write_access : Bool
+  creator : String
+  created_at : String
+  last_used_at : String?
+  revoked_at : String?
+}
+
+pub(all) enum SshCredential {
+  UserKey(Int64)
+  DeployKey(Int64)
+}
+pub fn SshCredential::parse(String) -> Self raise
+
 pub struct SshPublicKey {
   public_key : String
   fingerprint : String

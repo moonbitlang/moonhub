@@ -34,7 +34,7 @@ def export_identities(source_path, destination):
     with readonly(source_path) as source:
         source.execute("BEGIN")
         version = source.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (11, 12):
+        if version not in (11, 12, 13):
             raise ValueError("Unsupported source schema")
         target = create_private(destination)
         try:
@@ -94,7 +94,7 @@ def main():
     load.add_argument("source")
     load.add_argument("destination")
     load.add_argument("--schema-root", required=True)
-    load.add_argument("--schema-version", required=True, type=int, choices=(11, 12))
+    load.add_argument("--schema-version", required=True, type=int, choices=(11, 12, 13))
     options = parser.parse_args()
     try:
         if options.command == "export":

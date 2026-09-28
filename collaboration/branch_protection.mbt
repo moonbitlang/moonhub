@@ -61,6 +61,16 @@ pub fn authorize_received_refs(
 ) -> Unit raise {
   @repository.authorize_repository(pool, actor, repo, @repository.Write)
   let scope = @repository.repository_scope(pool, actor, repo)
+  check_received_ref_rules(pool, scope, updates)
+}
+
+///|
+// Authentication is transport-specific; all writers share these ref restrictions.
+pub fn check_received_ref_rules(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  updates : String,
+) -> Unit raise {
   for line in @domain.split_lines(updates) {
     let fields = line.split(" ").map(value => value.to_owned()).collect()
     guard fields.length() == 3 &&

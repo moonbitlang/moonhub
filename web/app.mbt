@@ -30,6 +30,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@namespace_views.teams_module)
   ctx.use_(@namespace_views.namespaces_module)
   ctx.use_(@repository_views.repositories_module)
+  ctx.use_(@repository_views.deploy_keys_module)
   ctx.use_(@merge_request_views.merge_requests_module)
   ctx.use_(@issue_views.issues_module)
   ctx.use_(@pipeline_views.pipeline_pages_module)

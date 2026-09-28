@@ -86,22 +86,27 @@ pub fn add_ssh_key(
       message="key title must contain 1 to 200 characters",
     )
   }
+  let key = parse_ssh_public_key(key.public_key)
   pool.with_client(client => {
-    client.with_transaction(tx => {
-      let row = tx.query_opt(
-        (
-          #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint)
-          #|VALUES (?, ?, ?, ?) ON CONFLICT (fingerprint) DO NOTHING RETURNING id
-        ),
-        params=[user.id, title, key.public_key, key.fingerprint],
-      )
-      guard row is Some(row) else {
-        raise @domain.BadRequest(
-          message="this public key is already registered (possibly revoked)",
+    client.with_transaction(
+      tx => {
+        require_unused_public_key(tx, key)
+        let row = tx.query_opt(
+          (
+            #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint)
+            #|VALUES (?, ?, ?, ?) ON CONFLICT (fingerprint) DO NOTHING RETURNING id
+          ),
+          params=[user.id, title, key.public_key, key.fingerprint],
         )
-      }
-      row.get_name("id")
-    })
+        guard row is Some(row) else {
+          raise @domain.BadRequest(
+            message="this public key is already registered (possibly revoked)",
+          )
+        }
+        row.get_name("id")
+      },
+      immediate=true,
+    )
   })
 }
 
@@ -146,11 +151,26 @@ pub fn authorized_ssh_key(
       ),
       params=[key.public_key],
     )
+    if row is Some(row) {
+      let id : Int64 = row.get_name("id")
+      let public_key : String = row.get_name("public_key")
+      return Some(
+        "restrict,command=\"/usr/local/bin/moonhub ssh-serve \{id}\" \{public_key}",
+      )
+    }
+    let row = client.query_opt(
+      (
+        #|SELECT k.id, k.public_key FROM repository_deploy_key k
+        #|JOIN repository r ON r.id = k.repository_id
+        #|WHERE k.public_key = ? AND k.revoked_at IS NULL AND r.ready = 1
+      ),
+      params=[key.public_key],
+    )
     guard row is Some(row) else { return None }
     let id : Int64 = row.get_name("id")
     let public_key : String = row.get_name("public_key")
     Some(
-      "restrict,command=\"/usr/local/bin/moonhub ssh-serve \{id}\" \{public_key}",
+      "restrict,command=\"/usr/local/bin/moonhub ssh-serve deploy:\{id}\" \{public_key}",
     )
   })
 }
@@ -158,19 +178,25 @@ pub fn authorized_ssh_key(
 ///|
 pub async fn serve_git_ssh(
   pool : @database.Database,
-  key_id : Int64,
+  credential : SshCredential,
   root : String,
 ) -> Int {
-  let user = ssh_key_user(pool, key_id)
   let command = @env.get_env_var("SSH_ORIGINAL_COMMAND").unwrap_or("")
   if command.is_empty() {
-    @stdio.stderr.write(
-      "Authenticated as \{user.name_key}. Shell access is disabled.\n",
-    )
+    let name = match credential {
+      UserKey(id) => ssh_key_user(pool, id).name_key
+      DeployKey(id) => {
+        let (scope, _) = deploy_key_binding(pool, id)
+        "deploy key for \{scope.repo.path()}"
+      }
+    }
+    @stdio.stderr.write("Authenticated as \{name}. Shell access is disabled.\n")
     return 0
   }
   let request = parse_ssh_request(command)
-  @repository.authorize_repository(pool, user, request.repo, request.operation)
+  ignore(
+    authorize_git_operation(pool, credential, request.repo, request.operation),
+  )
   let git_dir = @repository.resolve_repository_dir(root, request.repo)
   let write_lock = if request.operation == @repository.Write {
     Some(@gitops.repository_write_lock(git_dir))
@@ -178,12 +204,14 @@ pub async fn serve_git_ssh(
     None
   }
   defer (if write_lock is Some(lock) { lock.close() })
+  let scope = authorize_git_operation(
+    pool,
+    credential,
+    request.repo,
+    request.operation,
+  )
   if request.operation == @repository.Write {
-    @repository.recover_ref_events_locked(
-      pool,
-      @repository.repository_scope(pool, user, request.repo),
-      git_dir,
-    )
+    @repository.recover_ref_events_locked(pool, scope, git_dir)
   }
   let git_command = match request.operation {
     @repository.Read => "upload-pack"
@@ -206,7 +234,7 @@ pub async fn serve_git_ssh(
     }
     protected_args.push("-c")
     protected_args.push("core.hooksPath=\{hooks}")
-    environment["MOONHUB_KEY_ID"] = key_id.to_string()
+    environment["MOONHUB_KEY_ID"] = credential.argument()
     environment["MOONHUB_PUSH_ID"] = @identity.random_hex(16)
     environment["MOONHUB_REPOSITORY"] = request.repo.path()
     environment["DB_PATH"] = @env.get_env_var("DB_PATH").unwrap_or("moonhub.db")
@@ -219,9 +247,18 @@ pub async fn serve_git_ssh(
       environment["GIT_PROTOCOL"] = version
     _ => ()
   }
+  // Filesystem checks and event recovery may yield; do not start a transfer
+  // using authorization from before a revocation or access-mode change.
+  ignore(
+    authorize_git_operation(pool, credential, request.repo, request.operation),
+  )
   pool.with_client(client => {
+    let (table, key_id) = match credential {
+      UserKey(id) => ("ssh_key", id)
+      DeployKey(id) => ("repository_deploy_key", id)
+    }
     let _ = client.execute(
-      "UPDATE ssh_key SET last_used_at = datetime('now') WHERE id = ?",
+      "UPDATE \{table} SET last_used_at = datetime('now') WHERE id = ? AND revoked_at IS NULL",
       params=[key_id],
     )
   })
@@ -239,11 +276,7 @@ pub async fn serve_git_ssh(
     stderr=@stdio.stderr,
   )
   if request.operation == @repository.Write {
-    @repository.recover_ref_events_locked(
-      pool,
-      @repository.repository_scope(pool, user, request.repo),
-      git_dir,
-    )
+    @repository.recover_ref_events_locked(pool, scope, git_dir)
   }
   code
 }

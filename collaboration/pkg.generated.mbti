@@ -14,6 +14,8 @@ pub fn authorize_received_refs(@database.Database, @domain.CurrentUser, @domain.
 
 pub fn branch_rules(@database.Database, @repository.RepositoryScope) -> Array[BranchRule] raise
 
+pub fn check_received_ref_rules(@database.Database, @repository.RepositoryScope, String) -> Unit raise
+
 pub fn create_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, String, String, Int64) -> Int64 raise
 
 pub async fn create_merge_request(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, String, String, String, Bool, issue? : Int64) -> MergeRequest

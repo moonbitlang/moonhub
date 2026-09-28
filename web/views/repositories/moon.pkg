@@ -4,6 +4,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/ssh",
   "hackwaly/moonhub/web/assets" @web_assets,
   "hackwaly/moonhub/web/context" @web_context,
   "hackwaly/moonhub/web/ui" @web_ui,
@@ -17,6 +18,7 @@ import {
   "hackwaly/moonhub/web",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async/fs",
+  "moonbitlang/async/http",
   "moonbitlang/core/encoding/utf8",
 } for "wbtest"
 
