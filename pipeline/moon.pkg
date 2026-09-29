@@ -10,6 +10,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/pipeline/workflow",
   "hackwaly/moonhub/pipeline/protocol",
 }

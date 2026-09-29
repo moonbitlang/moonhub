@@ -12,6 +12,7 @@ import {
 
 import {
   "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async",
 } for "wbtest"

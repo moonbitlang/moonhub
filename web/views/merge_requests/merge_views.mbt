@@ -170,6 +170,7 @@ fn render_merge_detail(
   manager : Bool,
   csrf : String,
   clone : String?,
+  checks : Array[@collaboration.MergeCheck],
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
   let version = revision.map(value => value.version).unwrap_or(0L)
@@ -304,6 +305,56 @@ fn render_merge_detail(
         b <+
           "<moonhub-commit-diff><pre data-patch>\{patch}</pre></moonhub-commit-diff>"
       }
+      if !checks.is_empty() {
+        b <+
+          "<section class=\"mr-merge-panel\" aria-label=\"Pipeline checks\"><h3>Pipeline checks</h3><ul class=\"mr-list\">"
+        for check in checks {
+          let state = if check.state == "completed" {
+            check.conclusion
+          } else {
+            check.state
+          }
+          let label = match state {
+            "awaiting_approval" => "Awaiting manager approval"
+            "pending" => "Preparing"
+            "queued" => "Queued"
+            "running" => "Running"
+            "success" => "Passed"
+            "failure" => "Failed"
+            "cancelled" => "Cancelled"
+            "timed_out" => "Timed out"
+            "lost" => "Runner lost"
+            "skipped" => "Skipped"
+            _ => "Could not prepare checks"
+          }
+          b <+
+            "<li><div class=\"mr-actions\"><strong class=\"path\">\{check.workflow_path}</strong><span class=\"mr-state\" data-state=\"\{state}\">\{label}</span>"
+          if check.run_number is Some(number) {
+            b <+
+              "<a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/\{number.to_string()}\">Run #\{number.to_string()} and logs</a>"
+          }
+          b <+ "</div>"
+          if !check.error.is_empty() {
+            b <+ "<p class=\"flash-error\" role=\"alert\">\{check.error}</p>"
+          }
+          b <+ "</li>"
+        }
+        b <+ "</ul><p><a href=\"\{base}?tab=\{tab}\">Refresh checks</a></p>"
+        if manager &&
+          mr.status == "open" &&
+          !mr.draft &&
+          !busy &&
+          version == mr.version &&
+          checks
+          .iter()
+          .any(check => {
+            check.state == "awaiting_approval" || check.state == "error"
+          }) {
+          b <+
+            "\{merge_action(base, csrf, "approve-checks", "Approve and run checks", version)}"
+        }
+        b <+ "</section>"
+      }
       b <+
         "<section class=\"mr-merge-panel\" aria-label=\"Merge status\"><h3>Merge status</h3>"
       if mr.status == "merged" {
@@ -365,15 +416,48 @@ fn render_branch_rules(
         let branch = rule.branch
         let approvals = rule.required_approvals
         b <+
-          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Merge requests only · \{approvals.to_string()} approvals required</p></div><form method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{branch}\"><button type=\"submit\" name=\"action\" value=\"remove\">Remove protection</button></form></li>"
+          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Merge requests only · \{approvals.to_string()} approvals required</p></div>"
+        for path in rule.checks {
+          b <+ "<p class=\"path\">\{path}</p>"
+        }
+        b <+
+          "<details class=\"mr-edit\"><summary>Edit rule</summary>\{render_branch_rule_form(base, csrf, Some(rule))}</details><form method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{branch}\"><button type=\"submit\" name=\"action\" value=\"remove\">Remove protection</button></form></li>"
       }
       if rules.is_empty() {
         b <+ "<li class=\"muted\">No protected branches.</li>"
       }
-      b <+
-        "</ul><form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"field\"><span>Branch name</span><input name=\"branch\" required maxlength=\"200\" spellcheck=\"false\"></label><label class=\"field\"><span>Required approvals</span><select aria-label=\"Required approvals\" name=\"approvals\"><option value=\"1\">1 approval from another team member</option><option value=\"0\">No approval required</option></select></label><button type=\"submit\">Protect branch</button></form>"
+      b <+ "</ul>\{render_branch_rule_form(base, csrf, None)}"
     }),
     current_user=Some(user),
     navigation=@web_ui.RepositoryNavigation(scope.repo, "settings", true),
   )
+}
+
+///|
+fn render_branch_rule_form(
+  base : String,
+  csrf : String,
+  rule : @collaboration.BranchRule?,
+) -> @moonback.Html {
+  let branch = rule.map(rule => rule.branch).unwrap_or("")
+  let approvals = rule.map(rule => rule.required_approvals).unwrap_or(1L)
+  let checks = rule.map(rule => rule.checks.join("\n")).unwrap_or("")
+  Html(b => {
+    b <+
+      "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"field\"><span>Branch name</span><input name=\"branch\" value=\"\{branch}\" required maxlength=\"200\" spellcheck=\"false\""
+    if rule is Some(_) {
+      b <+ " readonly"
+    }
+    b <+
+      "></label><label class=\"field\"><span>Required approvals</span><select name=\"approvals\" aria-label=\"Required approvals\"><option value=\"1\""
+    if approvals == 1L {
+      b <+ " selected"
+    }
+    b <+ ">1 approval from another team member</option><option value=\"0\""
+    if approvals == 0L {
+      b <+ " selected"
+    }
+    b <+
+      ">No approval required</option></select></label><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
+  })
 }

@@ -100,6 +100,7 @@ fn insert_run_snapshot(
   source : String,
   definition : @workflow.Workflow,
   event_id? : Int64 = 0L,
+  merge_check_id? : Int64 = 0L,
 ) -> Run raise {
   let number : Int64 = tx
     .query_one(
@@ -108,7 +109,7 @@ fn insert_run_snapshot(
     )
     .get_name("number")
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0)) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0)) RETURNING *",
     params=[
       repository_id,
       number,
@@ -122,9 +123,18 @@ fn insert_run_snapshot(
       source,
       ToJson::to_json(definition).stringify(),
       event_id,
+      merge_check_id,
     ],
   )
   let run = Run::from_row(row)
+  if merge_check_id != 0L {
+    ignore(
+      tx.execute(
+        "UPDATE merge_check SET run_number = ?, requested_by_user_id = ?, state = 'queued', conclusion = '', last_error = '' WHERE id = ?",
+        params=[number, actor_id, merge_check_id],
+      ),
+    )
+  }
   for ordinal, job in definition.jobs {
     let _ = tx.execute(
       "INSERT INTO pipeline_job (run_id, job_key, ordinal, status) VALUES (?, ?, ?, ?)",
@@ -253,6 +263,23 @@ pub async fn rerun_run(
   }
   @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
     ignore(require_run_author(pool, actor, repo))
+    let merge_check_id : Int64 = pool.with_client(client => {
+      client
+      .query_one(
+        "SELECT COALESCE(merge_check_id, 0) AS check_id FROM pipeline_run WHERE id = ?",
+        params=[previous.id],
+      )
+      .get_name("check_id")
+    })
+    if merge_check_id != 0L {
+      validate_merge_check_rerun(
+        pool,
+        scope,
+        git_dir,
+        merge_check_id,
+        previous.number,
+      )
+    }
     let pin = "refs/moonhub/pipelines/" + @identity.random_hex(16)
     let mut committed = false
     ignore(
@@ -277,6 +304,7 @@ pub async fn rerun_run(
         _ => println("pipeline rerun snapshot cleanup failed for \{pin}")
       }
     })
+    ignore(require_run_author(pool, actor, repo))
     let run = pool.with_client(client => {
       client.with_transaction(tx => {
         insert_run_snapshot(
@@ -290,6 +318,7 @@ pub async fn rerun_run(
           pin,
           previous.workflow_source,
           previous.definition,
+          merge_check_id~,
         )
       })
     })

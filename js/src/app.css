@@ -188,6 +188,9 @@ tbody tr:hover { background: #fafbfc; }
 .status-badge { text-transform: none; }
 .status-badge:is([data-status="revoked"], [data-status="expired"]), .mr-state:is([data-state="draft"], [data-state="closed"]) { color: #606977; background: #edf0f4; }
 .mr-state[data-state="merged"] { color: var(--color-accent); background: var(--color-accent-soft); }
+.mr-state:is([data-state="pending"], [data-state="awaiting_approval"], [data-state="queued"], [data-state="running"]) { color: var(--color-warning); background: var(--color-warning-soft); }
+.mr-state:is([data-state="failure"], [data-state="error"], [data-state="timed_out"], [data-state="lost"]) { color: var(--color-danger); background: var(--color-danger-soft); }
+.mr-state:is([data-state="cancelled"], [data-state="skipped"]) { color: var(--color-muted); background: var(--color-surface-subtle); }
 .delivery-state { color: var(--color-muted); font-size: 12px; }
 .delivery-state[data-delivery="sent"] { color: var(--color-success); }
 .delivery-state[data-delivery="failed"] { color: var(--color-danger); }

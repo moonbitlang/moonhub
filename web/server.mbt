@@ -20,6 +20,7 @@ pub async fn serve(config : Config) -> Unit {
     let coordinator = @pipeline.Coordinator::new(pool)
     coordinator.start_lease_worker(group)
     @pipeline.start_push_worker(pool, config.root, group)
+    @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [
       @moonback.Config::custom(
         @web_context.pipeline_coordinator_key, coordinator,

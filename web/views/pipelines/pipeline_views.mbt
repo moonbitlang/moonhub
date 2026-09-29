@@ -185,6 +185,7 @@ fn render_pipeline_detail(
   jobs : Array[PipelineJobPage],
   manager : Bool,
   csrf : String,
+  merge : @pipeline.MergeCheckContext?,
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) +
     "/pipelines/" +
@@ -198,6 +199,10 @@ fn render_pipeline_detail(
         "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Pipelines</a> / #\{run.number.to_string()}</p><h2>\{pipeline_html(run.workflow_name)}</h2></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{result}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
       b <+
         "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha)}</span> · created \{pipeline_html(run.created_at)}</p>"
+      if merge is Some(merge) {
+        b <+
+          "<p><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{merge.number.to_string()}?version=\{merge.version.to_string()}\">Merge request !\{merge.number.to_string()}, version \{merge.version.to_string()}</a></p><p class=\"muted mr-shas\"><span>Source <code>\{merge.source_sha[:12].to_owned()}</code></span><span>Target <code>\{merge.target_sha[:12].to_owned()}</code></span></p>"
+      }
       if manager {
         b <+ "<div class=\"mr-actions\">"
         b <+ "<form data-run-cancel method=\"post\" action=\"\{base}/cancel\""

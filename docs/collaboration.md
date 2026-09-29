@@ -1,9 +1,10 @@
 # Repository Collaboration
 
 Moonhub supports issues and merge requests within one repository. It uses the
-existing SQLite database and bare Git repositories; it does not add a service or
-run submitted code. Migration 004 is applied by web at startup. Upgrade both web
-and SSH to the same image.
+existing SQLite database and bare Git repositories. The Web and SSH processes
+never execute submitted code; optional MR checks use the separately provisioned
+Pipeline provider and Runner. Schema migrations are applied by Web at startup.
+Upgrade both Web and SSH to the same image.
 
 ## Modules
 
@@ -54,8 +55,10 @@ are hidden from SSH clients. Draft and reopen transitions clear prior approvals.
 Diffs compare the merge base to the source. Mergeability is cached per version
 using Git's native merge algorithm. The worker recalculates and verifies it
 before merging. Resolve conflicts locally and push again. The initial release
-uses two-parent merge commits and retains source branches. Forks, squash/rebase,
-CI, inline review threads and auto-merge are outside this release.
+uses two-parent merge commits and retains source branches. Required Pipeline
+checks are available through opt-in branch protection; see
+[MR checks](merge-checks.md). Forks, squash/rebase, inline review threads and
+auto-merge are outside this release.
 
 Git output is bounded to 2 MiB with a 60-second operation timeout. Oversized diffs
 require local inspection instead of exhausting the server. The commits view
@@ -71,6 +74,12 @@ it. Rules require zero or one approval from someone other than the author.
 Unprotected branches require no approval, but current requests for changes still
 block merging. Existing branches are not protected automatically. Protection
 rule changes are recorded in `repository_audit`.
+
+Rules can also name required workflow paths. Their checks use the pinned target
+configuration and test the merged source/target tree. Every required check must
+succeed for the current MR version and policy generation before merging.
+Execution authorization is separate from code-review approval; ordinary
+contributors cannot automatically execute new source revisions.
 
 SSH uses a deployment-owned pre-receive hook, never a repository hook. It
 revalidates key, account and repository access and rejects internal-ref updates.

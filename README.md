@@ -1,6 +1,9 @@
 # hackwaly/moonhub
 
 Repository collaboration includes Issues and same-repository Merge Requests.
+Branch protection can require existing Pipeline workflows to pass against the
+merged source/target tree. See [MR Pipeline checks](docs/merge-checks.md) for
+setup, execution approval, version-bound results, and upgrade requirements.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
 See [package boundaries, dependency injection and tests](docs/architecture.md)
 for the source layout and module initialization rules.

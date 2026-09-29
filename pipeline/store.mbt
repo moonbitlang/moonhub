@@ -54,6 +54,37 @@ pub struct JobRun {
 } derive(Debug)
 
 ///|
+pub struct MergeCheckContext {
+  number : Int64
+  version : Int64
+  source_sha : String
+  target_sha : String
+}
+
+///|
+pub fn merge_check_context(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  number : Int64,
+) -> MergeCheckContext? raise {
+  let run = get_run(pool, actor, repo, number)
+  pool.with_client(client => {
+    client
+    .query_opt(
+      "SELECT m.number, c.version, v.source_sha, v.target_sha FROM pipeline_run p JOIN merge_check c ON c.id = p.merge_check_id JOIN merge_request m ON m.id = c.merge_request_id JOIN merge_revision v ON v.merge_request_id = c.merge_request_id AND v.version = c.version WHERE p.id = ? AND m.repository_id = p.repository_id",
+      params=[run.id],
+    )
+    .map(row => {
+      number: row.get_name("number"),
+      version: row.get_name("version"),
+      source_sha: row.get_name("source_sha"),
+      target_sha: row.get_name("target_sha"),
+    })
+  })
+}
+
+///|
 priv suberror InvalidRecord {
   InvalidRecord
 }

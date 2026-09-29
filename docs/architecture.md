@@ -15,9 +15,9 @@ unchanged.
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events and recovery |
-| `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules and merge worker |
+| `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements and merge worker |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, push-event consumption, provider grants, atomic claims, leases, logs, cancellation and result persistence |
+| `pipeline` | Authorized run snapshots, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Docker provider claim loop and constrained ephemeral-container adapter; no database dependency |
 | `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
@@ -80,6 +80,16 @@ the `provider` package claims assignments and invokes Docker; the root package
 owns both CLIs. The default Web/SSH services do not include the provider; deploy
 it through the dedicated Compose overlay. See
 [pipeline delivery scope](pipelines.md).
+
+MR checks add a one-way dependency from `pipeline` to `collaboration`.
+Collaboration owns required workflow policies, execution approval, versioned
+check records and the merge gate; it does not import Pipeline or the workflow
+parser. Pipeline refreshes eligible MRs under the repository write lock, creates
+immutable merged-tree runs and cancels obsolete work. Migration 014 links each
+run to its check and propagates the latest linked run's state transactionally
+through a SQLite trigger. Web owns the check worker lifetime. The two feature
+page packages use business APIs and link to each other by URL, never importing
+one another. See [MR checks](merge-checks.md) for trust and lifecycle semantics.
 
 Only packages under `web/` import Moonback. Business packages take explicit domain values and
 database handles, never HTTP requests, HTML or module contexts. The database's

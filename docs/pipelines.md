@@ -27,6 +27,11 @@ or the application's data volume. Isolation checks accompany step 4, not step 7.
 
 ## Current Workflow Contract
 
+Merge Requests can require these existing workflows through branch protection.
+See [MR Pipeline checks](merge-checks.md) for setup, target-owned configuration,
+merged-tree snapshots, execution approval, and the merge gate. This does not add
+GitHub `pull_request` syntax or broaden the supported workflow language.
+
 Workflow files are regular UTF-8 Git blobs directly under `.github/workflows/`,
 with `.yml` or `.yaml` extensions and a nonempty ASCII filename starting with a
 letter, digit or underscore. A run is requested from an existing local branch;

@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 13L
+pub let database_schema_version : Int64 = 14L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -54,6 +54,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
   let push_migration = @fs.read_file("db/migrations/012_pipeline_push.sql").text()
   let deploy_key_migration = @fs.read_file(
     "db/migrations/013_repository_deploy_keys.sql",
+  ).text()
+  let merge_checks_migration = @fs.read_file(
+    "db/migrations/014_merge_checks.sql",
   ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -103,7 +106,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 13L {
         tx.driver.exec_script(deploy_key_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 13")
+      if version < 14L {
+        tx.driver.exec_script(merge_checks_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 14")
     })
   })
 }

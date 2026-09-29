@@ -7,6 +7,7 @@ pub async fn save_branch_rule(
   branch : String,
   protect : Bool,
   approvals : Int64,
+  checks? : Array[String] = [],
 ) -> Unit {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   guard @identity.can_manage_team(pool, actor, scope.team_id) else {
@@ -22,8 +23,46 @@ pub async fn save_branch_rule(
     (approvals == 0L || approvals == 1L) else {
     raise @domain.BadRequest(message="invalid branch protection rule")
   }
+  guard checks.length() <= 16 else {
+    raise @domain.BadRequest(
+      message="at most 16 required workflows are supported",
+    )
+  }
+  let unique : Map[String, Bool] = Map([])
+  for path in checks {
+    let parts = path.split("/").collect()
+    guard parts.length() == 3 &&
+      parts[0] == ".github" &&
+      parts[1] == "workflows" &&
+      path.length() <= 240 &&
+      parts[2].length() > 4 &&
+      (path.has_suffix(".yml") || path.has_suffix(".yaml")) &&
+      parts[2].get_char(0) is Some(first) &&
+      (first.is_ascii_alphabetic() || first.is_ascii_digit() || first == '_') &&
+      parts[2]
+      .iter()
+      .all(ch => {
+        ch.is_ascii_alphabetic() ||
+        ch.is_ascii_digit() ||
+        ['_', '-', '.'].contains(ch)
+      }) &&
+      !unique.contains(path) else {
+      raise @domain.BadRequest(
+        message="required checks must be unique YAML paths directly under .github/workflows",
+      )
+    }
+    unique[path] = true
+  }
   pool.with_client(client => {
     client.with_transaction(tx => {
+      let previous : Array[String] = tx
+        .query_all(
+          "SELECT workflow_path FROM branch_required_check WHERE repository_id = ? AND branch = ? ORDER BY workflow_path",
+          params=[scope.id, branch],
+        )
+        .map(row => row.get_name("workflow_path"))
+      let changed = previous.length() != checks.length() ||
+        previous.iter().any(path => !checks.contains(path))
       if protect {
         let _ = tx.execute(
           "INSERT INTO branch_rule (repository_id, branch, required_approvals) VALUES (?, ?, ?) ON CONFLICT (repository_id, branch) DO UPDATE SET required_approvals = excluded.required_approvals",
@@ -35,6 +74,28 @@ pub async fn save_branch_rule(
           params=[scope.id, branch],
         )
       }
+      ignore(
+        tx.execute(
+          "DELETE FROM branch_required_check WHERE repository_id = ? AND branch = ?",
+          params=[scope.id, branch],
+        ),
+      )
+      if protect {
+        for path in checks {
+          ignore(
+            tx.execute(
+              "INSERT INTO branch_required_check (repository_id, branch, workflow_path) VALUES (?, ?, ?)",
+              params=[scope.id, branch, path],
+            ),
+          )
+        }
+      }
+      ignore(
+        tx.execute(
+          "UPDATE merge_request SET checks_poll_after = 0, check_generation = check_generation + ? WHERE repository_id = ? AND target_branch = ? AND status = 'open'",
+          params=[if changed { 1L } else { 0L }, scope.id, branch],
+        ),
+      )
       let _ = tx.execute(
         "INSERT INTO repository_audit (repository_id, actor_id, kind, detail) VALUES (?, ?, ?, ?)",
         params=[
@@ -45,7 +106,8 @@ pub async fn save_branch_rule(
           } else {
             "branch_unprotected"
           },
-          "\{branch}; required approvals: \{approvals}",
+          "\{branch}; required approvals: \{approvals}; checks: " +
+          checks.join(", "),
         ],
       )
     })
@@ -104,6 +166,7 @@ pub fn check_received_ref_rules(
 pub struct BranchRule {
   branch : String
   required_approvals : Int64
+  checks : Array[String]
 }
 
 ///|
@@ -120,6 +183,7 @@ pub fn branch_rules(
     .map(row => {
       branch: row.get_name("branch"),
       required_approvals: row.get_name("required_approvals"),
+      checks: required_merge_checks(pool, scope, row.get_name("branch")),
     })
   })
 }

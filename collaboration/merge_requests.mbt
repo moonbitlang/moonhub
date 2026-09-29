@@ -139,12 +139,14 @@ pub async fn create_merge_request(
       params=[scope.id, number],
     )
   })
-  refresh_merge_request(
+  let created = refresh_merge_request(
     pool,
     scope,
     git_dir,
     require_merge_request(pool, scope, number),
   )
+  prepare_merge_checks(pool, scope, created, actor~)
+  created
 }
 
 ///|
@@ -246,6 +248,14 @@ pub fn edit_merge_request(
         let _ = tx.execute(
           "DELETE FROM merge_review WHERE merge_request_id = ? AND decision = 'approved'",
           params=[mr.id],
+        )
+      }
+      if ["draft", "ready", "close", "reopen"].contains(action) {
+        ignore(
+          tx.execute(
+            "UPDATE merge_request SET check_generation = check_generation + 1, checks_poll_after = 0 WHERE id = ?",
+            params=[mr.id],
+          ),
         )
       }
       merge_activity(tx, mr, actor.id, action)
@@ -383,7 +393,7 @@ pub fn merge_blocker(
   if approved < required {
     return "Waiting for \{required} approval from another team member."
   }
-  ""
+  merge_checks_blocker(pool, scope, mr)
 }
 
 ///|

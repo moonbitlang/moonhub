@@ -21,7 +21,7 @@ const allowed = {
   mail: ['domain', 'database'],
   repository: ['domain', 'config', 'database', 'identity', 'gitops'],
   collaboration: ['domain', 'database', 'identity', 'gitops', 'repository'],
-  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'pipeline/workflow', 'pipeline/protocol'],
+  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/protocol'],
   'pipeline/protocol': [],
   runner: ['pipeline/protocol'],
   provider: ['pipeline/protocol'],

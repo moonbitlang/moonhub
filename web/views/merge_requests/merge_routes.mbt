@@ -158,6 +158,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           git_dir,
           @collaboration.require_merge_request(pool, scope, number),
         )
+        @collaboration.prepare_merge_checks(pool, scope, mr)
       } catch {
         @domain.BadRequest(message~) | @gitops.Failure(message~) =>
           stale = message
@@ -241,6 +242,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let clone = @repository.effective_ssh_endpoint(pool, addresses).map(endpoint => {
       endpoint.clone_url(scope.repo)
     })
+    let checks = @collaboration.merge_checks(pool, mr, version=selected)
     res.send_html(
       render_merge_detail(
         assets,
@@ -266,6 +268,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         @identity.can_manage_team(pool, actor, scope.team_id),
         @web_context.request_form_token(req, "merge-requests"),
         clone,
+        checks,
       ),
       headers=@web_context.private_page_headers(
         refresh=mr.job_status == "pending" || mr.job_status == "running",
@@ -282,7 +285,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let form = @web_context.protected_form(req, "merge-requests")
     @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
       let mr = @collaboration.require_merge_request(pool, scope, number)
-      if action == "review" || action == "merge" {
+      if action == "review" || action == "merge" || action == "approve-checks" {
         let mr = if action == "review" &&
           form.get("decision") == Some("comment") {
           mr
@@ -294,6 +297,8 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         )
         if action == "merge" {
           @collaboration.enqueue_merge(pool, scope, actor, mr, version)
+        } else if action == "approve-checks" {
+          @collaboration.approve_merge_checks(pool, scope, actor, mr, version)
         } else {
           @collaboration.submit_merge_review(
             pool,
@@ -317,6 +322,15 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
             form.get("edit_version").unwrap_or(""),
           ),
         )
+        if action == "ready" || action == "reopen" {
+          let current = @collaboration.refresh_merge_request(
+            pool,
+            scope,
+            git_dir,
+            @collaboration.require_merge_request(pool, scope, number),
+          )
+          @collaboration.prepare_merge_checks(pool, scope, current, actor~)
+        }
       }
     })
     res.send_void(
@@ -366,6 +380,9 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         form.get("branch").unwrap_or(""),
         form.get("action") != Some("remove"),
         approvals,
+        checks=@domain.split_lines(form.get("checks").unwrap_or(""))
+          .map(path => path.trim().to_owned())
+          .filter(path => !path.is_empty()),
       )
     })
     res.send_void(

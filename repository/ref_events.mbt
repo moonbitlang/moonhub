@@ -73,7 +73,7 @@ pub fn record_received_transaction(
     client.with_transaction(tx => {
       let enabled : Bool = tx
         .query_one(
-          "SELECT pipeline_push_enabled FROM repository WHERE id = ?",
+          "SELECT (pipeline_push_enabled OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = repository.id)) AS pipeline_push_enabled FROM repository WHERE id = ?",
           params=[scope.id],
         )
         .get_name("pipeline_push_enabled")
@@ -146,7 +146,7 @@ pub fn record_merged_ref(
 ) -> Unit raise {
   ignore(
     tx.execute(
-      "INSERT OR IGNORE INTO repository_ref_event (repository_id, actor_id, source_key, reference, old_sha, new_sha, pin_ref, state) SELECT id, ?, ?, ?, '', ?, ?, 'ready' FROM repository WHERE id = ? AND pipeline_push_enabled = 1",
+      "INSERT OR IGNORE INTO repository_ref_event (repository_id, actor_id, source_key, reference, old_sha, new_sha, pin_ref, state) SELECT id, ?, ?, ?, '', ?, ?, 'ready' FROM repository WHERE id = ? AND (pipeline_push_enabled = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = repository.id))",
       params=[
         actor_id,
         "merge:" + merge_id.to_string(),

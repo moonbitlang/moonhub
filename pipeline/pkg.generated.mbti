@@ -19,9 +19,15 @@ pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64)
 
 pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[Run] raise
 
+pub fn merge_check_context(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> MergeCheckContext? raise
+
 pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> Run
 
+pub async fn run_next_merge_check(@database.Database, String) -> Bool
+
 pub async fn run_next_push_event(@database.Database, String) -> Bool
+
+pub fn start_merge_checks_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
 pub fn start_push_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
@@ -101,6 +107,13 @@ pub struct LogPage {
   complete : Bool
 } derive(@debug.Debug)
 pub fn LogPage::to_repr(Self) -> @debug.Repr
+
+pub struct MergeCheckContext {
+  number : Int64
+  version : Int64
+  source_sha : String
+  target_sha : String
+}
 
 pub struct Provider {
   id : Int64
