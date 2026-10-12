@@ -532,7 +532,10 @@ support nested build workers and therefore remains part of the trusted host
 control plane, not an untrusted job sandbox. Pipeline jobs continue while images
 build; both workloads share the aggregate 4 CPU/10 GiB budget. The builder stops
 on success/failure; its cache remains for subsequent upgrades. Cache GC targets
-4 GiB, not a hard disk quota. Keep at least 12 GiB free for build/backup headroom.
+4 GiB, not a hard disk quota. Keep at least 12 GiB free for build/backup headroom. An operator can explicitly
+override the build preflight with `MOONHUB_BUILD_MIN_FREE_GIB` (default `12`);
+`0` disables only this capacity preflight. Build resource limits, committed
+snapshots and backup-before-switch requirements still apply.
 
 Bake links the dependency-base target directly into Web/provider/Runner builds;
 no registry or local-base image export/import is required. Build inputs come

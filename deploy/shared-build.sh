@@ -58,7 +58,10 @@ build_shared_images() {
     printf 'Reusing already-built images for committed source %s\n' "$RECOVERY_TOOL_REVISION"
     return 0
   fi
-  local platform available
+  local platform available minimum_gib=${MOONHUB_BUILD_MIN_FREE_GIB:-12}
+  [[ "$minimum_gib" =~ ^[0-9]+$ ]] && [ "$minimum_gib" -le 1048576 ] || {
+    printf 'MOONHUB_BUILD_MIN_FREE_GIB must be an integer from 0 through 1048576.\n' >&2; return 1;
+  }
   platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
   case "$platform" in
     linux/x86_64|linux/amd64) platform=linux/amd64 ;;
@@ -66,7 +69,7 @@ build_shared_images() {
     *) printf 'Unsupported native build platform: %s\n' "$platform" >&2; return 1 ;;
   esac
   available=$(df -Pk "$ROOT" | awk 'NR == 2 {print $4}')
-  [ "$available" -ge 12582912 ] || { printf 'Need at least 12 GiB free for build/export/backup headroom.\n' >&2; return 1; }
+  [ "$available" -ge "$((minimum_gib * 1048576))" ] || { printf 'Need at least %s GiB free for build/export/backup headroom.\n' "$minimum_gib" >&2; return 1; }
   BUILD_STAGE=$(mktemp -d /tmp/moonhub-build.XXXXXX)
   # Build a committed snapshot, never untracked files, deployment settings or secrets.
   git archive HEAD | tar -xf - -C "$BUILD_STAGE"

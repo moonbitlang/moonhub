@@ -68,5 +68,17 @@ else if (a[0] === 'buildx' && a[1] === 'bake') {
   result = run({ TEST_FAIL: '1' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(a => a[0] === 'stop'), 'failed build stopped the builder unexpectedly');
+  fs.rmSync(bake);
+  fs.writeFileSync(path.join(root, 'bin/df'), '#!/bin/sh\nprintf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfixture 99999999 1 8000000 1%% /\\n"\n', { mode: 0o755 });
+  result = run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Need at least 12 GiB/);
+  assert.ok(!result.commands.some(a => a[0] === 'run'));
+  result = run({ MOONHUB_BUILD_MIN_FREE_GIB: '0' });
+  assert.equal(result.status, 0, result.stderr);
+  fs.rmSync(bake);
+  result = run({ MOONHUB_BUILD_MIN_FREE_GIB: '-1' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(a => a[0] === 'run'));
   console.log('Bounded build tests passed: 2 CPU/4 GiB isolation, committed context, linked base target, commit labels and failure rejection.');
 } finally { fs.rmSync(root, { recursive: true, force: true }); }
