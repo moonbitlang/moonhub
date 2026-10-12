@@ -28,13 +28,13 @@ ensure_base_image() {
   fi
   key=$(
     {
-      printf '%s\n' "$platform" "${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" "$USE_CN_MIRRORS"
+      printf '%s\n' "$platform" "${MOONBIT_VERSION:-0.10.15+cbebe2116}" "$USE_CN_MIRRORS"
       if [ "$USE_CN_MIRRORS" = 1 ]; then
         printf '%s\n' "${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
           "${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}"
       fi
       for file in deploy/base.Dockerfile deploy/configure-apt.sh deploy/install-moonbit.sh \
-        .dockerignore moon.mod js/package.json js/package-lock.json; do
+        .dockerignore moon.mod js/package.json js/package-lock.json scripts/resolve-dependencies.cjs; do
         "${hash_command[@]}" "$file" || return 1
       done
     } | "${hash_command[@]}"
@@ -46,7 +46,7 @@ ensure_base_image() {
   else
     printf 'Building dependency base image: %s\n' "$MOONHUB_BASE_IMAGE"
     local args=(--file "$ROOT/deploy/base.Dockerfile" --platform "$platform"
-      --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.14+7d59c7ec9}"
+      --build-arg "MOONBIT_VERSION=${MOONBIT_VERSION:-0.10.15+cbebe2116}"
       --build-arg "MOONHUB_USE_CN_MIRRORS=$USE_CN_MIRRORS"
       --build-arg "DEBIAN_MIRROR=${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}"
       --build-arg "DEBIAN_SECURITY_MIRROR=${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}")

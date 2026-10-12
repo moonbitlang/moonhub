@@ -12,12 +12,14 @@ test('cold jobs initialize the registry before check and stop at the first failu
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'bin'));
     fs.copyFileSync(path.join(__dirname, 'self-check.cjs'), path.join(root, 'scripts/self-check.cjs'));
+    fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
     const log = path.join(root, 'commands');
     fs.writeFileSync(path.join(root, 'bin/moon'), `#!/bin/sh
 printf '%s\\n' "$*" >> "$TEST_LOG"
 case "$1" in
   version) exit 0 ;;
   update) touch "$TEST_LOG.registry" ;;
+  tree) test -f "$TEST_LOG.registry" || exit 99 ;;
   check) test -f "$TEST_LOG.registry" || exit 99; exit 7 ;;
   *) exit 98 ;;
 esac
@@ -27,7 +29,7 @@ esac
       env: { ...process.env, TEST_LOG: log, PATH: path.join(root, 'bin') + ':' + process.env.PATH },
     });
     assert.notEqual(result.status, 0);
-    assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['version --all', 'update', 'check --deny-warn']);
+    assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['version --all', 'update', 'tree --package', 'check --deny-warn']);
     assert.match(result.stderr, /MoonBit check: exit 7/);
     assert.match(result.stdout, /START Mooncakes index/);
     assert.match(result.stdout, /PASS Mooncakes index \(\d+\.\ds\)/);

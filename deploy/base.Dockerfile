@@ -3,7 +3,7 @@ FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35
 ARG MOONHUB_USE_CN_MIRRORS=0
 ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
 ARG DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
-ARG MOONBIT_VERSION=0.10.14+7d59c7ec9
+ARG MOONBIT_VERSION=0.10.15+cbebe2116
 
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
@@ -22,7 +22,8 @@ RUN sh /tmp/moonhub-install-moonbit.sh "$MOONBIT_VERSION" \
 # Resolve and download module dependencies without copying application sources.
 WORKDIR /src
 COPY moon.mod ./
-RUN moon update && moon tree --package
+COPY scripts/resolve-dependencies.cjs /src/scripts/resolve-dependencies.cjs
+RUN moon update && node scripts/resolve-dependencies.cjs
 
 WORKDIR /src/js
 COPY js/package.json js/package-lock.json ./

@@ -58,7 +58,10 @@ build_shared_images() {
     printf 'Reusing already-built images for committed source %s\n' "$RECOVERY_TOOL_REVISION"
     return 0
   fi
-  local platform available
+  local platform available minimum_gib=${MOONHUB_BUILD_MIN_FREE_GIB:-12}
+  [[ "$minimum_gib" =~ ^[0-9]+$ ]] && [ "$minimum_gib" -le 1048576 ] || {
+    printf 'MOONHUB_BUILD_MIN_FREE_GIB must be an integer from 0 through 1048576.\n' >&2; return 1;
+  }
   platform=$(docker info --format '{{.OSType}}/{{.Architecture}}')
   case "$platform" in
     linux/x86_64|linux/amd64) platform=linux/amd64 ;;
@@ -66,7 +69,7 @@ build_shared_images() {
     *) printf 'Unsupported native build platform: %s\n' "$platform" >&2; return 1 ;;
   esac
   available=$(df -Pk "$ROOT" | awk 'NR == 2 {print $4}')
-  [ "$available" -ge 12582912 ] || { printf 'Need at least 12 GiB free for build/export/backup headroom.\n' >&2; return 1; }
+  [ "$available" -ge "$((minimum_gib * 1048576))" ] || { printf 'Need at least %s GiB free for build/export/backup headroom.\n' "$minimum_gib" >&2; return 1; }
   BUILD_STAGE=$(mktemp -d /tmp/moonhub-build.XXXXXX)
   # Build a committed snapshot, never untracked files, deployment settings or secrets.
   git archive HEAD | tar -xf - -C "$BUILD_STAGE"
@@ -74,7 +77,7 @@ build_shared_images() {
   jq -n --arg context "$BUILD_STAGE" --arg platform "$platform" --arg revision "$RECOVERY_TOOL_REVISION" \
     --arg web "$RUNTIME_IMAGE" --arg provider "$PROVIDER_IMAGE" --arg runner "$RUNNER_IMAGE" \
     --arg runner_target "$RUNNER_BUILD_TARGET" --arg cn "$USE_CN_MIRRORS" \
-    --arg moon "${MOONBIT_VERSION:-0.10.14+7d59c7ec9}" \
+    --arg moon "${MOONBIT_VERSION:-0.10.15+cbebe2116}" \
     --arg debian "${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
     --arg security "${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
     --argjson pull "$PULL_IMAGES" --argjson rebuild "$REBUILD_BASE" '

@@ -73,13 +73,14 @@ async function main() {
   const run = (name, command, args, timeoutMs = 300000) => runStage(name, command, args, { cwd: root, timeoutMs });
   await run('Toolchain versions', 'moon', ['version', '--all'], 30000);
   await run('Mooncakes index', 'moon', ['update']);
+  await run('MoonBit dependencies', process.execPath, ['scripts/resolve-dependencies.cjs']);
   const before = snapshotInputs(root);
   await run('MoonBit check', 'moon', ['check', '--deny-warn']);
   await run('MoonBit format', 'moon', ['fmt']);
   await run('MoonBit interfaces', 'moon', ['info']);
   assertUnchanged(before, snapshotInputs(root));
   await run('Package boundaries', process.execPath, ['scripts/check-package-boundaries.cjs']);
-  await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs']);
+  await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs', 'scripts/resolve-dependencies-test.cjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
