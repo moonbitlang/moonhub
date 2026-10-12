@@ -273,6 +273,24 @@ pub fn claim_next_email(
           #|  )
         ),
       )
+      // Recheck recipient access, subscription and preference at delivery time.
+      // Explicit assignments/review requests bypass a discussion mute.
+      ignore(
+        tx.execute(
+          (
+            #|UPDATE email_outbox SET status = 'failed', body = 'Collaboration notification is no longer deliverable.',
+            #|  locked_at = NULL, locked_by = NULL
+            #|WHERE template = 'collaboration_notification' AND status = 'pending' AND NOT EXISTS (
+            #|  SELECT 1 FROM collaboration_notification_visible v JOIN "user" u ON u.id = v.user_id
+            #|  JOIN notification_preferences p ON p.user_id = u.id AND p.email_enabled = 1
+            #|  JOIN collaboration_notification n ON n.id = v.id JOIN collaboration_event e ON e.id = n.event_id
+            #|  LEFT JOIN notification_subscription s ON s.thread_id = v.thread_id AND s.user_id = u.id
+            #|  WHERE v.id = email_outbox.notification_id AND u.email = email_outbox.to_email
+            #|    AND (e.recipient_id = u.id OR s.subscribed = 1)
+            #|)
+          ),
+        ),
+      )
       let picked = tx.query_opt(
         (
           #|SELECT id, to_email, subject, body

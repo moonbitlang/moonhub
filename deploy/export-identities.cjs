@@ -10,7 +10,7 @@ try {
   source = new DatabaseSync(sourcePath, { readOnly: true, timeout: 5000 });
   source.exec('BEGIN');
   const version = source.prepare('PRAGMA user_version').get().user_version;
-  if (![11, 12, 13, 14].includes(version)) throw new Error('unsupported schema');
+  if (![11, 12, 13, 14, 15].includes(version)) throw new Error('unsupported schema');
   fs.closeSync(fs.openSync(destination, 'wx', 0o600));
   created = true;
   target = new DatabaseSync(destination);

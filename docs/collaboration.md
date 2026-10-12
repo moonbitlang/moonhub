@@ -65,6 +65,13 @@ require local inspection instead of exhausting the server. The commits view
 displays at most 100 commits. Diffs use the existing renderer, with large files
 initially collapsed.
 
+## Review Requests and Notifications
+
+Authors and administrators can request version-bound reviews from active
+contributors. Inbox combines unread updates, pending reviews and assigned Issues.
+Participants may unsubscribe from ordinary updates and opt in to email. See
+[notification behavior and upgrade requirements](notifications.md).
+
 ## Protection and Concurrency
 
 Use the repository MR list's Branch protection link to protect exact branch

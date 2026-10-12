@@ -57,7 +57,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
     match navigation {
       WorkspaceNavigation(section) =>
         b <+
-          "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{if section == "teams" { "Teams" } else { "Repositories" }}</strong>"
+          "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{if section == "teams" { "Teams" } else if section == "notifications" { "Inbox" } else { "Repositories" }}</strong>"
       TeamNavigation(team, _) =>
         b <+
           "<a href=\"/-/teams\">Teams</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
@@ -103,7 +103,12 @@ fn render_sidebar(
     b <+
       "</div></details><div class=\"sidebar-scroll\"><nav class=\"nav-group\" aria-label=\"Workspace\">"
     b <+
-      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}</nav>"
+      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
+    if current_user is Some(_) {
+      b <+
+        "\{render_navigation_item("/-/notifications", "Inbox", "mail", navigation is WorkspaceNavigation("notifications"))}"
+    }
+    b <+ "</nav>"
     match navigation {
       TeamNavigation(team, active) => {
         b <+

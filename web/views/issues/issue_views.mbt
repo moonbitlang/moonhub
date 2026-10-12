@@ -139,6 +139,8 @@ fn render_issue_detail(
   manager : Bool,
   csrf : String,
   clone : String?,
+  subscription : @collaboration.ThreadSubscription,
+  notification_csrf : String,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/issues/\{issue.number}"
   @web_ui.layout(
@@ -155,7 +157,8 @@ fn render_issue_detail(
         b <+
           "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create merge request</a>"
       }
-      b <+ "</div><div class=\"mr-description\">\{issue.description}</div>"
+      b <+
+        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"mr-description\">\{issue.description}</div>"
       if !related.is_empty() {
         b <+
           "<section class=\"issue-related\"><h3>Related merge requests</h3><ul class=\"mr-list\">"

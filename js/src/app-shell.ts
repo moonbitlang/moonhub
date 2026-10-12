@@ -154,3 +154,30 @@ function syncSettingsAnchor() {
 }
 syncSettingsAnchor();
 window.addEventListener("hashchange", syncSettingsAnchor);
+
+const inboxCount = document.querySelector<HTMLElement>("[data-inbox-count]");
+if (inboxCount) {
+  let refreshing = false;
+  const refreshInbox = async () => {
+    if (document.hidden || refreshing) return;
+    refreshing = true;
+    try {
+      const response = await fetch("/-/notifications/count", {
+        credentials: "same-origin", cache: "no-store", redirect: "error",
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return;
+      const value = (await response.text()).trim();
+      if (!/^\d+$/.test(value)) return;
+      const count = Number(value);
+      inboxCount.textContent = count > 99 ? "99+" : value;
+      inboxCount.hidden = count === 0;
+      const link = inboxCount.closest("a");
+      link?.setAttribute("aria-label", count > 0 ? `Inbox, ${value} unread notifications` : "Inbox");
+    } catch { /* The server-rendered inbox link remains usable offline. */ }
+    finally { refreshing = false; }
+  };
+  void refreshInbox();
+  setInterval(() => { void refreshInbox(); }, 60000);
+  document.addEventListener("visibilitychange", () => { void refreshInbox(); });
+}

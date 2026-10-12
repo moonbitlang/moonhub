@@ -171,6 +171,10 @@ fn render_merge_detail(
   csrf : String,
   clone : String?,
   checks : Array[@collaboration.MergeCheck],
+  reviewers : Array[@collaboration.ReviewRequest],
+  candidates : Array[@collaboration.IssueAssignee],
+  subscription : @collaboration.ThreadSubscription,
+  notification_csrf : String,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
   let version = revision.map(value => value.version).unwrap_or(0L)
@@ -219,7 +223,45 @@ fn render_merge_detail(
         b <+
           "<p class=\"muted mr-shas\"><span>Source <code>\{revision.source_sha[:12].to_owned()}</code></span><span>Target <code>\{revision.target_sha[:12].to_owned()}</code></span></p>"
       }
+      b <+
+        "\{@web_ui.render_thread_subscription(subscription, notification_csrf)}"
       if tab == "discussion" {
+        b <+
+          "<section class=\"mr-reviewers\" aria-label=\"Requested reviewers\"><h3>Reviewers</h3>"
+        if reviewers.is_empty() {
+          b <+ "<p class=\"muted\">No reviewers requested yet.</p>"
+        } else {
+          b <+ "<ul class=\"mr-list\">"
+          for reviewer in reviewers {
+            b <+
+              "<li><div class=\"mr-actions\"><strong>\{reviewer.display_name}</strong><span class=\"muted\">\{if reviewer.pending { "Review requested" } else { "Review submitted" }} · v\{reviewer.version.to_string()}</span>"
+            if editable &&
+              mr.status == "open" &&
+              !mr.draft &&
+              !reviewer.pending &&
+              version == mr.version {
+              b <+
+                "<form method=\"post\" action=\"\{base}/request-review\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><input type=\"hidden\" name=\"reviewer\" value=\"\{reviewer.user_id.to_string()}\"><button class=\"secondary-button\" type=\"submit\">Request review again</button></form>"
+            }
+            b <+ "</div></li>"
+          }
+          b <+ "</ul>"
+        }
+        if editable &&
+          mr.status == "open" &&
+          !mr.draft &&
+          version == mr.version &&
+          !candidates.is_empty() {
+          b <+
+            "<form class=\"mr-actions reviewer-request-form\" method=\"post\" action=\"\{base}/request-review\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><label class=\"field\"><span>Request a reviewer</span><select name=\"reviewer\" required><option value=\"\">Choose a reviewer</option>"
+          for candidate in candidates {
+            b <+
+              "<option value=\"\{candidate.id.to_string()}\">\{candidate.display_name} (@\{candidate.name_key})</option>"
+          }
+          b <+
+            "</select></label><button type=\"submit\">Request review</button></form>"
+        }
+        b <+ "</section>"
         if mr.issue_number > 0L {
           b <+
             "<p>Related issue <a href=\"\{@web_ui.repo_link(scope.repo)}/issues/\{mr.issue_number.to_string()}\">#\{mr.issue_number.to_string()}</a></p>"
