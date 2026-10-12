@@ -60,7 +60,7 @@ pub fn Coordinator::cancel_run(Self, @domain.CurrentUser, @domain.RepoId, Int64)
 pub fn Coordinator::claim(Self, String, @protocol.ClaimRequest) -> @protocol.Assignment? raise
 pub fn Coordinator::complete(Self, Int64, String, @protocol.CompleteRequest) -> @protocol.LeaseState raise
 pub fn Coordinator::create_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope) -> Provider raise
-pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope?) -> Provider raise
+pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope?, preserve_existing? : Bool) -> Provider raise
 pub fn Coordinator::expire_attempts(Self) -> Int raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int) -> @protocol.LeaseState raise
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise

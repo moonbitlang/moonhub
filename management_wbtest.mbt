@@ -55,6 +55,13 @@ async test "provider management CLI forwards explicit scope and preserves omitte
       assert_eq(coordinator.list_providers(actor)[0].scope.value(), "all")
       assert_eq(
         run_management_cli(
+          ensure + ["--preserve-existing", "--scope", "selected"],
+        ),
+        0,
+      )
+      assert_eq(coordinator.list_providers(actor)[0].scope.value(), "all")
+      assert_eq(
+        run_management_cli(
           ensure + ["--scope", "selected", "--repositories", "admin/demo"],
         ),
         0,

@@ -253,7 +253,7 @@ ensure_provider() {
     set -- --name "$1" --token-file "$token_file" \
       --labels "$2" --repositories "$3" --admin "$4"
     if [ -n "$scope" ]; then set -- "$@" --scope "$scope"; fi
-    moonhub pipeline-provider-ensure "$@"
+    moonhub pipeline-provider-ensure --preserve-existing "$@"
   ' moonhub-provider-ensure "$PROVIDER_NAME" "$PROVIDER_LABELS" "$PROVIDER_REPOSITORIES" "${MOONHUB_ROOT_USER:-root}" "$PROVIDER_SCOPE" < "$PROVIDER_TOKEN_FILE"
 }
 

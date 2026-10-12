@@ -130,6 +130,13 @@ fn management_command() -> @argparse.Command {
       @argparse.Command(
         "pipeline-provider-ensure",
         about="Idempotently register a Docker pipeline provider from a token file.",
+        flags=[
+          FlagArg(
+            "preserve-existing",
+            long="preserve-existing",
+            about="Only initialize new providers; preserve existing Web settings.",
+          ),
+        ],
         options=[
           OptionArg("name", long="name", required=true),
           OptionArg("token-file", long="token-file", required=true),
@@ -401,6 +408,9 @@ async fn run_management_cli(args : ArrayView[String]) -> Int {
           token,
           labels,
           repositories,
+          preserve_existing=options.flags
+            .get("preserve-existing")
+            .unwrap_or(false),
           scope=match single_value(options, "scope") {
             Some(value) => Some(@pipeline.ProviderScope::parse(value))
             None => None

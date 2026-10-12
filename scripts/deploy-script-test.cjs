@@ -90,6 +90,7 @@ try {
   assert.ok(ensure > lines.findIndex(line => line.includes('up ') && line.includes('web ssh')));
   assert.ok(lines.findIndex(line => line.includes('--no-deps') && line.includes('pipeline-provider')) > ensure);
   assert.ok(!lines.join('\n').includes('a'.repeat(64)), 'token leaked into argv');
+  assert.ok(ensureArgs(result).includes('--preserve-existing'));
   assert.ok(!ensureArgs(result).includes('--scope'), 'default upgrade overwrote saved provider scope');
   const backup = fs.readdirSync(path.join(root, 'backups')).find(dir => !dir.startsWith('.partial-'));
   const bundle = path.join(root, 'backups', backup);
@@ -113,6 +114,7 @@ try {
   result = run({ MOONHUB_PROVIDER_SCOPE: 'selected', MOONHUB_PROVIDER_REPOSITORIES: 'alice/demo,bob/service' });
   assert.equal(result.status, 0, result.stderr);
   const selectedArgs = ensureArgs(result);
+  assert.ok(selectedArgs.includes('--preserve-existing'));
   assert.equal(selectedArgs[selectedArgs.indexOf('--scope') + 1], 'selected');
   assert.equal(selectedArgs[selectedArgs.indexOf('--repositories') + 1], 'alice/demo,bob/service');
   const sharedRoot = path.join(root, 'backups/shared');
