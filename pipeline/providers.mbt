@@ -270,38 +270,43 @@ pub fn Coordinator::ensure_provider(
   labels : Array[String],
   repositories : Array[@domain.RepoId],
   scope~ : ProviderScope? = None,
+  preserve_existing~ : Bool = false,
 ) -> Provider raise {
   require_provider_admin(self.pool, actor)
   check_token(token)
   guard @domain.valid_segment(name) && name.length() <= 64 else {
     raise @domain.BadRequest(message="invalid provider name")
   }
-  let labels = normalize_provider_labels(labels)
-  guard scope != Some(AllRepositories) || repositories.is_empty() else {
-    raise @domain.BadRequest(
-      message="All-repository scope cannot include a repository list.",
-    )
-  }
-  let repository_ids = repositories.map(repo => {
-    @repository.repository_scope(self.pool, actor, repo).id
-  })
   let hash = @identity.hash_token(token)
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
-        let row = match
-          tx.query_opt("SELECT * FROM pipeline_provider WHERE name = ?", params=[
-            name,
-          ]) {
-          Some(row) => {
-            guard (row.get_name("token_hash") : String) == hash else {
-              raise Conflict("provider name exists with a different credential")
-            }
-            guard !(row.get_name("revoked") : Bool) else {
-              raise Conflict("provider is revoked")
-            }
-            row
+        let existing = tx.query_opt(
+          "SELECT * FROM pipeline_provider WHERE name = ?",
+          params=[name],
+        )
+        if existing is Some(row) {
+          guard (row.get_name("token_hash") : String) == hash else {
+            raise Conflict("provider name exists with a different credential")
           }
+          guard !(row.get_name("revoked") : Bool) else {
+            raise Conflict("provider is revoked")
+          }
+          if preserve_existing {
+            return provider_from_row(client, row, (self.clock)())
+          }
+        }
+        let labels = normalize_provider_labels(labels)
+        guard scope != Some(AllRepositories) || repositories.is_empty() else {
+          raise @domain.BadRequest(
+            message="All-repository scope cannot include a repository list.",
+          )
+        }
+        let repository_ids = repositories.map(repo => {
+          @repository.repository_scope(self.pool, actor, repo).id
+        })
+        let row = match existing {
+          Some(row) => row
           None => {
             guard tx.query_opt(
                 "SELECT id FROM pipeline_provider WHERE token_hash = ? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",

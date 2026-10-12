@@ -253,3 +253,85 @@ async test "queue diagnostics remain authorized and distinguish dependency waiti
     )
   })
 }
+
+///|
+async test "deployment ensure preserves administrator settings despite stale bootstrap configuration" {
+  with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
+    let admin = @identity.active_user_by_name(pool, "admin")
+    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
+    coordinator.set_provider_labels(admin, provider.id, [
+      "self-hosted", "linux", "moonhub-build",
+    ])
+    coordinator.set_provider_paused(admin, provider.id, true)
+    for _ in 0..<2 {
+      let existing = coordinator.ensure_provider(
+        admin,
+        provider.name,
+        provider_secret,
+        ["self-hosted", "linux", "old-label"],
+        [{ owner: "missing", name: "old-repository", }],
+        scope=Some(SelectedRepositories),
+        preserve_existing=true,
+      )
+      assert_eq(existing.id, provider.id)
+      assert_eq(existing.scope, AllRepositories)
+      assert_eq(existing.labels, ["linux", "moonhub-build", "self-hosted"])
+      assert_true(existing.paused)
+      assert_true(existing.repositories.is_empty())
+    }
+    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
+    let existing = coordinator.ensure_provider(
+      admin,
+      provider.name,
+      provider_secret,
+      ["self-hosted", "linux"],
+      [protocol_repo],
+      scope=Some(AllRepositories),
+      preserve_existing=true,
+    )
+    assert_eq(existing.scope, SelectedRepositories)
+    assert_true(existing.repositories.is_empty())
+    let created = coordinator.ensure_provider(
+      admin,
+      "bootstrap",
+      "c".repeat(64),
+      ["self-hosted", "linux"],
+      [protocol_repo],
+      scope=Some(SelectedRepositories),
+      preserve_existing=true,
+    )
+    assert_eq(created.repositories, ["alice/demo"])
+    assert_eq(created.labels, ["linux", "self-hosted"])
+    try
+      coordinator.ensure_provider(
+        admin,
+        provider.name,
+        "d".repeat(64),
+        ["self-hosted", "linux"],
+        [],
+        preserve_existing=true,
+      )
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("preserve replaced credential")
+    }
+    coordinator.revoke_provider(admin, provider.id)
+    try
+      coordinator.ensure_provider(
+        admin,
+        provider.name,
+        provider_secret,
+        ["self-hosted", "linux"],
+        [],
+        preserve_existing=true,
+      )
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("preserve resurrected revoked provider")
+    }
+  })
+}

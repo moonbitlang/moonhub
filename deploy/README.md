@@ -448,9 +448,14 @@ MOONHUB_PROVIDER_REPOSITORIES=
 Use `MOONHUB_PROVIDER_SCOPE=selected` with a comma-separated
 `MOONHUB_PROVIDER_REPOSITORIES` list for restricted access. If scope is unset,
 new providers default to selected and existing providers keep their saved scope,
-including changes made through Administration. Existing selected grants remain
-additive during deployment; remove grants through **Edit access** and update the
-deployment list too. Explicit scope settings are applied on every upgrade.
+including changes made through Administration. Manage existing grants through **Edit access**; deployment does not re-add removed
+grants. Direct CLI ensure without `--preserve-existing` retains its explicit
+configuration behavior. Provider labels, scope and repository lists in the deployment file are bootstrap
+defaults used only when registering a new provider. Upgrades use
+`pipeline-provider-ensure --preserve-existing` and preserve existing labels,
+repository scope/grants, pause state and credentials from the database. Web
+administration is authoritative for existing providers; stale deploy-file settings
+never reset it. Credential mismatches and revoked providers still fail closed.
 All-repository scope with a nonempty repository list is rejected before building
 or stopping services. Labels and requester authorization still apply in both
 scopes.
