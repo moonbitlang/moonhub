@@ -10,7 +10,7 @@ fn render_issue_list(
   query : String,
   contributor : Bool,
   clone : String?,
-  manager? : Bool = false,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/issues"
   let filters = "assigned=\{if mine { "me" } else { "all" }}&q=\{@web_context.url_escape_path(query)}"
@@ -74,7 +74,7 @@ fn render_issue_form(
   csrf : String,
   form : Map[String, String],
   error : String?,
-  manager? : Bool = false,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/issues"
   let title = form

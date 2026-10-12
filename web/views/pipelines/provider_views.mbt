@@ -6,9 +6,9 @@ fn render_provider_admin(
   csrf : String,
   token : String?,
   error : String?,
-  labels_saved? : Bool = false,
-  scope_saved? : Bool = false,
-  registration? : Map[String, String] = Map([]),
+  labels_saved~ : Bool = false,
+  scope_saved~ : Bool = false,
+  registration~ : Map[String, String] = Map([]),
 ) -> @moonback.Html {
   @web_ui.layout(
     "Pipeline providers",

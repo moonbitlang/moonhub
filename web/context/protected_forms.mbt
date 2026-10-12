@@ -78,7 +78,7 @@ pub async fn protected_form(
 ///|
 pub fn private_page_headers(
   location? : String,
-  refresh? : Bool = false,
+  refresh~ : Bool = false,
 ) -> @moonback.Headers {
   let headers = @moonback.MutHeaders::from({
     "cache-control": "no-store",

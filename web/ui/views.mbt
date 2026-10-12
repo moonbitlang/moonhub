@@ -3,10 +3,10 @@ pub fn layout(
   title : String,
   asset_path_map : Map[String, String],
   body : @moonback.Html,
-  head_end? : @moonback.Html = @moonback.Html::raw(""),
-  body_class? : String = "",
-  current_user? : @domain.CurrentUser? = None,
-  navigation? : PageNavigation = WorkspaceNavigation("repositories"),
+  head_end~ : @moonback.Html = @moonback.Html::raw(""),
+  body_class~ : String = "",
+  current_user~ : @domain.CurrentUser? = None,
+  navigation~ : PageNavigation = WorkspaceNavigation("repositories"),
 ) -> @moonback.Html {
   let stylesheet_head = @web_assets.app_styles_head(asset_path_map)
   let shell_script = @web_assets.vite_manifest_entry_path(
@@ -102,7 +102,7 @@ pub fn render_error(
   status : Int,
   message : String,
   asset_path_map : Map[String, String],
-  current_user? : @domain.CurrentUser? = None,
+  current_user~ : @domain.CurrentUser? = None,
 ) -> @moonback.Html {
   let status_text = status.to_string()
   layout(

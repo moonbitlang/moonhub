@@ -1,8 +1,8 @@
 ///|
 pub async fn with_ssh_settings_app(
   f : async (Int, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit,
-  addresses? : @repository.SshAddressConfig = @repository.no_ssh_address_config,
-  repo_root? : String = test_repo_root,
+  addresses~ : @repository.SshAddressConfig = @repository.no_ssh_address_config,
+  repo_root~ : String = test_repo_root,
 ) -> Unit {
   @test_support.with_ssh_test_db(pool => {
     let cookies = pool.with_client(client => {

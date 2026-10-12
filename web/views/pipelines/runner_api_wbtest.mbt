@@ -3,9 +3,9 @@ async fn post_json(
   port : Int,
   path : String,
   body : String,
-  token? : String = "",
-  cookie? : String = "",
-  content_type? : String = "application/json",
+  token~ : String = "",
+  cookie~ : String = "",
+  content_type~ : String = "application/json",
 ) -> (Int, Json) {
   let client = @http.Client("http://127.0.0.1:\{port}")
   defer client.close()

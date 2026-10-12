@@ -5,7 +5,7 @@ fn merge_action(
   action : String,
   label : String,
   version : Int64,
-  edit_version? : Int64 = 1L,
+  edit_version~ : Int64 = 1L,
 ) -> @moonback.Html {
   Html(b => {
     b <+
@@ -90,7 +90,7 @@ fn render_merge_new(
   csrf : String,
   form : Map[String, String],
   error : String?,
-  manager? : Bool = false,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests"
   @web_ui.layout(

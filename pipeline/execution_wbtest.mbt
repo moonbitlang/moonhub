@@ -9,8 +9,8 @@ let attempt_secret : String = "b".repeat(64)
 
 ///|
 fn claim_request(
-  id? : String = "1",
-  secret? : String = attempt_secret,
+  id~ : String = "1",
+  secret~ : String = attempt_secret,
 ) -> @protocol.ClaimRequest {
   { version: 1, request_id: id.repeat(32), attempt_token: secret, }
 }
@@ -28,8 +28,8 @@ fn log_request(sequence : Int64, text : String) -> @protocol.LogRequest {
 
 ///|
 fn completion(
-  conclusion? : String = "success",
-  last? : Int64 = 0L,
+  conclusion~ : String = "success",
+  last~ : Int64 = 0L,
 ) -> @protocol.CompleteRequest {
   { version: 1, conclusion, last_log_sequence: last.to_string(), }
 }

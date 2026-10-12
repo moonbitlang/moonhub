@@ -2,7 +2,7 @@
 fn render_login(
   asset_path_map : Map[String, String],
   message : String?,
-  identifier? : String = "",
+  identifier~ : String = "",
 ) -> @moonback.Html {
   @web_ui.layout(
     "Sign in",

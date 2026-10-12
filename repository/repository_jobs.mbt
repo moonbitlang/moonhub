@@ -111,7 +111,7 @@ pub async fn enqueue_repository(
   name : String,
   visibility : String,
   source_url : String,
-  addresses? : SshAddressConfig = no_ssh_address_config,
+  addresses~ : SshAddressConfig = no_ssh_address_config,
 ) -> @domain.RepoId {
   require_repository_manager(pool, actor, team)
   let repo = @domain.parse_transport_repo("\{team.name_key}/\{name}")

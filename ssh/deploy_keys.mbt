@@ -60,7 +60,7 @@ pub fn add_repository_deploy_key(
   repo : @domain.RepoId,
   title : String,
   key : SshPublicKey,
-  write_access? : Bool = false,
+  write_access~ : Bool = false,
 ) -> Int64 raise {
   let title = title.trim().to_owned()
   guard !title.is_empty() && title.length() <= 200 else {

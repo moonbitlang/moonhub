@@ -88,10 +88,10 @@ fn render_team_detail(
   can_manage~ : Bool,
   invitation_credentials_csrf~ : String,
   message : String?,
-  active_tab? : String = "repositories",
-  invite_open? : Bool = false,
-  invitation_form? : Map[String, String] = Map([]),
-  notice? : String? = None,
+  active_tab~ : String = "repositories",
+  invite_open~ : Bool = false,
+  invitation_form~ : Map[String, String] = Map([]),
+  notice~ : String? = None,
 ) -> @moonback.Html {
   @web_ui.layout(
     team.display_name,

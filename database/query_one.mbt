@@ -2,7 +2,7 @@
 pub fn DbClient::query_one(
   self : DbClient,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> DbRow raise @moondb.DbError {
   let rows = self.query_all(sql, params~)
   guard rows.length() == 1 else {

@@ -7,7 +7,7 @@ pub async fn save_branch_rule(
   branch : String,
   protect : Bool,
   approvals : Int64,
-  checks? : Array[String] = [],
+  checks~ : Array[String] = [],
 ) -> Unit {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   guard @identity.can_manage_team(pool, actor, scope.team_id) else {
