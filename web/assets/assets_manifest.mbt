@@ -79,7 +79,7 @@ fn custom_elements_head(
 ///|
 pub fn repository_assets_head(
   assets : Map[String, String],
-  code_view? : Bool = false,
+  code_view~ : Bool = false,
 ) -> @moonback.Html {
   let script = vite_manifest_entry_path(assets, "src/repo-clone.ts")
   @moonback.Html(b => {

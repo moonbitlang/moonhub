@@ -14,7 +14,7 @@ pub let single_job_workflow : String =
 pub async fn workflow_commit(
   git_dir : String,
   source : String,
-  mode? : String = "100644",
+  mode~ : String = "100644",
 ) -> String {
   let blob = @gitops.merge_git(
       git_dir,

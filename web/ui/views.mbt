@@ -3,10 +3,10 @@ pub fn layout(
   title : String,
   asset_path_map : Map[String, String],
   body : @moonback.Html,
-  head_end? : @moonback.Html = @moonback.Html::raw(""),
-  body_class? : String = "",
-  current_user? : @domain.CurrentUser? = None,
-  navigation? : PageNavigation = WorkspaceNavigation("repositories"),
+  head_end~ : @moonback.Html = @moonback.Html::raw(""),
+  body_class~ : String = "",
+  current_user~ : @domain.CurrentUser? = None,
+  navigation~ : PageNavigation = WorkspaceNavigation("repositories"),
 ) -> @moonback.Html {
   let stylesheet_head = @web_assets.app_styles_head(asset_path_map)
   let shell_script = @web_assets.vite_manifest_entry_path(
@@ -57,6 +57,8 @@ fn render_site_header(
     match current_user {
       Some(user) => {
         b <+
+          "<a class=\"header-inbox\" href=\"/-/notifications\" aria-label=\"Inbox\" title=\"Inbox\"><span class=\"ui-icon\" data-icon=\"mail\" aria-hidden=\"true\"></span><span>Inbox</span><span class=\"count-badge\" data-inbox-count hidden></span></a>"
+        b <+
           "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/-/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/-/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/-/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
         if user.is_site_admin {
           b <+
@@ -102,7 +104,7 @@ pub fn render_error(
   status : Int,
   message : String,
   asset_path_map : Map[String, String],
-  current_user? : @domain.CurrentUser? = None,
+  current_user~ : @domain.CurrentUser? = None,
 ) -> @moonback.Html {
   let status_text = status.to_string()
   layout(

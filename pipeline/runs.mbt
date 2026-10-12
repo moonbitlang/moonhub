@@ -99,8 +99,8 @@ fn insert_run_snapshot(
   pin : String,
   source : String,
   definition : @workflow.Workflow,
-  event_id? : Int64 = 0L,
-  merge_check_id? : Int64 = 0L,
+  event_id~ : Int64 = 0L,
+  merge_check_id~ : Int64 = 0L,
 ) -> Run raise {
   let number : Int64 = tx
     .query_one(

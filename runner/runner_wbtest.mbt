@@ -2,9 +2,9 @@
 fn test_step(
   id : String,
   run : String,
-  shell? : String = "bash",
-  directory? : String = ".",
-  env? : Map[String, String] = Map([]),
+  shell~ : String = "bash",
+  directory~ : String = ".",
+  env~ : Map[String, String] = Map([]),
 ) -> @protocol.StepPlan {
   {
     id,
@@ -55,10 +55,10 @@ priv struct FakeServer {
 
 ///|
 fn fake_server(
-  cancel_after? : Int = 0,
-  available? : Bool = true,
-  remaining_ms? : Int64 = 60000L,
-  job_ms? : Int64 = 60000L,
+  cancel_after~ : Int = 0,
+  available~ : Bool = true,
+  remaining_ms~ : Int64 = 60000L,
+  job_ms~ : Int64 = 60000L,
 ) -> FakeServer {
   {
     logs: [],

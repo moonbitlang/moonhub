@@ -26,10 +26,10 @@ fn split_lines(value : String) -> Array[String] {
 pub async fn merge_git_command(
   git_dir : String,
   args : Array[String],
-  input? : String = "",
-  limit? : Int = 2097152,
-  identity? : String = "Moonhub",
-  strict_utf8? : Bool = false,
+  input~ : String = "",
+  limit~ : Int = 2097152,
+  identity~ : String = "Moonhub",
+  strict_utf8~ : Bool = false,
 ) -> (Int, String) {
   @async.with_timeout(
     60000,
@@ -103,7 +103,7 @@ pub async fn merge_git_command(
 pub async fn merge_git(
   git_dir : String,
   args : Array[String],
-  input? : String = "",
+  input~ : String = "",
 ) -> String {
   let (code, output) = merge_git_command(git_dir, args, input~)
   guard code == 0 else {

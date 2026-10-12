@@ -61,7 +61,7 @@ fn merge_check_provider(pool : @database.Database) -> Coordinator raise {
 ///|
 fn finish_merge_check(
   coordinator : Coordinator,
-  result? : String = "success",
+  result~ : String = "success",
 ) -> Unit raise {
   let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
   let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()

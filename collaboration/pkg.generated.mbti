@@ -26,6 +26,8 @@ pub fn edit_merge_request(@database.Database, @repository.RepositoryScope, @doma
 
 pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
 
+pub fn inbox_items(@database.Database, @domain.CurrentUser, String, Int64) -> Array[InboxItem] raise
+
 pub fn issue_assignees(@database.Database, @repository.RepositoryScope) -> Array[IssueAssignee] raise
 
 pub fn issue_merge_requests(@database.Database, @repository.RepositoryScope, Issue) -> Array[MergeRequest] raise
@@ -38,6 +40,10 @@ pub fn list_merge_activity(@database.Database, MergeRequest, Int64) -> Array[Mer
 
 pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64) -> Array[MergeRequest] raise
 
+pub fn mark_all_notifications_read(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
+
+pub fn mark_notification_read(@database.Database, @domain.CurrentUser, Int64) -> InboxItem raise
+
 pub fn merge_blocker(@database.Database, @repository.RepositoryScope, MergeRequest, @gitops.Revision) -> String raise
 
 pub fn merge_checks(@database.Database, MergeRequest, version? : Int64) -> Array[MergeCheck] raise
@@ -48,9 +54,17 @@ pub fn merge_revision(@database.Database, MergeRequest, version? : Int64) -> @gi
 
 pub fn mutate_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, Issue, Int64, String, String, String, Int64, String) -> Unit raise
 
+pub fn notification_email_enabled(@database.Database, @domain.CurrentUser) -> Bool raise
+
+pub fn notification_label(String) -> String
+
 pub fn prepare_merge_checks(@database.Database, @repository.RepositoryScope, MergeRequest, actor? : @domain.CurrentUser) -> Unit raise
 
 pub async fn refresh_merge_request(@database.Database, @repository.RepositoryScope, String, MergeRequest) -> MergeRequest
+
+pub async fn refresh_next_requested_review(@database.Database, String) -> Bool
+
+pub fn request_merge_review(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, MergeRequest, Int64, Int64) -> Unit raise
 
 pub fn require_issue(@database.Database, @repository.RepositoryScope, Int64) -> Issue raise
 
@@ -60,13 +74,27 @@ pub fn required_merge_approvals(@database.Database, @repository.RepositoryScope,
 
 pub fn required_merge_checks(@database.Database, @repository.RepositoryScope, String) -> Array[String] raise
 
+pub fn review_candidates(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, MergeRequest) -> Array[IssueAssignee] raise
+
+pub fn review_requests(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, MergeRequest) -> Array[ReviewRequest] raise
+
 pub async fn run_next_merge_job(@database.Database, String) -> Bool
 
 pub async fn save_branch_rule(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, Bool, Int64, checks? : Array[String]) -> Unit
 
+pub fn set_notification_email(@database.Database, @domain.CurrentUser, Bool) -> Unit raise
+
+pub fn set_thread_subscription(@database.Database, @domain.CurrentUser, Int64, Bool) -> String raise
+
 pub fn start_merge_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
+pub fn start_review_requests_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
 pub fn submit_merge_review(@database.Database, @domain.CurrentUser, MergeRequest, Int64, String, String) -> Unit raise
+
+pub fn thread_subscription(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, Int64, Bool) -> ThreadSubscription raise
+
+pub fn unread_notification_count(@database.Database, @domain.CurrentUser) -> Int64 raise
 
 // Errors
 
@@ -76,6 +104,21 @@ pub struct BranchRule {
   required_approvals : Int64
   checks : Array[String]
 }
+
+pub struct InboxItem {
+  id : Int64
+  thread_id : Int64
+  repo : @domain.RepoId
+  number : Int64
+  title : String
+  issue : Bool
+  kind : String
+  actor : String
+  version : Int64
+  read : Bool
+  created_at : String
+}
+pub fn InboxItem::url(Self) -> String
 
 pub struct Issue {
   id : Int64
@@ -138,6 +181,18 @@ pub struct MergeRequest {
   job_error : String
   issue_number : Int64
   edit_version : Int64
+}
+
+pub struct ReviewRequest {
+  user_id : Int64
+  display_name : String
+  version : Int64
+  pending : Bool
+}
+
+pub struct ThreadSubscription {
+  id : Int64
+  subscribed : Bool
 }
 
 // Type aliases

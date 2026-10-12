@@ -13,7 +13,7 @@ pub struct Coordinator {
 ///|
 pub fn Coordinator::new(
   pool : @database.Database,
-  clock? : () -> Int64 = () => @env.now().reinterpret_as_int64(),
+  clock~ : () -> Int64 = () => @env.now().reinterpret_as_int64(),
 ) -> Coordinator {
   { pool, clock, }
 }
@@ -126,7 +126,7 @@ pub fn Coordinator::create_provider(
   token : String,
   labels : Array[String],
   repositories : Array[@domain.RepoId],
-  scope? : ProviderScope = SelectedRepositories,
+  scope~ : ProviderScope = SelectedRepositories,
 ) -> Provider raise {
   require_provider_admin(self.pool, actor)
   check_token(token)
@@ -269,7 +269,7 @@ pub fn Coordinator::ensure_provider(
   token : String,
   labels : Array[String],
   repositories : Array[@domain.RepoId],
-  scope? : ProviderScope? = None,
+  scope~ : ProviderScope? = None,
 ) -> Provider raise {
   require_provider_admin(self.pool, actor)
   check_token(token)

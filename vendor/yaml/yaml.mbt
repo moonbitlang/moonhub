@@ -304,7 +304,7 @@ struct YamlEmitter {
 ///|
 /// Create a new emitter serializing into `writer`.
 pub fn YamlEmitter::new(
-  writer? : StringBuilder = StringBuilder(),
+  writer~ : StringBuilder = StringBuilder(),
 ) -> YamlEmitter {
   YamlEmitter::{
     writer,
@@ -582,9 +582,9 @@ fn is_valid_literal_block_scalar(value : String) -> Bool {
   .all(ch => {
     ch == '\t' ||
     ch == '\n' ||
-    ch is ('\u{0020}'..='\u{007e}') ||
+    ch is ('\u{0020}'..<='\u{007e}') ||
     ch == '\u{0085}' ||
-    ch is ('\u{00a0}'..='\u{d7ff}')
+    ch is ('\u{00a0}'..<='\u{d7ff}')
   })
 }
 

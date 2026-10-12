@@ -181,6 +181,8 @@ pub let issues_module : @moonback.Module = Module(ctx => {
         @identity.can_manage_team(pool, actor, scope.team_id),
         @web_context.request_form_token(req, "issues"),
         clone,
+        @collaboration.thread_subscription(pool, actor, scope, issue.id, true),
+        @web_context.request_form_token(req, "notifications"),
       ),
       headers=@web_context.private_page_headers(),
     )

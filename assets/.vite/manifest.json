@@ -2207,13 +2207,13 @@
     "isDynamicEntry": true
   },
   "src/app-shell.ts": {
-    "file": "app-shell-8pqv9euw.mjs",
+    "file": "app-shell-fpZ9Cys0.mjs",
     "name": "app-shell",
     "src": "src/app-shell.ts",
     "isEntry": true
   },
   "src/app.css": {
-    "file": "app_styles-BR-3vtPw.css",
+    "file": "app_styles-DGJW5af0.css",
     "name": "app_styles",
     "names": [
       "app_styles.css"

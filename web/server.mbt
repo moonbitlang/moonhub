@@ -17,6 +17,7 @@ pub async fn serve(config : Config) -> Unit {
       addresses~,
     )
     @collaboration.start_merge_worker(pool, config.root, group)
+    @collaboration.start_review_requests_worker(pool, config.root, group)
     let coordinator = @pipeline.Coordinator::new(pool)
     coordinator.start_lease_worker(group)
     @pipeline.start_push_worker(pool, config.root, group)

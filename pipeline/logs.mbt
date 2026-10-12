@@ -127,7 +127,7 @@ pub fn Coordinator::read_logs(
   repo : @domain.RepoId,
   run_number : Int64,
   attempt_id : Int64,
-  after? : Int64 = 0L,
+  after~ : Int64 = 0L,
 ) -> Array[@protocol.LogChunk] raise {
   self.read_log_page(actor, repo, run_number, attempt_id, after~).chunks
 }
@@ -147,7 +147,7 @@ pub fn Coordinator::read_log_page(
   repo : @domain.RepoId,
   run_number : Int64,
   attempt_id : Int64,
-  after? : Int64 = 0L,
+  after~ : Int64 = 0L,
 ) -> LogPage raise {
   let run = get_run(self.pool, actor, repo, run_number)
   guard after >= 0L else {

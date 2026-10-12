@@ -5,6 +5,9 @@ Branch protection can require existing Pipeline workflows to pass against the
 merged source/target tree. See [MR Pipeline checks](docs/merge-checks.md) for
 setup, execution approval, version-bound results, and upgrade requirements.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
+Request reviewers from an MR discussion and use **Inbox** for pending reviews,
+assigned Issues and collaboration updates. Email reminders are optional. See
+[review requests and notifications](docs/notifications.md).
 See [package boundaries, dependency injection and tests](docs/architecture.md)
 for the source layout and module initialization rules.
 

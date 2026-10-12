@@ -16,6 +16,7 @@ import {
   "hackwaly/moonhub/web/views/repositories" @repository_views,
   "hackwaly/moonhub/web/views/settings" @settings_views,
   "hackwaly/moonhub/web/views/pipelines" @pipeline_views,
+  "hackwaly/moonhub/web/views/notifications" @notification_views,
   "moonbitlang/async",
   "moonbitlang/async/signal",
   "moonbitlang/moonback",

@@ -136,6 +136,14 @@ pub fn mutate_issue(
             message="this issue changed; reload before saving",
           )
         }
+        if action == "edit" && assignee != issue.assignee_id && assignee != 0L {
+          ignore(
+            tx.execute(
+              "INSERT INTO issue_activity (issue_id, actor_id, kind) VALUES (?, ?, 'assigned')",
+              params=[issue.id, actor.id],
+            ),
+          )
+        }
         let _ = tx.execute(
           "INSERT INTO issue_activity (issue_id, actor_id, kind, body) VALUES (?, ?, ?, ?)",
           params=[

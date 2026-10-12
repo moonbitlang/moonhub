@@ -39,8 +39,8 @@ pub let browser_app_module : @moonback.Module = Module(ctx => {
 
 ///|
 pub fn test_app_config(
-  repo_root? : String = test_repo_root,
-  assets_root? : String = test_assets_root,
+  repo_root~ : String = test_repo_root,
+  assets_root~ : String = test_assets_root,
 ) -> @moonback.Config {
   @moonback.Config(custom=[
     @moonback.Config::custom(@web_context.config_root, repo_root),

@@ -15,7 +15,7 @@ unchanged.
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events and recovery |
-| `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements and merge worker |
+| `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
@@ -50,6 +50,7 @@ web/
     merge_requests/
     settings/
     pipelines/
+    notifications/
   testkit/
 ```
 
@@ -174,3 +175,10 @@ Before committing, run `moon check --deny-warn`, `moon fmt`, and `moon info`, in
 that order. Review the generated `.mbti` and formatting changes, then run the
 tests and the package-boundary check. The tracked pre-commit hook enforces the
 three-command sequence; see [hook setup and index safety](../.githooks/README.md).
+
+Collaboration owns review requests, subscriptions, event fan-out and Inbox queries.
+Migration 015 creates notifications and optional email outbox rows transactionally
+with activity; the mail worker rechecks current access/preferences at claim time.
+`web/views/notifications` owns Inbox routes and HTTP tests. Web starts the review
+request refresh worker independently of Pipeline so ready MRs without CI refresh
+in the background. Shared subscription rendering lives in `web/ui`.

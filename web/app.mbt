@@ -23,6 +23,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.add_middleware(@web_context.auth_middleware(pool))
   ctx.add_middleware(@web_context.require_login_middleware())
   ctx.use_(@auth_views.auth_module)
+  ctx.use_(@notification_views.notifications_module)
   ctx.use_(@account_views.profile_module)
   ctx.use_(@account_views.ssh_keys_module)
   ctx.use_(@settings_views.site_settings_module)

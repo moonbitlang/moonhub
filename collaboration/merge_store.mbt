@@ -102,7 +102,7 @@ fn merge_activity(
   mr : MergeRequest,
   actor : Int64,
   kind : String,
-  body? : String = "",
+  body~ : String = "",
 ) -> Unit raise {
   let _ = tx.execute(
     "INSERT INTO merge_activity (merge_request_id, actor_id, kind, body, version) VALUES (?, NULLIF(?, 0), ?, ?, ?)",

@@ -234,7 +234,7 @@ pub async fn run_next_repository_job(
   pool : @database.Database,
   root : String,
   config : RepoImportConfig?,
-  addresses? : SshAddressConfig = no_ssh_address_config,
+  addresses~ : SshAddressConfig = no_ssh_address_config,
 ) -> Bool {
   let exists = pool.with_client(client => {
     client.query_opt(
@@ -318,7 +318,7 @@ pub fn start_repository_worker(
   root : String,
   config : RepoImportConfig?,
   group : @async.TaskGroup[Unit],
-  addresses? : SshAddressConfig = no_ssh_address_config,
+  addresses~ : SshAddressConfig = no_ssh_address_config,
 ) -> Unit {
   group.spawn_bg(no_wait=true, () => {
     for ;; {

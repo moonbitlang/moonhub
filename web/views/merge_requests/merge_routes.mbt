@@ -269,6 +269,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         @web_context.request_form_token(req, "merge-requests"),
         clone,
         checks,
+        @collaboration.review_requests(pool, actor, scope, mr),
+        @collaboration.review_candidates(pool, actor, scope, mr),
+        @collaboration.thread_subscription(pool, actor, scope, mr.id, false),
+        @web_context.request_form_token(req, "notifications"),
       ),
       headers=@web_context.private_page_headers(
         refresh=mr.job_status == "pending" || mr.job_status == "running",
@@ -285,7 +289,25 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let form = @web_context.protected_form(req, "merge-requests")
     @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
       let mr = @collaboration.require_merge_request(pool, scope, number)
-      if action == "review" || action == "merge" || action == "approve-checks" {
+      if action == "request-review" {
+        let current = @collaboration.refresh_merge_request(
+          pool, scope, git_dir, mr,
+        )
+        @collaboration.request_merge_review(
+          pool,
+          actor,
+          scope,
+          current,
+          @web_context.positive_resource_number(
+            form.get("reviewer").unwrap_or(""),
+          ),
+          @web_context.positive_resource_number(
+            form.get("version").unwrap_or(""),
+          ),
+        )
+      } else if action == "review" ||
+        action == "merge" ||
+        action == "approve-checks" {
         let mr = if action == "review" &&
           form.get("decision") == Some("comment") {
           mr

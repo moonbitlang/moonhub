@@ -2,8 +2,8 @@
 fn render_index(
   repos~ : Array[@domain.RepoId],
   asset_path_map~ : Map[String, String],
-  current_user? : @domain.CurrentUser? = None,
-  personal_owner? : String? = None,
+  current_user~ : @domain.CurrentUser? = None,
+  personal_owner~ : String? = None,
 ) -> @moonback.Html {
   @web_ui.layout(
     "moonhub",
@@ -107,9 +107,9 @@ async fn render_tree(
   repo~ : @domain.RepoId,
   rev~ : String,
   path~ : String,
-  clone_url? : String? = None,
-  current_user? : @domain.CurrentUser? = None,
-  manager? : Bool = false,
+  clone_url~ : String? = None,
+  current_user~ : @domain.CurrentUser? = None,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let entries = @gitops.list_tree(git_dir, rev, path) catch {
@@ -167,9 +167,9 @@ async fn render_blob(
   repo~ : @domain.RepoId,
   rev~ : String,
   path~ : String,
-  clone_url? : String? = None,
-  current_user? : @domain.CurrentUser? = None,
-  manager? : Bool = false,
+  clone_url~ : String? = None,
+  current_user~ : @domain.CurrentUser? = None,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let content = @gitops.read_blob(repo.git_dir(root), rev, path) catch {
     @gitops.GitCommandFailed(_) =>
@@ -196,9 +196,9 @@ async fn render_commits(
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   rev~ : String,
-  clone_url? : String? = None,
-  current_user? : @domain.CurrentUser? = None,
-  manager? : Bool = false,
+  clone_url~ : String? = None,
+  current_user~ : @domain.CurrentUser? = None,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let commits = @gitops.list_commits(repo.git_dir(root), rev) catch {
     @gitops.GitCommandFailed(_) =>
@@ -239,9 +239,9 @@ async fn render_commit(
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   commit~ : String,
-  clone_url? : String? = None,
-  current_user? : @domain.CurrentUser? = None,
-  manager? : Bool = false,
+  clone_url~ : String? = None,
+  current_user~ : @domain.CurrentUser? = None,
+  manager~ : Bool = false,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
   let _ = @gitops.run_git(git_dir, ["cat-file", "-e", "\{commit}^{commit}"]) catch {

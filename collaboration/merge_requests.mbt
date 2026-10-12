@@ -79,7 +79,7 @@ pub async fn create_merge_request(
   source : String,
   target : String,
   draft : Bool,
-  issue? : Int64 = 0L,
+  issue~ : Int64 = 0L,
 ) -> MergeRequest {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   let title = title.trim().to_owned()

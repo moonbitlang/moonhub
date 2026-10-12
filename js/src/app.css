@@ -492,3 +492,29 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
 }
+
+.header-inbox { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 8px; color: var(--color-text); white-space: nowrap; }
+.header-inbox + .account-menu { margin-left: 8px; }
+.inbox-tabs { flex-wrap: wrap; }
+.inbox-list { list-style: none; padding: 0; margin: 0 0 24px; }
+.inbox-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--color-border); }
+.inbox-item-content { min-width: 0; }
+.inbox-event { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 12px; color: var(--color-muted); }
+.inbox-unread { color: var(--color-accent); font-weight: 650; }
+.inbox-title { display: inline-block; font-weight: 650; overflow-wrap: anywhere; }
+.inbox-item .muted { margin: 6px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.inbox-item-actions { flex-shrink: 0; }
+.inbox-empty { padding: 32px 0; max-width: 65ch; }
+.inbox-empty h2, .inbox-settings h2 { font-size: 18px; margin: 0 0 8px; }
+.inbox-settings { margin-top: 32px; max-width: 65ch; }
+.thread-subscription { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0; }
+.thread-subscription .muted { font-size: 12px; }
+.mr-reviewers { margin: 24px 0; }
+.reviewer-request-form { align-items: flex-end; justify-content: flex-start; }
+.reviewer-request-form .field { min-width: 0; max-width: 100%; }
+@media (max-width: 600px) {
+  .inbox-item { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .thread-subscription { align-items: flex-start; flex-direction: column; }
+  .header-inbox { padding: 8px 4px; }
+}
+.header-inbox [hidden] { display: none; }

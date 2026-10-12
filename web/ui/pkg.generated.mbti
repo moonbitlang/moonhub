@@ -24,6 +24,8 @@ pub fn render_repo_nav(@domain.RepoId, String, String?) -> @moonback.Html
 
 pub fn render_team_repositories(@identity.TeamSummary, Array[@repository.TeamRepository], Bool) -> @moonback.Html
 
+pub fn render_thread_subscription(@collaboration.ThreadSubscription, String) -> @moonback.Html
+
 pub fn repo_link(@domain.RepoId) -> String
 
 pub fn repository_status_label(String, Bool) -> String

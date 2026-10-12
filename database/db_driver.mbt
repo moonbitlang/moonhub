@@ -111,7 +111,7 @@ pub fn Database::close(self : Database) -> Unit {
 pub fn DbClient::query_all(
   self : DbClient,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> Array[DbRow] raise @moondb.DbError {
   self.driver.query(sql, db_params(params)).map(row => { row, }) catch {
     @moondb.QueryError(message) =>
@@ -124,7 +124,7 @@ pub fn DbClient::query_all(
 pub fn DbClient::query_opt(
   self : DbClient,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> DbRow? raise @moondb.DbError {
   let rows = self.query_all(sql, params~)
   guard rows.length() <= 1 else {
@@ -143,7 +143,7 @@ pub fn DbClient::query_opt(
 pub fn DbClient::execute(
   self : DbClient,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> Int raise @moondb.DbError {
   self.driver.execute(sql, db_params(params)).rows_affected.to_int() catch {
     @moondb.QueryError(message) =>
@@ -164,7 +164,7 @@ pub fn DbClient::batch_execute(
 pub fn[A] DbClient::with_transaction(
   self : DbClient,
   f : (DbTransaction) -> A raise,
-  immediate? : Bool = false,
+  immediate~ : Bool = false,
 ) -> A raise {
   if immediate {
     self.driver.exec_script("BEGIN IMMEDIATE")
@@ -181,7 +181,7 @@ pub fn[A] DbClient::with_transaction(
 pub fn DbTransaction::query_all(
   self : DbTransaction,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> Array[DbRow] raise @moondb.DbError {
   self.driver.query(sql, db_params(params)).map(row => { row, }) catch {
     @moondb.QueryError(message) =>
@@ -194,7 +194,7 @@ pub fn DbTransaction::query_all(
 pub fn DbTransaction::query_one(
   self : DbTransaction,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> DbRow raise @moondb.DbError {
   let rows = self.query_all(sql, params~)
   guard rows.length() == 1 else {
@@ -209,7 +209,7 @@ pub fn DbTransaction::query_one(
 pub fn DbTransaction::query_opt(
   self : DbTransaction,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> DbRow? raise @moondb.DbError {
   let rows = self.query_all(sql, params~)
   guard rows.length() <= 1 else {
@@ -228,7 +228,7 @@ pub fn DbTransaction::query_opt(
 pub fn DbTransaction::execute(
   self : DbTransaction,
   sql : String,
-  params? : Array[&DbParam] = [],
+  params~ : Array[&DbParam] = [],
 ) -> Int raise @moondb.DbError {
   self.driver.execute(sql, db_params(params)).rows_affected.to_int() catch {
     @moondb.QueryError(message) =>
