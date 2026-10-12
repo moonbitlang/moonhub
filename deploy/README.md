@@ -63,7 +63,11 @@ The base installs dependencies with `npm ci`; the application image builds brows
 assets and compiles the native executable on Linux, without running tests. No
 host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
 to select an archived MoonBit toolchain release;
-its default is `0.10.14+7d59c7ec9`.
+its default is `0.10.15+cbebe2116`, matching the formatter syntax in this
+repository. Upgrade the dependency base and Runner together with the application;
+older Runner images cannot parse the new inclusive range patterns. Dependency
+resolution migrates the downloaded `nexacodes/email@0.1.0` legacy manifest before
+checking, without modifying tracked application inputs.
 
 ### Dependency Base Image
 

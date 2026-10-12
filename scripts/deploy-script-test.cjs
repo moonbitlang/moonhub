@@ -9,6 +9,8 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-deploy-test-'));
 try {
   fs.mkdirSync(path.join(root, 'deploy'));
   fs.mkdirSync(path.join(root, 'js'));
+  fs.mkdirSync(path.join(root, 'scripts'));
+  fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
   for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
