@@ -3,6 +3,7 @@ pub suberror CliError {
   Invalid(String)
   Rejected(Int32, String)
   InvalidResponse
+  TimedOut
 }
 
 ///|
@@ -99,7 +100,7 @@ pub async fn request(
       }
       json
     },
-    error=Invalid("API request timed out"),
+    error=TimedOut,
   )
 }
 

@@ -13,6 +13,8 @@ is displayed only in the creation response; list pages never display it again.
 The database stores its SHA-256 hash. Each account supports up to 20 active tokens.
 Token authentication rechecks active account state, expiry, revocation and current
 repository permissions on every request. Revoke a token from the same settings page.
+Successful password recovery revokes every access token for that account alongside
+its existing sessions. Other accounts' tokens remain valid.
 
 | Permission | Allows |
 | --- | --- |
@@ -39,7 +41,10 @@ moonhub auth logout
 
 Login verifies the token before saving it under
 `$XDG_CONFIG_HOME/moonhub/auth.json`, or `$HOME/.config/moonhub/auth.json`.
+An unset or empty `XDG_CONFIG_HOME` falls back to `$HOME/.config`.
 The directory uses mode 0700 and the file 0600; login replaces the file atomically.
+Explicit server and token credentials bypass saved state, so login can repair a
+damaged credential file without first reading it.
 This is a plaintext credential file, so keep it private. Logout removes the local
 file; server revocation remains a separate action.
 
@@ -107,8 +112,9 @@ MR/Issue after a stale-version response before retrying.
 Descriptions/comments use `--body-file` (regular UTF-8 file, at most 20,000 bytes).
 Reviewer and assignee values are account IDs, not display names. `auth status`
 shows your account ID; `mr view --json` includes eligible reviewer IDs. `issue edit`
-requires a title and treats omitted description/assignee as empty/unassigned;
-pass all intended values explicitly. Log responses expose `next_cursor`, `has_more`
+requires at least one of `--title`, `--body-file` or `--assignee`, and preserves
+omitted fields. Use an empty body file to clear the description and `--assignee 0`
+to remove the assignee. Log responses expose `next_cursor`, `has_more`
 and `complete`; request subsequent pages with `--after`. No background watch or
 automatic retry of mutations is performed.
 

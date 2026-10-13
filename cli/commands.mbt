@@ -147,9 +147,9 @@ async fn read_body(matches : @argparse.Matches) -> String {
 
 ///|
 fn credential_file() -> String raise CliError {
-  let root = @env.get_env_var("XDG_CONFIG_HOME").unwrap_or_else(() => {
-    @env.get_env_var("HOME").unwrap_or(".") + "/.config"
-  })
+  let root = @env.get_env_var("XDG_CONFIG_HOME")
+    .filter(value => !value.is_empty())
+    .unwrap_or_else(() => @env.get_env_var("HOME").unwrap_or(".") + "/.config")
   guard root.has_prefix("/") else {
     raise Invalid("HOME or XDG_CONFIG_HOME must name an absolute directory")
   }
@@ -194,7 +194,15 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     println("Signed out locally.")
     return 0
   }
-  let saved = read_credentials()
+  let environment_token = @env.get_env_var("MOONHUB_TOKEN").filter(value => {
+    !value.is_empty()
+  })
+  let saved = if option(matches, "server") is Some(_) &&
+    (option(matches, "token-file") is Some(_) || environment_token is Some(_)) {
+    None
+  } else {
+    read_credentials()
+  }
   let server = validate_server(
     option(matches, "server").unwrap_or(
       saved.map(value => value.0).unwrap_or(""),
@@ -208,9 +216,7 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     }
     @fs.read_file(path).text().trim().to_owned()
   } else {
-    @env.get_env_var("MOONHUB_TOKEN")
-    .filter(value => !value.is_empty())
-    .unwrap_or(
+    environment_token.unwrap_or(
       saved
       .filter(value => value.0 == server)
       .map(value => value.1)
@@ -344,16 +350,24 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         "\{base}/issues/\{id}/\{action}",
         Some({ "edit_version": decimal(required(matches, "edit-version")) }),
       )
-    ("issue", "edit") =>
-      (
-        "\{base}/issues/\{id}/edit",
-        Some({
-          "edit_version": decimal(required(matches, "edit-version")),
-          "title": required(matches, "title"),
-          "description": read_body(matches),
-          "assignee": option(matches, "assignee").unwrap_or("0"),
-        }),
-      )
+    ("issue", "edit") => {
+      let fields : Map[String, Json] = {
+        "edit_version": Json(decimal(required(matches, "edit-version"))),
+      }
+      if option(matches, "title") is Some(title) {
+        fields.set("title", Json(title))
+      }
+      if option(matches, "body-file") is Some(_) {
+        fields.set("description", Json(read_body(matches)))
+      }
+      if option(matches, "assignee") is Some(assignee) {
+        fields.set("assignee", Json(assignee))
+      }
+      guard fields.length() > 1 else {
+        raise Invalid("issue edit requires --title, --body-file or --assignee")
+      }
+      ("\{base}/issues/\{id}/edit", Some(Json(fields)))
+    }
     ("ci", "list") => ("\{base}/runs", None)
     ("ci", "view") => ("\{base}/runs/\{id}", None)
     ("ci", "logs") =>

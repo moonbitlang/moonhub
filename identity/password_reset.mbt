@@ -114,6 +114,10 @@ pub fn reset_password(
           params=[user_id],
         )
         let _ = tx.execute(
+          "UPDATE access_token SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL",
+          params=[user_id],
+        )
+        let _ = tx.execute(
           "UPDATE password_reset SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL",
           params=[user_id],
         )
@@ -132,7 +136,7 @@ pub fn reset_password(
           (
             #|INSERT INTO email_outbox (to_email, subject, body, template)
             #|VALUES (?, 'Your Moonhub password was changed',
-            #|  'Your Moonhub password was reset and all previous sessions were signed out. If this was not you, contact your site administrator immediately.',
+            #|  'Your Moonhub password was reset, all previous sessions were signed out and all access tokens were revoked. If this was not you, contact your site administrator immediately.',
             #|  'password_changed')
           ),
           params=[email],

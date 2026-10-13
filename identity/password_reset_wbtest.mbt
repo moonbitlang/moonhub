@@ -11,7 +11,7 @@ fn latest_reset_code(pool : @database.Database) -> String raise {
 }
 
 ///|
-async test "password reset consumes all codes and sessions but preserves unrelated users" {
+async test "password reset consumes all codes sessions and tokens but preserves unrelated users" {
   @test_support.with_ssh_test_db(pool => {
     let original = hash_password("OriginalPassword123")
     let (alice_session, another_session, bob_session) = pool.with_client(client => {
@@ -27,6 +27,17 @@ async test "password reset consumes all codes and sessions but preserves unrelat
         )
       })
     })
+    let alice = active_user_by_name(pool, "alice")
+    let bob = active_user_by_name(pool, "bob")
+    let alice_token = create_access_token(pool, alice, "Recovery", "merge", 30)
+    let bob_token = create_access_token(pool, bob, "Unrelated", "read", 30)
+    assert_true(
+      !reset_password(pool, "alice@example.com", "invalid", "NewPassword123"),
+    )
+    assert_eq(
+      authenticate_access_token(pool, alice_token, "merge").id,
+      alice.id,
+    )
     request_password_reset(pool, "  ALICE@EXAMPLE.COM  ")
     let first_code = latest_reset_code(pool)
     pool.with_client(client => {
@@ -67,6 +78,13 @@ async test "password reset consumes all codes and sessions but preserves unrelat
     assert_true(lookup_session_user(pool, alice_session) is None)
     assert_true(lookup_session_user(pool, another_session) is None)
     assert_true(lookup_session_user(pool, bob_session) is Some(_))
+    try authenticate_access_token(pool, alice_token, "read") catch {
+      @domain.Unauthorized(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("password recovery left the old access token usable")
+    }
+    assert_eq(authenticate_access_token(pool, bob_token, "read").id, bob.id)
     assert_true(authenticate_user(pool, "alice", "OriginalPassword123") is None)
     let login = authenticate_user(pool, "alice", "NewPassword123").unwrap()
     assert_eq(lookup_session_user(pool, login.token).unwrap().id, 1L)
@@ -222,11 +240,18 @@ async test "password reset and outbox insertion failures roll back atomically" {
       client.batch_execute("DROP TRIGGER reject_reset_mail")
       client.with_transaction(tx => create_session_token(tx, 1L))
     })
+    let access_token = create_access_token(
+      pool,
+      active_user_by_name(pool, "alice"),
+      "Recovery rollback",
+      "read",
+      30,
+    )
     request_password_reset(pool, "alice@example.com")
     let code = latest_reset_code(pool)
     pool.with_client(client => {
       client.batch_execute(
-        "CREATE TEMP TRIGGER reject_reset BEFORE UPDATE ON session BEGIN SELECT RAISE(ABORT, 'forced session failure'); END;",
+        "CREATE TEMP TRIGGER reject_reset BEFORE UPDATE ON access_token BEGIN SELECT RAISE(ABORT, 'forced token failure'); END;",
       )
     })
     try
@@ -255,6 +280,7 @@ async test "password reset and outbox insertion failures roll back atomically" {
       client.batch_execute("DROP TRIGGER reject_reset")
     })
     assert_true(lookup_session_user(pool, session) is Some(_))
+    assert_eq(authenticate_access_token(pool, access_token, "read").id, 1L)
     assert_eq(latest_reset_code(pool), code)
     assert_true(
       reset_password(pool, "alice@example.com", code, "NewPassword123"),

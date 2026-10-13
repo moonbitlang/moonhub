@@ -90,16 +90,32 @@ async function main() {
   const credentials = path.join(cliEnv.XDG_CONFIG_HOME, 'moonhub/auth.json');
   assert.equal(fs.statSync(credentials).mode & 0o777, 0o600);
   cli(['auth', 'login']); // replacement must also work
+  fs.writeFileSync(credentials, '{broken', { mode: 0o600 });
+  cli(['auth', 'login']); // explicit credentials must recover corrupt saved state
   assert.equal(cli(['auth', 'status']).username, 'root');
+  assert.equal(cli(['auth', 'status'], write, 0, { XDG_CONFIG_HOME: '', HOME: path.join(temp, 'home') }).username, 'root');
+  cli(['auth', 'login'], write, 0, { XDG_CONFIG_HOME: '', HOME: path.join(temp, 'home') });
+  assert.equal(fs.statSync(path.join(temp, 'home/.config/moonhub/auth.json')).mode & 0o777, 0o600);
   const saved = execFileSync(binary, ['auth', 'status', '--allow-http', '--json'], { cwd: temp, env: cliEnv, encoding: 'utf8' });
   assert.equal(JSON.parse(saved).username, 'root');
   const body = path.join(temp, 'body.md');
   fs.writeFileSync(body, 'Review this CLI workflow.\nSecond line.');
-  const issue = cli(['issue', 'create', '--title', 'Track CLI', '--body-file', body]);
+  const issue = cli(['issue', 'create', '--title', 'Track CLI', '--body-file', body, '--assignee', '1']);
   assert.equal(issue.number, '1');
   assert.equal(cli(['issue', 'list']).items.length, 1);
   cli(['issue', 'comment', '1', '--body-file', body]);
-  cli(['issue', 'close', '1', '--edit-version', '1']);
+  cli(['issue', 'edit', '1', '--title', 'Renamed CLI', '--edit-version', '1']);
+  const edited = cli(['issue', 'view', '1']).issue;
+  assert.equal(edited.description, fs.readFileSync(body, 'utf8'));
+  assert.equal(edited.assignee_id, '1');
+  const emptyBody = path.join(temp, 'empty.md');
+  fs.writeFileSync(emptyBody, '');
+  cli(['issue', 'edit', '1', '--edit-version', edited.edit_version, '--body-file', emptyBody, '--assignee', '0']);
+  const cleared = cli(['issue', 'view', '1']).issue;
+  assert.equal(cleared.title, 'Renamed CLI');
+  assert.equal(cleared.description, '');
+  assert.equal(cleared.assignee_id, '0');
+  cli(['issue', 'close', '1', '--edit-version', cleared.edit_version]);
   assert.equal(cli(['issue', 'view', '1']).issue.status, 'closed');
   const mr = cli(['mr', 'create', '--title', 'CLI MR', '--source', 'feature', '--target', 'main', '--body-file', body]);
   assert.equal(mr.number, '1');
@@ -128,6 +144,30 @@ async function main() {
   assert.equal(cli(['ci', 'view', run.number]).run.conclusion, 'cancelled');
   assert.equal(cli(['ci', 'list']).items.length, 1);
   cli(['ci', 'rerun', run.number], execute);
+  // Use a real stalled HTTP peer to exercise the CLI's request deadline and exit code.
+  const stalledSockets = new Set();
+  const stalled = net.createServer(socket => {
+    stalledSockets.add(socket);
+    socket.on('close', () => stalledSockets.delete(socket));
+    socket.on('data', () => {});
+  });
+  await new Promise(resolve => stalled.listen(0, '127.0.0.1', resolve));
+  try {
+    const client = spawn(binary, ['auth', 'status', '--server', `http://127.0.0.1:${stalled.address().port}`, '--allow-http', '--token-file', write, '--json'], { cwd: temp, env: cliEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    client.stdout.on('data', data => { stdout += data; });
+    client.stderr.on('data', data => { stderr += data; });
+    const timer = setTimeout(() => client.kill('SIGKILL'), 35000);
+    try {
+      const [code] = await once(client, 'exit');
+      assert.equal(code, 1, stderr);
+      assert.equal(stdout, '');
+      assert.match(stderr, /API request timed out/);
+    } finally { clearTimeout(timer); }
+  } finally {
+    for (const socket of stalledSockets) socket.destroy();
+    await new Promise(resolve => stalled.close(resolve));
+  }
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const split = rootCookie.indexOf('=');
@@ -161,7 +201,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement and private storage', 'MR create/view/request/review/stale rejection/merge', 'Issue create/comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/request/review/stale rejection/merge', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
