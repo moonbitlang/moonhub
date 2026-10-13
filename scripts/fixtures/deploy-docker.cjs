@@ -17,6 +17,10 @@ if (a[0] === 'compose' && a.includes('build')) {
   fs.appendFileSync(process.env.TEST_LOG, 'compose-base ' + process.env.MOONHUB_BASE_IMAGE + '\n');
 }
 const fail = process.env.TEST_FAIL;
+if (fail === 'export' && (line.startsWith('save ') || line.includes('docker.sock save '))) {
+  process.stdout.write('incomplete export');
+  process.exit(1);
+}
 const id = n => 'sha256:' + String(n).repeat(64);
 const config = '{}';
 const runnerHash = createHash('sha256').update(config).digest('hex');

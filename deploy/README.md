@@ -504,8 +504,35 @@ IDs and image archives, container configuration, bootstrap/provider secrets and
 SSH import credentials. `manifest.json` distinguishes the recovery-tool revision
 from the deployed image identities in `images.json`; it never presents the new
 checkout as the old application version. `SHA256SUMS` covers bundle files.
-Incomplete bundles retain a `.partial-` prefix. Protect the entire backup as a
-secret and retain an off-host copy; image archives require substantial disk space.
+Image archives are streamed through fast gzip compression. Their existing
+`images.tar` and `runner.tar` names are retained; Docker load and Runner archive
+validation accept compressed and older uncompressed files. Each bundle remains
+self-contained, with checksums covering its exact stored bytes.
+
+The private `.image-cache` under the backup root stores one compressed archive
+per immutable image set/Runner ID. Repeated backups verify the cached checksum and
+hard-link those bytes into the bundle, avoiding another export or duplicate disk
+blocks. Copy a complete bundle normally for off-host recovery; neither the cache
+nor another bundle is needed to restore it. Treat linked archives as immutable:
+editing one in place also changes its other hard links. Corrupted cache entries
+are replaced, and bundle checksums still reject corruption before restore.
+
+`MOONHUB_BACKUP_KEEP` defaults to **2** complete bundles for the same Compose
+project (`0` disables automatic retention; maximum 1000). Pruning runs only after
+a successful upgrade/service switch or standalone backup. It retains the newly
+created bundle even when timestamps collide, skips other projects and incomplete
+directories, and removes cached archives after their last retained bundle is
+deleted. Retention verifies the file inventory and checksums before counting a
+bundle toward this limit. Damaged copies are reported and left for operator
+inspection; they never displace a verified recovery point. This integrity check
+reads the archives but does not export or duplicate them.
+Failed builds/backups/startups never prune previous complete backups.
+The deploy wrapper removes its own incomplete `.partial-` bundle on failure;
+interrupted/killed processes may still leave partial artifacts for manual cleanup.
+
+Protect the entire backup as a secret and retain an off-host copy. Image export
+can still need Docker temporary disk space before compression; compression and
+retention do not replace capacity monitoring.
 External reverse-proxy/TLS configuration is outside this Compose backup's scope.
 The wrapper does
 not provide a distributed atomic switch or automatic database rollback: a

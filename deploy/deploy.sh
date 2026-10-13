@@ -41,6 +41,10 @@ PROJECT=${MOONHUB_COMPOSE_PROJECT_NAME:-moonhub}
 ENABLE_PIPELINES=${MOONHUB_ENABLE_PIPELINES:-0}
 WAIT_TIMEOUT=${MOONHUB_DEPLOY_WAIT_TIMEOUT:-300}
 BACKUP_ROOT=${MOONHUB_BACKUP_DIR:-$ROOT/backups}
+BACKUP_KEEP=${MOONHUB_BACKUP_KEEP:-2}
+[[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] && [ "$BACKUP_KEEP" -le 1000 ] || {
+  printf 'MOONHUB_BACKUP_KEEP must be an integer from 0 through 1000\n' >&2; exit 1;
+}
 ROOT_PASSWORD_FILE=${MOONHUB_ROOT_PASSWORD_FILE:-$ROOT/deploy/secrets/root_password}
 PROVIDER_TOKEN_FILE=${MOONHUB_PROVIDER_TOKEN_FILE:-$ROOT/deploy/secrets/provider_token}
 PROVIDER_NAME=${MOONHUB_PROVIDER_NAME:-dind}
@@ -106,6 +110,9 @@ STOPPED_PROVIDER=''
 SWITCH_STARTED=0
 cleanup_lock() {
   local status=$?
+  if [ -n "${BACKUP_DIR:-}" ] && [[ "$(basename "$BACKUP_DIR")" = .partial-* ]]; then
+    rm -rf -- "$BACKUP_DIR"
+  fi
   if [ -n "$SHARED_BUILDER_CONTAINER" ]; then docker stop "$SHARED_BUILDER_CONTAINER" >/dev/null 2>&1 || true; fi
   if [ -n "$SHARED_BUILDER_NAME" ]; then docker buildx rm "$SHARED_BUILDER_NAME" >/dev/null 2>&1 || true; fi
   if [ -n "$BUILD_STAGE" ]; then rm -rf -- "$BUILD_STAGE"; fi
@@ -342,6 +349,7 @@ upgrade() {
   "${compose[@]}" stop
   finish_backup
   start_services
+  prune_backups
   "${compose[@]}" ps
   STOPPED_PROVIDER=''
   printf 'Deployment running Web=%s Provider=%s Runner=%s (checkout %s)\n' "$RUNTIME_IMAGE" "$PROVIDER_IMAGE" "$RUNNER_IMAGE" "$RECOVERY_TOOL_REVISION"
@@ -352,6 +360,7 @@ backup() {
   validate_compose
   prepare_backup
   finish_backup
+  prune_backups
 }
 
 status() {

@@ -6,7 +6,7 @@ RECOVERY_TOOLS=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 recovery_requirements() {
   local tool
-  for tool in docker jq tar; do
+  for tool in docker jq tar gzip; do
     command -v "$tool" >/dev/null || { printf 'Recovery requires %s on PATH\n' "$tool" >&2; return 1; }
   done
   if command -v sha256sum >/dev/null; then
@@ -15,6 +15,80 @@ recovery_requirements() {
     checksum=(shasum -a 256)
   else
     printf 'Recovery requires sha256sum or shasum\n' >&2; return 1
+  fi
+}
+
+# Image IDs are immutable. Keep one compressed archive per image set and link it
+# into each self-contained bundle; copying a bundle elsewhere remains sufficient.
+backup_image_archive() {
+  local destination=$1 key=$2 cache digest temporary
+  shift 2
+  cache="$BACKUP_ROOT/.image-cache/$key.tar.gz"
+  mkdir -p "$BACKUP_ROOT/.image-cache"
+  if [ -f "$cache" ] && [ ! -L "$cache" ] && [ -f "$cache.sha256" ] && [ ! -L "$cache.sha256" ]; then
+    digest=$("${checksum[@]}" "$cache")
+    if [ "${digest%% *}" = "$(cat "$cache.sha256")" ]; then
+      ln "$cache" "$destination"
+      printf 'Reusing compressed image archive: %s\n' "$key"
+      return
+    fi
+  fi
+  temporary=$(mktemp "$BACKUP_ROOT/.image-cache/.pending-XXXXXX")
+  if ! "$@" | gzip -1 -n > "$temporary"; then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  digest=$("${checksum[@]}" "$temporary")
+  mv -f -- "$temporary" "$cache"
+  printf '%s\n' "${digest%% *}" > "$cache.sha256"
+  ln "$cache" "$destination"
+}
+
+# Only complete bundles for this project count toward retention. Run after a
+# successful switch, so failed builds/backups/startups retain previous recovery.
+prune_backups() {
+  local keep=${MOONHUB_BACKUP_KEEP:-2} directory count=0 cache
+  [ "$keep" != 0 ] || return 0
+  [ -n "${BACKUP_DIR:-}" ] || return 0
+  verify_backup_bundle "$BACKUP_DIR"
+  count=1
+  while IFS= read -r directory; do
+    [ "$directory" != "$BACKUP_DIR" ] || continue
+    [ -f "$directory/SHA256SUMS" ] && [ ! -L "$directory/manifest.json" ] || continue
+    jq -e --arg project "$PROJECT" '.format == 1 and .project == $project' "$directory/manifest.json" >/dev/null 2>&1 || continue
+    if ! verify_backup_bundle "$directory" >/dev/null 2>&1; then
+      printf 'Skipping damaged backup during retention: %s\n' "$directory" >&2
+      continue
+    fi
+    count=$((count + 1))
+    if [ "$count" -gt "$keep" ]; then
+      printf 'Removing expired backup: %s\n' "$directory"
+      rm -rf -- "$directory"
+    fi
+  done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20??????-??????.*' -print | LC_ALL=C sort -r)
+  if [ -d "$BACKUP_ROOT/.image-cache" ]; then
+    while IFS= read -r cache; do
+      rm -f -- "$cache" "$cache.sha256"
+    done < <(find "$BACKUP_ROOT/.image-cache" -type f -name '*.tar.gz' -links 1 -print)
+  fi
+}
+
+# Restore and retention share the same definition of a complete, intact bundle.
+# A marker alone must never let a damaged copy displace a verified recovery point.
+verify_backup_bundle() {
+  local source=$1 required listed actual
+  for required in manifest.json compose.json images.json images.tar data.tar ssh-host-keys.tar recovery.sh recovery.jq SHA256SUMS; do
+    [ -f "$source/$required" ] && [ ! -L "$source/$required" ] || { printf 'Missing recovery file: %s\n' "$required" >&2; return 1; }
+  done
+  [ -z "$(find "$source" -type l -print -quit)" ] || { printf 'Backup must not contain symbolic links\n' >&2; return 1; }
+  LC_ALL=C awk 'length($1) != 64 || $1 ~ /[^a-f0-9]/ || $2 !~ /^\.\// || $2 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' "$source/SHA256SUMS" || return 1
+  listed=$(LC_ALL=C cut -c 67- "$source/SHA256SUMS" | LC_ALL=C sort)
+  actual=$(cd "$source" && find . -type f ! -path ./SHA256SUMS -print | LC_ALL=C sort)
+  [ "$listed" = "$actual" ] || { printf 'Backup checksum inventory is incomplete or contains extra files\n' >&2; return 1; }
+  (cd "$source" && "${checksum[@]}" -c SHA256SUMS >/dev/null) || return 1
+  jq -e '.format == 1 and (.project | type == "string")' "$source/manifest.json" >/dev/null || return 1
+  if jq -e '.services | has("pipeline-docker")' "$source/compose.json" >/dev/null; then
+    [ -f "$source/runner.tar" ] && [ ! -L "$source/runner.tar" ] || { printf 'Missing pinned Runner image\n' >&2; return 1; }
   fi
 }
 
@@ -49,7 +123,8 @@ prepare_backup() {
       .Config.Env[] | select(startswith("MOONHUB_RUNNER_IMAGE=")) | ltrimstr("MOONHUB_RUNNER_IMAGE=")' "$BACKUP_DIR/containers.json")
     runner=$(docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock image inspect -f '{{.Id}}' "$image")
     [[ "$runner" =~ ^sha256:[a-f0-9]{64}$ ]] || { printf 'Cannot resolve deployed Runner image\n' >&2; return 1; }
-    docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock save "$runner" > "$BACKUP_DIR/runner.tar"
+    backup_image_archive "$BACKUP_DIR/runner.tar" "runner-${runner#sha256:}" \
+      docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock save "$runner"
   fi
   jq --arg runner "$runner" --slurpfile networks "$BACKUP_DIR/networks.json" \
     -f "$RECOVERY_TOOLS/recovery.jq" "$BACKUP_DIR/containers.json" > "$BACKUP_DIR/compose.json"
@@ -73,7 +148,9 @@ prepare_backup() {
   done
   # Transport tags bridge classic/config IDs and containerd/manifest IDs. Restore
   # resolves the loaded tags back to immutable local IDs before starting services.
-  docker save "${aliases[@]}" > "$BACKUP_DIR/images.tar"
+  local image_key
+  image_key=$(printf '%s\n' "${images[@]}" | "${checksum[@]}")
+  backup_image_archive "$BACKUP_DIR/images.tar" "images-${image_key%% *}" docker save "${aliases[@]}"
   cp "$RECOVERY_TOOLS/recovery.sh" "$RECOVERY_TOOLS/recovery.jq" "$BACKUP_DIR/"
   if [ -f "${DEPLOY_ENV:-}" ]; then cp "$DEPLOY_ENV" "$BACKUP_DIR/operator.env.reference"; fi
   jq -n --arg project "$PROJECT" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -144,20 +221,9 @@ restore_backup() {
     esac
   done
   [[ "$(basename "$source")" != .partial-* ]] || { printf 'Refusing an incomplete backup\n' >&2; return 1; }
-  local required
-  for required in manifest.json compose.json images.json images.tar data.tar ssh-host-keys.tar recovery.sh recovery.jq SHA256SUMS; do
-    [ -f "$source/$required" ] && [ ! -L "$source/$required" ] || { printf 'Missing recovery file: %s\n' "$required" >&2; return 1; }
-  done
-  [ -z "$(find "$source" -type l -print -quit)" ] || { printf 'Backup must not contain symbolic links\n' >&2; return 1; }
   # No checksum paths may escape the bundle. Backups are trusted operator input,
   # but corrupt or partially copied files must fail before touching services.
-  LC_ALL=C awk 'length($1) != 64 || $1 ~ /[^a-f0-9]/ || $2 !~ /^\.\// || $2 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' "$source/SHA256SUMS" || return 1
-  local listed actual
-  listed=$(LC_ALL=C cut -c 67- "$source/SHA256SUMS" | LC_ALL=C sort)
-  actual=$(cd "$source" && find . -type f ! -path ./SHA256SUMS -print | LC_ALL=C sort)
-  [ "$listed" = "$actual" ] || { printf 'Backup checksum inventory is incomplete or contains extra files\n' >&2; return 1; }
-  (cd "$source" && "${checksum[@]}" -c SHA256SUMS >/dev/null)
-  jq -e '.format == 1 and (.project | type == "string")' "$source/manifest.json" >/dev/null
+  verify_backup_bundle "$source"
   if jq -e '[.services[].cgroup_parent // ""] | any(. != "")' "$source/compose.json" >/dev/null; then
     printf 'This shared-host backup needs a provisioned resource slice and fresh bounded DinD storage; automatic generic restore is refused.\n' >&2
     return 1
