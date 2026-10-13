@@ -1,6 +1,6 @@
 ///|
 pub async fn with_repository_test_app(
-  f : async (Int, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit,
+  f : async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit,
 ) -> Unit {
   @test_support.with_ssh_test_db(pool => {
     @test_support.with_git_test_repo((root, _) => {
@@ -34,7 +34,7 @@ pub async fn with_repository_test_app(
 
 ///|
 pub async fn repository_test_token(
-  port : Int,
+  port : Int32,
   team : String,
   cookie : @http.Cookie,
 ) -> String {

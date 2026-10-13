@@ -10,11 +10,17 @@ import {
 // Values
 pub fn accept_invitation(@database.Database, InvitationSession, String) -> LoginResult? raise
 
+pub fn access_tokens(@database.Database, @domain.CurrentUser) -> Array[AccessToken] raise
+
 pub fn active_user_by_name(@database.Database, String) -> @domain.CurrentUser raise
+
+pub fn authenticate_access_token(@database.Database, String, String) -> @domain.CurrentUser raise
 
 pub fn authenticate_user(@database.Database, String, String) -> LoginResult? raise
 
 pub fn can_manage_team(@database.Database, @domain.CurrentUser, Int64) -> Bool raise
+
+pub fn create_access_token(@database.Database, @domain.CurrentUser, String, String, Int) -> String raise
 
 pub fn create_invitation_session_token(@database.DbTransaction, Int64) -> String raise @moondb.DbError
 
@@ -58,6 +64,8 @@ pub fn resend_invitation_email(@database.Database, @domain.CurrentUser, Int64, I
 
 pub fn reset_password(@database.Database, String, String, String) -> Bool raise
 
+pub fn revoke_access_token(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
+
 pub fn revoke_invitation(@database.Database, @domain.CurrentUser, Int64, Int64) -> Bool raise
 
 pub fn revoke_session(@database.Database, String) -> Unit raise
@@ -68,9 +76,20 @@ pub fn update_display_name(@database.Database, @domain.CurrentUser, String) -> U
 
 pub fn user_profile(@database.Database, @domain.CurrentUser) -> UserProfile raise
 
+pub fn valid_access_token(String) -> Bool
+
 // Errors
 
 // Types and methods
+pub struct AccessToken {
+  id : Int64
+  name : String
+  permission : String
+  expires_at : String
+  revoked_at : String?
+  last_used_at : String?
+}
+
 pub struct InvitationCredentials {
   email : String
   name_key : String

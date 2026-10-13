@@ -80,6 +80,7 @@ pub async fn create_merge_request(
   target : String,
   draft : Bool,
   issue~ : Int64 = 0L,
+  authorize_checks~ : Bool = true,
 ) -> MergeRequest {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   let title = title.trim().to_owned()
@@ -145,7 +146,11 @@ pub async fn create_merge_request(
     git_dir,
     require_merge_request(pool, scope, number),
   )
-  prepare_merge_checks(pool, scope, created, actor~)
+  if authorize_checks {
+    prepare_merge_checks(pool, scope, created, actor~)
+  } else {
+    prepare_merge_checks(pool, scope, created)
+  }
   created
 }
 

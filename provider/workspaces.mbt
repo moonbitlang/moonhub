@@ -5,7 +5,7 @@ let workspace_label : String = "io.moonhub.pipeline.workspace=1"
 async fn docker_control(
   options : Options,
   args : Array[String],
-) -> (Int, String) raise ProviderError {
+) -> (Int32, String) raise ProviderError {
   @async.with_timeout(15000, () => {
     let (code, output) = @process.collect_output_merged(
       options.docker,

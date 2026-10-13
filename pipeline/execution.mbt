@@ -8,7 +8,7 @@ let attempt_select : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN team t ON t.id = repo.team_id
 
 ///|
-fn check_version(version : Int) -> Unit raise {
+fn check_version(version : Int32) -> Unit raise {
   guard version == @protocol.version else {
     raise @domain.BadRequest(message="unsupported runner protocol version")
   }
@@ -243,7 +243,7 @@ fn finish_attempt(
 }
 
 ///|
-pub fn Coordinator::expire_attempts(self : Coordinator) -> Int raise {
+pub fn Coordinator::expire_attempts(self : Coordinator) -> Int32 raise {
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
@@ -435,7 +435,7 @@ pub fn Coordinator::start(
   self : Coordinator,
   id : Int64,
   token : String,
-  version : Int,
+  version : Int32,
   execution_id~ : String = "",
 ) -> @protocol.LeaseState raise {
   check_version(version)
@@ -498,7 +498,7 @@ pub fn Coordinator::heartbeat(
   self : Coordinator,
   id : Int64,
   token : String,
-  version : Int,
+  version : Int32,
 ) -> @protocol.LeaseState raise {
   check_version(version)
   self.authenticate_attempt(id, token)

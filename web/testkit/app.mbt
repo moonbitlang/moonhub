@@ -49,7 +49,7 @@ pub fn test_app_config(
 }
 
 ///|
-pub async fn rendered_blob_page(port : Int) -> String {
+pub async fn rendered_blob_page(port : Int32) -> String {
   let (response, body) = @http.get(
     "http://127.0.0.1:\{port}/alice/demo/blob/master/src/main.mbt",
   )
@@ -71,7 +71,7 @@ pub fn extract_attr(html : String, marker : String, attr : String) -> String {
 }
 
 ///|
-pub async fn rendered_commit_page(port : Int) -> String {
+pub async fn rendered_commit_page(port : Int32) -> String {
   let commits = @gitops.list_commits(
     "\{test_repo_root}/alice/demo.git",
     "master",
@@ -84,7 +84,7 @@ pub async fn rendered_commit_page(port : Int) -> String {
 }
 
 ///|
-pub async fn http_head(port : Int, path : String) -> @http.Response {
+pub async fn http_head(port : Int32, path : String) -> @http.Response {
   let client = @http.Client("http://127.0.0.1:\{port}")
   defer client.close()
   client..request(Head, path).end_request()
@@ -92,7 +92,7 @@ pub async fn http_head(port : Int, path : String) -> @http.Response {
 
 ///|
 pub async fn http_get_path(
-  port : Int,
+  port : Int32,
   path : String,
 ) -> (@http.Response, String) {
   let client = @http.Client("http://127.0.0.1:\{port}")
@@ -103,7 +103,7 @@ pub async fn http_get_path(
 
 ///|
 pub async fn http_get_path_with_cookie(
-  port : Int,
+  port : Int32,
   path : String,
   cookie : @http.Cookie,
 ) -> (@http.Response, String) {
@@ -117,7 +117,7 @@ pub async fn http_get_path_with_cookie(
 
 ///|
 pub async fn http_post_path_with_cookie(
-  port : Int,
+  port : Int32,
   path : String,
   body : String,
   cookie : @http.Cookie,
@@ -133,7 +133,7 @@ pub async fn http_post_path_with_cookie(
 
 ///|
 pub async fn login_test_user(
-  port : Int,
+  port : Int32,
   name_key : String,
   password : String,
 ) -> @http.Cookie {
@@ -184,7 +184,7 @@ fn reset_auth_test_data(pool : @database.Database) -> Unit raise {
 
 ///|
 pub async fn with_production_test_app(
-  f : async (@moonback.App, Int, @database.Database) -> Unit,
+  f : async (@moonback.App, Int32, @database.Database) -> Unit,
 ) -> Unit {
   @test_support.database_test_slot.acquire()
   defer @test_support.database_test_slot.release()

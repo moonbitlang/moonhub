@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/api"
+
+import {
+  "moonbitlang/moonback",
+}
+
+// Values
+pub let api_module : @moonback.Module
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

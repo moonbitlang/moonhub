@@ -152,7 +152,7 @@ fn render_sidebar(
       }
       AccountNavigation(active) =>
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/-/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/-/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/-/change-password", "Password", "lock", active == "password")}</nav>"
+          "<nav class=\"nav-group context-navigation\" aria-label=\"Account settings\"><p class=\"nav-group-label\">Account</p>\{render_navigation_item("/-/settings/profile", "Profile", "user", active == "profile")}\{render_navigation_item("/-/settings/ssh-keys", "SSH keys", "key", active == "ssh-keys")}\{render_navigation_item("/-/change-password", "Password", "lock", active == "password")}\{render_navigation_item("/-/settings/tokens", "Access tokens", "key", active == "tokens")}</nav>"
       SiteNavigation(active) =>
         b <+
           "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/mail", "Email delivery", "mail", active == "mail")}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "git-commit", active == "pipeline-providers")}</nav>"

@@ -10,6 +10,8 @@ pub let profile_module : @moonback.Module
 
 pub let ssh_keys_module : @moonback.Module
 
+pub let tokens_module : @moonback.Module
+
 // Errors
 
 // Types and methods

@@ -1,0 +1,14 @@
+import {
+  "hackwaly/moonhub/domain",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/async",
+  "moonbitlang/async/http",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+}
+
+supported_targets = "native"

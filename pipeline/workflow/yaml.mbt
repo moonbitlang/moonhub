@@ -7,8 +7,8 @@ priv struct YamlFrame {
 ///|
 priv struct YamlGuard {
   frames : Array[YamlFrame]
-  mut documents : Int
-  mut nodes : Int
+  mut documents : Int32
+  mut nodes : Int32
 }
 
 ///|
@@ -66,7 +66,7 @@ fn YamlGuard::check_event(
 ///|
 fn YamlGuard::check_node(
   self : YamlGuard,
-  anchor : Int,
+  anchor : Int32,
   tag : @yaml.Tag?,
 ) -> Unit raise InvalidWorkflow {
   guard anchor == 0 && tag is None else {

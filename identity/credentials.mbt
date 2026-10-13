@@ -1,5 +1,5 @@
 ///|
-let password_cost : Int = 12
+let password_cost : Int32 = 12
 
 ///|
 pub fn hash_password(password : String) -> String {
@@ -19,7 +19,7 @@ fn verify_password(password : String, hash : String) -> Bool {
 }
 
 ///|
-pub fn random_hex(byte_count : Int) -> String {
+pub fn random_hex(byte_count : Int32) -> String {
   guard @env.rand(byte_count) is Some(bytes) else {
     abort("secure randomness is unavailable")
   }

@@ -2,7 +2,7 @@
 pub(all) suberror RunnerError {
   InvalidConfiguration(String)
   TransportFailure
-  Rejected(Int)
+  Rejected(Int32)
   InvalidResponse
   Stopped(String)
 }
@@ -14,7 +14,7 @@ pub(all) struct Options {
   launcher : String
   allow_http : Bool
   unsafe_local : Bool
-  heartbeat_ms : Int
+  heartbeat_ms : Int32
 }
 
 ///|
@@ -40,7 +40,7 @@ priv struct Runtime {
   options : Options
   lock : @async.Mutex
   steps : Array[@protocol.StepState]
-  groups : Array[Int]
+  groups : Array[Int32]
   mut sequence : Int64
   mut bytes : Int64
   mut lease_until : Int64
@@ -53,16 +53,16 @@ priv struct Runtime {
 extern "C" fn monotonic_ms() -> Int64 = "moonhub_runner_monotonic"
 
 ///|
-extern "C" fn prepare_agent(local_mode : Int) -> Int = "moonhub_runner_prepare"
+extern "C" fn prepare_agent(local_mode : Int32) -> Int32 = "moonhub_runner_prepare"
 
 ///|
-extern "C" fn kill_group(pid : Int) -> Unit = "moonhub_runner_kill_group"
+extern "C" fn kill_group(pid : Int32) -> Unit = "moonhub_runner_kill_group"
 
 ///|
 extern "C" fn kill_namespace() -> Unit = "moonhub_runner_kill_namespace"
 
 ///|
-extern "C" fn reap_namespace() -> Int = "moonhub_runner_reap_namespace"
+extern "C" fn reap_namespace() -> Int32 = "moonhub_runner_reap_namespace"
 
 ///|
 fn execution_nonce() -> String {

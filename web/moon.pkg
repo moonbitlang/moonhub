@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/web/api" @user_api,
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",

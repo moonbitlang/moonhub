@@ -180,7 +180,7 @@ pub async fn serve_git_ssh(
   pool : @database.Database,
   credential : SshCredential,
   root : String,
-) -> Int {
+) -> Int32 {
   let command = @env.get_env_var("SSH_ORIGINAL_COMMAND").unwrap_or("")
   if command.is_empty() {
     let name = match credential {

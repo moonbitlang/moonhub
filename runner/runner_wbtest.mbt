@@ -46,8 +46,8 @@ priv struct FakeServer {
   mut execution_id : String
   mut sequence : Int64
   mut started : Int64
-  mut heartbeats : Int
-  cancel_after : Int
+  mut heartbeats : Int32
+  cancel_after : Int32
   available : Bool
   remaining_ms : Int64
   job_ms : Int64
@@ -55,7 +55,7 @@ priv struct FakeServer {
 
 ///|
 fn fake_server(
-  cancel_after~ : Int = 0,
+  cancel_after~ : Int32 = 0,
   available~ : Bool = true,
   remaining_ms~ : Int64 = 60000L,
   job_ms~ : Int64 = 60000L,

@@ -7,10 +7,10 @@ pub suberror InvalidWorkflow {
 } derive(Debug)
 
 ///|
-pub let max_source_bytes : Int = 65536
+pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int = 1
+pub let format_version : Int32 = 1
 
 ///|
 pub struct Workflow {
@@ -24,7 +24,7 @@ pub struct Job {
   name : String
   needs : Array[String]
   runs_on : Array[String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
   steps : Array[Step]
 } derive(Debug, ToJson, FromJson)
 
@@ -36,7 +36,7 @@ pub struct Step {
   shell : String?
   working_directory : String
   env : Map[String, String]
-  timeout_minutes : Int?
+  timeout_minutes : Int32?
 } derive(Debug, ToJson, FromJson)
 
 ///|

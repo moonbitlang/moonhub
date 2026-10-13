@@ -1,5 +1,5 @@
 ///|
-async fn run_runner_cli(args : ArrayView[String]) -> Int {
+async fn run_runner_cli(args : ArrayView[String]) -> Int32 {
   let command = @argparse.Command(
     "runner",
     options=[

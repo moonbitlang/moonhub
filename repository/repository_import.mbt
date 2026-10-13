@@ -11,7 +11,7 @@ pub struct SshImportSource {
 pub(all) struct RepoImportConfig {
   credentials_root : String
   ssh_wrapper : String
-  timeout_ms : Int
+  timeout_ms : Int32
 }
 
 ///|

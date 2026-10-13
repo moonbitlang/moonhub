@@ -88,9 +88,9 @@ async fn step_directory(workspace : String, relative : String) -> String {
 ///|
 async fn Runtime::step_state(
   self : Runtime,
-  index : Int,
+  index : Int32,
   state : String,
-  code : Int,
+  code : Int32,
 ) -> Unit {
   let step = self.assignment.job.steps[index]
   self.steps[index] = { step_id: step.id, state, exit_code: code, }
@@ -108,8 +108,8 @@ async fn Runtime::execute_script(
   self : Runtime,
   step : @protocol.StepPlan,
   script : String,
-  timeout_ms : Int,
-) -> Int {
+  timeout_ms : Int32,
+) -> Int32 {
   let cwd = step_directory(self.options.workspace, step.working_directory)
   let env : Map[String, String] = {
     "PATH": "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin",

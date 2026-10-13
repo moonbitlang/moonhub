@@ -1,5 +1,5 @@
 ///|
-async fn source_status(port : Int, id : Int64, token : String) -> Int {
+async fn source_status(port : Int32, id : Int64, token : String) -> Int32 {
   let client = @http.Client("http://127.0.0.1:\{port}")
   defer client.close()
   let response = client.get("/-/runner-api/v1/attempts/\{id}/source", extra_headers={

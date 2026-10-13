@@ -9,7 +9,7 @@ pub fn git_args(git_dir : String, args : Array[String]) -> Array[String] {
 
 ///|
 pub(all) suberror GitError {
-  GitCommandFailed(code~ : Int, output~ : String)
+  GitCommandFailed(code~ : Int32, output~ : String)
 }
 
 ///|
