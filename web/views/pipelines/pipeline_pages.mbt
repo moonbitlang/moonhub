@@ -320,16 +320,55 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
     let manager = @identity.can_manage_team(pool, actor, scope.team_id)
+    let tab = req.query().get("tab").unwrap_or("runs")
+    guard ["runs", "events", "settings"].contains(tab) else {
+      raise @domain.BadRequest(message="invalid pipeline tab")
+    }
+    if tab == "settings" {
+      require_pipeline_manager(pool, actor, scope)
+    }
+    let page = @web_context.positive_resource_number(
+      req.query().get("page").unwrap_or("1"),
+    )
+    let status = req.query().get("status").unwrap_or("")
+    let branch = req.query().get("branch").unwrap_or("")
+    let workflow = req.query().get("workflow").unwrap_or("")
     res.send_html(
       render_pipeline_list(
         assets,
         actor,
         scope,
-        @pipeline.list_runs(pool, actor, scope.repo),
+        if tab == "runs" {
+          @pipeline.list_runs(
+            pool,
+            actor,
+            scope.repo,
+            page~,
+            status~,
+            branch~,
+            workflow~,
+          )
+        } else {
+          []
+        },
         manager,
-        @repository.pipeline_push_enabled(pool, actor, scope.repo),
+        if tab == "settings" {
+          @repository.pipeline_push_enabled(pool, actor, scope.repo)
+        } else {
+          false
+        },
         @web_context.request_form_token(req, "pipelines:settings"),
-        @repository.list_ref_events(pool, actor, scope.repo),
+        if tab == "events" {
+          @pipeline.list_trigger_events(pool, actor, scope.repo)
+        } else {
+          []
+        },
+        tab,
+        page,
+        status,
+        branch,
+        workflow,
+        req.query().get("saved") == Some("1"),
       ),
       headers=@web_context.private_page_headers(),
     )
@@ -349,7 +388,8 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     res.send_void(
       status=303,
       headers=@web_context.private_page_headers(
-        location=@web_ui.repo_link(scope.repo) + "/pipelines",
+        location=@web_ui.repo_link(scope.repo) +
+          "/pipelines?tab=settings&saved=1",
       ),
     )
   })
@@ -363,8 +403,14 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         actor,
         scope,
         @web_context.request_form_token(req, "pipelines:create"),
-        req.query().get("branch").unwrap_or("pipeline"),
-        req.query().get("workflow").unwrap_or(".github/workflows/build.yml"),
+        @pipeline.dispatch_choices(
+          pool,
+          root,
+          actor,
+          scope.repo,
+          req.query().get("branch").unwrap_or(""),
+        ),
+        req.query().get("workflow").unwrap_or(""),
         None,
       ),
       headers=@web_context.private_page_headers(),
@@ -392,7 +438,20 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
             actor,
             scope,
             @web_context.request_form_token(req, "pipelines:create"),
-            branch,
+            @pipeline.dispatch_choices(pool, root, actor, scope.repo, branch) catch {
+              err if @async.is_cancellation_error(err) => raise err
+              @domain.BadRequest(_) => {
+                let current = @pipeline.dispatch_choices(
+                  pool,
+                  root,
+                  actor,
+                  scope.repo,
+                  "",
+                )
+                { ..current, branch, commit: "", workflows: [], }
+              }
+              err => raise err
+            },
             workflow,
             Some(message),
           ),

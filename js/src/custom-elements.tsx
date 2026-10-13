@@ -11,7 +11,7 @@ import {
   type CodeViewHandle,
   WorkerPoolContextProvider,
 } from "@pierre/diffs/react";
-import { type CSSProperties, useMemo, useRef } from "react";
+import { type CSSProperties, useMemo, useRef, useState, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import DiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?worker&url";
 
@@ -165,7 +165,7 @@ const moonhubCodeViewStyles = `
 setCustomExtension("mbt", "moonbit");
 setCustomExtension("mbti", "moonbit");
 
-function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[]): Root {
+function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], ready?: () => void): Root {
   ensureMoonhubCodeViewStyles();
   const root = createRoot(mount);
   root.render(
@@ -176,13 +176,25 @@ function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[]): R
       }}
       highlighterOptions={{ preferredHighlighter: "shiki-js" }}
     >
-      <MoonhubCodeView items={items} />
+      <MoonhubCodeView items={items} ready={ready} />
     </WorkerPoolContextProvider>,
   );
   return root;
 }
 
-function MoonhubCodeView({ items }: { items: CodeViewItem<undefined>[] }) {
+function MoonhubCodeView({ items, ready }: { items: CodeViewItem<undefined>[]; ready?: () => void }) {
+  const files = items.filter((item): item is CodeViewDiffItem<undefined> => item.type === "diff");
+  const [mode, setMode] = useState<"split" | "unified">(() => matchMedia("(max-width: 900px)").matches ? "unified" : "split");
+  const [wrap, setWrap] = useState(true);
+  const [selectedFile, setSelectedFile] = useState(files[0]?.id ?? "");
+  const manualMode = useRef(false);
+  useEffect(() => { ready?.(); }, [ready]);
+  useEffect(() => {
+    const media = matchMedia("(max-width: 900px)");
+    const sync = () => { if (!manualMode.current) setMode(media.matches ? "unified" : "split"); };
+    media.addEventListener("change", sync); return () => media.removeEventListener("change", sync);
+  }, []);
+  const options = useMemo(() => ({ ...codeViewOptions, diffStyle: mode, overflow: wrap ? "wrap" as const : "scroll" as const }), [mode, wrap]);
   const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
   const anyLargeDiffs = useMemo(
     () =>
@@ -250,7 +262,16 @@ function MoonhubCodeView({ items }: { items: CodeViewItem<undefined>[] }) {
   }
 
   return (
-    <div className="moonhub-code-view-frame" style={codeViewShellStyle}>
+    <div className={files.length ? "moonhub-code-view-frame diff-workspace" : "moonhub-code-view-frame"} style={codeViewShellStyle}>
+      <div className="diff-controls">
+        {files.length > 0 && <><strong>{files.length} changed files</strong><label>View <select aria-label="Diff view" value={mode} onChange={event => { manualMode.current = true; setMode(event.target.value as "split" | "unified"); }}><option value="split">Split</option><option value="unified">Unified</option></select></label></>}
+        <label className="checkbox-field"><input type="checkbox" checked={wrap} onChange={event => setWrap(event.target.checked)} />Wrap lines</label>
+      </div>
+      {files.length > 0 && <nav className="diff-file-nav" aria-label="Changed files">{files.map(item => <button type="button" key={item.id} aria-current={selectedFile === item.id ? "true" : undefined} onClick={() => {
+        updateDiffItem(item.id, diff => { diff.collapsed = false; return true; });
+        setSelectedFile(item.id); viewerRef.current?.scrollTo({ type: "item", id: item.id, align: "start" });
+      }}>{item.fileDiff.name ?? item.fileDiff.prevName ?? "File"}</button>)}</nav>}
+      <div className="diff-canvas">
       {anyLargeDiffs ? (
         <div className="moonhub-code-view-toolbar">
           <span>Large diffs are collapsed by default.</span>
@@ -263,7 +284,7 @@ function MoonhubCodeView({ items }: { items: CodeViewItem<undefined>[] }) {
         ref={viewerRef}
         initialItems={items}
         className="moonhub-code-view"
-        options={codeViewOptions}
+        options={options}
         renderHeaderPrefix={(item) =>
           item.type === "diff" ? (
             <CollapseDiffButton
@@ -279,6 +300,7 @@ function MoonhubCodeView({ items }: { items: CodeViewItem<undefined>[] }) {
           ) : null
         }
       />
+      </div>
     </div>
   );
 }
@@ -404,10 +426,9 @@ class MoonhubCommitDiffElement extends HTMLElement {
     this.append(mount);
     try {
       const items = patchToItems(patch);
-      this.#root = renderCodeView(mount, items);
-      if (fallback) {
-        fallback.hidden = true;
-      }
+      const loading = document.createElement("p"); loading.className = "diff-loading"; loading.setAttribute("role", "status"); loading.textContent = "Preparing file changes…";
+      mount.before(loading);
+      this.#root = renderCodeView(mount, items, () => { loading.remove(); if (fallback) fallback.hidden = true; });
     } catch (error) {
       mount.remove();
       console.error("moonhub commit diff failed to render", error);

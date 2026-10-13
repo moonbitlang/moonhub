@@ -49,8 +49,8 @@ async function context(options = {}) {
 
 async function dispatch(page) {
   await page.goto(base + '/root/demo/pipelines/new');
-  await page.getByLabel('Branch', { exact: true }).fill('main');
-  await page.getByLabel('Workflow file', { exact: true }).fill('.github/workflows/build.yml');
+  await page.getByLabel('Branch', { exact: true }).selectOption('main');
+  await page.getByLabel('Workflow', { exact: true }).selectOption('.github/workflows/build.yml');
   await page.getByRole('button', { name: 'Run workflow', exact: true }).click();
   await page.waitForURL(/\/pipelines\/\d+$/);
   return new URL(page.url()).pathname;
@@ -129,40 +129,43 @@ async function main() {
     assert.equal(response.headers()['refresh'], undefined);
     const logs = page.locator('.pipeline-logs');
     assert.equal(await logs.count(), 2);
-    assert.equal(await logs.nth(0).evaluate(e => e.open), false);
-    await logs.nth(0).locator('summary').click();
-    await logs.nth(0).locator('pre').evaluate(e => { e.scrollTop = 180; });
+    assert.equal(await logs.nth(0).locator('summary').count(), 0, 'whole-log folding should be absent');
+    await page.evaluate(() => window.scrollTo(0, 180));
+    assert.ok(await logs.nth(0).locator('pre').evaluate(e => e.scrollHeight <= e.clientHeight + 1), 'nested vertical log scroll');
     await page.evaluate(() => { window.originalLog = document.querySelector('.pipeline-logs'); });
     const text = `new output ${width} <script>window.logExecuted=true</script>\n`;
     await api(active.endpoint + '/logs', active.token, { sequence: String(++active.sequence), step_id: 'check', stream: 'stdout', text });
     await page.waitForFunction(text => document.querySelector('.pipeline-logs pre').textContent.includes(text), text);
     for (let round = 0; round < 2; round++) {
       await page.waitForResponse(response => response.url() === base + route + '/updates');
-      assert.equal(await logs.nth(0).evaluate(e => e.open), true, 'polling collapsed logs');
-      assert.equal(await logs.nth(1).evaluate(e => e.open), false, 'another job inherited expanded state');
-      assert.equal(await logs.nth(0).locator('pre').evaluate(e => e.scrollTop), 180, 'polling reset log position');
+      assert.equal(await logs.nth(0).isVisible(), true, 'polling hid selected logs');
+      assert.equal(await page.locator('[data-pipeline-job]').nth(1).isVisible(), false, 'only selected job should be displayed');
+      assert.equal(await page.evaluate(() => window.scrollY), 180, 'polling reset page reading position');
     }
     assert.equal(navigations, 1, 'polling navigated the document');
     assert.equal(await page.evaluate(() => window.originalLog === document.querySelector('.pipeline-logs')), true, 'polling replaced the logs element');
     assert.equal(await page.evaluate(() => window.logExecuted), undefined);
-    await logs.nth(0).locator('summary').click();
-    await logs.nth(1).locator('summary').click();
+    await page.locator('[data-job-select]').nth(1).click();
     await page.waitForResponse(response => response.url() === base + route + '/updates');
-    assert.equal(await logs.nth(0).evaluate(e => e.open), false, 'manual collapse was not retained');
-    assert.equal(await logs.nth(1).evaluate(e => e.open), true);
-    await logs.nth(0).locator('summary').click();
-    assert.equal(await logs.nth(0).locator('pre').evaluate(e => e.scrollTop), 180);
-    await logs.nth(0).locator('pre').evaluate(e => { e.scrollTop = e.scrollHeight; });
+    assert.equal(await page.locator('[data-pipeline-job]').nth(0).isVisible(), false);
+    assert.equal(await logs.nth(1).isVisible(), true);
+    await page.locator('[data-job-select]').nth(0).click();
+    await logs.nth(0).locator('[data-log-follow]').check();
     const following = `follow tail ${width}\n`.repeat(20);
     await api(active.endpoint + '/logs', active.token, { sequence: String(++active.sequence), step_id: 'check', stream: 'stdout', text: following });
     await page.waitForFunction(text => document.querySelector('.pipeline-logs pre').textContent.includes(text), following);
-    assert.ok(await logs.nth(0).locator('pre').evaluate(e => e.scrollHeight - e.scrollTop - e.clientHeight <= 1), 'tail following lost the bottom');
+    assert.ok(await logs.nth(0).locator('pre').evaluate(e => e.getBoundingClientRect().bottom - innerHeight <= 40), 'tail following lost the bottom');
     await page.screenshot({ path: path.join(output, `logs-${width}.png`), fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
     if (width === 390) {
       await api(active.endpoint + '/steps', active.token, { step_id: 'check', state: 'success', exit_code: 0 });
       await api(active.endpoint + '/complete', active.token, { conclusion: 'success', last_log_sequence: String(active.sequence) });
       await page.waitForFunction(() => document.querySelector('.pipeline-logs').dataset.logComplete === 'true');
+      await logs.nth(0).getByRole('button', { name: /^Show .*hidden lines/ }).waitFor();
+      assert.ok((await logs.nth(0).locator('pre').textContent()).includes('preview log line 0'));
+      assert.ok(!(await logs.nth(0).locator('pre').textContent()).includes('preview log line 80'));
+      await logs.nth(0).getByRole('button', { name: /^Show .*hidden lines/ }).click();
+      assert.ok((await logs.nth(0).locator('pre').textContent()).includes('preview log line 80'));
       const count = requests.filter(url => url.includes(active.endpoint + '/logs')).length;
       for (let n = 0; n < 2; n++) await page.waitForResponse(response => response.url() === base + route + '/updates');
       assert.equal(requests.filter(url => url.includes(active.endpoint + '/logs')).length, count, 'completed job kept polling while another job ran');
@@ -180,12 +183,14 @@ async function main() {
       await api(last.endpoint + '/complete', last.token, { conclusion: 'success', last_log_sequence: String(last.sequence) });
       await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
       await page.waitForFunction(() => document.querySelector('[data-pipeline-run]').dataset.polling === 'stopped');
+      await page.locator('[data-job-select]').nth(1).click();
+      await logs.nth(1).getByRole('button', { name: /^Show .*hidden lines/ }).click();
       const content = await logs.nth(1).locator('pre').textContent();
       assert.ok(content.includes('backlog 0\n'));
       assert.ok(content.includes('backlog 104\n'));
       assert.ok(content.endsWith(`EOF:${tail}`), 'stopped before reading the final flushed log tail');
       assert.equal(content.split('backlog 0\n').length, 2, 'duplicate chunks were appended');
-      assert.equal(await logs.nth(0).evaluate(e => e.open), true);
+      assert.equal(await logs.nth(0).locator('summary').count(), 0, 'whole-log folding should be absent');
       await page.getByRole('button', { name: 'Rerun snapshot', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Cancel run', exact: true }).isVisible(), false);
       const stoppedCount = requests.length;
@@ -195,7 +200,7 @@ async function main() {
       await page.reload();
       await page.waitForFunction(() => document.querySelector('[data-pipeline-run]').dataset.polling === 'stopped');
       assert.equal(await page.evaluate(() => window.logExecuted), undefined, 'server-rendered log markup was executed');
-      assert.ok((await logs.nth(1).textContent()).endsWith(`EOF:${tail}`));
+      assert.ok((await logs.nth(1).locator('pre').textContent()).endsWith(`EOF:${tail}`));
       assert.ok(requests.slice(beforeReload).every(url => !url.endsWith('/updates')), 'completed run unnecessarily polled status');
       const drainedCount = requests.length;
       await page.waitForTimeout(2500);
@@ -213,7 +218,7 @@ async function main() {
       await page.unroute(updatesUrl);
       await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
       await page.waitForFunction(() => document.querySelector('[data-pipeline-run]').dataset.polling === 'stopped');
-      assert.equal(await logs.nth(0).evaluate(e => e.open), false, 'another run inherited expanded state');
+      assert.equal(await logs.nth(0).locator('summary').count(), 0);
     }
     await ctx.close();
   }

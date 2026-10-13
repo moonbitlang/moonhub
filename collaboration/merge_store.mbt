@@ -125,14 +125,65 @@ pub fn list_merge_requests(
   scope : @repository.RepositoryScope,
   status : String,
   page : Int64,
+  query~ : String = "",
+  author~ : Int64 = 0L,
+  reviewer~ : Int64 = 0L,
 ) -> Array[MergeRequest] raise {
+  guard page > 0L && page <= 100000L && query.length() <= 200 else {
+    raise @domain.BadRequest(message="invalid merge request filter")
+  }
   pool.with_client(client => {
     client
     .query_all(
-      "\{merge_request_select} WHERE m.repository_id = ? AND m.status = ? ORDER BY m.number DESC LIMIT 51 OFFSET ?",
-      params=[scope.id, status, (page - 1L) * 50L],
+      "\{merge_request_select} WHERE m.repository_id = ? AND m.status = ? AND instr(lower(m.title), lower(?)) > 0 AND (? = 0 OR m.author_id = ?) AND (? = 0 OR EXISTS (SELECT 1 FROM merge_review_request q WHERE q.merge_request_id = m.id AND q.user_id = ? AND q.pending = 1)) ORDER BY m.number DESC LIMIT 51 OFFSET ?",
+      params=[
+        scope.id,
+        status,
+        query,
+        author,
+        author,
+        reviewer,
+        reviewer,
+        (page - 1L) * 50L,
+      ],
     )
     .map(MergeRequest::from_row)
+  })
+}
+
+///|
+pub struct MergeListMeta {
+  approvals : Int64
+  requested : Int64
+  checks : String
+  updated : String
+}
+
+///|
+pub fn merge_list_metadata(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  rows : Array[MergeRequest],
+) -> Map[Int64, MergeListMeta] raise {
+  if rows.is_empty() {
+    return Map([])
+  }
+  let ids = rows.map(row => row.id.to_string()).join(",")
+  pool.with_client(client => {
+    let result : Map[Int64, MergeListMeta] = Map([])
+    for
+      row in client.query_all(
+        "SELECT m.id, m.updated_at, (SELECT COUNT(*) FROM merge_review v JOIN collaboration_access a ON a.repository_id = m.repository_id AND a.user_id = v.user_id AND a.contributor = 1 WHERE v.merge_request_id = m.id AND v.version = m.current_version AND v.user_id <> m.author_id AND v.decision = 'approved') AS approvals, (SELECT COUNT(*) FROM merge_review_request q JOIN collaboration_access a ON a.repository_id = m.repository_id AND a.user_id = q.user_id AND a.contributor = 1 WHERE q.merge_request_id = m.id AND q.pending = 1) AS requested, CASE WHEN EXISTS (SELECT 1 FROM merge_check c WHERE c.merge_request_id = m.id AND c.version = m.current_version AND c.generation = m.check_generation AND (c.state = 'error' OR c.conclusion IN ('failure','timed_out','lost','cancelled'))) THEN 'failure' WHEN EXISTS (SELECT 1 FROM merge_check c WHERE c.merge_request_id = m.id AND c.version = m.current_version AND c.generation = m.check_generation AND c.state <> 'completed') THEN 'pending' WHEN EXISTS (SELECT 1 FROM merge_check c WHERE c.merge_request_id = m.id AND c.version = m.current_version AND c.generation = m.check_generation) THEN 'success' ELSE '' END AS checks FROM merge_request m WHERE m.repository_id = ? AND m.id IN (\{ids})",
+        params=[scope.id],
+      ) {
+      result.set(row.get_name("id"), {
+        approvals: row.get_name("approvals"),
+        requested: row.get_name("requested"),
+        checks: row.get_name("checks"),
+        updated: row.get_name("updated_at"),
+      })
+    }
+    result
   })
 }
 

@@ -1,0 +1,421 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-13T14:38:11.868543+00:00",
+  "title": "Design System: Moonhub",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Interaction Blue",
+        "canonical": "#1769d2",
+        "tonalRamp": [
+          "oklch(15% 0.17864 257.47)",
+          "oklch(27% 0.17864 257.47)",
+          "oklch(39% 0.17864 257.47)",
+          "oklch(51% 0.17864 257.47)",
+          "oklch(63% 0.17864 257.47)",
+          "oklch(75% 0.17864 257.47)",
+          "oklch(87% 0.17864 257.47)",
+          "oklch(95% 0.17864 257.47)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Interaction Blue Hover",
+        "canonical": "#1055b0",
+        "tonalRamp": [
+          "oklch(15% 0.15919 257.96)",
+          "oklch(27% 0.15919 257.96)",
+          "oklch(39% 0.15919 257.96)",
+          "oklch(51% 0.15919 257.96)",
+          "oklch(63% 0.15919 257.96)",
+          "oklch(75% 0.15919 257.96)",
+          "oklch(87% 0.15919 257.96)",
+          "oklch(95% 0.15919 257.96)"
+        ]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Blue Selection Tint",
+        "canonical": "#edf4ff",
+        "tonalRamp": [
+          "oklch(15% 0.01654 259.42)",
+          "oklch(27% 0.01654 259.42)",
+          "oklch(39% 0.01654 259.42)",
+          "oklch(51% 0.01654 259.42)",
+          "oklch(63% 0.01654 259.42)",
+          "oklch(75% 0.01654 259.42)",
+          "oklch(87% 0.01654 259.42)",
+          "oklch(95% 0.01654 259.42)"
+        ]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "White Canvas",
+        "canonical": "#fff",
+        "tonalRamp": [
+          "oklch(15% 0.00000 89.88)",
+          "oklch(27% 0.00000 89.88)",
+          "oklch(39% 0.00000 89.88)",
+          "oklch(51% 0.00000 89.88)",
+          "oklch(63% 0.00000 89.88)",
+          "oklch(75% 0.00000 89.88)",
+          "oklch(87% 0.00000 89.88)",
+          "oklch(95% 0.00000 89.88)"
+        ]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "Cool Neutral Surface",
+        "canonical": "#f7f8fa",
+        "tonalRamp": [
+          "oklch(15% 0.00287 264.54)",
+          "oklch(27% 0.00287 264.54)",
+          "oklch(39% 0.00287 264.54)",
+          "oklch(51% 0.00287 264.54)",
+          "oklch(63% 0.00287 264.54)",
+          "oklch(75% 0.00287 264.54)",
+          "oklch(87% 0.00287 264.54)",
+          "oklch(95% 0.00287 264.54)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Dark Text",
+        "canonical": "#20252c",
+        "tonalRamp": [
+          "oklch(15% 0.01502 256.80)",
+          "oklch(27% 0.01502 256.80)",
+          "oklch(39% 0.01502 256.80)",
+          "oklch(51% 0.01502 256.80)",
+          "oklch(63% 0.01502 256.80)",
+          "oklch(75% 0.01502 256.80)",
+          "oklch(87% 0.01502 256.80)",
+          "oklch(95% 0.01502 256.80)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Metadata",
+        "canonical": "#5d6877",
+        "tonalRamp": [
+          "oklch(15% 0.02738 256.18)",
+          "oklch(27% 0.02738 256.18)",
+          "oklch(39% 0.02738 256.18)",
+          "oklch(51% 0.02738 256.18)",
+          "oklch(63% 0.02738 256.18)",
+          "oklch(75% 0.02738 256.18)",
+          "oklch(87% 0.02738 256.18)",
+          "oklch(95% 0.02738 256.18)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Separator",
+        "canonical": "#e1e5eb",
+        "tonalRamp": [
+          "oklch(15% 0.00921 258.34)",
+          "oklch(27% 0.00921 258.34)",
+          "oklch(39% 0.00921 258.34)",
+          "oklch(51% 0.00921 258.34)",
+          "oklch(63% 0.00921 258.34)",
+          "oklch(75% 0.00921 258.34)",
+          "oklch(87% 0.00921 258.34)",
+          "oklch(95% 0.00921 258.34)"
+        ]
+      },
+      "border-muted": {
+        "role": "neutral",
+        "displayName": "Light Separator",
+        "canonical": "#edf0f3",
+        "tonalRamp": [
+          "oklch(15% 0.00516 247.88)",
+          "oklch(27% 0.00516 247.88)",
+          "oklch(39% 0.00516 247.88)",
+          "oklch(51% 0.00516 247.88)",
+          "oklch(63% 0.00516 247.88)",
+          "oklch(75% 0.00516 247.88)",
+          "oklch(87% 0.00516 247.88)",
+          "oklch(95% 0.00516 247.88)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "canonical": "#1a7f37",
+        "tonalRamp": [
+          "oklch(15% 0.14008 148.04)",
+          "oklch(27% 0.14008 148.04)",
+          "oklch(39% 0.14008 148.04)",
+          "oklch(51% 0.14008 148.04)",
+          "oklch(63% 0.14008 148.04)",
+          "oklch(75% 0.14008 148.04)",
+          "oklch(87% 0.14008 148.04)",
+          "oklch(95% 0.14008 148.04)"
+        ]
+      },
+      "success-soft": {
+        "role": "semantic",
+        "displayName": "Success Tint",
+        "canonical": "#edf8f0",
+        "tonalRamp": [
+          "oklch(15% 0.01568 154.47)",
+          "oklch(27% 0.01568 154.47)",
+          "oklch(39% 0.01568 154.47)",
+          "oklch(51% 0.01568 154.47)",
+          "oklch(63% 0.01568 154.47)",
+          "oklch(75% 0.01568 154.47)",
+          "oklch(87% 0.01568 154.47)",
+          "oklch(95% 0.01568 154.47)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Warning Amber",
+        "canonical": "#986400",
+        "tonalRamp": [
+          "oklch(15% 0.11586 73.65)",
+          "oklch(27% 0.11586 73.65)",
+          "oklch(39% 0.11586 73.65)",
+          "oklch(51% 0.11586 73.65)",
+          "oklch(63% 0.11586 73.65)",
+          "oklch(75% 0.11586 73.65)",
+          "oklch(87% 0.11586 73.65)",
+          "oklch(95% 0.11586 73.65)"
+        ]
+      },
+      "warning-soft": {
+        "role": "semantic",
+        "displayName": "Warning Tint",
+        "canonical": "#fff7e5",
+        "tonalRamp": [
+          "oklch(15% 0.02514 86.87)",
+          "oklch(27% 0.02514 86.87)",
+          "oklch(39% 0.02514 86.87)",
+          "oklch(51% 0.02514 86.87)",
+          "oklch(63% 0.02514 86.87)",
+          "oklch(75% 0.02514 86.87)",
+          "oklch(87% 0.02514 86.87)",
+          "oklch(95% 0.02514 86.87)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger Red",
+        "canonical": "#c12d39",
+        "tonalRamp": [
+          "oklch(15% 0.18354 22.08)",
+          "oklch(27% 0.18354 22.08)",
+          "oklch(39% 0.18354 22.08)",
+          "oklch(51% 0.18354 22.08)",
+          "oklch(63% 0.18354 22.08)",
+          "oklch(75% 0.18354 22.08)",
+          "oklch(87% 0.18354 22.08)",
+          "oklch(95% 0.18354 22.08)"
+        ]
+      },
+      "danger-soft": {
+        "role": "semantic",
+        "displayName": "Danger Tint",
+        "canonical": "#fff1f2",
+        "tonalRamp": [
+          "oklch(15% 0.01517 12.42)",
+          "oklch(27% 0.01517 12.42)",
+          "oklch(39% 0.01517 12.42)",
+          "oklch(51% 0.01517 12.42)",
+          "oklch(63% 0.01517 12.42)",
+          "oklch(75% 0.01517 12.42)",
+          "oklch(87% 0.01517 12.42)",
+          "oklch(95% 0.01517 12.42)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page identity."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Interface and record text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Controls and actions."
+      },
+      "metadata": {
+        "displayName": "Metadata",
+        "purpose": "Secondary resource context."
+      },
+      "log": {
+        "displayName": "Log",
+        "purpose": "Numbered log output."
+      }
+    },
+    "shadows": [
+      {
+        "name": "menu",
+        "value": "0 8px 28px rgb(32 37 44 / 12%)",
+        "purpose": "Floating account, context and row menus."
+      }
+    ],
+    "motion": [
+      {
+        "name": "drawer",
+        "value": "transform 180ms ease-out, visibility 180ms",
+        "purpose": "Enhanced mobile drawer; reduced-motion override disables transitions."
+      },
+      {
+        "name": "diff-disclosure",
+        "value": "transform 120ms ease",
+        "purpose": "Existing diff folding indicator."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "1600px"
+      },
+      {
+        "name": "readiness-stack",
+        "value": "1100px"
+      },
+      {
+        "name": "mobile-shell",
+        "value": "900px"
+      },
+      {
+        "name": "compact-collaboration",
+        "value": "700px"
+      },
+      {
+        "name": "mobile-controls",
+        "value": "600px"
+      },
+      {
+        "name": "small-phone",
+        "value": "360px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "description": "Shared primary action with native button semantics.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Save changes</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:600;line-height:20px;cursor:pointer;font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);background:var(--color-accent,#1769d2);color:#fff;border-color:transparent;} .ds-button-primary:hover{background:var(--color-accent-hover,#1055b0);} .ds-button-primary:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;} .ds-button-primary:disabled{background:var(--color-surface-subtle,#f7f8fa);color:var(--color-muted,#5d6877);border-color:var(--color-border,#e1e5eb);cursor:not-allowed;} @media(max-width:600px){.ds-button-primary{min-height:44px;}}",
+      "refersTo": "button-primary"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "description": "Shared secondary action with native button semantics.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">View</button>",
+      "css": ".ds-button-secondary{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:600;line-height:20px;cursor:pointer;font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);background:var(--color-surface,#fff);color:var(--color-text,#20252c);border-color:var(--color-border,#e1e5eb);} .ds-button-secondary:hover{background:var(--color-surface-subtle,#f7f8fa);} .ds-button-secondary:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;} .ds-button-secondary:disabled{background:var(--color-surface-subtle,#f7f8fa);color:var(--color-muted,#5d6877);border-color:var(--color-border,#e1e5eb);cursor:not-allowed;} @media(max-width:600px){.ds-button-secondary{min-height:44px;}}",
+      "refersTo": "button-secondary"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "description": "Shared danger action with native button semantics.",
+      "html": "<button type=\"button\" class=\"ds-button-danger\">Cancel run</button>",
+      "css": ".ds-button-danger{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-size:13px;font-weight:600;line-height:20px;cursor:pointer;font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);background:var(--color-danger,#c12d39);color:#fff;border-color:transparent;} .ds-button-danger:hover{background:#a4212c;} .ds-button-danger:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;} .ds-button-danger:disabled{background:var(--color-surface-subtle,#f7f8fa);color:var(--color-muted,#5d6877);border-color:var(--color-border,#e1e5eb);cursor:not-allowed;} @media(max-width:600px){.ds-button-danger{min-height:44px;}}",
+      "refersTo": "button-danger"
+    },
+    {
+      "name": "Labeled Field",
+      "kind": "input",
+      "description": "Native field used by bounded forms and list filters.",
+      "html": "<label class=\"ds-field\"><span>Search titles</span><input type=\"search\" placeholder=\"Search titles\"></label>",
+      "css": ".ds-field{display:grid;gap:7px;font-size:13px;color:var(--color-text,#20252c);font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);} .ds-field input{min-height:38px;padding:8px 10px;border:1px solid #cdd4de;border-radius:6px;background:var(--color-surface,#fff);color:var(--color-text,#20252c);font:inherit;} .ds-field input:hover{border-color:var(--color-muted,#5d6877);} .ds-field input:focus-visible{border-color:var(--color-accent,#1769d2);outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;}",
+      "refersTo": "field"
+    },
+    {
+      "name": "Page Navigation",
+      "kind": "nav",
+      "description": "Single-row URL navigation with underline selection.",
+      "html": "<nav class=\"ds-page-tabs\" aria-label=\"Pipeline views\"><a href=\"#runs\" aria-current=\"page\">Runs</a><a href=\"#events\">Trigger events</a><a href=\"#settings\">Settings</a></nav>",
+      "css": ".ds-page-tabs{display:flex;flex-wrap:nowrap;gap:24px;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--color-border,#e1e5eb);font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);} .ds-page-tabs a{display:inline-flex;flex-shrink:0;align-items:center;min-height:44px;padding:10px 2px;border-bottom:2px solid transparent;color:var(--color-muted,#5d6877);font-size:14px;text-decoration:none;} .ds-page-tabs a[aria-current]{color:var(--color-text,#20252c);font-weight:600;border-bottom-color:var(--color-accent,#1769d2);} .ds-page-tabs a:hover{color:var(--color-text,#20252c);} .ds-page-tabs a:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;}",
+      "refersTo": "page-navigation"
+    },
+    {
+      "name": "Status Label",
+      "kind": "chip",
+      "description": "Text accompanies a semantic success tint.",
+      "html": "<span class=\"ds-status\">Passed</span>",
+      "css": ".ds-status{display:inline-flex;padding:3px 8px;border-radius:4px;background:var(--color-success-soft,#edf8f0);color:var(--color-success,#1a7f37);font-size:12px;font-weight:500;line-height:18px;font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);}",
+      "refersTo": "status-success"
+    },
+    {
+      "name": "Separator Record",
+      "kind": "custom",
+      "description": "Compact resource identity above secondary metadata; sample omits fabricated records.",
+      "html": "<div class=\"ds-record\"><a href=\"#resource\">Resource title</a><p>Repository and resource metadata</p></div>",
+      "css": ".ds-record{padding:16px 4px;border-bottom:1px solid var(--color-border-muted,#edf0f3);font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);} .ds-record a{color:var(--color-accent,#1769d2);font-size:14px;font-weight:600;text-decoration:none;overflow-wrap:anywhere;} .ds-record p{margin:6px 0 0;color:var(--color-muted,#5d6877);font-size:12px;} .ds-record a:hover{color:var(--color-accent-hover,#1055b0);text-decoration:underline;} .ds-record a:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;}"
+    },
+    {
+      "name": "Secondary Disclosure",
+      "kind": "custom",
+      "description": "Native disclosure for revision metadata or historical activity.",
+      "html": "<details class=\"ds-details\"><summary>Revision commits</summary><p>Source and target metadata</p></details>",
+      "css": ".ds-details{margin:12px 0;font-size:13px;color:var(--color-muted,#5d6877);font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);} .ds-details summary{cursor:pointer;width:fit-content;padding:6px 0;} .ds-details summary:hover{color:var(--color-text,#20252c);} .ds-details summary:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;} .ds-details[open] summary{margin-bottom:10px;}"
+    },
+    {
+      "name": "Log Middle Expansion",
+      "kind": "custom",
+      "description": "Natural-height log output with a manual middle-disclosure control.",
+      "html": "<div class=\"ds-log\"><div class=\"ds-log-line\">Loaded output</div><button type=\"button\" class=\"ds-log-expand\">Show hidden lines</button><div class=\"ds-log-line\">Loaded tail output</div></div>",
+      "css": ".ds-log{padding:12px 8px;background:var(--color-surface-subtle,#f7f8fa);color:var(--color-text,#20252c);border:1px solid var(--color-border-muted,#edf0f3);border-radius:4px;font:12px/1.55 var(--font-mono,ui-monospace,monospace);} .ds-log-line{white-space:pre-wrap;overflow-wrap:anywhere;} .ds-log-expand{display:block;width:100%;min-height:44px;margin:12px 0;text-align:left;padding:7px 12px;border:1px solid var(--color-border,#e1e5eb);border-radius:6px;background:var(--color-surface,#fff);color:var(--color-text,#20252c);font:13px var(--font-sans,sans-serif);cursor:pointer;} .ds-log-expand:hover{background:var(--color-surface-subtle,#f7f8fa);} .ds-log-expand:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;}"
+    },
+    {
+      "name": "Changed-File Navigation",
+      "kind": "nav",
+      "description": "Quiet local selection beside the diff canvas.",
+      "html": "<nav class=\"ds-file-nav\" aria-label=\"Changed files\"><button type=\"button\" aria-current=\"true\">Selected file path</button><button type=\"button\">Another file path</button></nav>",
+      "css": ".ds-file-nav{padding:8px;border-right:1px solid var(--color-border,#e1e5eb);max-width:150px;font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif);} .ds-file-nav button{display:block;width:100%;padding:8px;border:0;background:transparent;color:var(--color-text,#20252c);text-align:left;font:12px var(--font-sans,sans-serif);overflow-wrap:anywhere;cursor:pointer;} .ds-file-nav button[aria-current]{background:var(--color-accent-soft,#edf4ff);color:var(--color-accent,#1769d2);font-weight:600;} .ds-file-nav button:hover{background:var(--color-surface-subtle,#f7f8fa);} .ds-file-nav button:focus-visible{outline:2px solid var(--color-accent,#1769d2);outline-offset:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Restrained GitLab-inspired workspace",
+    "overview": "Moonhub is an Operate interface: the user reads current state, finds the next\npermitted action and works with code. The established left context navigation\nand right workspace remain the organizing structure. White surfaces, cool\nneutrals, compact system typography and one blue interaction accent keep the\ninterface quiet and task-focused.\n\nHierarchy comes from position, type weight, separators and selective disclosure.\nCollaboration screens place resource identity and current state near each other,\nwhile historical events, hashes and preferences use secondary treatments.\nPRODUCT.md remains product authority; docs/collaboration-ui-plan.md carries the\nsurface brief. This document records the implemented visual system.",
+    "keyCharacteristics": [
+      "Restrained, task-focused workspace.",
+      "Flat sections and separator-based lists.",
+      "Textual state with semantic color support.",
+      "Native server-rendered controls with progressive enhancement."
+    ],
+    "rules": [
+      {
+        "name": "The Textual State Rule",
+        "body": "Every status has a readable label; color alone never\ncommunicates state, authorization or completion.",
+        "section": "colors"
+      },
+      {
+        "name": "The Navigation Roles Rule",
+        "body": "Context navigation chooses scope, page links\nchoose a feature view, filters narrow records, local selectors choose a job,\nstep, file or revision, and buttons perform actions. Preserve those distinctions.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do preserve the restrained shell, shared tokens and native controls.",
+      "Do keep identity, current state and the next permitted action close together.",
+      "Do distinguish page navigation, filters, selection and action visually.",
+      "Do retain textual status, visible focus and useful no-script fallbacks.",
+      "Do use actual revisions, counts, workflow choices and log output.",
+      "Do preserve submitted values, draft text and manual selection during updates."
+    ],
+    "donts": [
+      "Don't add elevated cards or decorative typography to routine task regions.",
+      "Don't make color alone carry status or permission meaning.",
+      "Don't present historical updates or trigger diagnostics as current work.",
+      "Don't fold the entire log or add a nested vertical log scroller.",
+      "Don't wrap Pipeline, Issue or Inbox page navigation into unrelated rows.",
+      "Don't fabricate metadata, diagnoses, approval bypasses or unsupported actions."
+    ]
+  }
+}

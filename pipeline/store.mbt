@@ -161,13 +161,35 @@ pub fn list_runs(
   pool : @database.Database,
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
+  page~ : Int64 = 1L,
+  status~ : String = "",
+  branch~ : String = "",
+  workflow~ : String = "",
 ) -> Array[Run] raise {
+  guard page > 0L &&
+    page <= 100000L &&
+    [
+      "", "queued", "running", "success", "failure", "cancelled", "timed_out", "lost",
+      "skipped",
+    ].contains(status) else {
+    raise @domain.BadRequest(message="invalid pipeline filter or page")
+  }
   let scope = @repository.repository_scope(pool, actor, repo)
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT * FROM pipeline_run WHERE repository_id = ? ORDER BY number DESC LIMIT 50",
-      params=[scope.id],
+      "SELECT * FROM pipeline_run WHERE repository_id = ? AND (? = '' OR status = ? OR conclusion = ?) AND (? = '' OR source_branch = ?) AND (? = '' OR workflow_path = ?) ORDER BY number DESC LIMIT 51 OFFSET ?",
+      params=[
+        scope.id,
+        status,
+        status,
+        status,
+        branch,
+        branch,
+        workflow,
+        workflow,
+        (page - 1L) * 50L,
+      ],
     )
     .map(row => Run::from_row(row))
   })

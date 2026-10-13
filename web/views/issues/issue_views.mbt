@@ -9,7 +9,7 @@ fn render_issue_list(
   mine : Bool,
   query : String,
   contributor : Bool,
-  clone : String?,
+  _clone : String?,
   manager~ : Bool = false,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/issues"
@@ -19,11 +19,11 @@ fn render_issue_list(
     assets,
     Html(b => {
       b <+
-        "\{@web_ui.render_repo_nav(scope.repo, "HEAD", clone)}<div class=\"mr-page-heading\"><h2>Issues</h2>"
+        "<div class=\"mr-page-heading\"><div><h1>Issues</h1><p class=\"page-subtitle\">\{scope.repo.path()}</p></div>"
       if contributor {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">New issue</a>"
       }
-      b <+ "</div><nav class=\"mr-tabs\" aria-label=\"Issue status\">"
+      b <+ "</div><nav class=\"page-tabs\" aria-label=\"Issue status\">"
       for value in ["open", "closed"] {
         b <+ "<a href=\"\{base}?status=\{value}&amp;\{filters}\""
         if status == value {
@@ -32,12 +32,12 @@ fn render_issue_list(
         b <+ ">\{value}</a>"
       }
       b <+
-        "</nav><form class=\"issue-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" name=\"q\" maxlength=\"200\" value=\"\{query}\"></label><label class=\"field\"><span>Assignee</span><select aria-label=\"Assignee\" name=\"assigned\"><option value=\"all\">Anyone</option><option value=\"me\""
+        "</nav><form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" name=\"q\" maxlength=\"200\" value=\"\{query}\"></label><label class=\"field\"><span>Assignee</span><select aria-label=\"Assignee\" name=\"assigned\"><option value=\"all\">Anyone</option><option value=\"me\""
       if mine {
         b <+ " selected"
       }
       b <+
-        ">Assigned to me</option></select></label><button type=\"submit\">Filter</button></form><ul class=\"mr-list\">"
+        ">Assigned to me</option></select></label><button class=\"secondary-button\" type=\"submit\">Filter</button><a href=\"\{base}?status=\{status}\">Reset</a></form><ul class=\"mr-list\">"
       for i, issue in issues {
         if i < 50 {
           b <+
@@ -45,7 +45,8 @@ fn render_issue_list(
         }
       }
       if issues.is_empty() {
-        b <+ "<li class=\"muted\">No matching issues.</li>"
+        b <+
+          "<li class=\"muted\">\{if query.is_empty() && !mine { "No " + status + " issues yet. Create an issue to track work in this repository." } else { "No matching issues. Change or reset your filters." }}</li>"
       }
       b <+ "</ul><nav class=\"mr-actions\" aria-label=\"Issue pagination\">"
       if page > 1L {
@@ -138,7 +139,7 @@ fn render_issue_detail(
   contributor : Bool,
   manager : Bool,
   csrf : String,
-  clone : String?,
+  _clone : String?,
   subscription : @collaboration.ThreadSubscription,
   notification_csrf : String,
 ) -> @moonback.Html {
@@ -148,7 +149,7 @@ fn render_issue_detail(
     assets,
     Html(b => {
       b <+
-        "\{@web_ui.render_repo_nav(scope.repo, "HEAD", clone)}<div class=\"mr-page-heading\"><h2 class=\"mr-title\">\{issue.title} <span class=\"muted\">#\{issue.number.to_string()}</span></h2><span class=\"mr-state\" data-state=\"\{issue.status}\">\{issue.status}</span></div><p class=\"muted\">Opened by \{issue.author} · \{if issue.assignee.is_empty() { "Unassigned" } else { "Assigned to " + issue.assignee }}</p><div class=\"mr-actions\">"
+        "<div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{issue.title} <span class=\"muted\">#\{issue.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{issue.status}\">\{issue.status}</span></div><p class=\"muted\">Opened by \{issue.author} · \{if issue.assignee.is_empty() { "Unassigned" } else { "Assigned to " + issue.assignee }}</p><div class=\"mr-actions\">"
       if contributor {
         if manager || user.id == issue.author_id {
           b <+
@@ -158,7 +159,7 @@ fn render_issue_detail(
           "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create merge request</a>"
       }
       b <+
-        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"mr-description\">\{issue.description}</div>"
+        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"markdown-body discussion-description\">\{@web_ui.markdown(issue.description)}</div>"
       if !related.is_empty() {
         b <+
           "<section class=\"issue-related\"><h3>Related merge requests</h3><ul class=\"mr-list\">"
@@ -178,7 +179,8 @@ fn render_issue_detail(
           b <+
             "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind}</span><time>\{created_at}</time></div>"
           if !body.is_empty() {
-            b <+ "<p class=\"mr-comment\">\{body}</p>"
+            b <+
+              "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body)}</div>"
           }
           b <+ "</li>"
         }

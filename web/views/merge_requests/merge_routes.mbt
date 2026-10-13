@@ -22,7 +22,20 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     guard page <= 100000L else {
       raise @domain.BadRequest(message="invalid page")
     }
-    let rows = @collaboration.list_merge_requests(pool, scope, status, page)
+    let query = req.query().get("q").unwrap_or("")
+    let mine = req.query().get("mine").unwrap_or("all")
+    guard ["all", "author", "reviews"].contains(mine) else {
+      raise @domain.BadRequest(message="invalid merge request filter")
+    }
+    let rows = @collaboration.list_merge_requests(
+      pool,
+      scope,
+      status,
+      page,
+      query~,
+      author=if mine == "author" { actor.id } else { 0L },
+      reviewer=if mine == "reviews" { actor.id } else { 0L },
+    )
     let clone = @repository.effective_ssh_endpoint(pool, addresses).map(endpoint => {
       endpoint.clone_url(scope.repo)
     })
@@ -32,6 +45,9 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         actor,
         scope,
         rows,
+        @collaboration.merge_list_metadata(pool, scope, rows),
+        query,
+        mine,
         status,
         page,
         @repository.can_access_repository(
