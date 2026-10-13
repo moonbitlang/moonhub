@@ -6,7 +6,7 @@ RECOVERY_TOOLS=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 recovery_requirements() {
   local tool
-  for tool in docker jq tar; do
+  for tool in docker jq tar gzip; do
     command -v "$tool" >/dev/null || { printf 'Recovery requires %s on PATH\n' "$tool" >&2; return 1; }
   done
   if command -v sha256sum >/dev/null; then
@@ -15,6 +15,56 @@ recovery_requirements() {
     checksum=(shasum -a 256)
   else
     printf 'Recovery requires sha256sum or shasum\n' >&2; return 1
+  fi
+}
+
+# Image IDs are immutable. Keep one compressed archive per image set and link it
+# into each self-contained bundle; copying a bundle elsewhere remains sufficient.
+backup_image_archive() {
+  local destination=$1 key=$2 cache digest temporary
+  shift 2
+  cache="$BACKUP_ROOT/.image-cache/$key.tar.gz"
+  mkdir -p "$BACKUP_ROOT/.image-cache"
+  if [ -f "$cache" ] && [ ! -L "$cache" ] && [ -f "$cache.sha256" ] && [ ! -L "$cache.sha256" ]; then
+    digest=$("${checksum[@]}" "$cache")
+    if [ "${digest%% *}" = "$(cat "$cache.sha256")" ]; then
+      ln "$cache" "$destination"
+      printf 'Reusing compressed image archive: %s\n' "$key"
+      return
+    fi
+  fi
+  temporary=$(mktemp "$BACKUP_ROOT/.image-cache/.pending-XXXXXX")
+  if ! "$@" | gzip -1 -n > "$temporary"; then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  digest=$("${checksum[@]}" "$temporary")
+  mv -f -- "$temporary" "$cache"
+  printf '%s\n' "${digest%% *}" > "$cache.sha256"
+  ln "$cache" "$destination"
+}
+
+# Only complete bundles for this project count toward retention. Run after a
+# successful switch, so failed builds/backups/startups retain previous recovery.
+prune_backups() {
+  local keep=${MOONHUB_BACKUP_KEEP:-2} directory count=0 cache
+  [ "$keep" != 0 ] || return 0
+  [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR/SHA256SUMS" ] || return 0
+  count=1
+  while IFS= read -r directory; do
+    [ "$directory" != "$BACKUP_DIR" ] || continue
+    [ -f "$directory/SHA256SUMS" ] && [ ! -L "$directory/manifest.json" ] || continue
+    jq -e --arg project "$PROJECT" '.format == 1 and .project == $project' "$directory/manifest.json" >/dev/null 2>&1 || continue
+    count=$((count + 1))
+    if [ "$count" -gt "$keep" ]; then
+      printf 'Removing expired backup: %s\n' "$directory"
+      rm -rf -- "$directory"
+    fi
+  done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20??????-??????.*' -print | LC_ALL=C sort -r)
+  if [ -d "$BACKUP_ROOT/.image-cache" ]; then
+    while IFS= read -r cache; do
+      rm -f -- "$cache" "$cache.sha256"
+    done < <(find "$BACKUP_ROOT/.image-cache" -type f -name '*.tar.gz' -links 1 -print)
   fi
 }
 
@@ -49,7 +99,8 @@ prepare_backup() {
       .Config.Env[] | select(startswith("MOONHUB_RUNNER_IMAGE=")) | ltrimstr("MOONHUB_RUNNER_IMAGE=")' "$BACKUP_DIR/containers.json")
     runner=$(docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock image inspect -f '{{.Id}}' "$image")
     [[ "$runner" =~ ^sha256:[a-f0-9]{64}$ ]] || { printf 'Cannot resolve deployed Runner image\n' >&2; return 1; }
-    docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock save "$runner" > "$BACKUP_DIR/runner.tar"
+    backup_image_archive "$BACKUP_DIR/runner.tar" "runner-${runner#sha256:}" \
+      docker exec "$dind" docker -H unix:///run/moonhub-docker/docker.sock save "$runner"
   fi
   jq --arg runner "$runner" --slurpfile networks "$BACKUP_DIR/networks.json" \
     -f "$RECOVERY_TOOLS/recovery.jq" "$BACKUP_DIR/containers.json" > "$BACKUP_DIR/compose.json"
@@ -73,7 +124,9 @@ prepare_backup() {
   done
   # Transport tags bridge classic/config IDs and containerd/manifest IDs. Restore
   # resolves the loaded tags back to immutable local IDs before starting services.
-  docker save "${aliases[@]}" > "$BACKUP_DIR/images.tar"
+  local image_key
+  image_key=$(printf '%s\n' "${images[@]}" | "${checksum[@]}")
+  backup_image_archive "$BACKUP_DIR/images.tar" "images-${image_key%% *}" docker save "${aliases[@]}"
   cp "$RECOVERY_TOOLS/recovery.sh" "$RECOVERY_TOOLS/recovery.jq" "$BACKUP_DIR/"
   if [ -f "${DEPLOY_ENV:-}" ]; then cp "$DEPLOY_ENV" "$BACKUP_DIR/operator.env.reference"; fi
   jq -n --arg project "$PROJECT" --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

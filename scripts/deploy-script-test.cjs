@@ -37,6 +37,7 @@ try {
     MOONBIT_VERSION: '', DEBIAN_MIRROR: '', DEBIAN_SECURITY_MIRROR: '',
     MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
     MOONHUB_SHARED_HOST: '0', MOONHUB_CGROUP_PARENT: '', MOONHUB_DIND_STORAGE_DIR: '',
+    MOONHUB_BACKUP_KEEP: '0',
   };
   function run(extra = {}, command = 'upgrade', answer) {
     fs.writeFileSync(log, '');
@@ -83,7 +84,7 @@ try {
   assert.deepEqual(lines.filter(line => line.startsWith('compose-base ')), [`compose-base ${baseImage}`, `compose-base ${baseImage}`]);
   assert.ok(builds.every(i => i < stop), 'build happened during downtime');
   assert.ok(lines.findIndex(line => line.startsWith('cp web-id:/data')) > stop);
-  assert.ok(lines.findIndex(line => line.startsWith('save ')) < stop, 'image export happened during downtime');
+  assert.ok(lines.findIndex(line => line.startsWith('save ')) < stop || result.stdout.includes('Reusing compressed image archive: images-'), 'image export happened during downtime');
   assert.ok(lines.some(line => line.startsWith('info --format')));
   assert.ok(!lines.some(line => line.includes('base.Dockerfile')), 'existing dependency base was rebuilt');
   const ensure = lines.findIndex(line => line.includes('pipeline-provider-ensure'));
@@ -92,7 +93,7 @@ try {
   assert.ok(!lines.join('\n').includes('a'.repeat(64)), 'token leaked into argv');
   assert.ok(ensureArgs(result).includes('--preserve-existing'));
   assert.ok(!ensureArgs(result).includes('--scope'), 'default upgrade overwrote saved provider scope');
-  const backup = fs.readdirSync(path.join(root, 'backups')).find(dir => !dir.startsWith('.partial-'));
+  const backup = fs.readdirSync(path.join(root, 'backups')).find(dir => !dir.startsWith('.'));
   const bundle = path.join(root, 'backups', backup);
   assert.ok(fs.existsSync(path.join(bundle, 'data.tar')));
   const recovered = JSON.parse(fs.readFileSync(path.join(bundle, 'compose.json')));
@@ -123,7 +124,7 @@ try {
   const sharedArgs = ensureArgs(result);
   assert.equal(sharedArgs[sharedArgs.indexOf('--scope') + 1], 'all');
   assert.equal(sharedArgs[sharedArgs.indexOf('--repositories') + 1], '');
-  const sharedBundle = path.join(sharedRoot, fs.readdirSync(sharedRoot)[0]);
+  const sharedBundle = path.join(sharedRoot, fs.readdirSync(sharedRoot).find(name => !name.startsWith('.')));
   assert.equal(JSON.parse(fs.readFileSync(path.join(sharedBundle, 'manifest.json'))).provider_scope, 'all');
   result = run({ TEST_FRESH: '1' }, ['restore', sharedBundle, '--project', 'shared', '--http-port', '19005', '--ssh-port', '19006', '--pipeline-prefix', '172.30.97']);
   assert.equal(result.status, 0, result.stderr);
@@ -249,14 +250,14 @@ try {
   const basicRoot = path.join(root, 'backups/basic');
   result = run({ TEST_BASIC: '1', MOONHUB_ENABLE_PIPELINES: '0', MOONHUB_BACKUP_DIR: basicRoot });
   assert.equal(result.status, 0, result.stderr);
-  const basic = path.join(basicRoot, fs.readdirSync(basicRoot)[0]);
+  const basic = path.join(basicRoot, fs.readdirSync(basicRoot).find(name => !name.startsWith('.')));
   result = run({ TEST_FRESH: '1' }, ['restore', basic, '--project', 'basic', '--http-port', '19003', '--ssh-port', '19004']);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(!result.commands.join('\n').includes('pipeline-docker'), 'basic restore started DinD');
   const limitedRoot = path.join(root, 'backups/limited');
   result = run({ TEST_RESOURCE_LIMITS: '1', MOONHUB_BACKUP_DIR: limitedRoot });
   assert.equal(result.status, 0, result.stderr);
-  const limitedBundle = path.join(limitedRoot, fs.readdirSync(limitedRoot)[0]);
+  const limitedBundle = path.join(limitedRoot, fs.readdirSync(limitedRoot).find(name => !name.startsWith('.')));
   const limited = JSON.parse(fs.readFileSync(path.join(limitedBundle, 'compose.json')));
   assert.equal(limited.services.web.cgroup_parent, 'moonhub.slice');
   assert.equal(limited.services.web.cpus, 0.5);
@@ -265,6 +266,79 @@ try {
   result = run({ TEST_FRESH: '1' }, ['restore', limitedBundle]);
   assert.notEqual(result.status, 0, 'generic restore silently discarded bounded storage');
   assert.equal(result.commands.length, 1, 'limited restore reached Docker without a provisioned resource profile');
+  // Real gzip/tar/checksum/hard-link operations, with only Docker responses mocked.
+  const efficientRoot = path.join(root, 'backups/efficient');
+  const efficientEnv = { MOONHUB_BACKUP_DIR: efficientRoot };
+  result = run(efficientEnv);
+  assert.equal(result.status, 0, result.stderr);
+  const completeBundles = () => fs.readdirSync(efficientRoot).filter(name => /^20\d{6}-\d{6}\./.test(name));
+  const firstEfficient = path.join(efficientRoot, completeBundles()[0]);
+  const firstArchive = fs.statSync(path.join(firstEfficient, 'images.tar'));
+  for (const file of ['images.tar', 'runner.tar']) {
+    assert.deepEqual([...fs.readFileSync(path.join(firstEfficient, file)).subarray(0, 2)], [0x1f, 0x8b]);
+    execFileSync('gzip', ['-t', path.join(firstEfficient, file)]);
+  }
+  result = run(efficientEnv);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!result.commands.some(line => line.startsWith('save moonhub-recovery:') || line.includes('docker.sock save ')), 'unchanged backup images were exported twice');
+  const secondEfficient = path.join(efficientRoot, completeBundles().find(name => path.join(efficientRoot, name) !== firstEfficient));
+  assert.equal(fs.statSync(path.join(secondEfficient, 'images.tar')).ino, firstArchive.ino, 'archives duplicated disk blocks');
+  // A copied bundle is sufficient; the source cache and source bundle are optional.
+  const standalone = path.join(root, 'backups/standalone');
+  fs.cpSync(secondEfficient, standalone, { recursive: true });
+  result = run({ TEST_FRESH: '1' }, ['restore', standalone, '--project', 'standalone', '--http-port', '19007', '--ssh-port', '19008', '--pipeline-prefix', '172.30.96']);
+  assert.equal(result.status, 0, result.stderr);
+  // Existing uncompressed bundles remain valid with the updated recovery tool.
+  for (const file of ['images.tar', 'runner.tar']) {
+    const archive = path.join(standalone, file);
+    fs.writeFileSync(archive, require('node:zlib').gunzipSync(fs.readFileSync(archive)));
+    const hash = createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
+    const sums = path.join(standalone, 'SHA256SUMS');
+    fs.writeFileSync(sums, fs.readFileSync(sums, 'utf8').split('\n').map(line => line.endsWith(`  ./${file}`) ? `${hash}  ./${file}` : line).join('\n'));
+  }
+  result = run({ TEST_FRESH: '1' }, ['restore', standalone, '--project', 'legacy', '--http-port', '19007', '--ssh-port', '19008', '--pipeline-prefix', '172.30.96']);
+  assert.equal(result.status, 0, result.stderr);
+  const orphanArchive = path.join(efficientRoot, '.image-cache/unreferenced.tar.gz');
+  fs.writeFileSync(orphanArchive, require('node:zlib').gzipSync('unused'));
+  fs.writeFileSync(orphanArchive + '.sha256', 'unused');
+  // Retention runs only after success and leaves unrelated/incomplete directories alone.
+  const oldBundle = path.join(efficientRoot, '20200101-000000.old');
+  fs.renameSync(firstEfficient, oldBundle);
+  const unrelated = path.join(efficientRoot, '20190101-000000.other');
+  fs.cpSync(oldBundle, unrelated, { recursive: true });
+  const otherManifest = JSON.parse(fs.readFileSync(path.join(unrelated, 'manifest.json')));
+  otherManifest.project = 'other-project';
+  fs.writeFileSync(path.join(unrelated, 'manifest.json'), JSON.stringify(otherManifest));
+  result = run({ ...efficientEnv, MOONHUB_BACKUP_KEEP: '2', TEST_FAIL: 'start' });
+  assert.notEqual(result.status, 0);
+  assert.ok(fs.existsSync(oldBundle), 'failed switch pruned recovery history');
+  result = run({ ...efficientEnv, MOONHUB_BACKUP_KEEP: '2' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!fs.existsSync(oldBundle));
+  assert.ok(fs.existsSync(unrelated));
+  assert.ok(!fs.existsSync(orphanArchive), 'unreferenced cached image was retained');
+  assert.equal(completeBundles().filter(name => name !== path.basename(unrelated)).length, 2);
+  // Export/data-copy failures never leave partial bundles behind.
+  result = run({ ...efficientEnv, TEST_FAIL: 'backup' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!fs.readdirSync(efficientRoot).some(name => name.startsWith('.partial-')));
+  const cachedImage = path.join(efficientRoot, '.image-cache', fs.readdirSync(path.join(efficientRoot, '.image-cache')).find(name => /^images-.*\.tar\.gz$/.test(name)));
+  fs.unlinkSync(cachedImage); // do not mutate the retained bundles' linked bytes
+  fs.writeFileSync(cachedImage, 'corrupt cached image');
+  result = run(efficientEnv);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.some(line => line.startsWith('save moonhub-recovery:')), 'corrupt image cache was reused');
+  const failedRoot = path.join(root, 'backups/failed-export');
+  result = run({ MOONHUB_BACKUP_DIR: failedRoot, TEST_FAIL: 'export' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(line => / stop$/.test(line)), 'export failure stopped Web/SSH');
+  assert.ok(!fs.readdirSync(failedRoot).some(name => name.startsWith('.partial-')));
+  assert.ok(!fs.readdirSync(path.join(failedRoot, '.image-cache')).some(name => name.startsWith('.pending-')));
+  for (const invalid of ['-1', '1001', 'all']) {
+    result = run({ MOONHUB_BACKUP_KEEP: invalid });
+    assert.notEqual(result.status, 0);
+    assert.equal(result.commands.length, 1, 'invalid retention reached Docker');
+  }
   const checksums = fs.readFileSync(path.join(bundle, 'SHA256SUMS'), 'utf8');
   fs.writeFileSync(path.join(bundle, 'SHA256SUMS'), checksums.split('\n').filter(line => !line.endsWith('./data.tar')).join('\n'));
   result = run({ TEST_FRESH: '1' }, ['restore', bundle]);
@@ -275,7 +349,7 @@ try {
   result = run({ TEST_FRESH: '1' }, ['restore', bundle]);
   assert.notEqual(result.status, 0);
   assert.equal(result.commands.length, 1, 'corrupt backup reached Docker');
-  console.log('Deployment script tests passed: provider scopes and CLI forwarding, build-before-stop, image preflight, recovery bundles, legacy/basic/pipeline restores, corruption rejection, failure ordering and protected replacement.');
+  console.log('Deployment script tests passed: compressed/legacy standalone restore, checksum-verified image reuse and hard links, safe retention/cache GC, failed export cleanup, provider scopes, build-before-stop, corruption rejection and protected replacement.');
 } finally {
   fs.rmSync(root, { recursive: true, force: true });
 }
