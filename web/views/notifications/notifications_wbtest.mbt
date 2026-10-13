@@ -67,7 +67,7 @@ async test "inbox requests enforce session CSRF recipient ownership and current 
     )
     let item = @collaboration.inbox_items(pool, bob, "unread", 1L)[0]
     let (_, alice_inbox) = @web_testkit.http_get_path_with_cookie(
-      port, "/-/notifications", alice_cookie,
+      port, "/-/notifications?settings=1", alice_cookie,
     )
     let alice_token = @web_testkit.extract_attr(
       alice_inbox, "name=\"csrf_token\"", "value=\"",

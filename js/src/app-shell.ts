@@ -181,3 +181,61 @@ if (inboxCount) {
   setInterval(() => { void refreshInbox(); }, 60000);
   document.addEventListener("visibilitychange", () => { void refreshInbox(); });
 }
+
+// Server-rendered GET navigation remains the no-script fallback.
+for (const form of document.querySelectorAll<HTMLFormElement>('form[data-auto-submit]')) {
+  form.dataset.enhanced = 'true';
+  form.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement) form.requestSubmit(); });
+}
+for (const form of document.querySelectorAll<HTMLFormElement>('[data-branch-comparison]')) {
+  const source = form.querySelector<HTMLSelectElement>('[name=source]')!, target = form.querySelector<HTMLSelectElement>('[name=target]')!;
+  const warning = form.querySelector<HTMLElement>('[data-branch-warning]')!;
+  const validate = () => { const invalid = source.value === target.value; source.setCustomValidity(invalid ? 'Choose different source and target branches.' : ''); warning.hidden = !invalid; };
+  source.addEventListener('change', validate); target.addEventListener('change', validate); validate();
+}
+const actor = document.querySelector('.account-identity span')?.textContent ?? '';
+for (const form of document.querySelectorAll<HTMLFormElement>('.mr-form')) {
+  const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[name=title], textarea[name=description], textarea[name=body]')];
+  if (!actor || !fields.length) continue;
+  const version = form.querySelector<HTMLInputElement>('input[name=version]')?.value ?? document.querySelector<HTMLSelectElement>('#mr-version')?.value ?? '';
+  const key = `moonhub.draft:${actor}:${form.action || location.pathname}:${version}`;
+  let canStore = true, dirty = false;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (raw) {
+      const draft = JSON.parse(raw) as { at: number; fields: Record<string, string>; pending: boolean };
+      if (Date.now() - draft.at > 86400000 || draft.pending && fields.every(field => !field.value)) sessionStorage.removeItem(key);
+      else if (fields.every(field => !field.value)) {
+        for (const field of fields) field.value = draft.fields[field.name] ?? '';
+        const notice = document.createElement('p'); notice.className = 'draft-notice muted'; notice.setAttribute('role', 'status'); notice.textContent = 'Unsent draft restored for this version.'; form.prepend(notice);
+      }
+    }
+  } catch { canStore = false; }
+  const save = (pending = false) => {
+    try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), pending, fields: Object.fromEntries(fields.map(field => [field.name, field.value])) })); }
+    catch { canStore = false; }
+  };
+  form.addEventListener('input', () => { dirty = true; save(); });
+  form.addEventListener('submit', event => { if (!event.defaultPrevented && form.checkValidity()) { save(true); dirty = false; } });
+  window.addEventListener('beforeunload', event => { if (dirty && !canStore) { event.preventDefault(); event.returnValue = ''; } });
+}
+document.querySelector('.logout-form')?.addEventListener('submit', () => {
+  try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('moonhub.draft:')) sessionStorage.removeItem(key); } catch { /* Private browsing may disallow storage. */ }
+});
+const timeElements = [...document.querySelectorAll<HTMLTimeElement>('time[data-relative-time]')];
+function relativeTimes() {
+  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  for (const element of timeElements) {
+    const dateTime = element.dateTime.replace(' ', 'T');
+    const timestamp = Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(dateTime) ? dateTime : dateTime + 'Z'); if (!Number.isFinite(timestamp)) continue;
+    const seconds = (timestamp - Date.now()) / 1000, magnitude = Math.abs(seconds);
+    const [unit, divisor] = magnitude < 60 ? ['second', 1] : magnitude < 3600 ? ['minute', 60] : magnitude < 86400 ? ['hour', 3600] : ['day', 86400];
+    element.textContent = formatter.format(Math.round(seconds / divisor), unit as Intl.RelativeTimeFormatUnit);
+  }
+}
+relativeTimes(); if (timeElements.length) setInterval(relativeTimes, 60000);
+for (const detail of document.querySelectorAll<HTMLDetailsElement>('[data-mobile-details]')) {
+  const compact = matchMedia('(max-width: 700px)');
+  if (compact.matches) detail.open = false;
+  compact.addEventListener('change', () => { detail.open = !compact.matches; });
+}

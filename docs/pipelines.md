@@ -293,11 +293,21 @@ drains any log pages beyond the initial server-rendered page before stopping.
 Transient failures retry with capped backoff, revoked access stops requests,
 hidden tabs pause, and navigation cancels outstanding requests.
 
-Log text is appended through text nodes, preserving expanded sections and reading
-position. Only an open log already at the bottom follows new output. No log
+Logs use the document's normal vertical scrolling. There is no whole-job log
+disclosure. Running jobs show continuous output. For a completed job with more
+than 200 loaded lines, the enhanced view initially shows the first 20 and last
+80 lines, with a button to expand the middle in batches of up to 1,000 lines.
+Search automatically reveals matches in hidden middle output. Expansion is
+preserved while polling drains the final backlog. Job and step selection share
+the same output area.
+Search and error-keyword navigation scroll the page to real matching output;
+the explicit Follow control keeps the end visible. Polling preserves the page's
+reading position when Follow is off. No log
 contents or UI state are stored in browser storage. Without JavaScript the page
 remains a static snapshot that can be reloaded manually. Persistence uses SQLite;
-retention policy and external storage are not implemented.
+retention policy and external storage are not implemented. The enhanced view
+bounds a running/search window to 5,000 lines; search covers loaded output, and Copy and
+Download include all loaded output for the selected step(s).
 
 After building the native executable and frontend assets,
 `node scripts/pipeline-logs-browser-smoke.cjs` verifies incremental rendering,

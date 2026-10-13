@@ -56,6 +56,11 @@ async test "push intents recover after ref commit and run exact snapshots once d
     assert_eq(runs[1].commit_sha, first)
     assert_eq(runs[0].definition.jobs[0].steps[0].run, "echo second")
     assert_eq(runs[1].definition.jobs[0].steps[0].run, "echo fixture")
+    let events = list_trigger_events(pool, actor, repo)
+    assert_eq(events.length(), 2)
+    assert_eq(events[0].runs.length(), 1)
+    assert_eq(events[0].runs[0].number, runs[0].number)
+    assert_eq(events[1].runs[0].commit_sha, first)
     // Recover a worker crash after committing a run but before finishing its event.
     pool.with_client(client => {
       ignore(client.execute("UPDATE repository_ref_event SET state = 'ready'"))

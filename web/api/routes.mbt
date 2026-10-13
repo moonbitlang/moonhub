@@ -404,9 +404,11 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "read")
       {
-        "items": @pipeline.list_runs(pool, actor, @web_context.repo_param(req)).map(
-          run_json,
-        ),
+        "items": @pipeline.list_runs(pool, actor, @web_context.repo_param(req))
+        .iter()
+        .take(50)
+        .map(run_json)
+        .collect(),
       }
     }),
   )

@@ -26,6 +26,8 @@ pub fn edit_merge_request(@database.Database, @repository.RepositoryScope, @doma
 
 pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
 
+pub fn inbox_groups(@database.Database, @domain.CurrentUser, String, Int64) -> Array[InboxGroup] raise
+
 pub fn inbox_items(@database.Database, @domain.CurrentUser, String, Int64) -> Array[InboxItem] raise
 
 pub fn issue_assignees(@database.Database, @repository.RepositoryScope) -> Array[IssueAssignee] raise
@@ -38,15 +40,19 @@ pub fn list_issues(@database.Database, @repository.RepositoryScope, String, Int6
 
 pub fn list_merge_activity(@database.Database, MergeRequest, Int64) -> Array[MergeActivity] raise
 
-pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64) -> Array[MergeRequest] raise
+pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64, query? : String, author? : Int64, reviewer? : Int64) -> Array[MergeRequest] raise
 
 pub fn mark_all_notifications_read(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
 
 pub fn mark_notification_read(@database.Database, @domain.CurrentUser, Int64) -> InboxItem raise
 
+pub fn mark_thread_notifications_read(@database.Database, @domain.CurrentUser, Int64, Int64) -> Unit raise
+
 pub fn merge_blocker(@database.Database, @repository.RepositoryScope, MergeRequest, @gitops.Revision) -> String raise
 
 pub fn merge_checks(@database.Database, MergeRequest, version? : Int64) -> Array[MergeCheck] raise
+
+pub fn merge_list_metadata(@database.Database, @repository.RepositoryScope, Array[MergeRequest]) -> Map[Int64, MergeListMeta] raise
 
 pub fn merge_review_counts(@database.Database, @repository.RepositoryScope, MergeRequest) -> (Int64, Int64) raise
 
@@ -105,6 +111,14 @@ pub struct BranchRule {
   checks : Array[String]
 }
 
+pub struct InboxGroup {
+  item : InboxItem
+  status : String
+  unread : Int64
+  events : Array[InboxItem]
+}
+pub fn InboxGroup::url(Self) -> String
+
 pub struct InboxItem {
   id : Int64
   thread_id : Int64
@@ -161,6 +175,13 @@ pub struct MergeCheck {
   conclusion : String
   run_number : Int64?
   error : String
+}
+
+pub struct MergeListMeta {
+  approvals : Int64
+  requested : Int64
+  checks : String
+  updated : String
 }
 
 pub struct MergeRequest {

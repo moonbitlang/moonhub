@@ -13,11 +13,15 @@ import {
 // Values
 pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String) -> Run
 
+pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
+
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 
-pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[Run] raise
+pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, page? : Int64, status? : String, branch? : String, workflow? : String) -> Array[Run] raise
+
+pub fn list_trigger_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[TriggerEvent] raise
 
 pub fn merge_check_context(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> MergeCheckContext? raise
 
@@ -78,6 +82,13 @@ pub fn Coordinator::set_provider_scope(Self, @domain.CurrentUser, Int64, Provide
 pub fn Coordinator::start(Self, Int64, String, Int, execution_id? : String) -> @protocol.LeaseState raise
 pub fn Coordinator::start_lease_worker(Self, @async.TaskGroup[Unit]) -> Unit
 pub fn Coordinator::update_step(Self, Int64, String, @protocol.StepRequest) -> @protocol.LeaseState raise
+
+pub(all) struct DispatchChoices {
+  branches : Array[String]
+  branch : String
+  commit : String
+  workflows : Array[WorkflowChoice]
+}
 
 pub struct JobRun {
   id : Int64
@@ -179,6 +190,22 @@ pub enum RunState {
 pub fn RunState::equal(Self, Self) -> Bool
 pub fn RunState::not_equal(Self, Self) -> Bool
 pub fn RunState::to_repr(Self) -> @debug.Repr
+
+pub struct TriggerEvent {
+  id : Int64
+  reference : String
+  commit_sha : String
+  state : String
+  error : String
+  created_at : String
+  runs : Array[Run]
+}
+
+pub struct WorkflowChoice {
+  path : String
+  name : String
+  reason : String
+}
 
 // Type aliases
 

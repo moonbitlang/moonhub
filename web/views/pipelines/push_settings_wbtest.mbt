@@ -7,7 +7,7 @@ async test "automatic push settings require a repository manager and CSRF and de
         let actor = @identity.active_user_by_name(pool, "alice")
         assert_false(@repository.pipeline_push_enabled(pool, actor, repo))
         let (_, body) = @web_testkit.http_get_path_with_cookie(
-          port, "/alice/demo/pipelines", alice,
+          port, "/alice/demo/pipelines?tab=settings", alice,
         )
         assert_true(body.contains("Run push workflows"))
         let csrf = @web_testkit.extract_attr(

@@ -9,18 +9,24 @@ pub let notifications_module : @moonback.Module = Module(ctx => {
       Some(value) => @web_context.positive_resource_number(value)
       None => 1L
     }
-    let items = @collaboration.inbox_items(pool, actor, filter, page)
+    let settings = req.query().get("settings") == Some("1")
+    let groups = if settings {
+      []
+    } else {
+      @collaboration.inbox_groups(pool, actor, filter, page)
+    }
     res.send_html(
       render_inbox(
         assets,
         actor,
         filter,
         page,
-        items,
+        groups,
         @collaboration.unread_notification_count(pool, actor),
         @collaboration.notification_email_enabled(pool, actor),
         @web_context.request_form_token(req, "notifications"),
         req.query().get("saved") == Some("1"),
+        settings,
       ),
       headers=@web_context.private_page_headers(),
     )
@@ -62,7 +68,7 @@ pub let notifications_module : @moonback.Module = Module(ctx => {
     res.send_void(
       status=303,
       headers=@web_context.private_page_headers(
-        location="/-/notifications?saved=1",
+        location="/-/notifications?settings=1&saved=1",
       ),
     )
   })
@@ -100,6 +106,31 @@ pub let notifications_module : @moonback.Module = Module(ctx => {
     res.send_void(
       status=303,
       headers=@web_context.private_page_headers(location=url),
+    )
+  })
+  ctx.post("/-/notifications/threads/:id/read", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let form = @web_context.protected_form(req, "notifications")
+    let filter = form.get("filter").unwrap_or("unread")
+    guard ["unread", "all", "reviews", "assigned"].contains(filter) else {
+      raise @domain.BadRequest(message="invalid inbox filter")
+    }
+    let page = @web_context.positive_resource_number(
+      form.get("page").unwrap_or("1"),
+    )
+    @collaboration.mark_thread_notifications_read(
+      pool,
+      actor,
+      @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "discussion"),
+      ),
+      @web_context.positive_resource_number(form.get("through").unwrap_or("")),
+    )
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/notifications?filter=\{filter}&page=\{page}",
+      ),
     )
   })
 })
