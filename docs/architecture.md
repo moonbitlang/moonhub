@@ -158,6 +158,8 @@ Each production package owns its tests. Run the entire suite or a single
 package from the module root:
 
 ```sh
+npm ci --prefix js
+npm run build --prefix js
 moon test --strip -j 1
 moon test --strip -j 1 identity
 moon test --strip -j 1 repository
@@ -166,6 +168,10 @@ moon test --strip -j 1 web
 moon test --strip -j 1 web/views/issues
 moon test --strip -j 1 web/views/repositories
 ```
+
+The frontend build generates the ignored `assets/` directory and icon CSS.
+Web tests need these assets; build them after cloning and rebuild after changing
+frontend sources or dependencies. Business package tests do not need them.
 
 The shared fixtures create in-memory databases and temporary Git repositories.
 Service tests do not need a configured deployment. HTTP tests use ephemeral

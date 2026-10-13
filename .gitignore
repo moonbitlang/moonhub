@@ -10,6 +10,9 @@ target
 
 node_modules/
 *.tsbuildinfo
+# Browser build output; regenerate with npm run build --prefix js.
+/assets/
+/js/src/icons.generated.css
 .env
 .env.*
 !.env.example
