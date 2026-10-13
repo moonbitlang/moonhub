@@ -2,6 +2,7 @@
 pub let app_module : @moonback.Module = Module(ctx => {
   let config = ctx.config()
   ctx.mount("/\{@domain.PUBLIC_ASSETS_OWNER}", App(assets_module, config~))
+  ctx.mount("/-/api/v1", App(user_api_module, config~))
   ctx.mount("/-/runner-api/v1", App(runner_app_module, config~))
   ctx.mount("/", App(app_main_module, config~))
 })
@@ -24,6 +25,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.add_middleware(@web_context.require_login_middleware())
   ctx.use_(@auth_views.auth_module)
   ctx.use_(@notification_views.notifications_module)
+  ctx.use_(@account_views.tokens_module)
   ctx.use_(@account_views.profile_module)
   ctx.use_(@account_views.ssh_keys_module)
   ctx.use_(@settings_views.site_settings_module)
@@ -44,4 +46,10 @@ pub let assets_module : @moonback.Module = Module(ctx => {
     raise @domain.BadRequest(message="missing moonhub.assets_root")
   }
   ctx.add_middleware(@web_assets.static_assets(root~))
+})
+
+///|
+let user_api_module : @moonback.Module = Module(ctx => {
+  ctx.use_(user_api_dependencies_module)
+  ctx.use_(@user_api.api_module)
 })

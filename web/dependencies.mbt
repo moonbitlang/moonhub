@@ -88,3 +88,12 @@ let services_module : @moonback.Module = Module(ctx => {
     },
   })
 })
+
+///|
+let user_api_dependencies_module : @moonback.Module = Module(ctx => {
+  guard ctx.config().get_custom(@web_context.config_db_pool) is Some(pool) else {
+    raise @domain.BadRequest(message="missing moonhub.db_pool")
+  }
+  ctx.provide(@web_context.config_db_pool, pool)
+  ctx.use_(pipeline_dependencies_module)
+})

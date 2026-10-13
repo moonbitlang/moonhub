@@ -136,6 +136,29 @@ async fn run_web() -> Unit {
 async fn main {
   let args = @env.args()
   match args.get(1) {
+    Some("auth" | "mr" | "issue" | "ci" | "inbox") => {
+      let code = @cli.run(args[1:]) catch {
+        @cli.Invalid(message) => {
+          @stdio.stderr.write("moonhub: \{message}\n")
+          2
+        }
+        @cli.InvalidResponse => {
+          @stdio.stderr.write("moonhub: invalid API JSON response\n")
+          1
+        }
+        @cli.Rejected(status, message) => {
+          @stdio.stderr.write(
+            "moonhub: HTTP \{status}: \{@cli.terminal_text(message)}\n",
+          )
+          1
+        }
+        _ => {
+          @stdio.stderr.write("moonhub: CLI request failed\n")
+          1
+        }
+      }
+      @sys.exit(code)
+    }
     Some("runner") => {
       let code = run_runner_cli(args[2:]) catch {
         @runner.InvalidConfiguration(message) => {

@@ -9,6 +9,7 @@ unchanged.
 | Package | Owns |
 | --- | --- |
 | `domain` | Shared account/repository identities, name and path validation, public errors and diagnostic redaction |
+| `cli` | Remote collaboration commands, HTTP client, private credential storage and terminal output; no database or Web dependency |
 | `config` | Environment loading and primitive configuration parsing |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
 | `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
@@ -24,6 +25,7 @@ unchanged.
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
+| `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
 | `web/ui` | Shared page layout, navigation and reusable presentation |
 | `web/assets` | Asset manifest, asset tags and static file serving |
@@ -182,3 +184,9 @@ with activity; the mail worker rechecks current access/preferences at claim time
 `web/views/notifications` owns Inbox routes and HTTP tests. Web starts the review
 request refresh worker independently of Pipeline so ready MRs without CI refresh
 in the background. Shared subscription rendering lives in `web/ui`.
+
+The remote CLI uses `/-/api/v1`, mounted separately from browser cookie/login
+middleware and Runner credentials. Identity owns scoped, expiring access tokens;
+`web/views/account` owns their CSRF-protected creation/revocation pages. API
+mutations reuse business services and repository locks. The API never implicitly
+authorizes code execution when creating an MR with a collaboration write token.

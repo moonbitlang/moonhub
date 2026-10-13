@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/cli",
   "moonbitlang/core/argparse",
   "moonbitlang/async",
   "hackwaly/moonhub/config",

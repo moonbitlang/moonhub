@@ -77,7 +77,7 @@ build_shared_images() {
   jq -n --arg context "$BUILD_STAGE" --arg platform "$platform" --arg revision "$RECOVERY_TOOL_REVISION" \
     --arg web "$RUNTIME_IMAGE" --arg provider "$PROVIDER_IMAGE" --arg runner "$RUNNER_IMAGE" \
     --arg runner_target "$RUNNER_BUILD_TARGET" --arg cn "$USE_CN_MIRRORS" \
-    --arg moon "${MOONBIT_VERSION:-0.10.15+cbebe2116}" \
+    --arg moon "${MOONBIT_VERSION:-0.10.15+943464bfa}" \
     --arg debian "${DEBIAN_MIRROR:-http://mirrors.ustc.edu.cn/debian}" \
     --arg security "${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}" \
     --argjson pull "$PULL_IMAGES" --argjson rebuild "$REBUILD_BASE" '

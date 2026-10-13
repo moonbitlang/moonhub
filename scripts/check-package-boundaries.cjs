@@ -12,7 +12,8 @@ assert.equal(graph.status, 'success', JSON.stringify(graph.error));
 assert.equal(graph.version, 2, 'Update this check for the new moon tree schema');
 
 const allowed = {
-  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol'],
+  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli'],
+  cli: ['domain'],
   domain: [],
   config: [],
   database: ['domain'],
@@ -30,10 +31,11 @@ const allowed = {
   ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
     'domain', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline',
-    'web/assets', 'web/context', 'web/views/auth', 'web/views/account',
+    'web/assets', 'web/api', 'web/context', 'web/views/auth', 'web/views/account',
     'web/views/namespaces', 'web/views/repositories', 'web/views/issues',
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications',
   ],
+  'web/api': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'web/context'],
   'web/assets': ['domain'],
   'web/context': ['domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
   'web/ui': ['domain', 'identity', 'repository', 'collaboration', 'web/assets'],

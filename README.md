@@ -1,5 +1,9 @@
 # hackwaly/moonhub
 
+The native executable includes a remote collaboration CLI: `auth`, `mr`,
+`issue`, `ci` and `inbox`. Create an access token in Account settings and see
+[CLI setup and commands](docs/cli.md).
+
 Repository collaboration includes Issues and same-repository Merge Requests.
 Branch protection can require existing Pipeline workflows to pass against the
 merged source/target tree. See [MR Pipeline checks](docs/merge-checks.md) for

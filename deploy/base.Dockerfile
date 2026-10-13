@@ -3,7 +3,7 @@ FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35
 ARG MOONHUB_USE_CN_MIRRORS=0
 ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
 ARG DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
-ARG MOONBIT_VERSION=0.10.15+cbebe2116
+ARG MOONBIT_VERSION=0.10.15+943464bfa
 
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
