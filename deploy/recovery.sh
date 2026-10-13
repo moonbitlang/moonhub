@@ -49,12 +49,17 @@ backup_image_archive() {
 prune_backups() {
   local keep=${MOONHUB_BACKUP_KEEP:-2} directory count=0 cache
   [ "$keep" != 0 ] || return 0
-  [ -n "${BACKUP_DIR:-}" ] && [ -f "$BACKUP_DIR/SHA256SUMS" ] || return 0
+  [ -n "${BACKUP_DIR:-}" ] || return 0
+  verify_backup_bundle "$BACKUP_DIR"
   count=1
   while IFS= read -r directory; do
     [ "$directory" != "$BACKUP_DIR" ] || continue
     [ -f "$directory/SHA256SUMS" ] && [ ! -L "$directory/manifest.json" ] || continue
     jq -e --arg project "$PROJECT" '.format == 1 and .project == $project' "$directory/manifest.json" >/dev/null 2>&1 || continue
+    if ! verify_backup_bundle "$directory" >/dev/null 2>&1; then
+      printf 'Skipping damaged backup during retention: %s\n' "$directory" >&2
+      continue
+    fi
     count=$((count + 1))
     if [ "$count" -gt "$keep" ]; then
       printf 'Removing expired backup: %s\n' "$directory"
@@ -65,6 +70,25 @@ prune_backups() {
     while IFS= read -r cache; do
       rm -f -- "$cache" "$cache.sha256"
     done < <(find "$BACKUP_ROOT/.image-cache" -type f -name '*.tar.gz' -links 1 -print)
+  fi
+}
+
+# Restore and retention share the same definition of a complete, intact bundle.
+# A marker alone must never let a damaged copy displace a verified recovery point.
+verify_backup_bundle() {
+  local source=$1 required listed actual
+  for required in manifest.json compose.json images.json images.tar data.tar ssh-host-keys.tar recovery.sh recovery.jq SHA256SUMS; do
+    [ -f "$source/$required" ] && [ ! -L "$source/$required" ] || { printf 'Missing recovery file: %s\n' "$required" >&2; return 1; }
+  done
+  [ -z "$(find "$source" -type l -print -quit)" ] || { printf 'Backup must not contain symbolic links\n' >&2; return 1; }
+  LC_ALL=C awk 'length($1) != 64 || $1 ~ /[^a-f0-9]/ || $2 !~ /^\.\// || $2 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' "$source/SHA256SUMS" || return 1
+  listed=$(LC_ALL=C cut -c 67- "$source/SHA256SUMS" | LC_ALL=C sort)
+  actual=$(cd "$source" && find . -type f ! -path ./SHA256SUMS -print | LC_ALL=C sort)
+  [ "$listed" = "$actual" ] || { printf 'Backup checksum inventory is incomplete or contains extra files\n' >&2; return 1; }
+  (cd "$source" && "${checksum[@]}" -c SHA256SUMS >/dev/null) || return 1
+  jq -e '.format == 1 and (.project | type == "string")' "$source/manifest.json" >/dev/null || return 1
+  if jq -e '.services | has("pipeline-docker")' "$source/compose.json" >/dev/null; then
+    [ -f "$source/runner.tar" ] && [ ! -L "$source/runner.tar" ] || { printf 'Missing pinned Runner image\n' >&2; return 1; }
   fi
 }
 
@@ -197,20 +221,9 @@ restore_backup() {
     esac
   done
   [[ "$(basename "$source")" != .partial-* ]] || { printf 'Refusing an incomplete backup\n' >&2; return 1; }
-  local required
-  for required in manifest.json compose.json images.json images.tar data.tar ssh-host-keys.tar recovery.sh recovery.jq SHA256SUMS; do
-    [ -f "$source/$required" ] && [ ! -L "$source/$required" ] || { printf 'Missing recovery file: %s\n' "$required" >&2; return 1; }
-  done
-  [ -z "$(find "$source" -type l -print -quit)" ] || { printf 'Backup must not contain symbolic links\n' >&2; return 1; }
   # No checksum paths may escape the bundle. Backups are trusted operator input,
   # but corrupt or partially copied files must fail before touching services.
-  LC_ALL=C awk 'length($1) != 64 || $1 ~ /[^a-f0-9]/ || $2 !~ /^\.\// || $2 ~ /(^|\/)\.\.(\/|$)/ {exit 1}' "$source/SHA256SUMS" || return 1
-  local listed actual
-  listed=$(LC_ALL=C cut -c 67- "$source/SHA256SUMS" | LC_ALL=C sort)
-  actual=$(cd "$source" && find . -type f ! -path ./SHA256SUMS -print | LC_ALL=C sort)
-  [ "$listed" = "$actual" ] || { printf 'Backup checksum inventory is incomplete or contains extra files\n' >&2; return 1; }
-  (cd "$source" && "${checksum[@]}" -c SHA256SUMS >/dev/null)
-  jq -e '.format == 1 and (.project | type == "string")' "$source/manifest.json" >/dev/null
+  verify_backup_bundle "$source"
   if jq -e '[.services[].cgroup_parent // ""] | any(. != "")' "$source/compose.json" >/dev/null; then
     printf 'This shared-host backup needs a provisioned resource slice and fresh bounded DinD storage; automatic generic restore is refused.\n' >&2
     return 1

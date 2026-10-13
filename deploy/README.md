@@ -522,7 +522,11 @@ project (`0` disables automatic retention; maximum 1000). Pruning runs only afte
 a successful upgrade/service switch or standalone backup. It retains the newly
 created bundle even when timestamps collide, skips other projects and incomplete
 directories, and removes cached archives after their last retained bundle is
-deleted. Failed builds/backups/startups never prune previous complete backups.
+deleted. Retention verifies the file inventory and checksums before counting a
+bundle toward this limit. Damaged copies are reported and left for operator
+inspection; they never displace a verified recovery point. This integrity check
+reads the archives but does not export or duplicate them.
+Failed builds/backups/startups never prune previous complete backups.
 The deploy wrapper removes its own incomplete `.partial-` bundle on failure;
 interrupted/killed processes may still leave partial artifacts for manual cleanup.
 

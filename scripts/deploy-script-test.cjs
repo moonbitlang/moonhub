@@ -334,6 +334,36 @@ try {
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'export failure stopped Web/SSH');
   assert.ok(!fs.readdirSync(failedRoot).some(name => name.startsWith('.partial-')));
   assert.ok(!fs.readdirSync(path.join(failedRoot, '.image-cache')).some(name => name.startsWith('.pending-')));
+  // Operator paths may end in /; the new recovery point must never be pruned.
+  const trailingRoot = path.join(root, 'backups/trailing-root');
+  const trailingEnv = { MOONHUB_BACKUP_DIR: trailingRoot + '/', MOONHUB_BACKUP_KEEP: '1' };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    result = run(trailingEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const created = result.stdout.match(/Backup created: (.+)/)[1];
+    assert.ok(fs.existsSync(created), 'retention deleted the newly created backup');
+    assert.equal(fs.readdirSync(trailingRoot).filter(name => /^20\d{6}-\d{6}\./.test(name)).length, 1);
+    execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS'], { cwd: created, stdio: 'pipe' });
+  }
+  // A damaged newer copy must not evict the last older verified recovery point.
+  const damagedRoot = path.join(root, 'backups/damaged-history');
+  const damagedEnv = { MOONHUB_BACKUP_DIR: damagedRoot };
+  const historical = [];
+  for (const [index, label] of ['good', 'missing', 'corrupt'].entries()) {
+    result = run(damagedEnv);
+    assert.equal(result.status, 0, result.stderr);
+    const created = result.stdout.match(/Backup created: (.+)/)[1];
+    const renamed = path.join(damagedRoot, `2020010${index + 1}-000000.${label}`);
+    fs.renameSync(created, renamed);
+    historical.push(renamed);
+  }
+  fs.unlinkSync(path.join(historical[1], 'data.tar'));
+  fs.appendFileSync(path.join(historical[2], 'data.tar'), 'corrupt');
+  result = run({ ...damagedEnv, MOONHUB_BACKUP_KEEP: '2' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(fs.existsSync(historical[0]), 'damaged backups evicted the last verified historical recovery point');
+  assert.ok(fs.existsSync(historical[1]) && fs.existsSync(historical[2]), 'retention deleted damaged bundles instead of leaving them for inspection');
+  execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS'], { cwd: historical[0], stdio: 'pipe' });
   for (const invalid of ['-1', '1001', 'all']) {
     result = run({ MOONHUB_BACKUP_KEEP: invalid });
     assert.notEqual(result.status, 0);
