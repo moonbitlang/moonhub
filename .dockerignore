@@ -6,6 +6,7 @@
 _build
 target
 assets
+js/src/icons.generated.css
 **/node_modules
 **/*.tsbuildinfo
 .env

@@ -58,16 +58,21 @@ before importing private repositories.
 ## Browser Assets
 
 The rich code views are built from the JavaScript project under `js/` and
-emitted into the repository `assets/` directory:
+emitted into the repository `assets/` directory. Build them from the module
+root after cloning, before running the local server or the MoonBit Web tests:
 
 ```sh
-cd js
-npm install
-npm run build
+npm ci --prefix js
+npm run build --prefix js
 ```
 
-Run the build again after changing files under `js/src/`. The MoonBit server
-reads the configured assets directory's `.vite/manifest.json` to load the hashed
+`assets/` (including its Vite manifest) and `js/src/icons.generated.css` are
+generated files ignored by Git. Keep the frontend sources, icon generator and
+`js/package-lock.json` in version control; `npm run build` regenerates both
+outputs. CI and Docker build the assets from source before tests or packaging.
+
+Run the build again after changing frontend sources or dependencies. The MoonBit
+server reads the configured assets directory's `.vite/manifest.json` to load the hashed
 `custom-elements` bundle. The manifest is required; public files served from
 `/assets/` are treated as immutable build artifacts, and `.vite/manifest.json`
 is not served publicly.
