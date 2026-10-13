@@ -54,7 +54,10 @@ fn container_args(
 }
 
 ///|
-async fn read_bounded(reader : @process.ReadFromProcess, limit : Int) -> String {
+async fn read_bounded(
+  reader : @process.ReadFromProcess,
+  limit : Int32,
+) -> String {
   let bytes : Array[Byte] = []
   for ;; {
     let chunk = reader.read_some(max_len=4096)

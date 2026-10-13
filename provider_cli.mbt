@@ -1,5 +1,5 @@
 ///|
-fn provider_cli_int(options : @argparse.Matches, name : String) -> Int raise {
+fn provider_cli_int(options : @argparse.Matches, name : String) -> Int32 raise {
   let value = cli_value(options, name)
   @string.parse_int(value) catch {
     _ => raise @provider.InvalidConfiguration("invalid numeric provider option")
@@ -7,7 +7,7 @@ fn provider_cli_int(options : @argparse.Matches, name : String) -> Int raise {
 }
 
 ///|
-async fn run_provider_cli(args : ArrayView[String]) -> Int {
+async fn run_provider_cli(args : ArrayView[String]) -> Int32 {
   @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
   let command = @argparse.Command(
     "provider",

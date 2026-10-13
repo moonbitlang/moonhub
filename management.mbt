@@ -181,7 +181,7 @@ fn cli_key_id(matches : @argparse.Matches) -> Int64 raise {
 }
 
 ///|
-async fn run_management_cli(args : ArrayView[String]) -> Int {
+async fn run_management_cli(args : ArrayView[String]) -> Int32 {
   let matches = management_command().parse(argv=args, env=@env.get_env_vars())
   guard matches.subcommand is Some((command, options)) else { return 1 }
   let db_path = cli_value(matches, "db")

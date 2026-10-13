@@ -101,7 +101,7 @@ pub fn render_repo_nav(
 
 ///|
 pub fn render_error(
-  status : Int,
+  status : Int32,
   message : String,
   asset_path_map : Map[String, String],
   current_user~ : @domain.CurrentUser? = None,

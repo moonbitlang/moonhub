@@ -1,5 +1,5 @@
 ///|
-fn hex_value(ch : UInt16) -> Int? {
+fn hex_value(ch : UInt16) -> Int32? {
   let code = ch.to_int()
   let zero = '0'.to_int()
   let nine = '9'.to_int()

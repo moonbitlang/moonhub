@@ -1,5 +1,5 @@
 ///|
-pub async fn profile_form_token(port : Int, cookie : @http.Cookie) -> String {
+pub async fn profile_form_token(port : Int32, cookie : @http.Cookie) -> String {
   let (response, body) = http_get_path_with_cookie(
     port, "/-/settings/profile", cookie,
   )

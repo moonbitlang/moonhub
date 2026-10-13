@@ -154,7 +154,7 @@ fn inherit_defaults(base : RunDefaults, overlay : RunDefaults) -> RunDefaults {
 fn parse_timeout(
   value : @yaml.Yaml?,
   ctx : String,
-) -> Int? raise InvalidWorkflow {
+) -> Int32? raise InvalidWorkflow {
   match value {
     None => None
     Some(Integer(n)) if n >= 1L && n <= 360L => Some(n.to_int())

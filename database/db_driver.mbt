@@ -144,7 +144,7 @@ pub fn DbClient::execute(
   self : DbClient,
   sql : String,
   params~ : Array[&DbParam] = [],
-) -> Int raise @moondb.DbError {
+) -> Int32 raise @moondb.DbError {
   self.driver.execute(sql, db_params(params)).rows_affected.to_int() catch {
     @moondb.QueryError(message) =>
       raise @moondb.QueryError("\{message}; sql=\{sql}")
@@ -229,7 +229,7 @@ pub fn DbTransaction::execute(
   self : DbTransaction,
   sql : String,
   params~ : Array[&DbParam] = [],
-) -> Int raise @moondb.DbError {
+) -> Int32 raise @moondb.DbError {
   self.driver.execute(sql, db_params(params)).rows_affected.to_int() catch {
     @moondb.QueryError(message) =>
       raise @moondb.QueryError("\{message}; sql=\{sql}")

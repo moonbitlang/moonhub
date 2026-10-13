@@ -1,5 +1,5 @@
 ///|
-pub let version : Int = 1
+pub let version : Int32 = 1
 
 ///|
 pub let lease_ms : Int64 = 60000L
@@ -8,7 +8,7 @@ pub let lease_ms : Int64 = 60000L
 pub let cancel_grace_ms : Int64 = 15000L
 
 ///|
-pub let max_log_chunk_bytes : Int = 8192
+pub let max_log_chunk_bytes : Int32 = 8192
 
 ///|
 pub let max_log_bytes : Int64 = 1048576L
@@ -33,40 +33,40 @@ pub fn parse_decimal(value : String) -> Int64? {
 
 ///|
 pub(all) struct ClaimRequest {
-  version : Int
+  version : Int32
   request_id : String
   attempt_token : String
 } derive(ToJson, FromJson)
 
 ///|
 pub(all) struct VersionRequest {
-  version : Int
+  version : Int32
 } derive(ToJson, FromJson)
 
 ///|
 pub(all) struct StartRequest {
-  version : Int
+  version : Int32
   execution_id : String
 } derive(ToJson, FromJson)
 
 ///|
 pub(all) struct StepRequest {
-  version : Int
+  version : Int32
   step_id : String
   state : String
-  exit_code : Int
+  exit_code : Int32
 } derive(Debug, ToJson, FromJson)
 
 ///|
 pub(all) struct StepState {
   step_id : String
   state : String
-  exit_code : Int
+  exit_code : Int32
 } derive(Debug, ToJson, FromJson)
 
 ///|
 pub(all) struct LogRequest {
-  version : Int
+  version : Int32
   sequence : String
   step_id : String
   stream : String
@@ -75,14 +75,14 @@ pub(all) struct LogRequest {
 
 ///|
 pub(all) struct CompleteRequest {
-  version : Int
+  version : Int32
   conclusion : String
   last_log_sequence : String
 } derive(ToJson, FromJson)
 
 ///|
 pub(all) struct LeaseState {
-  version : Int
+  version : Int32
   execution_id : String
   attempt_id : String
   state : String
@@ -96,7 +96,7 @@ pub(all) struct LeaseState {
 
 ///|
 pub(all) struct Assignment {
-  version : Int
+  version : Int32
   attempt_id : String
   run_id : String
   job_id : String
@@ -125,7 +125,7 @@ pub(all) struct JobPlan {
   id : String
   name : String
   runs_on : Array[String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
   steps : Array[StepPlan]
 } derive(Debug, ToJson, FromJson)
 
@@ -137,7 +137,7 @@ pub(all) struct StepPlan {
   shell : String
   working_directory : String
   env : Map[String, String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
 } derive(Debug, ToJson, FromJson)
 
 ///|

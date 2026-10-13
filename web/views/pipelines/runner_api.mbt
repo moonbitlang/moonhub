@@ -67,7 +67,7 @@ async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json 
 }
 
 ///|
-fn runner_error(err : Error) -> (Int, Json) {
+fn runner_error(err : Error) -> (Int32, Json) {
   let (status, code, message) = match err {
     @domain.Unauthorized(message~) => (401, "unauthorized", message)
     @domain.Forbidden(message~) => (403, "forbidden", message)

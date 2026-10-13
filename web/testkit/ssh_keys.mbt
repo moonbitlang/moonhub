@@ -1,6 +1,12 @@
 ///|
 pub async fn with_ssh_settings_app(
-  f : async (Int, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit,
+  f : async (
+    Int32,
+    @database.Database,
+    @http.Cookie,
+    @http.Cookie,
+    @http.Cookie,
+  ) -> Unit,
   addresses~ : @repository.SshAddressConfig = @repository.no_ssh_address_config,
   repo_root~ : String = test_repo_root,
 ) -> Unit {
@@ -34,7 +40,7 @@ pub async fn with_ssh_settings_app(
 }
 
 ///|
-pub async fn settings_form_token(port : Int, cookie : @http.Cookie) -> String {
+pub async fn settings_form_token(port : Int32, cookie : @http.Cookie) -> String {
   let (response, body) = http_get_path_with_cookie(
     port, "/-/settings/ssh-keys/new", cookie,
   )

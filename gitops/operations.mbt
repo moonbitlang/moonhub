@@ -27,10 +27,10 @@ pub async fn merge_git_command(
   git_dir : String,
   args : Array[String],
   input~ : String = "",
-  limit~ : Int = 2097152,
+  limit~ : Int32 = 2097152,
   identity~ : String = "Moonhub",
   strict_utf8~ : Bool = false,
-) -> (Int, String) {
+) -> (Int32, String) {
   @async.with_timeout(
     60000,
     () => {

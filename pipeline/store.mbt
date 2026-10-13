@@ -35,7 +35,7 @@ pub struct Run {
   source_branch : String
   commit_sha : String
   source_ref : String
-  definition_version : Int
+  definition_version : Int32
   workflow_source : String
   definition : @workflow.Workflow
   state : RunState

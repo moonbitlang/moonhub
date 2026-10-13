@@ -2,8 +2,8 @@
 pub(all) suberror ProviderError {
   InvalidConfiguration(String)
   TransportFailure
-  Rejected(Int)
-  DockerFailure(Int)
+  Rejected(Int32)
+  DockerFailure(Int32)
   CleanupFailure
   Stopped
 }
@@ -19,16 +19,16 @@ pub(all) struct Options {
   runner_host : String
   runner_host_ip : String
   workspace_root : String
-  poll_ms : Int
+  poll_ms : Int32
   allow_http : Bool
   memory : String
   cpus : String
-  pids_limit : Int
+  pids_limit : Int32
 }
 
 ///|
 priv struct AssignmentResult {
-  code : Int
+  code : Int32
   reported : Bool
 }
 
@@ -39,7 +39,7 @@ priv struct ClaimedAssignment {
 }
 
 ///|
-fn random_hex(byte_count : Int) -> String raise ProviderError {
+fn random_hex(byte_count : Int32) -> String raise ProviderError {
   guard @env.rand(byte_count) is Some(bytes) else {
     raise InvalidConfiguration("secure randomness unavailable")
   }
