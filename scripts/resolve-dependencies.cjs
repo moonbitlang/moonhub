@@ -25,7 +25,9 @@ function resolveDependencies(root, run = spawnSync) {
     }
     result = resolve();
   }
-  if (result.stdout) process.stdout.write(result.stdout);
+  // The dependency tree is useful for interactive diagnosis, but its repeated
+  // transitive entries make CI logs thousands of lines long. Keep stderr for
+  // failures and let the caller report the concise stage result.
   if (result.stderr) process.stderr.write(result.stderr);
   if (result.status !== 0) throw new Error(result.error?.message || 'MoonBit dependency resolution failed');
 }
