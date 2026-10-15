@@ -56,7 +56,8 @@ Diffs compare the merge base to the source. Mergeability is cached per version
 using Git's native merge algorithm. The worker recalculates and verifies it
 before merging. Resolve conflicts locally and push again. The initial release
 uses two-parent merge commits and retains source branches. Required Pipeline
-checks are available through opt-in branch protection; see
+checks are available through opt-in branch protection, with optional automatic
+`pull_request` workflows discovered from the target branch; see
 [MR checks](merge-checks.md). Forks, squash/rebase, inline review threads and
 auto-merge are outside this release.
 

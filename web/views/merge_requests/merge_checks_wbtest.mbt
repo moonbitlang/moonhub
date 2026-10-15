@@ -165,3 +165,35 @@ async test "MR workflow settings and execution approval require current authoriz
     ])
   })
 }
+
+///|
+async test "automatically discovered workflows appear as optional in the MR page" {
+  @web_testkit.with_repository_test_app((port, pool, root, alice, _) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    let base = @test_support.workflow_commit(
+      dir,
+      @test_support.single_job_workflow.replace_all(
+        old="workflow_dispatch",
+        new="pull_request",
+      ),
+    )
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+    ignore(
+      @test_support.merge_test_commit(dir, "feature", base, "optional CI\n"),
+    )
+    let mr = @collaboration.create_merge_request(
+      pool, scope, dir, actor, "Automatic", "", "feature", "master", false,
+    )
+    assert_true(@pipeline.run_next_merge_check(pool, root))
+    assert_false(@collaboration.merge_checks(pool, mr)[0].required)
+    let (response, page) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/merge-requests/1", alice,
+    )
+    assert_eq(response.code, 200)
+    assert_true(page.contains("Automatic workflow · optional for merge"))
+    assert_true(page.contains("/alice/demo/pipelines/1"))
+  })
+}

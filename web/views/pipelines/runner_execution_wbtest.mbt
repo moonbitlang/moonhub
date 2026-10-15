@@ -12,19 +12,37 @@ async fn source_status(port : Int32, id : Int64, token : String) -> Int32 {
 }
 
 ///|
-async test "real runner streams logs before exit and reports persisted step outcomes" {
+async test "pull request automatically runs built-in checkout against its merged snapshot" {
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((_, launcher, workspace) => {
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
-      let workflow = @test_support.single_job_workflow.replace_all(
-        old="echo fixture",
-        new="test -f .github/workflows/build.yml; test ! -d .git; grep -q live-output .github/workflows/build.yml; printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+      let workflow = @test_support.single_job_workflow
+        .replace_all(
+          old="on: workflow_dispatch",
+          new="on: {pull_request: {types: [opened, synchronize, reopened]}}",
+        )
+        .replace_all(
+          old="steps:\n",
+          new="steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .replace_all(
+          old="echo fixture",
+          new="test -f README.md; test ! -d .git; grep -q live-output README.md; printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+        )
+      let dir = repo.git_dir(root)
+      let base = @test_support.workflow_commit(dir, workflow)
+      ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+      ignore(
+        @test_support.merge_test_commit(dir, "feature", base, "live-output\n"),
       )
-      ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
       let actor = @identity.active_user_by_name(pool, "alice")
-      let run = @pipeline.create_run(
-        pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+      let scope = @repository.repository_scope(pool, actor, repo)
+      let mr = @collaboration.create_merge_request(
+        pool, scope, dir, actor, "MR checkout", "", "feature", "master", false,
       )
+      assert_true(@pipeline.run_next_merge_check(pool, root))
+      let run = @pipeline.list_runs(pool, actor, repo)[0]
+      assert_eq(run.workflow_source, workflow)
       let coordinator = @pipeline.Coordinator::new(pool)
       let provider_token = @identity.random_hex(32)
       let attempt_token = @identity.random_hex(32)
@@ -44,13 +62,6 @@ async test "real runner streams logs before exit and reports persisted step outc
           attempt_token,
         })
         .unwrap()
-      // Move the branch after dispatch: checkout must still deliver the pinned snapshot.
-      ignore(
-        @test_support.workflow_commit(
-          repo.git_dir(root),
-          @test_support.single_job_workflow,
-        ),
-      )
       let app = @moonback.App(
         Module(ctx => {
           ctx.mount(
@@ -126,8 +137,13 @@ async test "real runner streams logs before exit and reports persisted step outc
         )
         assert_true(result.reported)
         assert_eq(
-          @fs.read_file(workspace + "/.github/workflows/build.yml").text(),
-          workflow,
+          @fs.read_file(workspace + "/README.md").text(),
+          "live-output\n",
+        )
+        assert_true(!@fs.exists(workspace + "/.github/workflows/build.yml"))
+        assert_eq(
+          @collaboration.merge_checks(pool, mr)[0].conclusion,
+          "success",
         )
         let logs = coordinator
           .read_logs(
@@ -138,7 +154,12 @@ async test "real runner streams logs before exit and reports persisted step outc
           )
           .map(chunk => chunk.text)
           .join("")
-        assert_eq(logs, "live-output\nfinished\n")
+        assert_eq(
+          logs,
+          "Checked out pinned source " +
+          assignment.commit_sha +
+          "\nlive-output\nfinished\n",
+        )
         assert_true(!logs.contains(attempt_token))
         let steps = coordinator.read_steps(
           actor,
@@ -146,9 +167,11 @@ async test "real runner streams logs before exit and reports persisted step outc
           run.number,
           @protocol.parse_decimal(assignment.attempt_id).unwrap(),
         )
-        assert_eq(steps.length(), 1)
+        assert_eq(steps.length(), 2)
         assert_eq(steps[0].state, "success")
         assert_eq(steps[0].exit_code, 0)
+        assert_eq(steps[1].state, "success")
+        assert_eq(steps[1].exit_code, 0)
       })
     })
   })

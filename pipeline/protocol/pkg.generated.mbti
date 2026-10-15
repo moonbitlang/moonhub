@@ -7,6 +7,8 @@ import {
 }
 
 // Values
+pub let action_assignment_version : Int
+
 pub let cancel_grace_ms : Int64
 
 pub let lease_ms : Int64
@@ -117,14 +119,16 @@ pub(all) struct StepPlan {
   id : String
   name : String
   run : String
+  uses : String
   shell : String
   working_directory : String
   env : Map[String, String]
   timeout_minutes : Int
-} derive(ToJson, @debug.Debug, @json.FromJson)
+} derive(ToJson, @debug.Debug)
 pub fn StepPlan::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn StepPlan::to_json(Self) -> Json
 pub fn StepPlan::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for StepPlan
 
 pub(all) struct StepRequest {
   version : Int

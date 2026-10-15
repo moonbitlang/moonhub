@@ -174,6 +174,7 @@ test "wire job plan has no language-specific optional field representation" {
         id: "run",
         name: "Run",
         run: "echo test",
+        uses: "",
         shell: "",
         working_directory: ".",
         env: Map([]),
@@ -193,4 +194,24 @@ test "wire job plan has no language-specific optional field representation" {
   )
   let restored : JobPlan = @json.from_json(json)
   assert_eq(ToJson::to_json(restored), json)
+}
+
+///|
+test "legacy wire steps without uses still decode and action names remain strings" {
+  let legacy : StepPlan = @json.from_json({
+    "id": "old",
+    "name": "Old",
+    "run": "echo old",
+    "shell": "",
+    "working_directory": ".",
+    "env": {},
+    "timeout_minutes": 0,
+  })
+  assert_eq(legacy.uses, "")
+  let action : StepPlan = { ..legacy, run: "", uses: "actions/checkout@v4", }
+  assert_true(
+    ToJson::to_json(action) is { "uses": String("actions/checkout@v4"), .. },
+  )
+  let decoded : StepPlan = @json.from_json(ToJson::to_json(action))
+  assert_eq(decoded.uses, action.uses)
 }

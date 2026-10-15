@@ -21,6 +21,22 @@ test "push and manual triggers accept exact branch filters and preserve serializ
   assert_true(trigger.matches_push("release/stable"))
   assert_false(trigger.matches_push("release/other"))
   assert_false(triggers(basic_workflow).push)
+  assert_true(
+    triggers(
+      basic_workflow.replace_all(
+        old="on: workflow_dispatch",
+        new="on: pull_request",
+      ),
+    ).pull_request,
+  )
+  assert_true(
+    triggers(
+      basic_workflow.replace_all(
+        old="on: workflow_dispatch",
+        new="on: {pull_request: {types: [opened, synchronize]}}",
+      ),
+    ).matches_pull_request("synchronize"),
+  )
   assert_eq(
     ToJson::to_json(parse(source)),
     ToJson::to_json(parse(basic_workflow)),
@@ -28,7 +44,7 @@ test "push and manual triggers accept exact branch filters and preserve serializ
   for
     trigger in [
       "{push: {branches: ['release/**']}}", "{push: {branches: []}}", "{push: {branches: master}}",
-      "{push: {tags: [v1]}}", "{push: {paths: [src]}}", "[push, push]", "{}", "pull_request",
+      "{push: {tags: [v1]}}", "{push: {paths: [src]}}", "[push, push]", "{}",
     ] {
     try
       parse(
@@ -42,5 +58,29 @@ test "push and manual triggers accept exact branch filters and preserve serializ
     } noraise {
       _ => fail("accepted unsupported trigger: " + trigger)
     }
+  }
+}
+
+///|
+test "pull request types default correctly and unsupported filters fail closed" {
+  let trigger = triggers(
+    basic_workflow.replace_all(old="workflow_dispatch", new="pull_request"),
+  )
+  for event in ["opened", "reopened", "synchronize"] {
+    assert_true(trigger.matches_pull_request(event))
+  }
+  assert_false(trigger.matches_pull_request("closed"))
+  for
+    config in [
+      "{types: []}", "{types: opened}", "{types: [opened, opened]}", "{types: [closed]}",
+      "{types: [edited]}", "{branches: [master]}", "{paths: [src]}",
+    ] {
+    expect_invalid(
+      basic_workflow.replace_all(
+        old="on: workflow_dispatch",
+        new="on: {pull_request: " + config + "}",
+      ),
+      "on.pull_request",
+    )
   }
 }

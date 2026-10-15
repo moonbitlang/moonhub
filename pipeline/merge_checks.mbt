@@ -30,7 +30,7 @@ fn cancel_obsolete_merge_checks(
     client.with_transaction(
       tx => {
         let obsolete = tx.query_all(
-          "SELECT c.id FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE m.id = ? AND (m.status <> 'open' OR m.draft = 1 OR c.version <> m.current_version OR c.generation <> m.check_generation OR NOT EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path)) AND c.state IN ('pending', 'awaiting_approval', 'queued', 'running', 'error')",
+          "SELECT c.id FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE m.id = ? AND (m.status <> 'open' OR m.draft = 1 OR c.version <> m.current_version OR c.generation <> m.check_generation OR (c.automatic = 0 AND NOT EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))) AND c.state IN ('pending', 'awaiting_approval', 'queued', 'running', 'error')",
           params=[mr.id],
         )
         for row in obsolete {
@@ -145,7 +145,7 @@ pub async fn run_next_merge_check(
 ) -> Bool {
   let row = pool.with_client(client => {
     client.query_opt(
-      "SELECT m.id, m.number, r.id AS repository_id, r.team_id, r.name, t.name_key AS owner FROM merge_request m JOIN repository r ON r.id = m.repository_id JOIN team t ON t.id = r.team_id WHERE m.checks_poll_after <= CAST(strftime('%s', 'now') AS INTEGER) AND ((m.status = 'open' AND EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = r.id AND b.branch = m.target_branch)) OR EXISTS (SELECT 1 FROM merge_check c WHERE c.merge_request_id = m.id AND c.state IN ('pending', 'queued', 'running', 'awaiting_approval'))) ORDER BY m.checks_poll_after, m.id LIMIT 1",
+      "SELECT m.id, m.number, r.id AS repository_id, r.team_id, r.name, t.name_key AS owner FROM merge_request m JOIN repository r ON r.id = m.repository_id JOIN team t ON t.id = r.team_id WHERE r.ready = 1 AND m.checks_poll_after <= CAST(strftime('%s', 'now') AS INTEGER) AND ((m.status = 'open' AND m.draft = 0) OR EXISTS (SELECT 1 FROM merge_check c WHERE c.merge_request_id = m.id AND c.state IN ('pending', 'queued', 'running', 'awaiting_approval'))) ORDER BY m.checks_poll_after, m.id LIMIT 1",
     )
   })
   guard row is Some(row) else { return false }
@@ -203,7 +203,50 @@ pub async fn run_next_merge_check(
   if mr.job_status == "pending" || mr.job_status == "running" {
     return true
   }
-  @collaboration.prepare_merge_checks(pool, scope, mr)
+  let workflows : Array[String] = []
+  if mr.status == "open" && !mr.draft {
+    let event : String = pool.with_client(client => {
+      client
+      .query_one("SELECT workflow_event FROM merge_request WHERE id = ?", params=[
+        mr.id,
+      ])
+      .get_name("workflow_event")
+    })
+    let revision = @collaboration.merge_revision(pool, mr)
+    let output = @gitops.merge_git(git_dir, [
+      "ls-tree",
+      revision.target_sha,
+      ".github/workflows/",
+    ])
+    let paths = @domain.split_lines(output)
+    guard paths.length() <= 64 else {
+      raise @domain.BadRequest(
+        message="target contains more than 64 workflow files",
+      )
+    }
+    for line in paths {
+      guard line.split_once("\t") is Some((_, entry)) else { continue }
+      let path = entry.to_owned()
+      guard path.has_suffix(".yml") || path.has_suffix(".yaml") else {
+        continue
+      }
+      try {
+        validate_workflow_path(path)
+        let source = read_workflow_source(git_dir, revision.target_sha, path)
+        if @workflow.triggers(source).matches_pull_request(event) {
+          workflows.push(path)
+        }
+      } catch {
+        // Show invalid definitions as preparation failures on this MR instead
+        // of silently losing diagnostics or starving the remaining workflows.
+        @workflow.InvalidWorkflow(_)
+        | @domain.BadRequest(_)
+        | @gitops.Failure(_) => workflows.push(path)
+        err => raise err
+      }
+    }
+  }
+  @collaboration.prepare_merge_checks(pool, scope, mr, workflows~)
   let checks = pool.with_client(client => {
     client.query_all(
       "SELECT c.id, c.workflow_path, u.name_key FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id JOIN \"user\" u ON u.id = c.requested_by_user_id WHERE m.id = ? AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.state = 'pending' AND c.retry_after <= CAST(strftime('%s', 'now') AS INTEGER) ORDER BY c.id LIMIT 16",
@@ -224,8 +267,9 @@ pub async fn run_next_merge_check(
       err if @async.is_cancellation_error(err) => raise err
       err => {
         let message = match err {
-          @workflow.InvalidWorkflow(message) | @domain.BadRequest(message~) =>
-            message
+          @workflow.InvalidWorkflow(message)
+          | @domain.BadRequest(message~)
+          | @gitops.Failure(message~) => message
           @domain.Forbidden(_)
           | @domain.Unauthorized(_)
           | @domain.NotFound(_) =>
@@ -256,7 +300,7 @@ async fn validate_merge_check_rerun(
 ) -> Unit {
   let row = pool.with_client(client => {
     client.query_opt(
-      "SELECT m.number FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = ? AND m.repository_id = ? AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = ? AND m.id NOT IN (SELECT merge_request_id FROM merge_job WHERE status IN ('pending', 'running')) AND EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path)",
+      "SELECT m.number FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = ? AND m.repository_id = ? AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = ? AND m.id NOT IN (SELECT merge_request_id FROM merge_job WHERE status IN ('pending', 'running')) AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))",
       params=[check_id, scope.id, previous_number],
     )
   })

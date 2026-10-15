@@ -33,6 +33,7 @@ pub struct Step {
   id : String
   name : String
   run : String
+  uses : String?
   shell : String?
   working_directory : String
   env : Map[String, String]

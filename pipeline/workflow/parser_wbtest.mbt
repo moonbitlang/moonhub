@@ -27,6 +27,7 @@ test "workflow scalar trigger and normalized plan round trip" {
   let step = workflow.jobs[0].steps[0]
   assert_eq(step.id, "step_1")
   assert_eq(step.run, "echo hello")
+  assert_eq(step.uses, None)
   assert_eq(step.shell, None)
   assert_eq(step.working_directory, ".")
   let restored : Workflow = @json.from_json(ToJson::to_json(workflow))
@@ -34,6 +35,7 @@ test "workflow scalar trigger and normalized plan round trip" {
   for
     trigger in [
       "[workflow_dispatch]", "{workflow_dispatch: null}", "{workflow_dispatch: {}}",
+      "pull_request", "{pull_request: null}",
     ] {
     assert_eq(
       parse(
@@ -118,6 +120,65 @@ test "YAML multiline scripts comments quotes and chomping remain intact" {
 }
 
 ///|
+test "pull request workflows accept the built-in checkout action" {
+  let workflow = parse(
+    (
+      #|name: MoonBit CI
+      #|on:
+      #|  pull_request:
+      #|    types: [opened, synchronize, reopened]
+      #|jobs:
+      #|  test:
+      #|    runs-on: [self-hosted, linux]
+      #|    steps:
+      #|      - uses: actions/checkout@v4
+      #|      - run: moon test --target native --strip -j 1
+    ),
+  )
+  assert_eq(workflow.jobs[0].steps[0].run, "")
+  assert_eq(workflow.jobs[0].steps[0].uses, Some("actions/checkout@v4"))
+  assert_eq(workflow.jobs[0].steps[1].uses, None)
+  let trigger = triggers(
+    (
+      #|on:
+      #|  pull_request:
+      #|    types: [opened, synchronize, reopened]
+      #|jobs:
+      #|  test:
+      #|    runs-on: self-hosted
+      #|    steps:
+      #|      - run: echo test
+    ),
+  )
+  assert_true(trigger.pull_request)
+  assert_true(trigger.matches_pull_request("opened"))
+  assert_true(trigger.matches_pull_request("synchronize"))
+  assert_false(trigger.matches_pull_request("closed"))
+  expect_invalid(
+    (
+      #|on: pull_request
+      #|jobs:
+      #|  test:
+      #|    runs-on: self-hosted
+      #|    steps:
+      #|      - uses: owner/action@v1
+    ),
+    "built-in checkout",
+  )
+  expect_invalid(
+    (
+      #|on: pull_request
+      #|jobs:
+      #|  test:
+      #|    runs-on: self-hosted
+      #|    steps:
+      #|      - uses: actions/checkout@main
+    ),
+    "built-in checkout",
+  )
+}
+
+///|
 test "unsupported execution semantics fail closed at every mapping level" {
   for
     (field, fragment) in [
@@ -135,19 +196,9 @@ test "unsupported execution semantics fail closed at every mapping level" {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }
   for
-    field in [
-      "uses: actions/checkout@v4", "if: false", "continue-on-error: true", "with: {}",
-      "unknown: 1",
-    ] {
+    field in ["if: false", "continue-on-error: true", "with: {}", "unknown: 1"] {
     expect_invalid(basic_workflow + "\n        " + field, "not supported")
   }
-  expect_invalid(
-    basic_workflow.replace_all(
-      old="on: workflow_dispatch",
-      new="on: pull_request",
-    ),
-    "not supported",
-  )
   expect_invalid(
     basic_workflow.replace_all(
       old="on: workflow_dispatch",
@@ -297,4 +348,44 @@ test "paths shell identifiers reserved variables and timeout types are validated
     basic_workflow + "\n    env: {VALUE: {nested: object}}",
     "scalar",
   )
+}
+
+///|
+test "checkout rejects mixed unsupported and repeated actions and keeps legacy snapshots readable" {
+  let action = basic_workflow.replace_all(
+    old="run: echo hello",
+    new="uses: moonhub/checkout@v1",
+  )
+  assert_eq(parse(action).jobs[0].steps[0].uses, Some("moonhub/checkout@v1"))
+  for
+    field in [
+      "run: echo unsafe", "with: {}", "shell: bash", "working-directory: src", "env: {X: y}",
+    ] {
+    expect_invalid(
+      action + "\n        " + field,
+      if field.has_prefix("run:") {
+        "exactly one"
+      } else {
+        "not supported"
+      },
+    )
+  }
+  expect_invalid(action + "\n      - uses: actions/checkout@v4", "one checkout")
+  expect_invalid(
+    basic_workflow.replace_all(old="echo hello", new="'   '"),
+    "nonempty",
+  )
+  let legacy : Step = @json.from_json({
+    "id": "old",
+    "name": "Old",
+    "run": "echo old",
+    "working_directory": ".",
+    "env": {},
+  })
+  assert_eq(legacy.uses, None)
+  assert_eq(legacy.shell, None)
+  assert_eq(legacy.timeout_minutes, None)
+  let workflow = parse(action)
+  let restored : Workflow = @json.from_json(ToJson::to_json(workflow))
+  assert_eq(restored.jobs[0].steps[0].uses, Some("moonhub/checkout@v1"))
 }

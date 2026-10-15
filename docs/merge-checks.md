@@ -1,8 +1,11 @@
 # Merge Request Pipeline Checks
 
-Same-repository merge requests can require existing Pipeline workflows before
-merging. This is an opt-in branch-protection policy, not GitHub's `pull_request`
-event implementation. No new provider, executor, or runner credential is needed.
+Same-repository merge requests automatically discover target-owned
+`pull_request` workflows for opening, source updates and reopening. Discovery is
+independent of branch protection and **Run push workflows**. These checks are
+optional for merging unless their paths are required by branch protection.
+Existing required `workflow_dispatch` or `push` workflows continue to run
+independently of their trigger filters. No new provider credential is needed.
 
 ## Enable
 
@@ -20,9 +23,24 @@ event implementation. No new provider, executor, or runner credential is needed.
    run and its step logs. **Refresh checks** reloads the current comparison and
    results without periodically replacing a review form.
 
+For optional automatic CI, only steps 1, 2 and 4 are needed: declare
+`on: pull_request` in the target workflow. `types` can select any nonempty subset
+of `opened`, `synchronize`, `reopened`; omitted means all three. Other types and
+branch/path filters are rejected. Draft MRs wait until ready. Source changes
+select `synchronize`; reopening selects `reopened`. Advancing only the target
+reruns selected workflows against a new merged tree while retaining the last
+source/lifecycle event. At most 64 target workflow entries are inspected.
+Definitions introduced only in the source branch are not discovered until they
+reach the target. Invalid or oversized definitions appear as per-file
+preparation errors without preventing other workflows, including required
+checks, from being scheduled. Reopening observes the source before the browser
+or API request returns; later pushes select `synchronize` even when workflow
+discovery has not run yet.
+
 An empty required-workflow list preserves approval-only protection. Existing
-rules gain no checks automatically. Missing, invalid, or conflicting workflows
-block merging; they are never treated as successful or silently skipped.
+rules gain no required checks automatically. Missing, invalid, or conflicting
+required workflows block merging; optional failures do not. They are never
+treated as successful or silently skipped.
 Provider availability and label/scope blockers are explained on the run page.
 
 ## What Is Checked
@@ -50,7 +68,7 @@ The existing manager-only execution policy remains in effect:
   it ready, or reopening it authorizes execution of that comparison.
 - A durable, recovered manager push of the exact source commit also authorizes
   its checks. Recording these events is enabled when the repository has required
-  checks, independently of the **Run push workflows** setting.
+  checks or open MRs, independently of the **Run push workflows** setting.
 - A contributor's new source revision without such authorization waits for a
   manager to use **Approve and run checks**. Read access or opening the page
   does not grant execution authority. Execution approval is not a code-review
@@ -61,6 +79,11 @@ The existing manager-only execution policy remains in effect:
 - Account and repository permissions are rechecked when publishing a run and
   throughout the existing claim/lease protocol. Providers remain explicitly
   scoped, and job containers receive no provider credential.
+
+Execution approval is durably bound to the source SHA and policy generation
+before asynchronous discovery, even when no checks exist yet. A CLI/API MR
+created using a collaboration write token does not create such approval.
+Use an execute token's `approve-checks` operation or an authorized browser action.
 
 Forks and arbitrary external-contributor execution are not enabled. Approving
 a check permits the proposed code to run with the provider's existing isolation
@@ -95,6 +118,11 @@ approval-waiting checks block the merge. Changing the required workflow set or
 closing/reopening or marking draft/ready starts a new generation.
 
 ## Upgrade and Verification
+
+Migration 017 adds the MR event, distinguishes automatic/required checks and
+preserves existing execution approvals. Existing run definitions without `uses`
+remain readable and runnable. New checkout assignments require matching provider
+and Runner images; see [assignment compatibility](pipelines.md#runner-protocol-step-2).
 
 Migration 014 preserves existing MRs, reviews, branch rules, and Pipeline runs.
 It adds opt-in requirements, versioned check state, and immutable run-to-check

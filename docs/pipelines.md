@@ -27,10 +27,10 @@ or the application's data volume. Isolation checks accompany step 4, not step 7.
 
 ## Current Workflow Contract
 
-Merge Requests can require these existing workflows through branch protection.
-See [MR Pipeline checks](merge-checks.md) for setup, target-owned configuration,
-merged-tree snapshots, execution approval, and the merge gate. This does not add
-GitHub `pull_request` syntax or broaden the supported workflow language.
+Same-repository Merge Requests discover `pull_request` workflows automatically
+from the pinned target revision and test the merged source/target tree. They
+appear as optional MR checks unless branch protection requires their path.
+See [MR Pipeline checks](merge-checks.md) for execution approval and merge gates.
 
 Workflow files are regular UTF-8 Git blobs directly under `.github/workflows/`,
 with `.yml` or `.yaml` extensions and a nonempty ASCII filename starting with a
@@ -40,18 +40,25 @@ a run resolves the branch once, then reads the workflow from that exact commit.
 
 Supported configuration:
 
-- `name`; `on: workflow_dispatch`, `on: push`, lists of these triggers, or a
-  mapping containing either/both. Dispatch inputs are not yet supported.
+- `name`; `on: workflow_dispatch`, `on: push`, `on: pull_request`, lists of
+  these triggers, or a mapping containing them. Dispatch inputs are not yet
+  supported. Pull request triggers default to `opened`, `reopened` and
+  `synchronize`. An optional nonempty `types` list selects a subset of those
+  three events. Other event types and PR branch/path filters are rejected.
   Push triggers handle branch creation/updates only. `push.branches` accepts
-  1-64 exact branch names; omitted means all branches. Globs, negation, tag,
-  path and PR filters are rejected, not silently approximated.
+  1-64 exact branch names; omitted means all branches. Globs, negation, tag and
+  path filters are rejected, not silently approximated.
 - Static `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
 - Job labels must include `self-hosted`; the execution target is Linux. Labels
   are normalized to lowercase. There is no emulation of `ubuntu-latest` or other
   GitHub-hosted images. Providers must possess every requested label.
-- Steps accept `id`, `name`, `run`, `shell`, `working-directory`, `env`, and
-  `timeout-minutes`. Only literal `bash` and `sh` shell selections are accepted.
+- Literal steps accept `id`, `name`, `run`, `shell`, `working-directory`, `env`,
+  and `timeout-minutes`. Only literal `bash` and `sh` shell selections are
+  accepted. A job can instead include one built-in checkout step with
+  `uses: actions/checkout@v4` or `uses: moonhub/checkout@v1`, plus optional
+  `id`, `name` and `timeout-minutes`. It cannot also have `run`, `with`, `env`,
+  `shell` or `working-directory`.
 - Environment precedence is workflow < job < step. Values must be scalar;
   strings, integers, booleans, and real-number spellings are retained as strings.
   Names must be POSIX-like identifiers. `MOONHUB_`, `GITHUB_`, and `RUNNER_`
@@ -69,11 +76,34 @@ Supported configuration:
 
 All unknown fields are rejected before mapping. This includes `permissions`,
 `concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
-`outputs`, `uses`, and `with`. `${{ ... }}` expressions are rejected rather than
-executed literally. No field is silently stripped. `actions/checkout` is not
-yet accepted: a later delivery must implement and test the action contract
-before enabling it. The current Runner instead prepares a bounded archive of
-the pinned commit before executing literal steps.
+`outputs`, and `with`. Other `uses` values and `${{ ... }}` expressions are
+rejected rather than executed literally. No field is silently stripped.
+
+Checkout downloads the pinned archive from the authenticated MoonHub source API
+and extracts it when that step runs, with its own log and outcome. It does not
+fetch or execute third-party Action code. This is a source-only compatibility
+subset: no `.git`, credentials, history, alternate ref/path/repository, submodules,
+LFS or checkout inputs. The source workspace must be empty at that point;
+earlier steps may run commands but must not leave files there. A checkout
+failure stops subsequent steps. Existing jobs with only literal `run` steps
+keep their automatic source preparation before the first step.
+
+For example, commit this workflow on the MR target branch and provision a
+matching provider. Opening a ready MR discovers it without a branch rule;
+execution still requires manager approval as described below.
+
+```yaml
+name: MoonBit CI
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  test:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - run: moon test --target native --strip -j 1
+```
 
 ```yaml
 name: Manual checks
@@ -150,6 +180,13 @@ do not execute workflow scripts or connect to Docker. Step 3 execution tests
 run only application-owned fixtures.
 
 ## Runner Protocol (Step 2)
+
+Checkout jobs use assignment payload `version: 2`, with a string `uses` field
+on each step (`""` for shell steps). Pure shell jobs retain assignment V1;
+new decoders accept old V1 steps without `uses`. Lease, claim and result HTTP
+messages remain V1 under the existing API prefix. Older Runners/providers reject
+action assignments rather than silently skip checkout. Upgrade Web, SSH, provider
+and Runner images together before enabling these workflows.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
