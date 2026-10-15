@@ -64,7 +64,7 @@ pub fn notification_email_enabled(@database.Database, @domain.CurrentUser) -> Bo
 
 pub fn notification_label(String) -> String
 
-pub fn prepare_merge_checks(@database.Database, @repository.RepositoryScope, MergeRequest, actor? : @domain.CurrentUser) -> Unit raise
+pub fn prepare_merge_checks(@database.Database, @repository.RepositoryScope, MergeRequest, actor? : @domain.CurrentUser, workflows? : Array[String]) -> Unit raise
 
 pub async fn refresh_merge_request(@database.Database, @repository.RepositoryScope, String, MergeRequest) -> MergeRequest
 
@@ -171,6 +171,7 @@ pub struct MergeActivity {
 
 pub struct MergeCheck {
   workflow_path : String
+  required : Bool
   state : String
   conclusion : String
   run_number : Int64?

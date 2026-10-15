@@ -38,6 +38,7 @@ pub struct Step {
   id : String
   name : String
   run : String
+  uses : String?
   shell : String?
   working_directory : String
   env : Map[String, String]
@@ -50,8 +51,11 @@ pub fn Step::to_repr(Self) -> @debug.Repr
 pub struct Triggers {
   dispatch : Bool
   push : Bool
+  pull_request : Bool
+  pull_request_types : Array[String]
   branches : Array[String]
 }
+pub fn Triggers::matches_pull_request(Self, String) -> Bool
 pub fn Triggers::matches_push(Self, String) -> Bool
 
 pub struct Workflow {

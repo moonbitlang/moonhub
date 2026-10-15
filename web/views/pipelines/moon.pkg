@@ -17,6 +17,8 @@ import {
 
 import {
   "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/runner",
   "moonbitlang/async/fs",
   "hackwaly/moonhub/test_support",

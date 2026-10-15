@@ -10,6 +10,7 @@ fn test_step(
     id,
     name: id,
     run,
+    uses: "",
     shell,
     working_directory: directory,
     env,
@@ -457,5 +458,146 @@ async test "reserved loader environment and reused workspaces fail before start"
       _ => fail("reused existing workspace")
     }
     assert_eq(@fs.read_file(workspace + "/existing").text(), "keep")
+  })
+}
+
+///|
+async test "checkout materializes pinned source at its own step and logs a successful outcome" {
+  @test_support.with_runner_workspace((root, launcher, workspace) => {
+    let source_dir = root + "/source"
+    @fs.mkdir(source_dir)
+    @fs.write_file(source_dir + "/README.md", "pinned\n")
+    let archive = root + "/source.tar"
+    assert_eq(
+      @process.run("tar", ["-cf", archive, "-C", source_dir, "README.md"]),
+      0,
+    )
+    let bytes = @fs.read_file(archive).binary()
+    let server = fake_server()
+    let mut fetched = 0
+    let checkout : @protocol.StepPlan = {
+      ..test_step("checkout", "", shell=""),
+      uses: "moonhub/checkout@v1",
+    }
+    let assignment = {
+      ..test_assignment([
+        test_step("before", "test ! -f README.md"),
+        checkout,
+        test_step(
+          "after", "test -f README.md; grep -q pinned README.md; test ! -d .git",
+        ),
+      ]),
+      version: @protocol.action_assignment_version,
+    }
+    let report = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (operation, body, until) => server.post(operation, body, until),
+      source=() => {
+        fetched += 1
+        bytes
+      },
+    )
+    assert_eq(report.conclusion, "success")
+    assert_true(report.reported)
+    assert_eq(fetched, 1)
+    assert_true(report.steps.all(step => step.state == "success"))
+    assert_true(
+      server.logs.any(log => {
+        log.step_id == "checkout" &&
+        log.text.contains("Checked out pinned source")
+      }),
+    )
+  })
+}
+
+///|
+async test "checkout failure is attributed to the action and prevents subsequent scripts" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let server = fake_server()
+    let checkout : @protocol.StepPlan = {
+      ..test_step("checkout", "", shell=""),
+      uses: "actions/checkout@v4",
+    }
+    let assignment = {
+      ..test_assignment([checkout, test_step("after", "touch executed")]),
+      version: @protocol.action_assignment_version,
+    }
+    let report = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (operation, body, until) => server.post(operation, body, until),
+    )
+    assert_eq(report.conclusion, "failure")
+    assert_eq(report.steps[0].state, "failure")
+    assert_eq(report.steps[1].state, "skipped")
+    assert_true(!@fs.exists(workspace + "/executed"))
+    assert_true(
+      server.logs.any(log => {
+        log.step_id == "checkout" && log.text.contains("source checkout failed")
+      }),
+    )
+  })
+}
+
+///|
+async test "runner rejects unknown mixed repeated or legacy-version actions before start" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let base : @protocol.StepPlan = {
+      ..test_step("checkout", "", shell=""),
+      uses: "actions/checkout@v4",
+    }
+    for
+      step in [
+        { ..base, uses: "other/action@v1", },
+        { ..base, run: "touch executed", },
+        { ..base, env: { "X": "ignored" }, },
+      ] {
+      let server = fake_server()
+      let assignment = {
+        ..test_assignment([step]),
+        version: @protocol.action_assignment_version,
+      }
+      try
+        ignore(
+          execute_assignment(assignment, test_options(launcher, workspace), (
+            operation,
+            body,
+            until,
+          ) => server.post(operation, body, until)),
+        )
+      catch {
+        InvalidConfiguration(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("unsafe action accepted")
+      }
+      assert_eq(server.execution_id, "")
+    }
+    for
+      assignment in [
+        test_assignment([base]),
+        {
+          ..test_assignment([base, { ..base, id: "second", }]),
+          version: @protocol.action_assignment_version,
+        },
+      ] {
+      let server = fake_server()
+      try
+        ignore(
+          execute_assignment(assignment, test_options(launcher, workspace), (
+            operation,
+            body,
+            until,
+          ) => server.post(operation, body, until)),
+        )
+      catch {
+        InvalidConfiguration(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("incompatible or repeated action accepted")
+      }
+      assert_eq(server.execution_id, "")
+    }
   })
 }

@@ -7,32 +7,213 @@ async fn with_merge_check_fixture(
     @domain.CurrentUser,
     @collaboration.MergeRequest,
   ) -> Unit,
+  workflow~ : String = @test_support.single_job_workflow,
+  required~ : Bool = true,
+  authorize~ : Bool = true,
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let actor = @identity.active_user_by_name(pool, "alice")
     let scope = @repository.repository_scope(pool, actor, protocol_repo)
     let dir = protocol_repo.git_dir(root)
-    let base = @test_support.workflow_commit(
-      dir, @test_support.single_job_workflow,
-    )
+    let base = @test_support.workflow_commit(dir, workflow)
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
     // The proposed change deletes its workflow; policy must still use target's.
     ignore(@test_support.merge_test_commit(dir, "feature", base, "MR source\n"))
-    @collaboration.save_branch_rule(
+    if required {
+      @collaboration.save_branch_rule(
+        pool,
+        scope,
+        dir,
+        actor,
+        "master",
+        true,
+        0L,
+        checks=[".github/workflows/build.yml"],
+      )
+    }
+    let mr = @collaboration.create_merge_request(
       pool,
       scope,
       dir,
       actor,
+      "Check integration",
+      "",
+      "feature",
       "master",
-      true,
-      0L,
-      checks=[".github/workflows/build.yml"],
-    )
-    let mr = @collaboration.create_merge_request(
-      pool, scope, dir, actor, "Check integration", "", "feature", "master", false,
+      false,
+      authorize_checks=authorize,
     )
     f(pool, root, scope, actor, mr)
   })
+}
+
+///|
+let pull_request_workflow : String =
+  #|name: MR CI
+  #|on:
+  #|  pull_request:
+  #|    types: [opened, reopened, synchronize]
+  #|jobs:
+  #|  test:
+  #|    runs-on: [self-hosted, linux]
+  #|    steps:
+  #|      - uses: actions/checkout@v4
+  #|      - run: test -f README.md
+
+///|
+async test "pull request workflows discover without branch rules deduplicate and remain optional" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      poll_merge_checks(pool, root)
+      poll_merge_checks(pool, root)
+      let runs = list_runs(pool, actor, protocol_repo)
+      assert_eq(runs.length(), 1)
+      assert_eq(runs[0].workflow_source, pull_request_workflow)
+      assert_false(@collaboration.merge_checks(pool, mr)[0].required)
+      let coordinator = merge_check_provider(pool)
+      let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+      assert_eq(assignment.version, @protocol.action_assignment_version)
+      assert_eq(assignment.job.steps[0].uses, "actions/checkout@v4")
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(coordinator.start(id, token, 1))
+      ignore(coordinator.complete(id, token, completion(conclusion="failure")))
+      assert_eq(
+        @collaboration.merge_blocker(
+          pool,
+          scope,
+          mr,
+          @collaboration.merge_revision(pool, mr),
+        ),
+        "",
+      )
+    },
+    workflow=pull_request_workflow,
+    required=false,
+  )
+}
+
+///|
+async test "pull request execution approval survives discovery but not a new source or reopen generation" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      assert_eq(
+        @collaboration.merge_checks(pool, mr)[0].state,
+        "awaiting_approval",
+      )
+      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      @collaboration.approve_merge_checks(pool, scope, actor, mr, mr.version)
+      poll_merge_checks(pool, root)
+      let coordinator = merge_check_provider(pool)
+      let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(coordinator.start(id, token, 1))
+      let source = @test_support.merge_test_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "feature"),
+        "new source\n",
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(latest.version, mr.version + 1L)
+      assert_true(coordinator.heartbeat(id, token, 1).cancel_requested)
+      assert_eq(
+        @collaboration.merge_checks(pool, latest)[0].state,
+        "awaiting_approval",
+      )
+      // Manager push authorization works without push workflows or branch rules.
+      let next = @test_support.merge_test_commit(
+        dir, "feature", source, "manager source\n",
+      )
+      @repository.record_received_transaction(
+        pool,
+        actor,
+        scope.repo,
+        "d".repeat(32),
+        "prepared",
+        "\{source} \{next} refs/heads/feature",
+      )
+      @repository.record_received_transaction(
+        pool,
+        actor,
+        scope.repo,
+        "d".repeat(32),
+        "committed",
+        "\{source} \{next} refs/heads/feature",
+      )
+      poll_merge_checks(pool, root)
+      let pushed = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(@collaboration.merge_checks(pool, pushed)[0].state, "queued")
+      @collaboration.edit_merge_request(
+        pool, scope, actor, pushed, "close", "", "",
+      )
+      poll_merge_checks(pool, root)
+      let closed = @collaboration.require_merge_request(pool, scope, mr.number)
+      @collaboration.edit_merge_request(
+        pool, scope, actor, closed, "reopen", "", "",
+      )
+      poll_merge_checks(pool, root)
+      let reopened = @collaboration.require_merge_request(
+        pool,
+        scope,
+        mr.number,
+      )
+      assert_true(
+        @collaboration.merge_checks(pool, reopened)[0].run_number is Some(_),
+      )
+    },
+    workflow=pull_request_workflow,
+    required=false,
+    authorize=false,
+  )
+}
+
+///|
+async test "pull request types filter opening and fire on source update and reopening" {
+  let source = pull_request_workflow.replace_all(
+    old="[opened, reopened, synchronize]",
+    new="[reopened, synchronize]",
+  )
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      assert_true(@collaboration.merge_checks(pool, mr).is_empty())
+      ignore(
+        @test_support.merge_test_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "synchronize\n",
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let updated = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(
+        @collaboration.merge_checks(pool, updated)[0].state,
+        "awaiting_approval",
+      )
+      @collaboration.edit_merge_request(
+        pool, scope, actor, updated, "close", "", "",
+      )
+      let closed = @collaboration.require_merge_request(pool, scope, mr.number)
+      @collaboration.edit_merge_request(
+        pool, scope, actor, closed, "reopen", "", "",
+      )
+      let reopened = @collaboration.require_merge_request(
+        pool,
+        scope,
+        mr.number,
+      )
+      @collaboration.prepare_merge_checks(pool, scope, reopened, actor~)
+      poll_merge_checks(pool, root)
+      assert_eq(@collaboration.merge_checks(pool, reopened)[0].state, "queued")
+    },
+    workflow=source,
+    required=false,
+  )
 }
 
 ///|
@@ -88,7 +269,13 @@ async test "MR checks pin merged trees use target workflow deduplicate and gate 
     poll_merge_checks(pool, root)
     poll_merge_checks(pool, root)
     let runs = list_runs(pool, actor, protocol_repo)
-    assert_eq(runs.length(), 1)
+    assert_eq(
+      runs.length(),
+      1,
+      msg=@collaboration.merge_checks(pool, mr)
+        .map(check => check.state + ": " + check.error)
+        .join("; "),
+    )
     let run = runs[0]
     assert_eq(run.workflow_source, @test_support.single_job_workflow)
     assert_eq(
@@ -455,4 +642,125 @@ async test "MR required workflows fail closed when target config is absent and m
     poll_merge_checks(pool, root)
     assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
   })
+}
+
+///|
+async test "pull request required checks keep the merge gate and target advances rerun the same approved source" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      assert_true(@collaboration.merge_checks(pool, mr)[0].required)
+      assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+      let coordinator = merge_check_provider(pool)
+      finish_merge_check(coordinator, result="failure")
+      assert_true(
+        @collaboration.merge_blocker(
+          pool,
+          scope,
+          mr,
+          @collaboration.merge_revision(pool, mr),
+        ).has_prefix("Required check"),
+      )
+      let target = @gitops.branch_sha(dir, "master")
+      let tree = @gitops.merge_git(dir, ["rev-parse", target + "^{tree}"])
+        .trim()
+        .to_owned()
+      let next = @gitops.merge_git(dir, [
+          "commit-tree", tree, "-p", target, "-m", "target advances",
+        ])
+        .trim()
+        .to_owned()
+      ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", next]))
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(latest.version, mr.version + 1L)
+      assert_eq(@collaboration.merge_checks(pool, latest)[0].state, "queued")
+      assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+      finish_merge_check(coordinator)
+      assert_eq(
+        @collaboration.merge_blocker(
+          pool,
+          scope,
+          latest,
+          @collaboration.merge_revision(pool, latest),
+        ),
+        "",
+      )
+    },
+    workflow=pull_request_workflow,
+  )
+}
+
+///|
+async test "optional pull request runs stop when their approving manager loses access" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      poll_merge_checks(pool, root)
+      let coordinator = merge_check_provider(pool)
+      let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(coordinator.start(id, token, 1))
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "UPDATE team_member SET role = 'member' WHERE team_id = ? AND user_id = ?",
+            params=[scope.team_id, actor.id],
+          ),
+        )
+      })
+      assert_true(coordinator.heartbeat(id, token, 1).cancel_requested)
+      assert_false(@collaboration.merge_checks(pool, mr)[0].required)
+    },
+    workflow=pull_request_workflow,
+    required=false,
+  )
+}
+
+///|
+async test "reopening discovers source changes made while closed as reopened then later pushes synchronize" {
+  let workflow = pull_request_workflow.replace_all(
+    old="[opened, reopened, synchronize]",
+    new="[reopened]",
+  )
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      @collaboration.edit_merge_request(pool, scope, actor, mr, "close", "", "")
+      ignore(
+        @test_support.merge_test_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "while closed\n",
+        ),
+      )
+      let closed = @collaboration.require_merge_request(pool, scope, mr.number)
+      @collaboration.edit_merge_request(
+        pool, scope, actor, closed, "reopen", "", "",
+      )
+      poll_merge_checks(pool, root)
+      let reopened = @collaboration.require_merge_request(
+        pool,
+        scope,
+        mr.number,
+      )
+      assert_eq(reopened.version, mr.version + 1L)
+      assert_eq(@collaboration.merge_checks(pool, reopened).length(), 1)
+      ignore(
+        @test_support.merge_test_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "after reopen\n",
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_true(@collaboration.merge_checks(pool, latest).is_empty())
+    },
+    workflow~,
+    required=false,
+  )
 }

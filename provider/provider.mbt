@@ -76,7 +76,9 @@ async fn cleanup_stale_containers(
 fn validate_assignment(
   assignment : @protocol.Assignment,
 ) -> Unit raise ProviderError {
-  guard assignment.version == @protocol.version &&
+  guard [@protocol.version, @protocol.action_assignment_version].contains(
+      assignment.version,
+    ) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
     assignment.job.timeout_minutes >= 1 &&

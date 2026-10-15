@@ -11,8 +11,10 @@ pub async fn refresh_merge_request(
     return mr
   }
   let comparison = @gitops.compare_branches(git_dir, mr.source, mr.target)
+  let mut source_changed = false
   if mr.version > 0L {
     let previous = merge_revision(pool, mr)
+    source_changed = previous.source_sha != comparison.source_sha
     if previous.source_sha == comparison.source_sha &&
       previous.target_sha == comparison.target_sha {
       return mr
@@ -46,8 +48,8 @@ pub async fn refresh_merge_request(
         ],
       )
       let _ = tx.execute(
-        "UPDATE merge_request SET current_version = ?, updated_at = datetime('now') WHERE id = ?",
-        params=[version, mr.id],
+        "UPDATE merge_request SET current_version = ?, workflow_event = CASE WHEN ? AND workflow_event_pending = 0 THEN 'synchronize' ELSE workflow_event END, checks_poll_after = 0, updated_at = datetime('now') WHERE id = ?",
+        params=[version, source_changed, mr.id],
       )
       merge_activity(
         tx,
@@ -259,6 +261,14 @@ pub fn edit_merge_request(
         ignore(
           tx.execute(
             "UPDATE merge_request SET check_generation = check_generation + 1, checks_poll_after = 0 WHERE id = ?",
+            params=[mr.id],
+          ),
+        )
+      }
+      if action == "reopen" {
+        ignore(
+          tx.execute(
+            "UPDATE merge_request SET workflow_event = 'reopened', workflow_event_pending = 1 WHERE id = ?",
             params=[mr.id],
           ),
         )

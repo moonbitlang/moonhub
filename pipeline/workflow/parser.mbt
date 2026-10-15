@@ -235,15 +235,39 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
       fields
     }
     Some(Map(fields)) => fields
-    _ => raise InvalidWorkflow("on requires push or workflow_dispatch")
+    _ =>
+      raise InvalidWorkflow(
+        "on requires push, pull_request or workflow_dispatch",
+      )
   }
   guard !fields.is_empty() else {
     raise InvalidWorkflow("on requires a trigger")
   }
-  check_fields(fields, ["push", "workflow_dispatch"], "on")
+  check_fields(fields, ["push", "pull_request", "workflow_dispatch"], "on")
   if fields.get("workflow_dispatch") is Some(options) {
     guard options is Null || (options is Map(options) && options.is_empty()) else {
       raise InvalidWorkflow("workflow_dispatch inputs are not supported")
+    }
+  }
+  let mut pull_request_types : Array[String] = []
+  if fields.get("pull_request") is Some(options) && !(options is Null) {
+    let options = yaml_as_obj(options, "on.pull_request")
+    check_fields(options, ["types"], "on.pull_request")
+    if options.get("types") is Some(value) {
+      pull_request_types = yaml_as_string_list(
+        Some(value),
+        "on.pull_request.types",
+      )
+      guard value is Array(_) && !pull_request_types.is_empty() else {
+        raise InvalidWorkflow("on.pull_request.types requires a nonempty list")
+      }
+      for event in pull_request_types {
+        guard ["opened", "reopened", "synchronize"].contains(event) else {
+          raise InvalidWorkflow(
+            "on.pull_request.types contains an unsupported event",
+          )
+        }
+      }
     }
   }
   let branches : Array[String] = []
@@ -289,6 +313,8 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
   {
     dispatch: fields.contains("workflow_dispatch"),
     push: fields.contains("push"),
+    pull_request: fields.contains("pull_request"),
+    pull_request_types,
     branches,
   }
 }
@@ -297,6 +323,8 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
 pub struct Triggers {
   dispatch : Bool
   push : Bool
+  pull_request : Bool
+  pull_request_types : Array[String]
   branches : Array[String]
 }
 
@@ -308,6 +336,16 @@ pub fn triggers(source : String) -> Triggers raise InvalidWorkflow {
 ///|
 pub fn Triggers::matches_push(self : Triggers, branch : String) -> Bool {
   self.push && (self.branches.is_empty() || self.branches.contains(branch))
+}
+
+///|
+pub fn Triggers::matches_pull_request(self : Triggers, event : String) -> Bool {
+  self.pull_request &&
+  ["opened", "reopened", "synchronize"].contains(event) &&
+  (
+    self.pull_request_types.is_empty() ||
+    self.pull_request_types.contains(event)
+  )
 }
 
 ///|
@@ -379,7 +417,7 @@ fn parse_job(
     check_fields(
       fields,
       [
-        "id", "name", "run", "env", "shell", "working-directory", "timeout-minutes",
+        "id", "name", "run", "uses", "env", "shell", "working-directory", "timeout-minutes",
       ],
       ctx,
     )
@@ -390,6 +428,24 @@ fn parse_job(
       raise InvalidWorkflow("\{ctx}: invalid or duplicate step id")
     }
     step_ids[step_id] = true
+    let run = yaml_as_optional_string(fields.get("run"), "\{ctx}.run")
+    let uses = yaml_as_optional_string(fields.get("uses"), "\{ctx}.uses")
+    guard (run is Some(_) && uses is None) || (run is None && uses is Some(_)) else {
+      raise InvalidWorkflow("\{ctx} requires exactly one of run or uses")
+    }
+    if uses is Some(action) {
+      guard action == "actions/checkout@v4" || action == "moonhub/checkout@v1" else {
+        raise InvalidWorkflow(
+          "\{ctx}.uses supports only the built-in checkout action",
+        )
+      }
+      guard !steps.any(step => step.uses is Some(_)) else {
+        raise InvalidWorkflow("each job supports only one checkout step")
+      }
+      check_fields(fields, ["id", "name", "uses", "timeout-minutes"], ctx)
+    } else {
+      ignore(required_string(fields.get("run"), "\{ctx}.run"))
+    }
     let step_defaults = inherit_defaults(job_defaults, {
       shell: parse_shell(fields.get("shell"), "\{ctx}.shell"),
       working_directory: parse_directory(
@@ -402,10 +458,23 @@ fn parse_job(
       name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
         step_id,
       ),
-      run: required_string(fields.get("run"), "\{ctx}.run"),
-      shell: step_defaults.shell,
-      working_directory: step_defaults.working_directory.unwrap_or("."),
-      env: merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env")),
+      run: run.unwrap_or(""),
+      uses,
+      shell: if uses is Some(_) {
+        None
+      } else {
+        step_defaults.shell
+      },
+      working_directory: if uses is Some(_) {
+        "."
+      } else {
+        step_defaults.working_directory.unwrap_or(".")
+      },
+      env: if uses is Some(_) {
+        Map([])
+      } else {
+        merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env"))
+      },
       timeout_minutes: parse_timeout(
         fields.get("timeout-minutes"),
         "\{ctx}.timeout-minutes",

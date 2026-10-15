@@ -199,6 +199,7 @@ fn conclusion_json(conclusion : @pipeline.Conclusion?) -> String {
 fn check_json(check : @collaboration.MergeCheck) -> Json {
   {
     "workflow": check.workflow_path,
+    "required": check.required,
     "status": check.state,
     "conclusion": check.conclusion,
     "run_number": check.run_number.map(id => id.to_string()).unwrap_or(""),

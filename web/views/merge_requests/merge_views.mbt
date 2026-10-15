@@ -410,7 +410,8 @@ fn render_merge_detail(
             b <+
               "<a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/\{number.to_string()}\">Run #\{number.to_string()} and logs</a>"
           }
-          b <+ "</div>"
+          b <+
+            "</div><p class=\"muted\">\{if check.required { "Required for merge" } else { "Automatic workflow · optional for merge" }}</p>"
           if !check.error.is_empty() {
             b <+ "<p class=\"flash-error\" role=\"alert\">\{check.error}</p>"
           }

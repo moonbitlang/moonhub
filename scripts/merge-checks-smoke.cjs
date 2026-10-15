@@ -101,6 +101,9 @@ async function executeCheck(expected) {
   const report = JSON.parse(stdout.trim());
   assert.equal(report.reported, true, stdout);
   assert.equal(report.conclusion, expected, stdout);
+  assert.equal(assignment.version, 2);
+  assert.equal(assignment.job.steps[0].uses, 'actions/checkout@v4');
+  assert.equal(report.steps[0].state, 'success');
   return query('SELECT * FROM pipeline_run WHERE id = ?', Number(assignment.run_id))[0];
 }
 
@@ -122,8 +125,8 @@ async function main() {
   cli(['repo-create', 'root/demo']);
   const git = (args, input) => execFileSync('git', ['--git-dir=' + path.join(temp, 'repos/root/demo.git'),
     '-c', 'user.name=Check fixture', '-c', 'user.email=fixture@example.invalid', ...args], { input, encoding: 'utf8' }).trim();
-  const workflow = ['name: MR checks acceptance', 'on: workflow_dispatch', 'jobs:', '  check:',
-    '    runs-on: [self-hosted, linux]', '    steps:', '      - id: check', '        run: |',
+  const workflow = ['name: MR checks acceptance', 'on: {pull_request: {types: [opened, synchronize, reopened]}}', 'jobs:', '  check:',
+    '    runs-on: [self-hosted, linux]', '    steps:', '      - uses: actions/checkout@v4', '      - id: check', '        run: |',
     '          test -f target-only.txt', '          grep -q PASS README.md', '          echo verified-merged-tree', ''].join('\n');
   const blob = text => git(['hash-object', '-w', '--stdin'], text);
   const tree = entries => git(['mktree'], entries.join('\n') + '\n');
@@ -213,7 +216,7 @@ async function main() {
   await until(() => query('SELECT status FROM merge_request')[0].status === 'merged', 'merge did not finish');
   assert.equal(git(['rev-parse', 'main^{tree}']), git(['rev-parse', query('SELECT commit_sha FROM pipeline_run WHERE number = 4')[0].commit_sha + '^{tree}']));
   assert.deepEqual(pageErrors, []);
-  const receipt = { checks: ['target-owned workflow', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
+  const receipt = { checks: ['pull_request workflow', 'built-in checkout', 'target-owned workflow', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
     'failure blocks merge', 'snapshot rerun', 'desktop/mobile layout', 'successful gated merge'], runs: 4 };
   fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt));

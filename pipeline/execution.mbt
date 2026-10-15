@@ -83,7 +83,7 @@ fn attempt_authorized(
   guard provider_id is Some(provider_id) else { return false }
   let run_id : Int64 = row.get_name("run_id")
   guard tx.query_opt(
-      "SELECT r.id FROM pipeline_run r WHERE r.id = ? AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path)))",
+      "SELECT r.id FROM pipeline_run r WHERE r.id = ? AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))",
       params=[run_id],
     )
     is Some(_) else {
@@ -352,7 +352,7 @@ pub fn Coordinator::claim(
                 #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
                 #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
                 #|AND r.definition_version = ?
-                #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path)))
+                #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
                 #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
                 #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
                 #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
@@ -399,7 +399,11 @@ pub fn Coordinator::claim(
         let name : String = row.get_name("repo_name")
         let job = attempt_job(row)
         Some({
-          version: @protocol.version,
+          version: if job.steps.any(step => step.uses is Some(_)) {
+            @protocol.action_assignment_version
+          } else {
+            @protocol.version
+          },
           attempt_id: (row.get_name("id") : Int64).to_string(),
           run_id: (row.get_name("run_id") : Int64).to_string(),
           job_id: (row.get_name("job_id") : Int64).to_string(),
@@ -417,6 +421,7 @@ pub fn Coordinator::claim(
               id: step.id,
               name: step.name,
               run: step.run,
+              uses: step.uses.unwrap_or(""),
               shell: step.shell.unwrap_or(""),
               working_directory: step.working_directory,
               env: step.env,

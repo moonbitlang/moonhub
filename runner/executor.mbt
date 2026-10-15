@@ -3,7 +3,9 @@ async fn validate_options(
   assignment : @protocol.Assignment,
   options : Options,
 ) -> Options {
-  guard assignment.version == @protocol.version &&
+  guard [@protocol.version, @protocol.action_assignment_version].contains(
+      assignment.version,
+    ) &&
     assignment.state == "leased" &&
     assignment.has_valid_numbers() &&
     assignment.job.steps.length() > 0 &&
@@ -31,12 +33,27 @@ async fn validate_options(
     raise InvalidConfiguration("step launcher is not executable")
   }
   let ids : Map[String, Bool] = Map([])
+  let mut checkouts = 0
   for step in assignment.job.steps {
+    if !step.uses.is_empty() {
+      checkouts += 1
+    }
     guard !step.id.is_empty() &&
       !ids.contains(step.id) &&
       ["", "sh", "bash"].contains(step.shell) &&
       !step.run.contains("\u{0000}") &&
       !step.run.contains("${{") &&
+      (if step.uses.is_empty() {
+        !step.run.trim().is_empty()
+      } else {
+        ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) &&
+        assignment.version == @protocol.action_assignment_version &&
+        step.run.is_empty() &&
+        step.shell.is_empty() &&
+        step.working_directory == "." &&
+        step.env.is_empty() &&
+        checkouts == 1
+      }) &&
       step.timeout_minutes >= 0 &&
       step.timeout_minutes <= 360 &&
       @utf8.encode(step.run).length() <= 65536 else {
@@ -166,14 +183,17 @@ async fn Runtime::execute_script(
 }
 
 ///|
-async fn Runtime::execute_steps(self : Runtime, scratch : String) -> String {
+async fn Runtime::execute_steps(
+  self : Runtime,
+  scratch : String,
+  source : (async () -> Bytes)?,
+) -> String {
   for index, step in self.assignment.job.steps {
     self.check_live()
     self.step_state(index, "running", 0)
     self.check_live()
     let script = "\{scratch}/step-\{index}.sh"
     let code = try {
-      @fs.write_file(script, step.run, create_mode=CreateNew, permission=0o600)
       let remaining = self.deadline - monotonic_ms()
       guard remaining > 0L else { raise Stopped("timed_out") }
       let timeout = if step.timeout_minutes > 0 {
@@ -181,11 +201,31 @@ async fn Runtime::execute_steps(self : Runtime, scratch : String) -> String {
       } else {
         remaining
       }
-      self.execute_script(
-        step,
-        script,
-        Int64::min(timeout, 2147483647L).to_int(),
-      )
+      if !step.uses.is_empty() {
+        @async.with_timeout(
+          Int64::min(timeout, 30000L).to_int(),
+          () => self.checkout(scratch, source),
+          error=Stopped("timed_out"),
+        )
+        self.upload(
+          step.id,
+          "stdout",
+          "Checked out pinned source " + self.assignment.commit_sha + "\n",
+        )
+        0
+      } else {
+        @fs.write_file(
+          script,
+          step.run,
+          create_mode=CreateNew,
+          permission=0o600,
+        )
+        self.execute_script(
+          step,
+          script,
+          Int64::min(timeout, 2147483647L).to_int(),
+        )
+      }
     } catch {
       err if @async.is_cancellation_error(err) => raise err
       Stopped(reason) => raise Stopped(reason)
@@ -194,7 +234,11 @@ async fn Runtime::execute_steps(self : Runtime, scratch : String) -> String {
         self.upload(
           step.id,
           "stderr",
-          "runner: could not prepare or start step\n",
+          if step.uses.is_empty() {
+            "runner: could not prepare or start step\n"
+          } else {
+            "runner: source checkout failed\n"
+          },
         )
         1
       }
@@ -205,6 +249,32 @@ async fn Runtime::execute_steps(self : Runtime, scratch : String) -> String {
     }
   }
   "success"
+}
+
+///|
+async fn Runtime::checkout(
+  self : Runtime,
+  scratch : String,
+  source : (async () -> Bytes)?,
+) -> Unit {
+  guard source is Some(fetch) else {
+    raise InvalidConfiguration("source unavailable")
+  }
+  // Previous literal steps may run before checkout, but must not leave paths
+  // that could redirect extraction. Runner-owned home/tmp are never in archives.
+  guard @fs.readdir(self.options.workspace).all(name => {
+    [".home", ".tmp"].contains(name)
+  }) else {
+    raise InvalidConfiguration("checkout requires an empty source workspace")
+  }
+  let archive = @async.with_timeout(30000, fetch) catch {
+    err if @async.is_cancellation_error(err) => raise err
+    _ => raise InvalidConfiguration("source download failed")
+  }
+  self.check_live()
+  let archive_path = scratch + "/source.tar"
+  @fs.write_file(archive_path, archive, create_mode=CreateNew, permission=0o600)
+  extract_source(self.options.workspace, archive_path)
 }
 
 ///|
@@ -334,14 +404,9 @@ async fn execute_assignment(
     }
     @async.any([
       () => {
-        if source is Some(fetch) {
-          try {
-            let archive = @async.with_timeout(30000, fetch)
-            runtime.check_live()
-            let archive_path = scratch + "/source.tar"
-            @fs.write_file(archive_path, archive, permission=0o600)
-            extract_source(options.workspace, archive_path)
-          } catch {
+        if !assignment.job.steps.any(step => !step.uses.is_empty()) &&
+          source is Some(_) {
+          runtime.checkout(scratch, source) catch {
             err if @async.is_cancellation_error(err) => raise err
             _ => {
               runtime.upload("", "stderr", "runner: source checkout failed\n")
@@ -350,7 +415,7 @@ async fn execute_assignment(
           }
         }
         runtime.check_live()
-        runtime.execute_steps(scratch)
+        runtime.execute_steps(scratch, source)
       },
       () => runtime.monitor(),
     ])

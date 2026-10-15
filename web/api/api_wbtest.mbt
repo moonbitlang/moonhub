@@ -208,3 +208,81 @@ async test "write tokens cannot implicitly approve MR execution and cancelled ru
     assert_eq(rerun, 200)
   })
 }
+
+///|
+async test "optional pull request discovery cannot turn API write permission into execution authority" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let write = @identity.create_access_token(pool, actor, "writer", "write", 1)
+    let execute = @identity.create_access_token(
+      pool, actor, "executor", "execute", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    let base = @test_support.workflow_commit(
+      dir,
+      @test_support.single_job_workflow.replace_all(
+        old="workflow_dispatch",
+        new="pull_request",
+      ),
+    )
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+    ignore(@test_support.merge_test_commit(dir, "api", base, "optional\n"))
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs",
+        write,
+        Some({ "title": "Optional CI", "source": "api", "target": "master" }),
+      ).0,
+      200,
+    )
+    assert_true(@pipeline.run_next_merge_check(pool, root))
+    let mr = @collaboration.require_merge_request(pool, scope, 1L)
+    assert_eq(
+      @collaboration.merge_checks(pool, mr)[0].state,
+      "awaiting_approval",
+    )
+    assert_true(@pipeline.list_runs(pool, actor, repo).is_empty())
+    let (status, json) = api_test_request(
+      port,
+      "/repos/alice/demo/mrs/1/checks",
+      write,
+      None,
+    )
+    assert_eq(status, 200)
+    assert_true(
+      json
+      is {
+        "checks": Array(
+          [{ "required": False, "status": String("awaiting_approval"), .. }]
+        ),
+        ..
+      },
+    )
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs/1/approve-checks",
+        write,
+        Some({ "version": "1" }),
+      ).0,
+      403,
+    )
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs/1/approve-checks",
+        execute,
+        Some({ "version": "1" }),
+      ).0,
+      200,
+    )
+    pool.with_client(client => {
+      ignore(client.execute("UPDATE merge_request SET checks_poll_after = 0"))
+    })
+    assert_true(@pipeline.run_next_merge_check(pool, root))
+    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+  })
+}
