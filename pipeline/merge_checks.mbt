@@ -200,16 +200,6 @@ pub async fn run_next_merge_check(
     err => raise err
   }
   cancel_obsolete_merge_checks(pool, mr)
-  // Reopening may discover source updates made while closed. Preserve its
-  // event through that first refresh, then let later pushes synchronize.
-  pool.with_client(client => {
-    ignore(
-      client.execute(
-        "UPDATE merge_request SET workflow_event_pending = 0 WHERE id = ?",
-        params=[mr.id],
-      ),
-    )
-  })
   if mr.job_status == "pending" || mr.job_status == "running" {
     return true
   }
@@ -249,8 +239,9 @@ pub async fn run_next_merge_check(
       } catch {
         // Show invalid definitions as preparation failures on this MR instead
         // of silently losing diagnostics or starving the remaining workflows.
-        @workflow.InvalidWorkflow(_) | @domain.BadRequest(_) =>
-          workflows.push(path)
+        @workflow.InvalidWorkflow(_)
+        | @domain.BadRequest(_)
+        | @gitops.Failure(_) => workflows.push(path)
         err => raise err
       }
     }
@@ -276,8 +267,9 @@ pub async fn run_next_merge_check(
       err if @async.is_cancellation_error(err) => raise err
       err => {
         let message = match err {
-          @workflow.InvalidWorkflow(message) | @domain.BadRequest(message~) =>
-            message
+          @workflow.InvalidWorkflow(message)
+          | @domain.BadRequest(message~)
+          | @gitops.Failure(message~) => message
           @domain.Forbidden(_)
           | @domain.Unauthorized(_)
           | @domain.NotFound(_) =>

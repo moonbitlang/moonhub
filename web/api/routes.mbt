@@ -257,7 +257,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 current,
                 number(field(body, "version")),
               )
-            "close" | "reopen" | "draft" | "ready" =>
+            "close" | "reopen" | "draft" | "ready" => {
               @collaboration.edit_merge_request(
                 pool,
                 scope,
@@ -268,6 +268,19 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 "",
                 expected=number(field(body, "edit_version")),
               )
+              if action == "reopen" {
+                // Observe the reopened source before releasing the repository
+                // lock; a subsequent push is a separate synchronize event.
+                ignore(
+                  @collaboration.refresh_merge_request(
+                    pool,
+                    scope,
+                    git_dir,
+                    @collaboration.require_merge_request(pool, scope, id),
+                  ),
+                )
+              }
+            }
             _ => raise @domain.BadRequest(message="unsupported MR action")
           }
           mr_json(@collaboration.require_merge_request(pool, scope, id))

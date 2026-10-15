@@ -17,6 +17,17 @@ pub async fn refresh_merge_request(
     source_changed = previous.source_sha != comparison.source_sha
     if previous.source_sha == comparison.source_sha &&
       previous.target_sha == comparison.target_sha {
+      // Bind a pending reopen to the first observed source, even when its
+      // refs are unchanged. A later push must become synchronize independently
+      // of when the Pipeline worker next discovers workflows.
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "UPDATE merge_request SET workflow_event_pending = 0 WHERE id = ? AND workflow_event_pending = 1",
+            params=[mr.id],
+          ),
+        )
+      })
       return mr
     }
   }
@@ -48,7 +59,7 @@ pub async fn refresh_merge_request(
         ],
       )
       let _ = tx.execute(
-        "UPDATE merge_request SET current_version = ?, workflow_event = CASE WHEN ? AND workflow_event_pending = 0 THEN 'synchronize' ELSE workflow_event END, checks_poll_after = 0, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE merge_request SET current_version = ?, workflow_event = CASE WHEN ? AND workflow_event_pending = 0 THEN 'synchronize' ELSE workflow_event END, workflow_event_pending = 0, checks_poll_after = 0, updated_at = datetime('now') WHERE id = ?",
         params=[version, source_changed, mr.id],
       )
       merge_activity(

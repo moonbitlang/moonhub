@@ -31,7 +31,11 @@ select `synchronize`; reopening selects `reopened`. Advancing only the target
 reruns selected workflows against a new merged tree while retaining the last
 source/lifecycle event. At most 64 target workflow entries are inspected.
 Definitions introduced only in the source branch are not discovered until they
-reach the target. Invalid definitions appear as preparation errors.
+reach the target. Invalid or oversized definitions appear as per-file
+preparation errors without preventing other workflows, including required
+checks, from being scheduled. Reopening observes the source before the browser
+or API request returns; later pushes select `synchronize` even when workflow
+discovery has not run yet.
 
 An empty required-workflow list preserves approval-only protection. Existing
 rules gain no required checks automatically. Missing, invalid, or conflicting

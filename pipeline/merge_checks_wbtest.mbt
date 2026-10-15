@@ -764,3 +764,134 @@ async test "reopening discovers source changes made while closed as reopened the
     required=false,
   )
 }
+
+///|
+async test "oversized workflow records a preparation error without starving required checks" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let scope = @repository.repository_scope(pool, actor, protocol_repo)
+    let dir = protocol_repo.git_dir(root)
+    let workflow_blob = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input=@test_support.single_job_workflow,
+      )
+      .trim()
+      .to_owned()
+    let large_blob = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input="name: Unrelated\non: workflow_dispatch\n#" + "x".repeat(66000),
+      )
+      .trim()
+      .to_owned()
+    let workflows = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="100644 blob \{workflow_blob}\tbuild.yml\n100644 blob \{large_blob}\tunrelated.yml\n",
+      )
+      .trim()
+      .to_owned()
+    let github = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="040000 tree \{workflows}\tworkflows\n",
+      )
+      .trim()
+      .to_owned()
+    let tree = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="040000 tree \{github}\t.github\n",
+      )
+      .trim()
+      .to_owned()
+    let base = @gitops.merge_git(dir, [
+        "commit-tree", tree, "-m", "Target config",
+      ])
+      .trim()
+      .to_owned()
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+    ignore(@test_support.merge_test_commit(dir, "feature", base, "feature\n"))
+    @collaboration.save_branch_rule(
+      pool,
+      scope,
+      dir,
+      actor,
+      "master",
+      true,
+      0L,
+      checks=[".github/workflows/build.yml"],
+    )
+    let mr = @collaboration.create_merge_request(
+      pool, scope, dir, actor, "review repro", "", "feature", "master", false,
+    )
+    poll_merge_checks(pool, root)
+    poll_merge_checks(pool, root)
+    let runs = list_runs(pool, actor, protocol_repo)
+    assert_eq(runs.length(), 1)
+    assert_eq(runs[0].workflow_path, ".github/workflows/build.yml")
+    let checks = @collaboration.merge_checks(pool, mr)
+    assert_eq(checks.length(), 2)
+    assert_eq(checks[0].state, "queued")
+    assert_true(checks[0].required)
+    assert_eq(checks[1].state, "error")
+    assert_false(checks[1].required)
+    assert_true(checks[1].error.contains("too large"))
+    assert_true(checks[1].run_number is None)
+    let coordinator = merge_check_provider(pool)
+    finish_merge_check(coordinator)
+    assert_eq(
+      @collaboration.merge_blocker(
+        pool,
+        scope,
+        mr,
+        @collaboration.merge_revision(pool, mr),
+      ),
+      "",
+    )
+  })
+}
+
+///|
+async test "reopening observes source before a subsequent push triggers synchronize" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      @collaboration.edit_merge_request(pool, scope, actor, mr, "close", "", "")
+      let closed = @collaboration.require_merge_request(pool, scope, mr.number)
+      @collaboration.edit_merge_request(
+        pool, scope, actor, closed, "reopen", "", "",
+      )
+      // Browser reopen observes refs before redirecting; worker discovery can lag.
+      let reopened = @collaboration.refresh_merge_request(
+        pool,
+        scope,
+        dir,
+        @collaboration.require_merge_request(pool, scope, mr.number),
+      )
+      @collaboration.prepare_merge_checks(pool, scope, reopened, actor~)
+      ignore(
+        @test_support.merge_test_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "new push after reopen\n",
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(
+        @collaboration.merge_checks(pool, latest).length(),
+        1,
+        msg="synchronize-only workflow disappeared after push",
+      )
+    },
+    workflow=pull_request_workflow.replace_all(
+      old="[opened, reopened, synchronize]",
+      new="[synchronize]",
+    ),
+    required=false,
+  )
+}

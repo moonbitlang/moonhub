@@ -286,3 +286,84 @@ async test "optional pull request discovery cannot turn API write permission int
     assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
   })
 }
+
+///|
+async test "API reopen observes closed source updates before a later push synchronizes" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let write = @identity.create_access_token(pool, actor, "writer", "write", 1)
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    let workflow = @test_support.single_job_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: {pull_request: {types: [synchronize]}}",
+    )
+    let base = @test_support.workflow_commit(dir, workflow)
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+    let source = @test_support.merge_test_commit(dir, "api", base, "initial\n")
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs",
+        write,
+        Some({
+          "title": "Reopen then synchronize",
+          "source": "api",
+          "target": "master",
+        }),
+      ).0,
+      200,
+    )
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs/1/close",
+        write,
+        Some({ "edit_version": "1" }),
+      ).0,
+      200,
+    )
+    let closed_source = @test_support.merge_test_commit(
+      dir, "api", source, "changed while closed\n",
+    )
+    assert_eq(
+      api_test_request(
+        port,
+        "/repos/alice/demo/mrs/1/reopen",
+        write,
+        Some({ "edit_version": "2" }),
+      ).0,
+      200,
+    )
+    let reopened = @collaboration.require_merge_request(pool, scope, 1L)
+    assert_eq(reopened.version, 2L)
+    assert_eq(
+      @collaboration.merge_revision(pool, reopened).source_sha,
+      closed_source,
+    )
+    pool.with_client(client => {
+      let row = client.query_one(
+        "SELECT workflow_event, workflow_event_pending FROM merge_request WHERE id = ?",
+        params=[reopened.id],
+      )
+      assert_eq((row.get_name("workflow_event") : String), "reopened")
+      assert_false((row.get_name("workflow_event_pending") : Bool))
+      assert_true(
+        client.query_all("SELECT * FROM merge_execution_approval").is_empty(),
+      )
+    })
+    // No worker poll has occurred between the reopen request and this push.
+    let next = @test_support.merge_test_commit(
+      dir, "api", closed_source, "changed after reopening\n",
+    )
+    assert_true(@pipeline.run_next_merge_check(pool, root))
+    let latest = @collaboration.require_merge_request(pool, scope, 1L)
+    assert_eq(latest.version, 3L)
+    assert_eq(@collaboration.merge_revision(pool, latest).source_sha, next)
+    let checks = @collaboration.merge_checks(pool, latest)
+    assert_eq(checks.length(), 1)
+    assert_eq(checks[0].state, "awaiting_approval")
+    assert_true(@pipeline.list_runs(pool, actor, repo).is_empty())
+  })
+}
