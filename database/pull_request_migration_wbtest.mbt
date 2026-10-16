@@ -43,7 +43,7 @@ async test "pull request upgrade preserves old checks and records their executio
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
           Int64),
-        17L,
+        database_schema_version,
       )
       assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
     })

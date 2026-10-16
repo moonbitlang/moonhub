@@ -81,7 +81,17 @@ pub async fn run_next_push_event(
           if !@workflow.triggers(source).matches_push(branch) {
             continue
           }
-          let definition = @workflow.parse(source)
+          let context : @workflow.RunContext = {
+            repository: scope.repo.owner + "/" + scope.repo.name,
+            sha,
+            event_name: "push",
+            head_ref: "",
+            base_ref: "",
+          }
+          let definition = @workflow.resolve_context(
+            @workflow.parse(source),
+            context,
+          )
           let pin = "refs/moonhub/pipelines/push-" +
             id.to_string() +
             "/" +
@@ -108,6 +118,7 @@ pub async fn run_next_push_event(
                   pin,
                   source,
                   definition,
+                  context=Some(context),
                   event_id=id,
                 ),
               )

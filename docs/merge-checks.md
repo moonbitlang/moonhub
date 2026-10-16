@@ -53,6 +53,11 @@ or weakening the workflow in the source branch cannot replace the executed
 workflow definition. Scripts invoked by that workflow remain proposed repository
 code; target-owned YAML does not make untrusted code safe.
 
+MR checks capture `github.event_name = pull_request`, both branch names and
+the candidate commit SHA at creation. Supported `env` references are resolved
+against that snapshot, never current refs. Reruns retain the saved context and
+env values; see [run context](pipelines.md#run-context-and-environment-references).
+
 The candidate commit hash is distinct from the eventual merge commit hash.
 Their tree contents must match for the checked comparison; the merge worker
 rechecks both refs and the merge tree before its atomic Git ref transaction.

@@ -192,6 +192,35 @@ async test "write tokens cannot implicitly approve MR execution and cancelled ru
     )
     assert_eq(created, 200)
     guard run is { "number": String(number), .. } else { fail("run missing") }
+    assert_true(
+      run
+      is {
+        "context": {
+          "repository": String("alice/demo"),
+          "event_name": String("workflow_dispatch"),
+          "head_ref": String(""),
+          "base_ref": String(""),
+          ..
+        },
+        ..
+      },
+    )
+    let (_, detail) = api_test_request(
+      port,
+      "/repos/alice/demo/runs/" + number,
+      execute,
+      None,
+    )
+    assert_true(
+      detail
+      is {
+        "run": {
+          "context": { "event_name": String("workflow_dispatch"), .. },
+          ..
+        },
+        ..
+      },
+    )
     let (cancelled, _) = api_test_request(
       port,
       "/repos/alice/demo/runs/\{number}/cancel",

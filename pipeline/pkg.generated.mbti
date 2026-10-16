@@ -176,6 +176,7 @@ pub struct Run {
   definition_version : Int
   workflow_source : String
   definition : @workflow.Workflow
+  context : @workflow.RunContext?
   state : RunState
   conclusion : Conclusion?
   created_at : String

@@ -176,6 +176,9 @@ fn run_json(run : @pipeline.Run) -> Json {
     "name": run.workflow_name,
     "branch": run.source_branch,
     "commit_sha": run.commit_sha,
+    "context": run.context
+    .map(value => ToJson::to_json(value))
+    .unwrap_or(Json::null()),
     "status": status,
     "conclusion": conclusion,
     "created_at": run.created_at,
