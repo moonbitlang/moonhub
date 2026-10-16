@@ -94,6 +94,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
         .map(a => {
           (
             {
+              "id": a.id.to_string(),
+              "actor_id": a.actor_id.map(id => id.to_string()).unwrap_or(""),
               "actor": a.actor,
               "kind": a.kind,
               "body": if a.kind == "merge_failed" {
@@ -202,9 +204,14 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "write"
       }
       let actor = api_actor(pool, req, permission)
-      let body = api_body(req, [
-        "version", "decision", "body", "reviewer", "edit_version",
-      ])
+      let body = api_body(
+        req,
+        match action {
+          "edit" => ["edit_version", "title", "description"]
+          "delete-comment" | "restore-comment" => ["version", "comment"]
+          _ => ["version", "decision", "body", "reviewer", "edit_version"]
+        },
+      )
       let id = number(@web_context.required_param(req, "number", "MR"))
       @repository.with_repository_write(
         pool,
@@ -213,12 +220,41 @@ pub let api_module : @moonback.Module = Module(ctx => {
         @web_context.repo_param(req),
         (scope, git_dir) => {
           let mr = @collaboration.require_merge_request(pool, scope, id)
-          let current = if action == "comment" {
+          let current = if [
+              "comment", "edit", "delete-comment", "restore-comment",
+            ].contains(action) {
             mr
           } else {
             @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
           }
           match action {
+            "edit" => {
+              guard body.contains("title") || body.contains("description") else {
+                raise @domain.BadRequest(
+                  message="MR edit requires title or description",
+                )
+              }
+              @collaboration.edit_merge_request(
+                pool,
+                scope,
+                actor,
+                current,
+                "edit",
+                field(body, "title", fallback=current.title),
+                field(body, "description", fallback=current.description),
+                expected=number(field(body, "edit_version")),
+              )
+            }
+            "delete-comment" | "restore-comment" =>
+              @collaboration.set_merge_comment_deleted(
+                pool,
+                scope,
+                actor,
+                current,
+                number(field(body, "comment")),
+                number(field(body, "version")),
+                action == "delete-comment",
+              )
             "review" | "comment" =>
               @collaboration.submit_merge_review(
                 pool,

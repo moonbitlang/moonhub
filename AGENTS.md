@@ -192,6 +192,12 @@ by itself authorize review approval, check execution, or merge.
 moonhub mr diff <number> --version <version> --repo compiler/moonhub --json
 moonhub mr comment <number> --version <version> --repo compiler/moonhub \
   --body-file /absolute/path/to/comment.md
+moonhub mr edit <number> --edit-version <edit-version> --repo compiler/moonhub \
+  --title 'Updated title' --body-file /absolute/path/to/description.md
+moonhub mr delete-comment <number> --comment <activity-id> --version <comment-version> \
+  --repo compiler/moonhub
+moonhub mr restore-comment <number> --comment <activity-id> --version <comment-version> \
+  --repo compiler/moonhub
 moonhub ci list --repo compiler/moonhub --json
 moonhub ci view <run> --repo compiler/moonhub --json
 moonhub ci logs <run> --attempt <attempt> --after <cursor> --repo compiler/moonhub --json

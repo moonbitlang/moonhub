@@ -77,6 +77,9 @@ moonhub mr view 4 --json
 moonhub mr diff 4 --version 1 --json
 moonhub mr checks 4 --json
 moonhub mr comment 4 --version 1 --body-file comment.md
+moonhub mr edit 4 --edit-version 1 --title 'Updated title' --body-file description.md
+moonhub mr delete-comment 4 --comment 42 --version 1
+moonhub mr restore-comment 4 --comment 42 --version 1
 moonhub mr review 4 --version 1 --decision approved
 moonhub mr request-review 4 --version 1 --reviewer 12
 moonhub mr approve-checks 4 --version 1
@@ -104,6 +107,22 @@ moonhub inbox read 25
 ```
 
 MR review decisions are `approved`, `changes_requested`, `withdrawn` or `comment`.
+`mr edit` requires `--edit-version` and at least one of `--title` or `--body-file`.
+Omitted fields are preserved; an empty body file explicitly clears the description.
+Editing metadata does not refresh branches, create a revision, or reset approvals
+and checks. The author or a repository team administrator may edit metadata.
+
+`mr view --json` activity entries include stable decimal-string `id` and `actor_id`
+(empty for system activity). Use a plain comment's `id` as `--comment`, and its
+own `version` as `--version`, including for a comment on an older MR revision.
+Delete/restore requires a write token and either comment authorship or team
+administrator permission. Other members cannot delete another author's comment.
+Review decisions and lifecycle events cannot be deleted with these commands.
+Deletion replaces the public body with an empty `comment_deleted` tombstone;
+the original body is retained in the private repository audit for explicit restore.
+Repeated delete or restore requests are idempotent. These operations do not
+change approvals, checks, or the MR's metadata edit version.
+
 MR state actions also include `draft`, `ready` and `reopen`, each requiring
 `--edit-version`. Mutation versions are explicit: the client never automatically
 submits a review or merge against a version the user did not select. Reload the
