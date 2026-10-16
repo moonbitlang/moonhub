@@ -76,8 +76,64 @@ Supported configuration:
 
 All unknown fields are rejected before mapping. This includes `permissions`,
 `concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
-`outputs`, and `with`. Other `uses` values and `${{ ... }}` expressions are
-rejected rather than executed literally. No field is silently stripped.
+`outputs`, and `with`. Other `uses` values and expressions outside the `env`
+subset below are rejected rather than executed literally. No field is silently
+stripped.
+
+### Run Context and Environment References
+
+Workflow, job and literal-step `env` values can read five captured fields:
+
+| Reference | Value |
+| --- | --- |
+| `github.repository` | Repository `owner/name` when the run was created |
+| `github.sha` | Exact pinned commit tested by this run; MR runs use the two-parent merged candidate, not the source head or final merge commit |
+| `github.event_name` | `workflow_dispatch`, `push`, or `pull_request`; required MR checks use `pull_request` regardless of the workflow's original triggers |
+| `github.head_ref` | MR source branch; empty for manual/push runs |
+| `github.base_ref` | MR target branch; empty for manual/push runs |
+
+Only field references such as `${{ github.sha }}` are accepted. Whitespace
+around the field is optional; literal prefixes/suffixes and multiple references
+are allowed. The usual workflow < job < step precedence applies. Unknown
+fields (including `github.ref`), `secrets`, `env`, outputs, indexing, operators,
+functions, conditions and unterminated expressions fail validation. Direct
+interpolation into `run`, names, paths, labels or other fields remains rejected.
+
+```yaml
+env:
+  TESTED_SHA: ${{ github.sha }}
+  SOURCE_BRANCH: ${{ github.head_ref }}
+  BUILD_LABEL: build-${{ github.sha }}
+jobs:
+  test:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          printf 'Testing %s from %s\n' "$TESTED_SHA" "$SOURCE_BRANCH"
+          moon test --target native --strip -j 1
+```
+
+These fields are resolved on the server once at run creation after env
+precedence. The original YAML, resolved step plan and context are saved as
+immutable snapshots. Rerun snapshot copies them without reparsing, resolving
+again, or reading current branch/MR fields. Inserted metadata is never evaluated
+recursively, even when a branch name contains `${{...}}`, `$()` or backticks.
+Scripts should quote normal shell variable expansions; the server never inserts
+context into script text. Resolved env values reject NUL and values over 64 KiB;
+the resolved plan retains the 1 MiB cap.
+
+The collaboration API's run objects expose `context` as an object with
+`repository`, `sha`, `event_name`, `head_ref`, `base_ref`. For historical runs
+created before migration 018, `context` is `null`; their existing definitions
+and reruns continue to work unchanged. No context is fabricated from live state.
+Migration 018 upgrades the database to schema 18 and protects context against
+updates. Back up the database and repositories together and upgrade Web/SSH
+together; an older server binary cannot open schema 18. Runner/provider protocols
+are unchanged: they receive ordinary resolved env strings and do not evaluate
+expressions. No secrets or remote actions are added.
+
+### Source Preparation
 
 Checkout downloads the pinned archive from the authenticated MoonHub source API
 and extracts it when that step runs, with its own log and outcome. It does not

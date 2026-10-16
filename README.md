@@ -18,7 +18,8 @@ for the source layout and module initialization rules.
 Pipeline implementation is staged. Workflow validation, immutable run snapshots,
 an authenticated runner protocol, and a single-job Runner are implemented.
 Docker provider, bounded source checkout, standard `pull_request` triggers and
-the built-in checkout action are available; full GitHub Actions compatibility is
+the built-in checkout action and captured run-context references in `env` are
+available; full GitHub Actions compatibility is
 not yet implemented. See
 [the supported subset and delivery plan](docs/pipelines.md).
 

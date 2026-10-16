@@ -99,6 +99,7 @@ fn insert_run_snapshot(
   pin : String,
   source : String,
   definition : @workflow.Workflow,
+  context~ : @workflow.RunContext? = None,
   event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
 ) -> Run raise {
@@ -109,7 +110,7 @@ fn insert_run_snapshot(
     )
     .get_name("number")
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0)) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, '')) RETURNING *",
     params=[
       repository_id,
       number,
@@ -124,6 +125,7 @@ fn insert_run_snapshot(
       ToJson::to_json(definition).stringify(),
       event_id,
       merge_check_id,
+      context.map(value => ToJson::to_json(value).stringify()).unwrap_or(""),
     ],
   )
   let run = Run::from_row(row)
@@ -218,6 +220,16 @@ pub async fn create_run(
         message="workflow does not allow manual dispatch",
       )
     }
+    let context : @workflow.RunContext = {
+      repository: repo.owner + "/" + repo.name,
+      sha,
+      event_name: "workflow_dispatch",
+      head_ref: "",
+      base_ref: "",
+    }
+    let definition = @workflow.resolve_context(definition, context) catch {
+      @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
+    }
     // Git subprocesses yield. Recheck permissions after the final await and
     // before the synchronous database transaction publishes the snapshot.
     ignore(require_run_author(pool, actor, repo))
@@ -239,6 +251,7 @@ pub async fn create_run(
           pin,
           source,
           definition,
+          context=Some(context),
         )
       })
     })
@@ -318,6 +331,7 @@ pub async fn rerun_run(
           pin,
           previous.workflow_source,
           previous.definition,
+          context=previous.context,
           merge_check_id~,
         )
       })

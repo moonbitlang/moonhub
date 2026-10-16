@@ -16,6 +16,7 @@ async test "pull request automatically runs built-in checkout against its merged
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((_, launcher, workspace) => {
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let branch = "feature/$(touch${IFS}injected);`touch${IFS}backtick`-${{github.sha}}"
       let workflow = @test_support.single_job_workflow
         .replace_all(
           old="on: workflow_dispatch",
@@ -27,22 +28,28 @@ async test "pull request automatically runs built-in checkout against its merged
         )
         .replace_all(
           old="echo fixture",
-          new="test -f README.md; test ! -d .git; grep -q live-output README.md; printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+          new="test -f README.md; test ! -d .git; test \"$SHA\" = \"$GITHUB_SHA\"; test \"$REPO\" = alice/demo; test \"$EVENT\" = pull_request; test \"$BASE\" = master; printf '%s' \"$HEAD\" > head.txt; test ! -f injected; test ! -f backtick; grep -q live-output README.md; printf 'live-output\\n'; sleep 0.3; printf 'finished\\n'",
+        )
+        .replace_all(
+          old="jobs:\n",
+          new="env:\n  REPO: '${{ github.repository }}'\n  SHA: '${{ github.sha }}'\n  EVENT: '${{ github.event_name }}'\n  HEAD: '${{ github.head_ref }}'\n  BASE: '${{ github.base_ref }}'\njobs:\n",
         )
       let dir = repo.git_dir(root)
       let base = @test_support.workflow_commit(dir, workflow)
       ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
       ignore(
-        @test_support.merge_test_commit(dir, "feature", base, "live-output\n"),
+        @test_support.merge_test_commit(dir, branch, base, "live-output\n"),
       )
       let actor = @identity.active_user_by_name(pool, "alice")
       let scope = @repository.repository_scope(pool, actor, repo)
       let mr = @collaboration.create_merge_request(
-        pool, scope, dir, actor, "MR checkout", "", "feature", "master", false,
+        pool, scope, dir, actor, "MR checkout", "", branch, "master", false,
       )
       assert_true(@pipeline.run_next_merge_check(pool, root))
       let run = @pipeline.list_runs(pool, actor, repo)[0]
       assert_eq(run.workflow_source, workflow)
+      assert_eq(run.context.unwrap().head_ref, branch)
+      assert_eq(run.context.unwrap().sha, run.commit_sha)
       let coordinator = @pipeline.Coordinator::new(pool)
       let provider_token = @identity.random_hex(32)
       let attempt_token = @identity.random_hex(32)
@@ -136,6 +143,7 @@ async test "pull request automatically runs built-in checkout against its merged
           409,
         )
         assert_true(result.reported)
+        assert_eq(@fs.read_file(workspace + "/head.txt").text(), branch)
         assert_eq(
           @fs.read_file(workspace + "/README.md").text(),
           "live-output\n",

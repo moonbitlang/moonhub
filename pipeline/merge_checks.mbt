@@ -103,6 +103,14 @@ async fn create_merge_check_run(
       message="Could not create the merge check snapshot.",
     )
   }
+  let context : @workflow.RunContext = {
+    repository: scope.repo.owner + "/" + scope.repo.name,
+    sha,
+    event_name: "pull_request",
+    head_ref: mr.source,
+    base_ref: mr.target,
+  }
+  let definition = @workflow.resolve_context(definition, context)
   let pin = "refs/moonhub/pipelines/mr-" + check_id.to_string()
   ignore(@gitops.merge_git(git_dir, ["update-ref", "--no-deref", pin, sha]))
   ignore(require_run_author(pool, actor, scope.repo))
@@ -131,6 +139,7 @@ async fn create_merge_check_run(
           pin,
           source,
           definition,
+          context=Some(context),
           merge_check_id=check_id,
         ),
       )

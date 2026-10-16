@@ -104,7 +104,17 @@ async function executeCheck(expected) {
   assert.equal(assignment.version, 2);
   assert.equal(assignment.job.steps[0].uses, 'actions/checkout@v4');
   assert.equal(report.steps[0].state, 'success');
-  return query('SELECT * FROM pipeline_run WHERE id = ?', Number(assignment.run_id))[0];
+  const run = query('SELECT * FROM pipeline_run WHERE id = ?', Number(assignment.run_id))[0];
+  const context = JSON.parse(run.context_json);
+  assert.equal(context.repository, 'root/demo');
+  assert.equal(context.sha, run.commit_sha);
+  assert.equal(context.event_name, 'pull_request');
+  assert.equal(context.head_ref, 'feature');
+  assert.equal(context.base_ref, 'main');
+  const step = assignment.job.steps[1];
+  assert.equal(step.env.TESTED_SHA, context.sha);
+  assert.equal(step.env.SOURCE_BRANCH, context.head_ref);
+  return run;
 }
 
 async function main() {
@@ -125,9 +135,15 @@ async function main() {
   cli(['repo-create', 'root/demo']);
   const git = (args, input) => execFileSync('git', ['--git-dir=' + path.join(temp, 'repos/root/demo.git'),
     '-c', 'user.name=Check fixture', '-c', 'user.email=fixture@example.invalid', ...args], { input, encoding: 'utf8' }).trim();
-  const workflow = ['name: MR checks acceptance', 'on: {pull_request: {types: [opened, synchronize, reopened]}}', 'jobs:', '  check:',
+  const workflow = ['name: MR checks acceptance', 'on: {pull_request: {types: [opened, synchronize, reopened]}}',
+    'env:', '  TESTED_SHA: ${{ github.sha }}', '  SOURCE_BRANCH: ${{ github.head_ref }}',
+    '  TARGET_BRANCH: ${{ github.base_ref }}', '  EVENT_NAME: ${{ github.event_name }}', '  REPOSITORY: ${{ github.repository }}',
+    'jobs:', '  check:',
     '    runs-on: [self-hosted, linux]', '    steps:', '      - uses: actions/checkout@v4', '      - id: check', '        run: |',
-    '          test -f target-only.txt', '          grep -q PASS README.md', '          echo verified-merged-tree', ''].join('\n');
+    '          test -f target-only.txt', '          test "$TESTED_SHA" = "$GITHUB_SHA"',
+    '          test "$SOURCE_BRANCH" = feature', '          test "$TARGET_BRANCH" = main',
+    '          test "$EVENT_NAME" = pull_request', '          test "$REPOSITORY" = root/demo',
+    '          grep -q PASS README.md', '          echo verified-merged-tree', ''].join('\n');
   const blob = text => git(['hash-object', '-w', '--stdin'], text);
   const tree = entries => git(['mktree'], entries.join('\n') + '\n');
   const workflowTree = tree([`100644 blob ${blob(workflow)}\tbuild.yml`]);
@@ -216,7 +232,7 @@ async function main() {
   await until(() => query('SELECT status FROM merge_request')[0].status === 'merged', 'merge did not finish');
   assert.equal(git(['rev-parse', 'main^{tree}']), git(['rev-parse', query('SELECT commit_sha FROM pipeline_run WHERE number = 4')[0].commit_sha + '^{tree}']));
   assert.deepEqual(pageErrors, []);
-  const receipt = { checks: ['pull_request workflow', 'built-in checkout', 'target-owned workflow', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
+  const receipt = { checks: ['pull_request workflow', 'built-in checkout', 'immutable run context', 'env field references', 'target-owned workflow', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
     'failure blocks merge', 'snapshot rerun', 'desktop/mobile layout', 'successful gated merge'], runs: 4 };
   fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt));

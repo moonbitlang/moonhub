@@ -13,6 +13,8 @@ pub let max_source_bytes : Int
 
 pub fn parse(String) -> Workflow raise InvalidWorkflow
 
+pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
+
 pub fn triggers(String) -> Triggers raise InvalidWorkflow
 
 // Errors
@@ -33,6 +35,17 @@ pub struct Job {
 pub fn Job::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Job::to_json(Self) -> Json
 pub fn Job::to_repr(Self) -> @debug.Repr
+
+pub(all) struct RunContext {
+  repository : String
+  sha : String
+  event_name : String
+  head_ref : String
+  base_ref : String
+} derive(ToJson, @debug.Debug, @json.FromJson)
+pub fn RunContext::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn RunContext::to_json(Self) -> Json
+pub fn RunContext::to_repr(Self) -> @debug.Repr
 
 pub struct Step {
   id : String

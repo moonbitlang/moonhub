@@ -38,6 +38,7 @@ pub struct Run {
   definition_version : Int32
   workflow_source : String
   definition : @workflow.Workflow
+  context : @workflow.RunContext?
   state : RunState
   conclusion : Conclusion?
   created_at : String
@@ -125,6 +126,9 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
     definition_version: version.to_int(),
     workflow_source: row.get_name("workflow_source"),
     definition,
+    context: (row.get_name("context_json") : String?).map(text => {
+      @json.from_json(@json.parse(text))
+    }),
     state: match status {
       "queued" => Queued
       "running" => Running

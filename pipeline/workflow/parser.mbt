@@ -113,8 +113,10 @@ fn yaml_to_string_map(
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
     result[key] = match value {
-      String(_) =>
-        yaml_as_optional_string(Some(value), "\{ctx}.\{key}").unwrap_or("")
+      String(text) => {
+        ignore(env_segments(text, "\{ctx}.\{key}"))
+        text
+      }
       Integer(n) => n.to_string()
       Boolean(b) => if b { "true" } else { "false" }
       Real(_, repr~) => repr

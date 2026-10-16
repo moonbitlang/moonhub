@@ -1,6 +1,15 @@
 // Preserve the public methods previously promoted implicitly from traits.
 
 ///|
+pub extend RunContext with @debug.Debug::{to_repr}
+
+///|
+pub extend RunContext with ToJson::{to_json}
+
+///|
+pub extend RunContext with @json.FromJson::{from_json}
+
+///|
 pub extend InvalidWorkflow with @debug.Debug::{to_repr}
 
 ///|

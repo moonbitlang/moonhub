@@ -457,6 +457,10 @@ async test "pipeline snapshots survive closing and reopening the database" {
       assert_eq(restored.source_ref, run.source_ref)
       assert_eq(restored.state, Queued)
       assert_eq(restored.workflow_source, sample_workflow)
+      assert_eq(
+        ToJson::to_json(restored.context.unwrap()),
+        ToJson::to_json(run.context.unwrap()),
+      )
       assert_eq(list_jobs(reopened, actor, repo, run.number).length(), 2)
     })
   })
