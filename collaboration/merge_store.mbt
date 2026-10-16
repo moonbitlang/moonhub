@@ -112,6 +112,8 @@ fn merge_activity(
 
 ///|
 pub struct MergeActivity {
+  id : Int64
+  actor_id : Int64?
   actor : String
   kind : String
   body : String
@@ -216,9 +218,15 @@ pub fn list_merge_activity(
       params=[mr.id, (page - 1L) * 50L],
     )
     .map(row => {
+      id: row.get_name("id"),
+      actor_id: row.get_name("actor_id"),
       actor: row.get_name("actor"),
       kind: row.get_name("kind"),
-      body: row.get_name("body"),
+      body: if (row.get_name("kind") : String) == "comment_deleted" {
+        ""
+      } else {
+        row.get_name("body")
+      },
       created_at: row.get_name("created_at"),
       version: row.get_name("version"),
     })

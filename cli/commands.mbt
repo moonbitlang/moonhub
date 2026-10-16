@@ -35,6 +35,7 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("edit-version", long="edit-version", global=true),
     @argparse.OptionArg("decision", long="decision", global=true),
     @argparse.OptionArg("reviewer", long="reviewer", global=true),
+    @argparse.OptionArg("comment", long="comment", global=true),
     @argparse.OptionArg("assignee", long="assignee", global=true),
     @argparse.OptionArg("workflow", long="workflow", global=true),
     @argparse.OptionArg("branch", long="branch", global=true),
@@ -69,7 +70,8 @@ fn command() -> @argparse.Command {
           @argparse.Command("create"),
           ..[
             "view", "diff", "checks", "comment", "review", "request-review", "merge",
-            "approve-checks", "close", "reopen", "draft", "ready",
+            "approve-checks", "close", "reopen", "draft", "ready", "edit", "delete-comment",
+            "restore-comment",
           ].map(action => {
             @argparse.Command(action, positionals=[
               @argparse.PositionArg("number"),
@@ -282,6 +284,29 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         None,
       )
     ("mr", "checks") => ("\{base}/mrs/\{id}/checks", None)
+    ("mr", "edit") => {
+      let fields : Map[String, Json] = {
+        "edit_version": Json(decimal(required(matches, "edit-version"))),
+      }
+      if option(matches, "title") is Some(title) {
+        fields["title"] = Json(title)
+      }
+      if option(matches, "body-file") is Some(_) {
+        fields["description"] = Json(read_body(matches))
+      }
+      guard fields.length() > 1 else {
+        raise Invalid("mr edit requires --title or --body-file")
+      }
+      ("\{base}/mrs/\{id}/edit", Some(Json::object(fields)))
+    }
+    ("mr", "delete-comment" | "restore-comment") =>
+      (
+        "\{base}/mrs/\{id}/\{action}",
+        Some({
+          "comment": decimal(required(matches, "comment")),
+          "version": decimal(required(matches, "version")),
+        }),
+      )
     ("mr", "create") =>
       (
         "\{base}/mrs",

@@ -48,6 +48,23 @@ test "nested collaboration commands retain global options" {
 }
 
 ///|
+test "MR edit and comment lifecycle commands retain explicit revisions" {
+  for action in ["edit", "delete-comment", "restore-comment"] {
+    let parsed = command().parse(argv=[
+      "mr", action, "10", "--edit-version", "2", "--version", "1", "--comment", "9223372036854775807",
+      "--title", "English title", "--json",
+    ])
+    assert_eq(option(parsed, "edit-version"), Some("2"))
+    assert_eq(option(parsed, "version"), Some("1"))
+    assert_eq(option(parsed, "comment"), Some("9223372036854775807"))
+    let (_, group) = parsed.subcommand.unwrap()
+    let (name, options) = group.subcommand.unwrap()
+    assert_eq(name, action)
+    assert_eq(option(options, "number"), Some("10"))
+  }
+}
+
+///|
 test "repository inference matches only the configured server and terminal output strips controls" {
   let server = "https://moonhub.example"
   assert_eq(

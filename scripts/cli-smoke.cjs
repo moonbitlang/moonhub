@@ -123,6 +123,28 @@ async function main() {
   assert.equal(cli(['mr', 'list']).items.length, 1);
   assert.ok(cli(['mr', 'diff', '1', '--version', '1']).patch.includes('+feature'));
   assert.equal(cli(['mr', 'view', '1']).mr.description, fs.readFileSync(body, 'utf8'));
+  cli(['mr', 'edit', '1', '--edit-version', '1'], write, 2);
+  cli(['mr', 'edit', '1', '--edit-version', '1', '--title', 'English MR title']);
+  assert.equal(cli(['mr', 'view', '1']).mr.description, fs.readFileSync(body, 'utf8'));
+  cli(['mr', 'edit', '1', '--edit-version', '1', '--title', 'Stale'], write, 1);
+  cli(['mr', 'edit', '1', '--edit-version', '2', '--body-file', emptyBody]);
+  assert.equal(cli(['mr', 'view', '1']).mr.title, 'English MR title');
+  assert.equal(cli(['mr', 'view', '1']).mr.description, '');
+  cli(['mr', 'comment', '1', '--version', '1', '--body-file', body]);
+  const comment = cli(['mr', 'view', '1']).activity.find(a => a.kind === 'comment');
+  assert.equal(typeof comment.id, 'string');
+  assert.equal(comment.actor_id, '1');
+  cli(['mr', 'delete-comment', '1', '--comment', comment.id, '--version', '2'], write, 1);
+  cli(['mr', 'delete-comment', '1', '--comment', comment.id, '--version', comment.version]);
+  const deleted = cli(['mr', 'view', '1']).activity.find(a => a.id === comment.id);
+  assert.equal(deleted.kind, 'comment_deleted');
+  assert.equal(deleted.body, '');
+  const deletedPage = await (await fetch(base + '/root/demo/merge-requests/1', { headers: { Cookie: cookie } })).text();
+  assert.ok(!deletedPage.includes('Review this CLI workflow.'), 'deleted comment leaked into browser HTML');
+  cli(['mr', 'restore-comment', '1', '--comment', comment.id, '--version', comment.version]);
+  assert.equal(cli(['mr', 'view', '1']).activity.find(a => a.id === comment.id).body, fs.readFileSync(body, 'utf8'));
+  cli(['mr', 'delete-comment', '1', '--comment', comment.id, '--version', comment.version]);
+
   const reviewerId = query("SELECT id FROM \"user\" WHERE name_key='reviewer'")[0].id;
   cli(['mr', 'request-review', '1', '--reviewer', String(reviewerId), '--version', '1']);
   const rootCookie = cookie;
@@ -201,7 +223,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/request/review/stale rejection/merge', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR comment IDs/delete/restore and deleted body redaction', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
