@@ -91,7 +91,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let rows = @collaboration.list_merge_activity(pool, mr, page(req))
       let activities = rows[:Int32::min(50, rows.length())]
         .to_owned()
-        .map(activity_json)
+        .map(a => activity_json(a))
       {
         "mr": mr_json(mr),
         "reviewers": @collaboration.review_requests(pool, actor, scope, mr).map(person => {
@@ -165,7 +165,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           {
             "items": rows[:Int32::min(50, rows.length())]
             .to_owned()
-            .map(discussion_json),
+            .map(d => discussion_json(d, preview=true)),
             "has_more": rows.length() > 50,
             "unresolved_count": @collaboration.unresolved_merge_discussions(
               pool, scope, actor, mr,
@@ -655,6 +655,12 @@ pub let api_module : @moonback.Module = Module(ctx => {
               "title": item.title,
               "kind": item.kind,
               "read": item.read,
+              "discussion_id": item.discussion_id
+              .map(id => id.to_string())
+              .unwrap_or(""),
+              "comment_id": item.comment_id
+              .map(id => id.to_string())
+              .unwrap_or(""),
               "url": item.url(),
             } : Json)
         }),

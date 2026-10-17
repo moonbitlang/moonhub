@@ -81,9 +81,18 @@ and resolve/reopen actions use CSRF-protected POST forms and work without
 JavaScript. Overview pages show at most 50 threads and the latest three replies
 per thread; thread detail pages expose every reply in chronological pages of 50.
 Original comment IDs, review decisions and deletion tombstones are preserved by
-migration 019, without replaying old notifications. The existing activity history remains
-available as a secondary disclosure. Replies and resolve/reopen events use the
-existing MR subscription and delivery authorization rules.
+migration 019, without replaying old notifications. The existing activity history
+remains available as a secondary disclosure. Replies and resolve/reopen events use the
+existing MR subscription and delivery authorization rules. Notification links
+retain the discussion and stable comment ID; the server resolves the actual
+reply page, including deleted-comment placeholders. Delete/restore actions return
+to that same page and comment anchor. Migration 020 backfills existing targets
+without replaying notifications or mail or resetting read state.
+
+Discussion list API responses contain 512-scalar body previews with an explicit
+`body_truncated` flag. Single-discussion reads retain complete root/reply bodies;
+this keeps overview responses within the CLI response budget without losing
+content.
 
 Git output is bounded to 2 MiB with a 60-second operation timeout. Oversized diffs
 require local inspection instead of exhausting the server. The commits view

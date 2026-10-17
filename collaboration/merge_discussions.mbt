@@ -279,3 +279,27 @@ pub fn set_merge_discussion_resolved(
     })
   })
 }
+
+///|
+// Resolve a stable comment ID to its current page; deleted replies still occupy
+// their original position, so old notifications and restore actions stay valid.
+pub fn merge_discussion_comment_page(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  discussion : Int64,
+  comment : Int64,
+) -> Int64 raise {
+  require_discussion_access(pool, scope, actor, mr, false)
+  pool.with_client(client => {
+    let row = client.query_opt(
+      "SELECT c.id, (SELECT COUNT(*) FROM merge_activity a WHERE a.discussion_id = c.discussion_id AND a.id <> a.discussion_id AND a.id < c.id AND a.kind IN ('comment', 'comment_deleted')) AS preceding FROM merge_activity c JOIN merge_discussion d ON d.id = c.discussion_id WHERE d.id = ? AND d.merge_request_id = ? AND c.merge_request_id = d.merge_request_id AND c.id = ? AND (c.id = d.id OR c.kind IN ('comment', 'comment_deleted'))",
+      params=[discussion, mr.id, comment],
+    )
+    guard row is Some(row) else {
+      raise @domain.NotFound(message="discussion comment not found")
+    }
+    (row.get_name("preceding") : Int64) / 50L + 1L
+  })
+}

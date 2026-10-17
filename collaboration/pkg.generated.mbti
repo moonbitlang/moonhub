@@ -56,6 +56,8 @@ pub fn merge_checks(@database.Database, MergeRequest, version? : Int64) -> Array
 
 pub fn merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, page? : Int64) -> MergeDiscussion raise
 
+pub fn merge_discussion_comment_page(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, Int64) -> Int64 raise
+
 pub fn merge_list_metadata(@database.Database, @repository.RepositoryScope, Array[MergeRequest]) -> Map[Int64, MergeListMeta] raise
 
 pub fn merge_review_counts(@database.Database, @repository.RepositoryScope, MergeRequest) -> (Int64, Int64) raise
@@ -141,6 +143,8 @@ pub struct InboxItem {
   kind : String
   actor : String
   version : Int64
+  discussion_id : Int64?
+  comment_id : Int64?
   read : Bool
   created_at : String
 }

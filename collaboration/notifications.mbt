@@ -9,6 +9,8 @@ pub struct InboxItem {
   kind : String
   actor : String
   version : Int64
+  discussion_id : Int64?
+  comment_id : Int64?
   read : Bool
   created_at : String
 }
@@ -16,6 +18,15 @@ pub struct InboxItem {
 ///|
 pub fn InboxItem::url(self : InboxItem) -> String {
   let path = "/\{self.repo.path()}/\{if self.issue { "issues" } else { "merge-requests" }}/\{self.number}"
+  if !self.issue && self.id > 0L && self.discussion_id is Some(discussion) {
+    let comment = self.comment_id
+      .map(id => "&comment=\{id.to_string()}")
+      .unwrap_or("")
+    return "\{path}?discussion=\{discussion.to_string()}\{comment}" +
+      self.comment_id
+      .map(id => "#comment-\{id.to_string()}")
+      .unwrap_or("#discussion-\{discussion.to_string()}")
+  }
   if !self.issue && self.version > 0L && self.id > 0L {
     "\{path}?version=\{self.version}"
   } else {
@@ -60,6 +71,8 @@ fn InboxItem::from_row(row : @database.DbRow) -> InboxItem raise {
     kind: row.get_name("kind"),
     actor: row.get_name("actor"),
     version: row.get_name("version"),
+    discussion_id: row.get_name("discussion_id"),
+    comment_id: row.get_name("comment_id"),
     read: row.get_name("is_read"),
     created_at: row.get_name("created_at"),
   }
@@ -83,7 +96,7 @@ pub fn inbox_items(
         (
           #|SELECT 0 AS id, t.id AS thread_id, owner.name_key AS owner, r.name AS repository_name,
           #|m.number, m.title, 0 AS is_issue, 'review_requested' AS kind, '' AS actor,
-          #|m.current_version AS version, 1 AS is_read, m.updated_at AS created_at
+          #|m.current_version AS version, NULL AS discussion_id, NULL AS comment_id, 1 AS is_read, m.updated_at AS created_at
           #|FROM merge_review_request q JOIN merge_request m ON m.id = q.merge_request_id
           #|JOIN collaboration_thread t ON t.merge_request_id = m.id
           #|JOIN collaboration_access a ON a.repository_id = t.repository_id AND a.user_id = q.user_id AND a.contributor = 1
@@ -95,7 +108,7 @@ pub fn inbox_items(
         (
           #|SELECT 0 AS id, t.id AS thread_id, owner.name_key AS owner, r.name AS repository_name,
           #|i.number, i.title, 1 AS is_issue, 'assigned' AS kind, '' AS actor,
-          #|0 AS version, 1 AS is_read, i.updated_at AS created_at
+          #|0 AS version, NULL AS discussion_id, NULL AS comment_id, 1 AS is_read, i.updated_at AS created_at
           #|FROM issue i JOIN collaboration_thread t ON t.issue_id = i.id
           #|JOIN collaboration_access a ON a.repository_id = t.repository_id AND a.user_id = i.assignee_id
           #|JOIN repository r ON r.id = t.repository_id JOIN team owner ON owner.id = r.team_id

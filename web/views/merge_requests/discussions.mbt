@@ -7,11 +7,10 @@ fn render_discussion_comment(
   discussion : Int64,
   contributor : Bool,
   manager : Bool,
-  reply_page~ : Int64 = 1L,
 ) -> @moonback.Html {
   Html(b => {
     b <+
-      "<div class=\"discussion-comment\" id=\"comment-\{item.id.to_string()}\"><div class=\"mr-event-heading\"><strong>\{item.actor}</strong><time>\{item.created_at}</time><a href=\"\{base}?discussion=\{discussion.to_string()}&amp;discussion_page=\{reply_page.to_string()}#comment-\{item.id.to_string()}\">#\{item.id.to_string()}</a></div>"
+      "<div class=\"discussion-comment\" id=\"comment-\{item.id.to_string()}\"><div class=\"mr-event-heading\"><strong>\{item.actor}</strong><time>\{item.created_at}</time><a href=\"\{base}?discussion=\{discussion.to_string()}&amp;comment=\{item.id.to_string()}#comment-\{item.id.to_string()}\">#\{item.id.to_string()}</a></div>"
     if item.kind == "comment_deleted" {
       b <+ "<p class=\"muted\">Comment deleted.</p>"
     } else {
@@ -85,20 +84,9 @@ fn render_merge_discussion(
       b <+ "<p class=\"muted\">Replies, page \{page.to_string()}</p>"
     }
     b <+ "<ol class=\"discussion-replies\">"
-    for i, reply in discussion.replies {
-      let reply_page = if selected {
-        page
-      } else {
-        (
-          discussion.reply_count -
-          discussion.replies.length().to_int64() +
-          i.to_int64()
-        ) /
-        50L +
-        1L
-      }
+    for reply in discussion.replies {
       b <+
-        "<li>\{render_discussion_comment(base, csrf, user, reply, id, contributor, manager, reply_page~)}</li>"
+        "<li>\{render_discussion_comment(base, csrf, user, reply, id, contributor, manager)}</li>"
     }
     b <+ "</ol><div class=\"mr-actions\">"
     if discussion.can_resolve {

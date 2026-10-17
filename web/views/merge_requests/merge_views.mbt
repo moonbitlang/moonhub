@@ -352,6 +352,18 @@ fn render_merge_detail(
               (kind == "approved" || kind == "changes_requested") {
               b <+ "<span class=\"muted\">Outdated</span>"
             }
+            if item.discussion_id is Some(discussion) {
+              b <+ "<a href=\"\{base}?discussion=\{discussion.to_string()}"
+              if kind == "comment" ||
+                kind == "comment_deleted" ||
+                item.id == discussion {
+                b <+
+                  "&amp;comment=\{item.id.to_string()}#comment-\{item.id.to_string()}"
+              } else {
+                b <+ "#discussion-\{discussion.to_string()}"
+              }
+              b <+ "\">View discussion</a>"
+            }
             b <+ "</div>"
             if !body.is_empty() {
               b <+

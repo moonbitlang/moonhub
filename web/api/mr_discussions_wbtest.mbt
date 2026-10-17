@@ -242,7 +242,7 @@ async test "MR discussion API and browser enforce scopes state versions and CSRF
       port, route, cookie,
     )
     assert_true(overview.contains("View all 52 replies"))
-    assert_true(overview.contains("discussion_page=2#comment-"))
+    assert_true(overview.contains("&amp;comment="))
     let (_, result) = api_test_request(
       port,
       path + "/discussions?discussion=" + id + "&page=2",
@@ -257,6 +257,114 @@ async test "MR discussion API and browser enforce scopes state versions and CSRF
         ..
       } &&
       replies.length() == 2,
+    )
+    let last = @collaboration.merge_discussion(
+        pool,
+        scope,
+        alice,
+        latest,
+        thread_id,
+        page=2L,
+      ).replies[1]
+    let target = "\{route}?discussion=\{id}&comment=\{last.id.to_string()}"
+    let (target_status, target_html) = @web_testkit.http_get_path_with_cookie(
+      port, target, cookie,
+    )
+    assert_eq(target_status.code, 200)
+    assert_true(target_html.contains("Last page reply"))
+    for action in ["delete-comment", "restore-comment"] {
+      let (changed, _) = @web_testkit.http_post_path_with_cookie(
+        port,
+        route + "/" + action,
+        "csrf_token=\{token}&discussion=\{id}&comment=\{last.id.to_string()}&version=1",
+        cookie,
+      )
+      assert_eq(changed.code, 303)
+      let location = changed.headers.get("location").unwrap_or("")
+      assert_true(
+        location.contains("discussion_page=2#comment-" + last.id.to_string()),
+      )
+      let (landed, html) = @web_testkit.http_get_path_with_cookie(
+        port,
+        location.split("#").next().unwrap().to_owned(),
+        cookie,
+      )
+      assert_eq(landed.code, 200)
+      assert_true(html.contains("id=\"comment-\{last.id.to_string()}\""))
+      if action == "delete-comment" {
+        assert_true(html.contains("Restore comment"))
+      }
+    }
+    let (cross_thread, _) = @web_testkit.http_get_path_with_cookie(
+      port,
+      "\{route}?discussion=\{id}&comment=9223372036854775807",
+      cookie,
+    )
+    assert_eq(cross_thread.code, 404)
+  })
+}
+
+///|
+async test "discussion previews bound escaped multibyte list responses and retain complete details" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let token = @identity.create_access_token(pool, alice, "reader", "read", 1)
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let dir = repo.git_dir(root)
+    let base = @gitops.branch_sha(dir, "master")
+    ignore(@test_support.merge_test_commit(dir, "previews", base, "preview\n"))
+    let mr = @collaboration.create_merge_request(
+      pool, scope, dir, alice, "Preview budget", "", "previews", "master", false,
+    )
+    let body = "中\n\"\\".repeat(4999)
+    let mut first_id = 0L
+    for _ in 0..<50 {
+      @collaboration.submit_merge_review(pool, alice, mr, 1L, "comment", body)
+      let id = @collaboration.list_merge_discussions(pool, scope, alice, mr, 1L)[0].id
+      first_id = id
+      for _ in 0..<3 {
+        ignore(
+          @collaboration.reply_merge_discussion(
+            pool, scope, alice, mr, id, body,
+          ),
+        )
+      }
+    }
+    let path = "/repos/alice/demo/mrs/1/discussions"
+    let (status, result) = api_test_request(port, path, token, None)
+    assert_eq(status, 200)
+    assert_true(@utf8.encode(result.stringify()).length() < 4194304)
+    guard result is { "items": Array(items), "has_more": False, .. } else {
+      fail("discussion list missing")
+    }
+    assert_eq(items.length(), 50)
+    assert_true(
+      items[0]
+      is {
+        "root": { "body": String(preview), "body_truncated": True, .. },
+        "replies": Array(replies),
+        ..
+      } &&
+      preview.length() == 512 &&
+      replies.length() == 3,
+    )
+    let (_, detail) = api_test_request(
+      port,
+      path + "?discussion=" + first_id.to_string(),
+      token,
+      None,
+    )
+    assert_true(
+      detail
+      is {
+        "discussion": {
+          "root": { "body": String(full), "body_truncated": False, .. },
+          ..
+        },
+        ..
+      } &&
+      full == body,
     )
   })
 }

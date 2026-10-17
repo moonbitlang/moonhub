@@ -322,3 +322,86 @@ async test "discussions reject cross MR access invalid bodies and bound paginati
     })
   })
 }
+
+///|
+async test "discussion notifications preserve exact targets across paging and deletion" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let dir = repo.git_dir(root)
+    ignore(
+      @test_support.merge_test_commit(
+        dir,
+        "targets",
+        @gitops.branch_sha(dir, "master"),
+        "targets\n",
+      ),
+    )
+    let mr = create_merge_request(
+      pool, scope, dir, alice, "Targets", "", "targets", "master", false,
+    )
+    submit_merge_review(pool, admin, mr, 1L, "comment", "Original root")
+    let id = list_merge_discussions(pool, scope, alice, mr, 1L)[0].id
+    let root_event = inbox_items(pool, alice, "all", 1L)[0]
+    assert_eq(root_event.discussion_id, Some(id))
+    assert_eq(root_event.comment_id, Some(id))
+    for _ in 0..<51 {
+      submit_merge_review(pool, alice, mr, 1L, "comment", "Newer root")
+    }
+    for i in 0..<51 {
+      ignore(reply_merge_discussion(pool, scope, admin, mr, id, "Reply \{i}"))
+    }
+    let event = inbox_items(pool, alice, "all", 1L)[0]
+    let comment = event.comment_id.unwrap()
+    assert_eq(event.discussion_id, Some(id))
+    assert_true(
+      event
+      .url()
+      .contains(
+        "discussion=" + id.to_string() + "&comment=" + comment.to_string(),
+      ),
+    )
+    assert_true(event.url().has_suffix("#comment-" + comment.to_string()))
+    assert_eq(
+      merge_discussion_comment_page(pool, scope, alice, mr, id, comment),
+      2L,
+    )
+    set_merge_comment_deleted(pool, scope, admin, mr, comment, 1L, true)
+    assert_eq(
+      merge_discussion_comment_page(pool, scope, alice, mr, id, comment),
+      2L,
+    )
+    set_merge_comment_deleted(pool, scope, admin, mr, comment, 1L, false)
+    set_merge_discussion_resolved(pool, scope, admin, mr, id, 1L, true)
+    let state = inbox_items(pool, alice, "all", 1L)[0]
+    assert_eq(state.kind, "discussion_resolved")
+    assert_eq(state.discussion_id, Some(id))
+    assert_eq(state.comment_id, None)
+    assert_true(
+      state
+      .url()
+      .has_suffix(
+        "?discussion=" + id.to_string() + "#discussion-" + id.to_string(),
+      ),
+    )
+    let group = inbox_groups(pool, alice, "all", 1L)[0]
+    assert_eq(group.url(), "/alice/demo/merge-requests/1")
+    assert_true(group.events[0].url().contains("discussion="))
+    let newer = list_merge_discussions(pool, scope, alice, mr, 1L)[0].id
+    try
+      ignore(
+        merge_discussion_comment_page(pool, scope, alice, mr, newer, comment),
+      )
+    catch {
+      @domain.NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("cross discussion comment target accepted")
+    }
+    pool.with_client(client => {
+      assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
+    })
+  })
+}

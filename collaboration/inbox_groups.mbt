@@ -8,7 +8,7 @@ pub struct InboxGroup {
 
 ///|
 pub fn InboxGroup::url(self : InboxGroup) -> String {
-  { ..self.item, id: 0L, }.url()
+  { ..self.item, id: 0L, discussion_id: None, comment_id: None, }.url()
 }
 
 ///|

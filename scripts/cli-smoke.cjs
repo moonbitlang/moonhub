@@ -187,6 +187,7 @@ async function main() {
   assert.equal(cli(['ci', 'view', run.number]).run.conclusion, 'cancelled');
   assert.equal(cli(['ci', 'list']).items.length, 1);
   cli(['ci', 'rerun', run.number], execute);
+
   // Use a real stalled HTTP peer to exercise the CLI's request deadline and exit code.
   const stalledSockets = new Set();
   const stalled = net.createServer(socket => {
@@ -256,7 +257,7 @@ async function main() {
   await page.waitForURL(/#discussion-/);
   const reopenedThread = page.locator('#discussion-' + uiThread);
   await reopenedThread.getByRole('button', { name: 'Delete comment', exact: true }).first().click();
-  await page.waitForURL(/#discussion-/);
+  await page.waitForURL(/#comment-/);
   await reopenedThread.getByText('Comment deleted.', { exact: true }).waitFor();
   assert.equal(await reopenedThread.getByText('Draft for the second thread', { exact: true }).isVisible(), true);
   await reopenedThread.getByRole('button', { name: 'Restore comment', exact: true }).click();
@@ -270,6 +271,50 @@ async function main() {
   await nativePage.getByRole('button', { name: 'Send reply', exact: true }).click();
   await nativePage.getByText('Reply without JavaScript', { exact: true }).first().waitFor();
   await noScript.close();
+  // Discussion responses must fit the CLI budget, and notification targets must
+  // still find an old thread/reply after it falls outside the overview page.
+  const rootToken = fs.readFileSync(write, 'utf8').trim();
+  const reviewerToken = fs.readFileSync(reviewToken, 'utf8').trim();
+  const apiBase = base + '/-/api/v1/repos/root/demo/mrs/1/';
+  async function discussionPost(action, payload, secret = rootToken) {
+    const response = await fetch(apiBase + action, { method: 'POST', headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  const largeBody = '中'.repeat(19999);
+  for (let i = 0; i < 18; i++) {
+    await discussionPost('comment', { version: '1', body: largeBody });
+    const id = String(query('SELECT MAX(id) AS id FROM merge_discussion')[0].id);
+    for (let j = 0; j < 3; j++) await discussionPost('reply', { discussion: id, body: largeBody });
+  }
+  const previews = cli(['mr', 'discussions', '1']);
+  assert.ok(Buffer.byteLength(JSON.stringify(previews)) < 4194304);
+  assert.equal(previews.items[0].root.body_truncated, true);
+  assert.equal([...previews.items[0].root.body].length, 512);
+  assert.equal(cli(['mr', 'discussions', '1', '--discussion', previews.items[0].id]).discussion.root.body, largeBody);
+  for (let i = 0; i < 33; i++) await discussionPost('comment', { version: '1', body: 'Newer notification fixture ' + i });
+  for (let i = 0; i < 51; i++) await discussionPost('reply', { discussion: comment.id, body: 'Paged follow-up ' + i }, reviewerToken);
+  const targetNotification = cli(['inbox', 'list', '--filter', 'all']).items.find(item => item.comment_id && item.discussion_id === comment.id);
+  assert.ok(targetNotification.url.includes('discussion=' + comment.id + '&comment='));
+  let landing = await (await fetch(base + targetNotification.url, { headers: { Cookie: rootCookie } })).text();
+  assert.ok(landing.includes('id="comment-' + targetNotification.comment_id + '"'));
+  const token = landing.match(/name="csrf_token" value="([^"]+)"/)[1];
+  for (const action of ['delete-comment', 'restore-comment']) {
+    const response = await fetch(base + '/root/demo/merge-requests/1/' + action, { method: 'POST', redirect: 'manual', headers: { Cookie: rootCookie }, body: new URLSearchParams({ csrf_token: token, discussion: comment.id, comment: targetNotification.comment_id, version: '1' }) });
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    assert.ok(location.includes('discussion_page=2#comment-' + targetNotification.comment_id));
+    landing = await (await fetch(base + location, { headers: { Cookie: rootCookie } })).text();
+    assert.ok(landing.includes('id="comment-' + targetNotification.comment_id + '"'));
+    if (action === 'delete-comment') assert.ok(landing.includes('Restore comment'));
+  }
+  const state = cli(['mr', 'discussions', '1', '--discussion', comment.id]).discussion;
+  await discussionPost('resolve-discussion', { discussion: comment.id, state_version: state.state_version });
+  const resolvedEvent = cli(['inbox', 'list', '--filter', 'all'], reviewToken).items.find(item => item.kind === 'discussion_resolved');
+  assert.ok(resolvedEvent.url.includes('discussion=' + comment.id));
+  assert.ok((await (await fetch(base + resolvedEvent.url, { headers: { Cookie: rootCookie } })).text()).includes('id="discussion-' + comment.id + '"'));
+
+
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(base + '/-/settings/tokens');
   await page.screenshot({ path: path.join(output, 'tokens-desktop.png'), fullPage: true });
@@ -299,7 +344,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

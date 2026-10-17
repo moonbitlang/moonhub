@@ -259,9 +259,27 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       .query()
       .get("discussion")
       .map(@web_context.positive_resource_number)
-    let discussion_page = @web_context.positive_resource_number(
-      req.query().get("discussion_page").unwrap_or("1"),
-    )
+    let discussion_page = match req.query().get("comment") {
+      Some(comment) => {
+        guard selected_discussion is Some(discussion) else {
+          raise @domain.BadRequest(
+            message="comment target requires a discussion",
+          )
+        }
+        @collaboration.merge_discussion_comment_page(
+          pool,
+          scope,
+          actor,
+          mr,
+          discussion,
+          @web_context.positive_resource_number(comment),
+        )
+      }
+      None =>
+        @web_context.positive_resource_number(
+          req.query().get("discussion_page").unwrap_or("1"),
+        )
+    }
     let discussions = match selected_discussion {
       Some(id) =>
         [
@@ -384,6 +402,15 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           action == "resolve-discussion",
         )
       } else if action == "delete-comment" || action == "restore-comment" {
+        let comment = @web_context.positive_resource_number(
+          form.get("comment").unwrap_or(""),
+        )
+        if discussion is Some(id) {
+          reply_page = @collaboration.merge_discussion_comment_page(
+            pool, scope, actor, mr, id, comment,
+          )
+          reply_id = Some(comment)
+        }
         @collaboration.set_merge_comment_deleted(
           pool,
           scope,
