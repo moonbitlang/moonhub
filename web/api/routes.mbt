@@ -91,22 +91,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let rows = @collaboration.list_merge_activity(pool, mr, page(req))
       let activities = rows[:Int32::min(50, rows.length())]
         .to_owned()
-        .map(a => {
-          (
-            {
-              "id": a.id.to_string(),
-              "actor_id": a.actor_id.map(id => id.to_string()).unwrap_or(""),
-              "actor": a.actor,
-              "kind": a.kind,
-              "body": if a.kind == "merge_failed" {
-                @domain.merge_error_message
-              } else {
-                a.body
-              },
-              "version": a.version.to_string(),
-              "created_at": a.created_at,
-            } : Json)
-        })
+        .map(activity_json)
       {
         "mr": mr_json(mr),
         "reviewers": @collaboration.review_requests(pool, actor, scope, mr).map(person => {
@@ -132,6 +117,61 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "checks": @collaboration.merge_checks(pool, mr).map(check_json),
         "has_more": rows.length() > 50,
         "activity": activities,
+        "unresolved_discussions": @collaboration.unresolved_merge_discussions(
+          pool, scope, actor, mr,
+        ).to_string(),
+      }
+    }),
+  )
+  ctx.get(
+    "/repos/:owner/:repo/mrs/:number/discussions",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "read")
+      let scope = @repository.repository_scope(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+      )
+      let mr = @collaboration.require_merge_request(
+        pool,
+        scope,
+        number(@web_context.required_param(req, "number", "MR")),
+      )
+      let current_page = page(req)
+      match req.query().get("discussion") {
+        Some(id) => {
+          let discussion = @collaboration.merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            number(id),
+            page=current_page,
+          )
+          {
+            "discussion": discussion_json(discussion),
+            "has_more": current_page * 50L < discussion.reply_count,
+          }
+        }
+        None => {
+          let rows = @collaboration.list_merge_discussions(
+            pool,
+            scope,
+            actor,
+            mr,
+            current_page,
+            filter=req.query().get("filter").unwrap_or("all"),
+          )
+          {
+            "items": rows[:Int32::min(50, rows.length())]
+            .to_owned()
+            .map(discussion_json),
+            "has_more": rows.length() > 50,
+            "unresolved_count": @collaboration.unresolved_merge_discussions(
+              pool, scope, actor, mr,
+            ).to_string(),
+          }
+        }
       }
     }),
   )
@@ -207,6 +247,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let body = api_body(
         req,
         match action {
+          "reply" => ["discussion", "body"]
+          "resolve-discussion" | "reopen-discussion" =>
+            ["discussion", "state_version"]
           "edit" => ["edit_version", "title", "description"]
           "delete-comment" | "restore-comment" => ["version", "comment"]
           _ => ["version", "decision", "body", "reviewer", "edit_version"]
@@ -221,13 +264,36 @@ pub let api_module : @moonback.Module = Module(ctx => {
         (scope, git_dir) => {
           let mr = @collaboration.require_merge_request(pool, scope, id)
           let current = if [
-              "comment", "edit", "delete-comment", "restore-comment",
+              "comment", "edit", "delete-comment", "restore-comment", "reply", "resolve-discussion",
+              "reopen-discussion",
             ].contains(action) {
             mr
           } else {
             @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
           }
+          let mut reply_id : Int64? = None
           match action {
+            "reply" =>
+              reply_id = Some(
+                @collaboration.reply_merge_discussion(
+                  pool,
+                  scope,
+                  actor,
+                  current,
+                  number(field(body, "discussion")),
+                  field(body, "body"),
+                ),
+              )
+            "resolve-discussion" | "reopen-discussion" =>
+              @collaboration.set_merge_discussion_resolved(
+                pool,
+                scope,
+                actor,
+                current,
+                number(field(body, "discussion")),
+                number(field(body, "state_version")),
+                action == "resolve-discussion",
+              )
             "edit" => {
               guard body.contains("title") || body.contains("description") else {
                 raise @domain.BadRequest(
@@ -319,7 +385,24 @@ pub let api_module : @moonback.Module = Module(ctx => {
             }
             _ => raise @domain.BadRequest(message="unsupported MR action")
           }
-          mr_json(@collaboration.require_merge_request(pool, scope, id))
+          if ["reply", "resolve-discussion", "reopen-discussion"].contains(
+              action,
+            ) {
+            {
+              "reply_id": reply_id.map(id => id.to_string()).unwrap_or(""),
+              "discussion": discussion_json(
+                @collaboration.merge_discussion(
+                  pool,
+                  scope,
+                  actor,
+                  current,
+                  number(field(body, "discussion")),
+                ),
+              ),
+            }
+          } else {
+            mr_json(@collaboration.require_merge_request(pool, scope, id))
+          }
         },
       )
     }),

@@ -65,6 +65,23 @@ test "MR edit and comment lifecycle commands retain explicit revisions" {
 }
 
 ///|
+test "discussion commands retain independent discussion and state IDs" {
+  for
+    action in [
+      "discussions", "reply", "resolve-discussion", "reopen-discussion",
+    ] {
+    let parsed = command().parse(argv=[
+      "mr", action, "10", "--discussion", "9223372036854775807", "--state-version",
+      "2", "--filter", "unresolved", "--page", "3",
+    ])
+    assert_eq(option(parsed, "discussion"), Some("9223372036854775807"))
+    assert_eq(option(parsed, "state-version"), Some("2"))
+    assert_eq(option(parsed, "filter"), Some("unresolved"))
+    assert_eq(option(parsed, "page"), Some("3"))
+  }
+}
+
+///|
 test "repository inference matches only the configured server and terminal output strips controls" {
   let server = "https://moonhub.example"
   assert_eq(

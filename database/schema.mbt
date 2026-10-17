@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 18L
+pub let database_schema_version : Int64 = 19L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -68,6 +68,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
     "db/migrations/017_pull_request_workflows.sql",
   ).text()
   let run_context_migration = @fs.read_file("db/migrations/018_run_context.sql").text()
+  let discussions_migration = @fs.read_file(
+    "db/migrations/019_merge_discussions.sql",
+  ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -131,7 +134,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 18L {
         tx.driver.exec_script(run_context_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 18")
+      if version < 19L {
+        tx.driver.exec_script(discussions_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 19")
     })
   })
 }

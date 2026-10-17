@@ -36,6 +36,8 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("decision", long="decision", global=true),
     @argparse.OptionArg("reviewer", long="reviewer", global=true),
     @argparse.OptionArg("comment", long="comment", global=true),
+    @argparse.OptionArg("discussion", long="discussion", global=true),
+    @argparse.OptionArg("state-version", long="state-version", global=true),
     @argparse.OptionArg("assignee", long="assignee", global=true),
     @argparse.OptionArg("workflow", long="workflow", global=true),
     @argparse.OptionArg("branch", long="branch", global=true),
@@ -71,7 +73,7 @@ fn command() -> @argparse.Command {
           ..[
             "view", "diff", "checks", "comment", "review", "request-review", "merge",
             "approve-checks", "close", "reopen", "draft", "ready", "edit", "delete-comment",
-            "restore-comment",
+            "restore-comment", "discussions", "reply", "resolve-discussion", "reopen-discussion",
           ].map(action => {
             @argparse.Command(action, positionals=[
               @argparse.PositionArg("number"),
@@ -284,6 +286,40 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         None,
       )
     ("mr", "checks") => ("\{base}/mrs/\{id}/checks", None)
+    ("mr", "discussions") => {
+      let selection = match option(matches, "discussion") {
+        Some(id) => "discussion=" + decimal(id)
+        None =>
+          "filter=" +
+          escape(
+            if required(matches, "filter") == "unread" {
+              "all"
+            } else {
+              required(matches, "filter")
+            },
+          )
+      }
+      (
+        "\{base}/mrs/\{id}/discussions?\{selection}&page=\{decimal(required(matches, "page"))}",
+        None,
+      )
+    }
+    ("mr", "reply") =>
+      (
+        "\{base}/mrs/\{id}/reply",
+        Some({
+          "discussion": decimal(required(matches, "discussion")),
+          "body": read_body(matches),
+        }),
+      )
+    ("mr", "resolve-discussion" | "reopen-discussion") =>
+      (
+        "\{base}/mrs/\{id}/\{action}",
+        Some({
+          "discussion": decimal(required(matches, "discussion")),
+          "state_version": decimal(required(matches, "state-version")),
+        }),
+      )
     ("mr", "edit") => {
       let fields : Map[String, Json] = {
         "edit_version": Json(decimal(required(matches, "edit-version"))),

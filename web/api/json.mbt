@@ -209,3 +209,37 @@ fn check_json(check : @collaboration.MergeCheck) -> Json {
     "error": check.error,
   }
 }
+
+///|
+fn activity_json(a : @collaboration.MergeActivity) -> Json {
+  {
+    "id": a.id.to_string(),
+    "actor_id": a.actor_id.map(id => id.to_string()).unwrap_or(""),
+    "actor": a.actor,
+    "kind": a.kind,
+    "body": if a.kind == "merge_failed" {
+      @domain.merge_error_message
+    } else {
+      a.body
+    },
+    "version": a.version.to_string(),
+    "created_at": a.created_at,
+    "discussion_id": a.discussion_id.map(id => id.to_string()).unwrap_or(""),
+  }
+}
+
+///|
+fn discussion_json(d : @collaboration.MergeDiscussion) -> Json {
+  {
+    "id": d.id.to_string(),
+    "version": d.version.to_string(),
+    "resolved": d.resolved,
+    "state_version": d.state_version.to_string(),
+    "state_actor": d.state_actor,
+    "state_changed_at": d.state_changed_at,
+    "can_resolve": d.can_resolve,
+    "root": activity_json(d.root),
+    "replies": d.replies.map(activity_json),
+    "reply_count": d.reply_count.to_string(),
+  }
+}

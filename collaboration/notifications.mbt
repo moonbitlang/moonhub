@@ -29,6 +29,8 @@ pub fn notification_label(kind : String) -> String {
     "review_requested" => "Review requested"
     "assigned" => "Assigned to you"
     "comment" => "New comment"
+    "discussion_resolved" => "Discussion resolved"
+    "discussion_reopened" => "Discussion reopened"
     "approved" => "Review approved"
     "changes_requested" => "Changes requested"
     "withdrawn" => "Review withdrawn"
