@@ -197,6 +197,11 @@ fn render_merge_detail(
   tab : String,
   activity : Array[@collaboration.MergeActivity],
   page : Int64,
+  discussions : Array[@collaboration.MergeDiscussion],
+  discussion_filter : String,
+  selected_discussion : Int64?,
+  discussion_page : Int64,
+  unresolved : Int64,
   commits : Array[@gitops.CommitInfo],
   patch : String,
   diff_error : String,
@@ -286,7 +291,46 @@ fn render_merge_detail(
           b <+
             "<details class=\"mr-edit\"><summary>Edit title and description</summary><form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}/edit\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"edit_version\" value=\"\{mr.edit_version.to_string()}\"><label class=\"field\"><span>Title</span><input name=\"title\" required maxlength=\"200\" value=\"\{mr.title}\"></label><label class=\"field\"><span>Description</span><textarea aria-label=\"Description\" name=\"description\" rows=\"5\" maxlength=\"20000\">\{mr.description}</textarea></label><button type=\"submit\">Save changes</button></form></details>"
         }
-        b <+ "<ol class=\"mr-timeline\">"
+        b <+
+          "<section class=\"mr-discussions\" aria-label=\"Comment discussions\"><h2>Discussions <span class=\"muted\">\{unresolved.to_string()} unresolved</span></h2><nav class=\"mr-actions\" aria-label=\"Discussion filters\">"
+        for filter in ["all", "unresolved", "resolved"] {
+          b <+
+            "<a href=\"\{base}?tab=discussion&amp;version=\{version.to_string()}&amp;filter=\{filter}\""
+          if selected_discussion is None && filter == discussion_filter {
+            b <+ " aria-current=\"page\""
+          }
+          b <+
+            ">\{match filter { "all" => "All"; "unresolved" => "Unresolved"; _ => "Resolved" }}</a>"
+        }
+        b <+ "</nav>"
+        if discussions.is_empty() {
+          b <+ "<p class=\"muted\">No discussions in this view.</p>"
+        }
+        for i, discussion in discussions {
+          if i < 50 {
+            b <+
+              "\{render_merge_discussion(base, csrf, user, discussion, contributor, manager, selected_discussion is Some(_), discussion_page)}"
+          }
+        }
+        b <+ "<nav class=\"mr-actions\" aria-label=\"Thread pagination\">"
+        let selection = match selected_discussion {
+          Some(id) => "discussion=\{id}"
+          None => "filter=\{discussion_filter}"
+        }
+        if discussion_page > 1L {
+          b <+
+            "<a href=\"\{base}?version=\{version.to_string()}&amp;\{selection}&amp;discussion_page=\{(discussion_page - 1L).to_string()}\">Previous page</a>"
+        }
+        let has_more = match selected_discussion {
+          Some(_) => discussions[0].reply_count > discussion_page * 50L
+          None => discussions.length() > 50
+        }
+        if has_more {
+          b <+
+            "<a href=\"\{base}?version=\{version.to_string()}&amp;\{selection}&amp;discussion_page=\{(discussion_page + 1L).to_string()}\">Next page</a>"
+        }
+        b <+
+          "</nav></section><details class=\"secondary-details\"><summary>Activity history</summary><ol class=\"mr-timeline\">"
         for i, item in activity {
           if i < 50 {
             let actor = item.actor
@@ -308,6 +352,18 @@ fn render_merge_detail(
               (kind == "approved" || kind == "changes_requested") {
               b <+ "<span class=\"muted\">Outdated</span>"
             }
+            if item.discussion_id is Some(discussion) {
+              b <+ "<a href=\"\{base}?discussion=\{discussion.to_string()}"
+              if kind == "comment" ||
+                kind == "comment_deleted" ||
+                item.id == discussion {
+                b <+
+                  "&amp;comment=\{item.id.to_string()}#comment-\{item.id.to_string()}"
+              } else {
+                b <+ "#discussion-\{discussion.to_string()}"
+              }
+              b <+ "\">View discussion</a>"
+            }
             b <+ "</div>"
             if !body.is_empty() {
               b <+
@@ -326,7 +382,7 @@ fn render_merge_detail(
           b <+
             "<a href=\"\{base}?tab=discussion&amp;version=\{version.to_string()}&amp;page=\{(page + 1L).to_string()}\">Older activity</a>"
         }
-        b <+ "</nav>"
+        b <+ "</nav></details>"
       } else if tab == "commits" {
         b <+ "<ul class=\"mr-list\">"
         for commit in commits {

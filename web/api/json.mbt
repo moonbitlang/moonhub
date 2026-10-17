@@ -209,3 +209,56 @@ fn check_json(check : @collaboration.MergeCheck) -> Json {
     "error": check.error,
   }
 }
+
+///|
+fn activity_json(
+  a : @collaboration.MergeActivity,
+  preview~ : Bool = false,
+) -> Json {
+  // A 512-scalar preview stays below the CLI's 4 MiB budget even when JSON
+  // escapes every character, across 50 roots and three replies per root.
+  let body = if a.kind == "merge_failed" {
+    @domain.merge_error_message
+  } else {
+    a.body
+  }
+  let excerpt = if preview {
+    let text = StringBuilder()
+    for ch in body.iter().take(512) {
+      text.write_char(ch)
+    }
+    text.to_string()
+  } else {
+    body
+  }
+  {
+    "id": a.id.to_string(),
+    "actor_id": a.actor_id.map(id => id.to_string()).unwrap_or(""),
+    "actor": a.actor,
+    "kind": a.kind,
+    "body": excerpt,
+    "body_truncated": excerpt != body,
+    "version": a.version.to_string(),
+    "created_at": a.created_at,
+    "discussion_id": a.discussion_id.map(id => id.to_string()).unwrap_or(""),
+  }
+}
+
+///|
+fn discussion_json(
+  d : @collaboration.MergeDiscussion,
+  preview~ : Bool = false,
+) -> Json {
+  {
+    "id": d.id.to_string(),
+    "version": d.version.to_string(),
+    "resolved": d.resolved,
+    "state_version": d.state_version.to_string(),
+    "state_actor": d.state_actor,
+    "state_changed_at": d.state_changed_at,
+    "can_resolve": d.can_resolve,
+    "root": activity_json(d.root, preview~),
+    "replies": d.replies.map(reply => activity_json(reply, preview~)),
+    "reply_count": d.reply_count.to_string(),
+  }
+}

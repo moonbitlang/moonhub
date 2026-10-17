@@ -32,7 +32,8 @@ status and assignment to the current user.
 Edits and state changes carry an optimistic version. Stale forms cannot overwrite
 newer changes. Comments and transitions are recorded in an activity log. Lists
 and discussions are paginated at 50 entries. Titles are limited to 200 characters;
-descriptions and comments to 20,000. Content is plain text, never trusted HTML.
+descriptions, comments and replies to 20,000. Content is plain text, never trusted
+HTML.
 
 An issue can be linked when creating an MR, including through the issue's
 "Create merge request" link. Only issues in the same repository can be linked.
@@ -42,9 +43,10 @@ Merging does not automatically close an issue.
 
 Contributors create MRs between existing local branches with a single common
 ancestor. There is at most one open MR per source/target pair. MRs support draft,
-ready, closed, reopened and merged states, versioned comparison, discussion,
-approval, requests for changes and review withdrawal. Authors cannot approve
-their own work. Only team owners/admins or site administrators can merge.
+ready, closed, reopened and merged states, versioned comparison, discussion
+threads, replies, resolve/reopen state, approval, requests for changes and review
+withdrawal. Authors cannot approve their own work. Only team owners/admins or
+site administrators can merge.
 
 Source and target commit IDs identify each comparison version. Refreshing an
 open MR reads actual refs; changes on either side create a new version. Reviews
@@ -58,8 +60,39 @@ before merging. Resolve conflicts locally and push again. The initial release
 uses two-parent merge commits and retains source branches. Required Pipeline
 checks are available through opt-in branch protection, with optional automatic
 `pull_request` workflows discovered from the target branch; see
-[MR checks](merge-checks.md). Forks, squash/rebase, inline review threads and
+[MR checks](merge-checks.md). Forks, squash/rebase, inline line/range anchors and
 auto-merge are outside this release.
+
+Each comment starts a discussion; review decisions with a nonempty body also
+start one, without changing review semantics. Contributors can reply to current
+or historical revisions, including after an MR closes or merges. Replies remain
+on the original revision. Discussion authors, MR authors and team administrators
+can resolve/reopen with an independent optimistic state version. Resolve state
+records its last actor/time and survives replies, source updates and comment
+deletion/restoration. Resolve never clears a changes-requested review, and
+unresolved discussions do not add a merge gate.
+
+Discussion filters and the unresolved count cover all MR revisions. Resolved
+threads are collapsed in the overview with a root-text preview and stable ID;
+selecting a thread opens it. Deleted roots keep an explicit placeholder. Reply
+drafts are isolated by discussion and revision. The Web view uses native
+disclosures and separator-based threads, with replies indented one level. Reply
+and resolve/reopen actions use CSRF-protected POST forms and work without
+JavaScript. Overview pages show at most 50 threads and the latest three replies
+per thread; thread detail pages expose every reply in chronological pages of 50.
+Original comment IDs, review decisions and deletion tombstones are preserved by
+migration 019, without replaying old notifications. The existing activity history
+remains available as a secondary disclosure. Replies and resolve/reopen events use the
+existing MR subscription and delivery authorization rules. Notification links
+retain the discussion and stable comment ID; the server resolves the actual
+reply page, including deleted-comment placeholders. Delete/restore actions return
+to that same page and comment anchor. Migration 020 backfills existing targets
+without replaying notifications or mail or resetting read state.
+
+Discussion list API responses contain 512-scalar body previews with an explicit
+`body_truncated` flag. Single-discussion reads retain complete root/reply bodies;
+this keeps overview responses within the CLI response budget without losing
+content.
 
 Git output is bounded to 2 MiB with a 60-second operation timeout. Oversized diffs
 require local inspection instead of exhausting the server. The commits view

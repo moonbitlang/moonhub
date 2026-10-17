@@ -134,11 +134,32 @@ async function main() {
   const comment = cli(['mr', 'view', '1']).activity.find(a => a.kind === 'comment');
   assert.equal(typeof comment.id, 'string');
   assert.equal(comment.actor_id, '1');
+  assert.equal(comment.discussion_id, comment.id);
+  let discussion = cli(['mr', 'discussions', '1', '--discussion', comment.id]).discussion;
+  assert.equal(discussion.state_version, '1');
+  const replyFile = path.join(temp, 'reply.md');
+  fs.writeFileSync(replyFile, 'The discussion reply survives deleting the root.');
+  const replied = cli(['mr', 'reply', '1', '--discussion', comment.id, '--body-file', replyFile]);
+  assert.equal(typeof replied.reply_id, 'string');
+  assert.equal(replied.discussion.reply_count, '1');
+  assert.equal(replied.discussion.replies[0].id, replied.reply_id);
+  discussion = cli(['mr', 'resolve-discussion', '1', '--discussion', comment.id, '--state-version', '1']).discussion;
+  assert.equal(discussion.resolved, true);
+  assert.equal(discussion.state_version, '2');
+  cli(['mr', 'reopen-discussion', '1', '--discussion', comment.id, '--state-version', '1'], write, 1);
+  assert.equal(cli(['mr', 'discussions', '1', '--filter', 'resolved']).items.length, 1);
+  cli(['mr', 'reply', '1', '--discussion', comment.id, '--body-file', replyFile]);
+  assert.equal(cli(['mr', 'discussions', '1', '--discussion', comment.id]).discussion.resolved, true);
+  cli(['mr', 'reopen-discussion', '1', '--discussion', comment.id, '--state-version', '2']);
+  assert.equal(cli(['mr', 'discussions', '1', '--filter', 'unresolved']).items.length, 1);
+
   cli(['mr', 'delete-comment', '1', '--comment', comment.id, '--version', '2'], write, 1);
   cli(['mr', 'delete-comment', '1', '--comment', comment.id, '--version', comment.version]);
   const deleted = cli(['mr', 'view', '1']).activity.find(a => a.id === comment.id);
   assert.equal(deleted.kind, 'comment_deleted');
   assert.equal(deleted.body, '');
+  assert.equal(cli(['mr', 'discussions', '1', '--discussion', comment.id]).discussion.replies.length, 2);
+
   const deletedPage = await (await fetch(base + '/root/demo/merge-requests/1', { headers: { Cookie: cookie } })).text();
   assert.ok(!deletedPage.includes('Review this CLI workflow.'), 'deleted comment leaked into browser HTML');
   cli(['mr', 'restore-comment', '1', '--comment', comment.id, '--version', comment.version]);
@@ -166,6 +187,7 @@ async function main() {
   assert.equal(cli(['ci', 'view', run.number]).run.conclusion, 'cancelled');
   assert.equal(cli(['ci', 'list']).items.length, 1);
   cli(['ci', 'rerun', run.number], execute);
+
   // Use a real stalled HTTP peer to exercise the CLI's request deadline and exit code.
   const stalledSockets = new Set();
   const stalled = net.createServer(socket => {
@@ -195,6 +217,105 @@ async function main() {
   const split = rootCookie.indexOf('=');
   await context.addCookies([{ name: rootCookie.slice(0, split), value: rootCookie.slice(split + 1), url: base }]);
   const page = await context.newPage();
+
+  // Real browser controls, per-discussion drafts, resolved disclosure and mobile layout.
+  fs.writeFileSync(replyFile, 'Please confirm the follow-up behavior.');
+  cli(['mr', 'comment', '1', '--version', '1', '--body-file', replyFile]);
+  const uiThread = cli(['mr', 'discussions', '1']).items[0].id;
+  const mrUrl = base + '/root/demo/merge-requests/1';
+  await page.goto(mrUrl);
+  const firstThread = page.locator('#discussion-' + comment.id);
+  const secondThread = page.locator('#discussion-' + uiThread);
+  await firstThread.locator('.discussion-reply > summary').click();
+  await secondThread.locator('.discussion-reply > summary').click();
+  await firstThread.getByRole('textbox').fill('Draft for the first thread');
+  await secondThread.getByRole('textbox').fill('Draft for the second thread');
+  await page.reload();
+  assert.equal(await firstThread.locator('textarea[name=body]').inputValue(), 'Draft for the first thread');
+  assert.equal(await secondThread.locator('textarea[name=body]').inputValue(), 'Draft for the second thread');
+  await secondThread.locator('.discussion-reply > summary').click();
+  await secondThread.getByRole('button', { name: 'Send reply', exact: true }).click();
+  await page.waitForURL(/discussion=.*#comment-/);
+  assert.equal(await page.locator('#discussion-' + uiThread).getByText('Draft for the second thread', { exact: true }).isVisible(), true);
+  await page.getByRole('button', { name: 'Resolve discussion', exact: true }).click();
+  await page.waitForURL(/#discussion-/);
+  await page.locator('#discussion-' + uiThread).getByText('Resolved', { exact: true }).waitFor();
+  await page.goto(mrUrl);
+  assert.equal(await page.locator('#discussion-' + uiThread).getAttribute('open'), null);
+  await firstThread.locator('.discussion-reply > summary').click();
+  const reviewDir = path.join(output, 'discussions');
+  fs.mkdirSync(reviewDir, { recursive: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(reviewDir, 'desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'discussion overflow mobile');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(reviewDir, 'mobile.png'), fullPage: true });
+  await page.locator('#discussion-' + uiThread + ' > summary').click();
+  await page.locator('#discussion-' + uiThread).getByRole('button', { name: 'Reopen discussion', exact: true }).click();
+  await page.waitForURL(/#discussion-/);
+  const reopenedThread = page.locator('#discussion-' + uiThread);
+  await reopenedThread.getByRole('button', { name: 'Delete comment', exact: true }).first().click();
+  await page.waitForURL(/#comment-/);
+  await reopenedThread.getByText('Comment deleted.', { exact: true }).waitFor();
+  assert.equal(await reopenedThread.getByText('Draft for the second thread', { exact: true }).isVisible(), true);
+  await reopenedThread.getByRole('button', { name: 'Restore comment', exact: true }).click();
+  await reopenedThread.getByText('Please confirm the follow-up behavior.', { exact: true }).waitFor();
+  const noScript = await browser.newContext({ javaScriptEnabled: false });
+  await noScript.addCookies([{ name: rootCookie.slice(0, split), value: rootCookie.slice(split + 1), url: base }]);
+  const nativePage = await noScript.newPage();
+  await nativePage.goto(mrUrl + '?discussion=' + uiThread);
+  await nativePage.locator('.discussion-reply > summary').click();
+  await nativePage.getByRole('textbox', { name: 'Reply to discussion #' + uiThread }).fill('Reply without JavaScript');
+  await nativePage.getByRole('button', { name: 'Send reply', exact: true }).click();
+  await nativePage.getByText('Reply without JavaScript', { exact: true }).first().waitFor();
+  await noScript.close();
+  // Discussion responses must fit the CLI budget, and notification targets must
+  // still find an old thread/reply after it falls outside the overview page.
+  const rootToken = fs.readFileSync(write, 'utf8').trim();
+  const reviewerToken = fs.readFileSync(reviewToken, 'utf8').trim();
+  const apiBase = base + '/-/api/v1/repos/root/demo/mrs/1/';
+  async function discussionPost(action, payload, secret = rootToken) {
+    const response = await fetch(apiBase + action, { method: 'POST', headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  const largeBody = '中'.repeat(19999);
+  for (let i = 0; i < 18; i++) {
+    await discussionPost('comment', { version: '1', body: largeBody });
+    const id = String(query('SELECT MAX(id) AS id FROM merge_discussion')[0].id);
+    for (let j = 0; j < 3; j++) await discussionPost('reply', { discussion: id, body: largeBody });
+  }
+  const previews = cli(['mr', 'discussions', '1']);
+  assert.ok(Buffer.byteLength(JSON.stringify(previews)) < 4194304);
+  assert.equal(previews.items[0].root.body_truncated, true);
+  assert.equal([...previews.items[0].root.body].length, 512);
+  assert.equal(cli(['mr', 'discussions', '1', '--discussion', previews.items[0].id]).discussion.root.body, largeBody);
+  for (let i = 0; i < 33; i++) await discussionPost('comment', { version: '1', body: 'Newer notification fixture ' + i });
+  for (let i = 0; i < 51; i++) await discussionPost('reply', { discussion: comment.id, body: 'Paged follow-up ' + i }, reviewerToken);
+  const targetNotification = cli(['inbox', 'list', '--filter', 'all']).items.find(item => item.comment_id && item.discussion_id === comment.id);
+  assert.ok(targetNotification.url.includes('discussion=' + comment.id + '&comment='));
+  let landing = await (await fetch(base + targetNotification.url, { headers: { Cookie: rootCookie } })).text();
+  assert.ok(landing.includes('id="comment-' + targetNotification.comment_id + '"'));
+  const token = landing.match(/name="csrf_token" value="([^"]+)"/)[1];
+  for (const action of ['delete-comment', 'restore-comment']) {
+    const response = await fetch(base + '/root/demo/merge-requests/1/' + action, { method: 'POST', redirect: 'manual', headers: { Cookie: rootCookie }, body: new URLSearchParams({ csrf_token: token, discussion: comment.id, comment: targetNotification.comment_id, version: '1' }) });
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    assert.ok(location.includes('discussion_page=2#comment-' + targetNotification.comment_id));
+    landing = await (await fetch(base + location, { headers: { Cookie: rootCookie } })).text();
+    assert.ok(landing.includes('id="comment-' + targetNotification.comment_id + '"'));
+    if (action === 'delete-comment') assert.ok(landing.includes('Restore comment'));
+  }
+  const state = cli(['mr', 'discussions', '1', '--discussion', comment.id]).discussion;
+  await discussionPost('resolve-discussion', { discussion: comment.id, state_version: state.state_version });
+  const resolvedEvent = cli(['inbox', 'list', '--filter', 'all'], reviewToken).items.find(item => item.kind === 'discussion_resolved');
+  assert.ok(resolvedEvent.url.includes('discussion=' + comment.id));
+  assert.ok((await (await fetch(base + resolvedEvent.url, { headers: { Cookie: rootCookie } })).text()).includes('id="discussion-' + comment.id + '"'));
+
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(base + '/-/settings/tokens');
   await page.screenshot({ path: path.join(output, 'tokens-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -223,7 +344,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR comment IDs/delete/restore and deleted body redaction', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

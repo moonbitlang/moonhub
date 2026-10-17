@@ -40,6 +40,8 @@ pub fn list_issues(@database.Database, @repository.RepositoryScope, String, Int6
 
 pub fn list_merge_activity(@database.Database, MergeRequest, Int64) -> Array[MergeActivity] raise
 
+pub fn list_merge_discussions(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, filter? : String) -> Array[MergeDiscussion] raise
+
 pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64, query? : String, author? : Int64, reviewer? : Int64) -> Array[MergeRequest] raise
 
 pub fn mark_all_notifications_read(@database.Database, @domain.CurrentUser, Int64) -> Unit raise
@@ -51,6 +53,10 @@ pub fn mark_thread_notifications_read(@database.Database, @domain.CurrentUser, I
 pub fn merge_blocker(@database.Database, @repository.RepositoryScope, MergeRequest, @gitops.Revision) -> String raise
 
 pub fn merge_checks(@database.Database, MergeRequest, version? : Int64) -> Array[MergeCheck] raise
+
+pub fn merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, page? : Int64) -> MergeDiscussion raise
+
+pub fn merge_discussion_comment_page(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, Int64) -> Int64 raise
 
 pub fn merge_list_metadata(@database.Database, @repository.RepositoryScope, Array[MergeRequest]) -> Map[Int64, MergeListMeta] raise
 
@@ -69,6 +75,8 @@ pub fn prepare_merge_checks(@database.Database, @repository.RepositoryScope, Mer
 pub async fn refresh_merge_request(@database.Database, @repository.RepositoryScope, String, MergeRequest) -> MergeRequest
 
 pub async fn refresh_next_requested_review(@database.Database, String) -> Bool
+
+pub fn reply_merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, String) -> Int64 raise
 
 pub fn request_merge_review(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, MergeRequest, Int64, Int64) -> Unit raise
 
@@ -90,6 +98,8 @@ pub async fn save_branch_rule(@database.Database, @repository.RepositoryScope, S
 
 pub fn set_merge_comment_deleted(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, Int64, Bool) -> Unit raise
 
+pub fn set_merge_discussion_resolved(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, Int64, Bool) -> Unit raise
+
 pub fn set_notification_email(@database.Database, @domain.CurrentUser, Bool) -> Unit raise
 
 pub fn set_thread_subscription(@database.Database, @domain.CurrentUser, Int64, Bool) -> String raise
@@ -103,6 +113,8 @@ pub fn submit_merge_review(@database.Database, @domain.CurrentUser, MergeRequest
 pub fn thread_subscription(@database.Database, @domain.CurrentUser, @repository.RepositoryScope, Int64, Bool) -> ThreadSubscription raise
 
 pub fn unread_notification_count(@database.Database, @domain.CurrentUser) -> Int64 raise
+
+pub fn unresolved_merge_discussions(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest) -> Int64 raise
 
 // Errors
 
@@ -131,6 +143,8 @@ pub struct InboxItem {
   kind : String
   actor : String
   version : Int64
+  discussion_id : Int64?
+  comment_id : Int64?
   read : Bool
   created_at : String
 }
@@ -171,6 +185,7 @@ pub struct MergeActivity {
   body : String
   created_at : String
   version : Int64
+  discussion_id : Int64?
 }
 
 pub struct MergeCheck {
@@ -180,6 +195,19 @@ pub struct MergeCheck {
   conclusion : String
   run_number : Int64?
   error : String
+}
+
+pub struct MergeDiscussion {
+  id : Int64
+  version : Int64
+  resolved : Bool
+  state_version : Int64
+  state_actor : String
+  state_changed_at : String
+  can_resolve : Bool
+  root : MergeActivity
+  replies : Array[MergeActivity]
+  reply_count : Int64
 }
 
 pub struct MergeListMeta {

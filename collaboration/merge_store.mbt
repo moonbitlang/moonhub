@@ -119,6 +119,7 @@ pub struct MergeActivity {
   body : String
   created_at : String
   version : Int64
+  discussion_id : Int64?
 }
 
 ///|
@@ -229,6 +230,7 @@ pub fn list_merge_activity(
       },
       created_at: row.get_name("created_at"),
       version: row.get_name("version"),
+      discussion_id: row.get_name("discussion_id"),
     })
   })
 }

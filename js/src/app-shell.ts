@@ -198,7 +198,8 @@ for (const form of document.querySelectorAll<HTMLFormElement>('.mr-form')) {
   const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[name=title], textarea[name=description], textarea[name=body]')];
   if (!actor || !fields.length) continue;
   const version = form.querySelector<HTMLInputElement>('input[name=version]')?.value ?? document.querySelector<HTMLSelectElement>('#mr-version')?.value ?? '';
-  const key = `moonhub.draft:${actor}:${form.action || location.pathname}:${version}`;
+  const discussion = form.querySelector<HTMLInputElement>('input[name=discussion]')?.value;
+  const key = `moonhub.draft:${actor}:${form.action || location.pathname}:${version}${discussion ? `:discussion:${discussion}` : ''}`;
   let canStore = true, dirty = false;
   try {
     const raw = sessionStorage.getItem(key);

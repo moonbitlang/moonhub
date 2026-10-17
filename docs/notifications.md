@@ -66,7 +66,11 @@ preference before claiming delivery. A direct assignment/review request can bypa
 a discussion mute, but never the email preference or repository permission.
 
 Email contains an event type and a repository-relative item path, with no comment,
-diff or title content. Moonhub does not yet configure a public HTTP base URL, so
+diff or title content. MR discussion updates include a stable discussion/comment
+target in that path, shared with Inbox links; the server finds the current reply
+page, including deleted-comment placeholders. Migration 020 backfills existing
+Inbox event targets without replaying mail or resetting read state. Moonhub does
+not yet configure a public HTTP base URL, so
 messages do not include an absolute clickable site URL. Open the indicated item
 on your Moonhub instance. Site SMTP configuration remains shared with invitations
 and password recovery.

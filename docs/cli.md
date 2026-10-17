@@ -77,6 +77,10 @@ moonhub mr view 4 --json
 moonhub mr diff 4 --version 1 --json
 moonhub mr checks 4 --json
 moonhub mr comment 4 --version 1 --body-file comment.md
+moonhub mr discussions 4 --filter unresolved --json
+moonhub mr reply 4 --discussion 42 --body-file reply.md
+moonhub mr resolve-discussion 4 --discussion 42 --state-version 1
+moonhub mr reopen-discussion 4 --discussion 42 --state-version 2
 moonhub mr edit 4 --edit-version 1 --title 'Updated title' --body-file description.md
 moonhub mr delete-comment 4 --comment 42 --version 1
 moonhub mr restore-comment 4 --comment 42 --version 1
@@ -122,6 +126,27 @@ Deletion replaces the public body with an empty `comment_deleted` tombstone;
 the original body is retained in the private repository audit for explicit restore.
 Repeated delete or restore requests are idempotent. These operations do not
 change approvals, checks, or the MR's metadata edit version.
+
+MR discussions have stable decimal-string IDs. A discussion is rooted in an
+existing comment or review body and keeps the revision where it was opened.
+Replies may be added to an older revision and do not reopen a resolved discussion.
+The `mr discussions` command accepts `--filter all|unresolved|resolved`;
+pass `--discussion <id>` to inspect one thread. Resolving and reopening require
+`--state-version`, which is checked atomically so stale UI actions fail instead
+of overwriting a newer state. Discussion authors, MR authors and team
+administrators may resolve or reopen; repository contributors may reply.
+Discussion state changes and replies follow existing MR notification subscriptions. Resolve does not withdraw a
+changes-requested review and unresolved discussions do not block merging.
+
+Lists return 50 discussions plus a has-more flag; each list item previews up to
+three recent replies. List bodies are previews of at most 512 Unicode scalar
+values, with `body_truncated` indicating omitted content. Inspect one discussion
+with `--discussion` and use `--page` to read all replies chronologically,
+50 at a time. The reply response includes the new decimal-string `reply_id`. State changes return the new `state_version`. Deleting
+or restoring a root/reply keeps discussion membership, reply history and resolve
+state intact. Closed and merged MRs remain available for discussion.
+Inbox entries expose `discussion_id`/`comment_id` when present; their URLs locate
+the exact discussion/comment even after it moves beyond the first page.
 
 MR state actions also include `draft`, `ready` and `reopen`, each requiring
 `--edit-version`. Mutation versions are explicit: the client never automatically

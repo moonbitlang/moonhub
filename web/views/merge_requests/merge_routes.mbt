@@ -254,6 +254,57 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       raise @domain.BadRequest(message="invalid page")
     }
     let activities = @collaboration.list_merge_activity(pool, mr, activity_page)
+    let discussion_filter = req.query().get("filter").unwrap_or("all")
+    let selected_discussion = req
+      .query()
+      .get("discussion")
+      .map(@web_context.positive_resource_number)
+    let discussion_page = match req.query().get("comment") {
+      Some(comment) => {
+        guard selected_discussion is Some(discussion) else {
+          raise @domain.BadRequest(
+            message="comment target requires a discussion",
+          )
+        }
+        @collaboration.merge_discussion_comment_page(
+          pool,
+          scope,
+          actor,
+          mr,
+          discussion,
+          @web_context.positive_resource_number(comment),
+        )
+      }
+      None =>
+        @web_context.positive_resource_number(
+          req.query().get("discussion_page").unwrap_or("1"),
+        )
+    }
+    let discussions = match selected_discussion {
+      Some(id) =>
+        [
+          @collaboration.merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            id,
+            page=discussion_page,
+          ),
+        ]
+      None =>
+        @collaboration.list_merge_discussions(
+          pool,
+          scope,
+          actor,
+          mr,
+          discussion_page,
+          filter=discussion_filter,
+        )
+    }
+    let unresolved = @collaboration.unresolved_merge_discussions(
+      pool, scope, actor, mr,
+    )
     let (approved, _) = @collaboration.merge_review_counts(pool, scope, mr)
     let clone = @repository.effective_ssh_endpoint(pool, addresses).map(endpoint => {
       endpoint.clone_url(scope.repo)
@@ -269,6 +320,11 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         tab,
         activities,
         activity_page,
+        discussions,
+        discussion_filter,
+        selected_discussion,
+        discussion_page,
+        unresolved,
         commits,
         patch,
         diff_error,
@@ -303,9 +359,72 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     )
     let action = @web_context.required_param(req, "action", "action")
     let form = @web_context.protected_form(req, "merge-requests")
+    let discussion = form
+      .get("discussion")
+      .map(@web_context.positive_resource_number)
+    let mut reply_page = 1L
+    let mut reply_id : Int64? = None
     @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
       let mr = @collaboration.require_merge_request(pool, scope, number)
-      if action == "request-review" {
+      if action == "reply" {
+        reply_id = Some(
+          @collaboration.reply_merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            @web_context.positive_resource_number(
+              form.get("discussion").unwrap_or(""),
+            ),
+            form.get("body").unwrap_or(""),
+          ),
+        )
+        let thread = @collaboration.merge_discussion(
+          pool,
+          scope,
+          actor,
+          mr,
+          discussion.unwrap(),
+        )
+        reply_page = (thread.reply_count - 1L) / 50L + 1L
+      } else if action == "resolve-discussion" || action == "reopen-discussion" {
+        @collaboration.set_merge_discussion_resolved(
+          pool,
+          scope,
+          actor,
+          mr,
+          @web_context.positive_resource_number(
+            form.get("discussion").unwrap_or(""),
+          ),
+          @web_context.positive_resource_number(
+            form.get("state_version").unwrap_or(""),
+          ),
+          action == "resolve-discussion",
+        )
+      } else if action == "delete-comment" || action == "restore-comment" {
+        let comment = @web_context.positive_resource_number(
+          form.get("comment").unwrap_or(""),
+        )
+        if discussion is Some(id) {
+          reply_page = @collaboration.merge_discussion_comment_page(
+            pool, scope, actor, mr, id, comment,
+          )
+          reply_id = Some(comment)
+        }
+        @collaboration.set_merge_comment_deleted(
+          pool,
+          scope,
+          actor,
+          mr,
+          @web_context.positive_resource_number(
+            form.get("comment").unwrap_or(""),
+          ),
+          @web_context.positive_resource_number(
+            form.get("version").unwrap_or(""),
+          ),
+          action == "delete-comment",
+        )
+      } else if action == "request-review" {
         let current = @collaboration.refresh_merge_request(
           pool, scope, git_dir, mr,
         )
@@ -371,11 +490,19 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         }
       }
     })
+    let location = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}" +
+      (match discussion {
+        Some(id) =>
+          match reply_id {
+            Some(reply) =>
+              "?discussion=\{id}&discussion_page=\{reply_page}#comment-\{reply}"
+            None => "?discussion=\{id}#discussion-\{id}"
+          }
+        None => ""
+      })
     res.send_void(
       status=303,
-      headers=@web_context.private_page_headers(
-        location="\{@web_ui.repo_link(repo)}/merge-requests/\{number}",
-      ),
+      headers=@web_context.private_page_headers(location~),
     )
   })
   ctx.get("/:owner/:repo/settings/branches", async fn(req, res) {
