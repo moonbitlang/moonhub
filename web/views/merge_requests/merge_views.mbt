@@ -203,6 +203,8 @@ fn render_merge_detail(
   discussion_page : Int64,
   unresolved : Int64,
   commits : Array[@gitops.CommitInfo],
+  commit_page : Int64,
+  comparison : @gitops.RevisionComparison?,
   patch : String,
   diff_error : String,
   blocker : String,
@@ -220,6 +222,13 @@ fn render_merge_detail(
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
   let version = revision.map(value => value.version).unwrap_or(0L)
+  let selected_commit : @gitops.CommitInfo? = match comparison {
+    Some(value) => value.commit
+    None => None
+  }
+  let commit_query = selected_commit
+    .map(commit => "&commit=" + commit.hash)
+    .unwrap_or("")
   let busy = mr.job_status == "pending" || mr.job_status == "running"
   let editable = contributor &&
     (user.id == mr.author_id || manager) &&
@@ -246,7 +255,7 @@ fn render_merge_detail(
       b <+ "<nav class=\"mr-tabs\" aria-label=\"Merge request views\">"
       for value in ["discussion", "commits", "changes"] {
         b <+
-          "<a href=\"\{base}?tab=\{value}&amp;version=\{version.to_string()}\""
+          "<a href=\"\{base}?tab=\{value}&amp;version=\{version.to_string()}\{if value == "changes" { commit_query } else { "" }}\""
         if value == tab {
           b <+ " aria-current=\"page\""
         }
@@ -383,26 +392,77 @@ fn render_merge_detail(
             "<a href=\"\{base}?tab=discussion&amp;version=\{version.to_string()}&amp;page=\{(page + 1L).to_string()}\">Older activity</a>"
         }
         b <+ "</nav></details>"
-      } else if tab == "commits" {
-        b <+ "<ul class=\"mr-list\">"
-        for commit in commits {
-          b <+
-            "<li><a href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{commit.hash}\">\{commit.subject}</a><p class=\"muted\"><code>\{commit.hash[:12].to_owned()}</code> \{commit.author} · \{commit.date}</p></li>"
-        }
-        if commits.is_empty() {
-          b <+ "<li class=\"muted\">No new commits.</li>"
-        }
-        b <+ "</ul>"
-        if commits.length() == 100 {
-          b <+ "<p class=\"muted\">Showing the first 100 commits.</p>"
-        }
-      } else if !diff_error.is_empty() {
-        b <+ "<p class=\"flash-error\" role=\"alert\">\{diff_error}</p>"
-      } else if patch.is_empty() {
-        b <+ "<p class=\"muted\">No file changes.</p>"
       } else {
-        b <+
-          "<moonhub-commit-diff><pre data-patch>\{patch}</pre></moonhub-commit-diff>"
+        if tab == "changes" {
+          b <+
+            "<form class=\"mr-version-form mr-comparison-form\" method=\"get\" data-auto-submit><input type=\"hidden\" name=\"tab\" value=\"changes\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><input type=\"hidden\" name=\"commit_page\" value=\"\{commit_page.to_string()}\"><label for=\"mr-commit\">Changes</label><select id=\"mr-commit\" name=\"commit\"><option value=\"\">All changes</option>"
+          if selected_commit is Some(selected) &&
+            !commits
+            .iter()
+            .take(100)
+            .any(commit => commit.hash == selected.hash) {
+            b <+
+              "<option value=\"\{selected.hash}\" selected>\{selected.hash[:12].to_owned()} · \{selected.subject}</option>"
+          }
+          for i, commit in commits {
+            if i < 100 {
+              b <+ "<option value=\"\{commit.hash}\""
+              if selected_commit is Some(selected) &&
+                selected.hash == commit.hash {
+                b <+ " selected"
+              }
+              b <+
+                ">\{commit.hash[:12].to_owned()} · \{commit.subject}</option>"
+            }
+          }
+          b <+
+            "</select><button class=\"secondary-button no-js-submit\" type=\"submit\">View</button></form>"
+          if comparison is Some(comparison) {
+            if selected_commit is Some(commit) {
+              b <+
+                "<h2 class=\"mr-commit-title\">\{commit.subject}</h2><p class=\"muted\">\{commit.author} · \{commit.date} · <a href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{commit.hash}\">Commit details</a></p><p class=\"muted mr-shas\">\{if comparison.parent_count > 1 { "Merge commit compared with first parent" } else if comparison.parent_count == 0 { "Root commit compared with empty tree" } else { "Compared with parent" }} <code>\{comparison.base_sha[:12].to_owned()}</code> → <code>\{comparison.head_sha[:12].to_owned()}</code></p>"
+              b <+
+                "<p class=\"muted\">Showing one commit in v\{version.to_string()}. Reviews apply to the entire MR version. <a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}\">View all changes</a></p>"
+            } else {
+              b <+
+                "<p class=\"muted mr-shas\">All changes in v\{version.to_string()}: merge base <code>\{comparison.base_sha[:12].to_owned()}</code> → source <code>\{comparison.head_sha[:12].to_owned()}</code></p>"
+            }
+          }
+        } else {
+          b <+ "<ul class=\"mr-list\">"
+          for i, commit in commits {
+            if i < 100 {
+              b <+
+                "<li><a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}&amp;commit=\{commit.hash}&amp;commit_page=\{commit_page.to_string()}\">\{commit.subject}</a><p class=\"muted\"><code>\{commit.hash[:12].to_owned()}</code> \{commit.author} · \{commit.date}</p></li>"
+            }
+          }
+          if commits.is_empty() {
+            b <+ "<li class=\"muted\">No commits on this page.</li>"
+          }
+          b <+ "</ul>"
+        }
+        if commit_page > 1L || commits.length() > 100 {
+          b <+ "<nav class=\"mr-actions\" aria-label=\"Commit pagination\">"
+          if commit_page > 1L {
+            b <+
+              "<a href=\"\{base}?tab=\{tab}&amp;version=\{version.to_string()}&amp;commit_page=\{(commit_page - 1L).to_string()}\{commit_query}\">Newer commits</a>"
+          }
+          if commits.length() > 100 {
+            b <+
+              "<a href=\"\{base}?tab=\{tab}&amp;version=\{version.to_string()}&amp;commit_page=\{(commit_page + 1L).to_string()}\{commit_query}\">Older commits</a>"
+          }
+          b <+ "</nav>"
+        }
+        if tab == "changes" {
+          if !diff_error.is_empty() {
+            b <+ "<p class=\"flash-error\" role=\"alert\">\{diff_error}</p>"
+          } else if patch.is_empty() {
+            b <+ "<p class=\"muted\">No file changes in this comparison.</p>"
+          } else {
+            b <+
+              "<moonhub-commit-diff><pre data-patch>\{patch}</pre></moonhub-commit-diff>"
+          }
+        }
       }
       b <+
         "</div><aside class=\"mr-sidebar\" aria-label=\"Review and merge readiness\">"

@@ -236,3 +236,110 @@ pub async fn merged_tree(git_dir : String, revision : Revision) -> String {
   }
   tree
 }
+
+///|
+pub struct RevisionComparison {
+  base_sha : String
+  head_sha : String
+  commit : CommitInfo?
+  parent_count : Int32
+}
+
+///|
+pub async fn revision_comparison(
+  git_dir : String,
+  revision : Revision,
+  commit : String?,
+) -> RevisionComparison {
+  guard commit is Some(commit) else {
+    return {
+      base_sha: revision.base_sha,
+      head_sha: revision.source_sha,
+      commit: None,
+      parent_count: 0,
+    }
+  }
+  guard valid_commit_sha(commit) else {
+    raise @domain.BadRequest(
+      message="commit must be a full lowercase commit SHA",
+    )
+  }
+  let (source_code, _) = merge_git_command(git_dir, [
+    "merge-base",
+    "--is-ancestor",
+    commit,
+    revision.source_sha,
+  ])
+  guard source_code == 0 else {
+    raise @domain.NotFound(
+      message="commit is not part of this merge request version",
+    )
+  }
+  let (target_code, output) = merge_git_command(git_dir, [
+    "merge-base",
+    "--is-ancestor",
+    commit,
+    revision.target_sha,
+  ])
+  if target_code == 0 {
+    raise @domain.NotFound(
+      message="commit is not part of this merge request version",
+    )
+  }
+  guard target_code == 1 else {
+    raise InternalFailure(
+      details="could not check commit membership: \{output}",
+    )
+  }
+  let info = merge_git(git_dir, [
+    "show", "-s", "--date=short", "--format=%H%x1f%s%x1f%an%x1f%ad", commit, "--",
+  ])
+  let parents = split_lines(
+      merge_git(git_dir, ["rev-list", "--parents", "--no-walk", commit, "--"]),
+    )[0]
+    .split(" ")
+    .map(value => value.to_owned())
+    .collect()
+  guard parse_commit_line(info.trim().to_owned()) is Some(info) &&
+    !parents.is_empty() else {
+    raise InternalFailure(details="unexpected merge request commit metadata")
+  }
+  {
+    base_sha: if parents.length() > 1 {
+      parents[1]
+    } else {
+      merge_git(git_dir, ["hash-object", "-t", "tree", "--stdin"])
+      .trim()
+      .to_owned()
+    },
+    head_sha: commit,
+    commit: Some(info),
+    parent_count: parents.length() - 1,
+  }
+}
+
+///|
+pub async fn revision_commits(
+  git_dir : String,
+  revision : Revision,
+  page : Int64,
+) -> Array[CommitInfo] {
+  guard page > 0L && page <= 100000L else {
+    raise @domain.BadRequest(message="invalid commit page")
+  }
+  let output = merge_git(git_dir, [
+    "log",
+    "--date=short",
+    "--pretty=format:%H%x1f%s%x1f%an%x1f%ad",
+    "--max-count=101",
+    "--skip=\{((page - 1L) * 100L).to_string()}",
+    "\{revision.target_sha}..\{revision.source_sha}",
+    "--",
+  ])
+  split_lines(output).map(line => {
+    guard parse_commit_line(line) is Some(commit) else {
+      raise InternalFailure(details="unexpected merge request commit metadata")
+    }
+    commit
+  })
+}

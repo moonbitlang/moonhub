@@ -99,3 +99,13 @@ test "repository inference matches only the configured server and terminal outpu
   )
   assert_eq(terminal_text("before\u{001b}[31m\nafter"), "before [31m after")
 }
+
+///|
+test "MR diff accepts a commit independently of the required revision" {
+  let sha = "1234567890abcdef1234567890abcdef12345678"
+  let parsed = command().parse(argv=[
+    "mr", "diff", "12", "--version", "3", "--commit", sha, "--json",
+  ])
+  assert_eq(option(parsed, "version"), Some("3"))
+  assert_eq(option(parsed, "commit"), Some(sha))
+}
