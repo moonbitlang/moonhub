@@ -55,6 +55,19 @@ async test "MR Changes selects a commit in context and preserves historical revi
     assert_true(
       commits.contains("?tab=changes&amp;version=1&amp;commit=" + second),
     )
+    let tag = @gitops.merge_git(
+        git_dir,
+        ["mktag"],
+        input="object \{second}\ntype commit\ntag review-tag\ntagger Fixture <fixture@example.invalid> 1704153600 +0000\n\nTag note\n",
+      )
+      .trim()
+      .to_owned()
+    let (status, _) = @web_testkit.http_get_path_with_cookie(
+      port,
+      url + "?tab=changes&version=1&commit=" + tag,
+      alice_cookie,
+    )
+    assert_eq(status.code, 404)
     let third = @test_support.merge_test_commit(
       git_dir, "feature", second, "three\n",
     )
@@ -186,5 +199,64 @@ async test "MR commit pages keep older selections and escape commit subjects" {
     assert_true(html.contains("commit_page=2&amp;commit=" + oldest))
     assert_true(html.contains("No file changes in this comparison."))
     assert_true(!html.contains("<script>Commit"))
+  })
+}
+
+///|
+async test "large commit subjects do not block all changes or selected small diffs" {
+  @web_testkit.with_repository_test_app((port, pool, root, alice_cookie, _) => {
+    let git_dir = "\{root}/alice/demo.git"
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let scope = @repository.repository_scope(pool, alice, {
+      owner: "alice",
+      name: "demo",
+    })
+    let base = @gitops.branch_sha(git_dir, "master")
+    let first = @test_support.merge_test_commit(
+      git_dir, "long", base, "small patch\n",
+    )
+    let tree = @gitops.merge_git(git_dir, ["rev-parse", "\{first}^{tree}"])
+      .trim()
+      .to_owned()
+    let mut head = first
+    let subject = "中".repeat(8000)
+    for i = 0; i < 90; i = i + 1 {
+      head = @gitops.merge_git(
+          git_dir,
+          ["commit-tree", tree, "-p", head],
+          input="\{subject} \{i}\n",
+        )
+        .trim()
+        .to_owned()
+    }
+    ignore(@gitops.merge_git(git_dir, ["update-ref", "refs/heads/long", head]))
+    ignore(
+      @collaboration.create_merge_request(
+        pool, scope, git_dir, alice, "Large metadata", "", "long", "master", false,
+      ),
+    )
+    let url = "/alice/demo/merge-requests/1?version=1"
+    for
+      query in [
+        "&tab=changes",
+        "&tab=changes&commit=" + first,
+        "&tab=changes&commit=" + head,
+        "&tab=commits",
+      ] {
+      let (status, html) = @web_testkit.http_get_path_with_cookie(
+        port,
+        url + query,
+        alice_cookie,
+      )
+      assert_eq(status.code, 200)
+      assert_true(html.length() < 500000)
+      assert_true(!html.contains("Git output is too large"))
+      if query == "&tab=changes" || query == "&tab=changes&commit=" + first {
+        assert_true(html.contains("+small patch"))
+      }
+      if query == "&tab=changes&commit=" + head {
+        assert_true(html.contains("No file changes in this comparison."))
+      }
+    }
   })
 }

@@ -246,6 +246,122 @@ pub struct RevisionComparison {
 }
 
 ///|
+// Retain bounded UTF-8 previews while draining the complete Git stream. Truncating
+// after collecting stdout would still let valid long subjects exhaust its budget.
+async fn revision_commit_metadata(
+  git_dir : String,
+  selection : Array[String],
+) -> Array[CommitInfo] {
+  @async.with_timeout(
+    60000,
+    () => {
+      @async.with_task_group(group => {
+        let (reader, output) = @process.read_from_process()
+        defer reader.close()
+        let process = @process.spawn(
+          group,
+          "git",
+          git_args(
+            git_dir,
+            [
+              "-c", "core.hooksPath=/dev/null", "-c", "core.commitGraph=false", "log",
+              "-z", "--no-notes", "--no-show-signature", "--encoding=UTF-8", "--date=short",
+              "--pretty=tformat:%H%x00%s%x00%an%x00%ad", ..selection, "--",
+            ],
+          ),
+          inherit_env=false,
+          extra_env={
+            "PATH": "/usr/bin:/bin",
+            "LANG": "C.UTF-8",
+            "HOME": "/nonexistent",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+          },
+          stdout=output,
+          stderr=@process.redirect_to_file("/dev/null"),
+        )
+        let rows : Array[CommitInfo] = []
+        let fields : Array[String] = []
+        let bytes : Array[Byte] = []
+        let mut discarded = false
+        while reader.read_some(max_len=8192) is Some(chunk) {
+          for byte in chunk {
+            if byte == 0 {
+              let mut end = bytes.length()
+              // A preview may end inside a multibyte scalar; omit the incomplete
+              // trailing scalar instead of emitting a replacement character.
+              if discarded {
+                let mut leading = end - 1
+                while leading > 0 &&
+                      bytes[leading] >= 0x80 &&
+                      bytes[leading] < 0xc0 {
+                  leading = leading - 1
+                }
+                if leading >= 0 {
+                  let expected = if bytes[leading] >= 0xf0 {
+                    4
+                  } else if bytes[leading] >= 0xe0 {
+                    3
+                  } else if bytes[leading] >= 0xc0 {
+                    2
+                  } else {
+                    1
+                  }
+                  if end - leading < expected {
+                    end = leading
+                  }
+                }
+              }
+              let value = @utf8.decode_lossy(Bytes::from_array(bytes)[:end])
+              fields.push(if discarded { value + "…" } else { value })
+              bytes.clear()
+              discarded = false
+              if fields.length() == 4 {
+                guard rows.length() < 101 && valid_commit_sha(fields[0]) else {
+                  raise InternalFailure(
+                    details="unexpected merge request commit metadata",
+                  )
+                }
+                rows.push({
+                  hash: fields[0],
+                  subject: fields[1],
+                  author: fields[2],
+                  date: fields[3],
+                })
+                fields.clear()
+              }
+            } else {
+              let limit = match fields.length() {
+                1 => 2048
+                2 => 512
+                _ => 128
+              }
+              if bytes.length() < limit {
+                bytes.push(byte)
+              } else {
+                discarded = true
+              }
+            }
+          }
+        }
+        let code = process.wait()
+        @async.pause()
+        guard code == 0 && fields.is_empty() && bytes.is_empty() && !discarded else {
+          raise InternalFailure(
+            details="could not read merge request commit metadata",
+          )
+        }
+        rows
+      })
+    },
+    error=Failure(
+      message="Git operation timed out; try again or inspect the branches locally",
+    ),
+  )
+}
+
+///|
 pub async fn revision_comparison(
   git_dir : String,
   revision : Revision,
@@ -262,6 +378,14 @@ pub async fn revision_comparison(
   guard valid_commit_sha(commit) else {
     raise @domain.BadRequest(
       message="commit must be a full lowercase commit SHA",
+    )
+  }
+  let (type_code, object_type) = merge_git_command(git_dir, [
+    "cat-file", "-t", commit,
+  ])
+  guard type_code == 0 && object_type.trim() == "commit" else {
+    raise @domain.NotFound(
+      message="commit is not part of this merge request version",
     )
   }
   let (source_code, _) = merge_git_command(git_dir, [
@@ -291,8 +415,8 @@ pub async fn revision_comparison(
       details="could not check commit membership: \{output}",
     )
   }
-  let info = merge_git(git_dir, [
-    "show", "-s", "--date=short", "--format=%H%x1f%s%x1f%an%x1f%ad", commit, "--",
+  let metadata = revision_commit_metadata(git_dir, [
+    "--no-walk", "--max-count=1", commit,
   ])
   let parents = split_lines(
       merge_git(git_dir, ["rev-list", "--parents", "--no-walk", commit, "--"]),
@@ -300,7 +424,8 @@ pub async fn revision_comparison(
     .split(" ")
     .map(value => value.to_owned())
     .collect()
-  guard parse_commit_line(info.trim().to_owned()) is Some(info) &&
+  guard metadata.length() == 1 &&
+    metadata[0].hash == commit &&
     !parents.is_empty() else {
     raise InternalFailure(details="unexpected merge request commit metadata")
   }
@@ -313,7 +438,7 @@ pub async fn revision_comparison(
       .to_owned()
     },
     head_sha: commit,
-    commit: Some(info),
+    commit: Some(metadata[0]),
     parent_count: parents.length() - 1,
   }
 }
@@ -327,19 +452,9 @@ pub async fn revision_commits(
   guard page > 0L && page <= 100000L else {
     raise @domain.BadRequest(message="invalid commit page")
   }
-  let output = merge_git(git_dir, [
-    "log",
-    "--date=short",
-    "--pretty=format:%H%x1f%s%x1f%an%x1f%ad",
+  revision_commit_metadata(git_dir, [
     "--max-count=101",
     "--skip=\{((page - 1L) * 100L).to_string()}",
     "\{revision.target_sha}..\{revision.source_sha}",
-    "--",
   ])
-  split_lines(output).map(line => {
-    guard parse_commit_line(line) is Some(commit) else {
-      raise InternalFailure(details="unexpected merge request commit metadata")
-    }
-    commit
-  })
 }

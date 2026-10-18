@@ -44,18 +44,27 @@ async test "MR diff API exposes full and per-commit comparison identities with r
       selected
       is {
         "comparison": String("commit"),
+        "commit_sha": String(selected_sha),
         "base_sha": String(value),
         "head_sha": String(head),
         "parent_count": Number(1, ..),
         ..
       } &&
       value == first &&
-      head == second,
+      head == second &&
+      selected_sha == second,
     )
     assert_true(
       selected is { "patch": String(patch), .. } && patch.contains("-one\n+two"),
     )
-    for commit in [base, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] {
+    let tag = @gitops.merge_git(
+        git_dir,
+        ["mktag"],
+        input="object \{second}\ntype commit\ntag review-tag\ntagger Fixture <fixture@example.invalid> 1704153600 +0000\n\nTag note\n",
+      )
+      .trim()
+      .to_owned()
+    for commit in [base, tag, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] {
       let (status, _) = api_test_request(
         port,
         url + "&commit=" + commit,

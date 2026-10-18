@@ -220,7 +220,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
         },
         "base_sha": comparison.base_sha,
         "head_sha": comparison.head_sha,
-        "commit_sha": Json(comparison.commit.map(commit => commit.hash)),
+        "commit_sha": comparison.commit
+        .map(commit => Json::string(commit.hash))
+        .unwrap_or(Json::null()),
         "parent_count": comparison.parent_count,
         "patch": patch,
       }

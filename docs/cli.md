@@ -136,7 +136,8 @@ moonhub mr diff 4 --version 1 --commit <full-commit-sha> --json
 Without `--commit`, the diff compares the selected version's merge base and
 source. With `--commit`, it compares an MR commit to its first parent (also for
 merge commits); parentless imported commits compare with the empty tree. The
-commit must belong to that saved version's source-minus-target range. JSON
+commit must belong to that saved version's source-minus-target range and name a
+commit object directly (annotated tag, tree and blob IDs are rejected). JSON
 retains `version`/`source_sha`/`target_sha` and adds `comparison` (`all` or
 `commit`), `base_sha`/`head_sha`, nullable `commit_sha` and `parent_count`; the
 latter is zero for an all-changes comparison. The required `--version` keeps

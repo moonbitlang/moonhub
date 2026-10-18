@@ -34,7 +34,23 @@ async test "revision comparison scopes commits to immutable MR ranges and compar
     let outsider = @test_support.merge_test_commit(
       git_dir, "other", base, "other\n",
     )
-    for invalid in [base, outsider, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] {
+    let tag = merge_git(
+        git_dir,
+        ["mktag"],
+        input="object \{second}\ntype commit\ntag review-tag\ntagger Fixture <fixture@example.invalid> 1704153600 +0000\n\nTag note\n",
+      )
+      .trim()
+      .to_owned()
+    let tree_id = merge_git(git_dir, ["rev-parse", "\{second}^{tree}"])
+      .trim()
+      .to_owned()
+    let blob_id = merge_git(git_dir, ["rev-parse", "\{second}:README.md"])
+      .trim()
+      .to_owned()
+    for
+      invalid in [
+        base, outsider, tag, tree_id, blob_id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ] {
       try ignore(revision_comparison(git_dir, revision, Some(invalid))) catch {
         @domain.NotFound(_) => ()
         err => raise err
@@ -151,6 +167,64 @@ async test "revision commit pagination keeps commits beyond the first hundred se
     assert_eq(
       revision_comparison(git_dir, revision, Some(oldest)).base_sha,
       base,
+    )
+  })
+}
+
+///|
+async test "commit metadata previews drain long fields without corrupting framing or UTF-8" {
+  @test_support.with_repository_test_data((_pool, root) => {
+    let git_dir = "\{root}/alice/demo.git"
+    let base = branch_sha(git_dir, "master")
+    let tree = merge_git(git_dir, ["rev-parse", "\{base}^{tree}"])
+      .trim()
+      .to_owned()
+    let long_subject = "x".repeat(2047) + "中".repeat(9000)
+    let author = "文".repeat(9000)
+    let raw = "tree \{tree}\nparent \{base}\nauthor \{author} <fixture@example.invalid> 1704153600 +0000\ncommitter Fixture <fixture@example.invalid> 1704153600 +0000\n\n\{long_subject}\n"
+    let commit = merge_git(
+        git_dir,
+        ["hash-object", "-t", "commit", "-w", "--stdin"],
+        input=raw,
+      )
+      .trim()
+      .to_owned()
+    ignore(merge_git(git_dir, ["update-ref", "refs/heads/long", commit]))
+    let revision = compare_branches(git_dir, "long", "master")
+    let listed = revision_commits(git_dir, revision, 1L)
+    assert_eq(listed.length(), 1)
+    assert_eq(listed[0].hash, commit)
+    assert_eq(listed[0].subject, "x".repeat(2047) + "…")
+    assert_eq(listed[0].author, "文".repeat(170) + "…")
+    assert_true(!listed[0].subject.contains("\u{fffd}"))
+    assert_true(!listed[0].author.contains("\u{fffd}"))
+    let selected = revision_comparison(git_dir, revision, Some(commit))
+    assert_true(
+      selected.commit is Some(info) &&
+      info.hash == commit &&
+      info.subject == listed[0].subject &&
+      info.author == listed[0].author,
+    )
+    assert_eq(
+      merge_git(git_dir, ["show", "-s", "--format=%s", commit])
+      .trim()
+      .to_owned(),
+      long_subject,
+    )
+    let separators = merge_git(
+        git_dir,
+        ["commit-tree", tree, "-p", commit],
+        input="Contains\u{1f}delimiter\n",
+      )
+      .trim()
+      .to_owned()
+    ignore(merge_git(git_dir, ["update-ref", "refs/heads/long", separators]))
+    let current = compare_branches(git_dir, "long", "master")
+    assert_true(
+      revision_comparison(git_dir, current, Some(separators)).commit
+      is Some(info) &&
+      info.hash == separators &&
+      info.subject == "Contains\u{1f}delimiter",
     )
   })
 }

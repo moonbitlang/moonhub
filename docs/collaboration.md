@@ -112,6 +112,11 @@ existing workspace, including on mobile.
 Commit selection uses a full lowercase SHA and is validated against the saved
 version's source-minus-target ancestry, including commits beyond the first page.
 Commits outside that version are rejected even if they exist in the repository.
+Object IDs must name commits directly; annotated tag, tree and blob IDs are not
+accepted. Commit selectors and selected-commit headings use bounded previews
+(2048 UTF-8 bytes for subjects and 512 for author names, plus an ellipsis when
+truncated). Previews end at a complete Unicode scalar; stored Git data is unchanged.
+Metadata is drained as a stream, so large subjects do not block a small diff.
 Historical comparison URLs remain tied to the saved objects after branch updates
 or force pushes. Reviews still apply to the entire MR version, not the selected
 commit. Diffs use the existing renderer, with large files initially collapsed.

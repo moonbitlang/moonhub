@@ -124,8 +124,16 @@ async function main() {
   const allDiff = cli(['mr', 'diff', '1', '--version', '1']);
   assert.ok(allDiff.patch.includes('+feature'));
   assert.equal(allDiff.comparison, 'all');
+  assert.equal(allDiff.commit_sha, null);
   const commitDiff = cli(['mr', 'diff', '1', '--version', '1', '--commit', source]);
   assert.equal(commitDiff.comparison, 'commit');
+  assert.equal(commitDiff.commit_sha, source);
+  assert.equal(typeof commitDiff.commit_sha, 'string');
+  const annotated = git(['mktag'], 'object ' + source + '\ntype commit\ntag review-tag\ntagger Fixture <fixture@example.invalid> 1704153600 +0000\n\nTag note\n');
+  cli(['mr', 'diff', '1', '--version', '1', '--commit', annotated], write, 1);
+  const rejectedTag = await fetch(base + '/root/demo/merge-requests/1?tab=changes&version=1&commit=' + annotated, {headers: {Cookie: cookie}});
+  assert.equal(rejectedTag.status, 404);
+
   assert.equal(commitDiff.base_sha, initial);
   assert.equal(commitDiff.head_sha, source);
   assert.equal(commitDiff.parent_count, 1);
@@ -338,6 +346,23 @@ async function main() {
   await nativeDiff.waitForURL(url => url.searchParams.get('commit') === followUp);
   assert.ok((await nativeDiff.locator('[data-patch]').textContent()).includes('-feature\n+follow-up'));
   await nativeChanges.close();
+  // Large subjects must not make small diffs inaccessible through the selector.
+  let metadataHead = reviewBase;
+  const hugeSubject = '中'.repeat(8000);
+  for (let i = 0; i < 90; i++) metadataHead = git(['commit-tree', comparisonTree, '-p', metadataHead], hugeSubject + ' ' + i + '\n');
+  git(['update-ref', 'refs/heads/large-metadata', metadataHead]);
+  const metadataMr = cli(['mr', 'create', '--title', 'Bounded metadata previews', '--source', 'large-metadata', '--target', 'main']);
+  const metadataUrl = base + '/root/demo/merge-requests/' + metadataMr.number + '?version=1';
+  for (const query of ['&tab=changes', '&tab=changes&commit=' + metadataHead, '&tab=changes&commit=' + reviewBase, '&tab=commits']) {
+    const response = await fetch(metadataUrl + query, {headers: {Cookie: cookie}});
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(Buffer.byteLength(html) < 500000);
+    assert.ok(!html.includes('Git output is too large'));
+  }
+  const metadataDiff = cli(['mr', 'diff', metadataMr.number, '--version', '1', '--commit', metadataHead]);
+  assert.equal(metadataDiff.commit_sha, metadataHead);
+  assert.equal(typeof metadataDiff.commit_sha, 'string');
   // Discussion responses must fit the CLI budget, and notification targets must
   // still find an old thread/reply after it falls outside the overview page.
   const rootToken = fs.readFileSync(write, 'utf8').trim();
@@ -411,7 +436,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms', 'nullable string commit SHA, annotated tag rejection, bounded large commit metadata and small diff access'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
