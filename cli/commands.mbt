@@ -36,6 +36,7 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("decision", long="decision", global=true),
     @argparse.OptionArg("reviewer", long="reviewer", global=true),
     @argparse.OptionArg("comment", long="comment", global=true),
+    @argparse.OptionArg("commit", long="commit", global=true),
     @argparse.OptionArg("discussion", long="discussion", global=true),
     @argparse.OptionArg("state-version", long="state-version", global=true),
     @argparse.OptionArg("assignee", long="assignee", global=true),
@@ -282,7 +283,10 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     ("mr", "view") => ("\{base}/mrs/\{id}", None)
     ("mr", "diff") =>
       (
-        "\{base}/mrs/\{id}/diff?version=\{decimal(required(matches, "version"))}",
+        "\{base}/mrs/\{id}/diff?version=\{decimal(required(matches, "version"))}" +
+        option(matches, "commit")
+        .map(commit => "&commit=" + escape(commit))
+        .unwrap_or(""),
         None,
       )
     ("mr", "checks") => ("\{base}/mrs/\{id}/checks", None)

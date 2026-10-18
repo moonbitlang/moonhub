@@ -41,6 +41,10 @@ pub async fn resolve_ref(String, String?) -> String
 
 pub async fn resolve_ref_path(String, String, String) -> (String, String)
 
+pub async fn revision_commits(String, Revision, Int64) -> Array[CommitInfo]
+
+pub async fn revision_comparison(String, Revision, String?) -> RevisionComparison
+
 pub async fn run_git(String, Array[String]) -> String
 
 pub fn valid_commit_sha(String) -> Bool
@@ -76,6 +80,13 @@ pub(all) struct Revision {
   base_sha : String
   merge_tree : String
   block_reason : String
+}
+
+pub struct RevisionComparison {
+  base_sha : String
+  head_sha : String
+  commit : CommitInfo?
+  parent_count : Int
 }
 
 pub struct TreeEntry {

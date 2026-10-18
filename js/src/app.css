@@ -658,3 +658,6 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 @media (max-width:600px) { .discussion-replies { padding-left:12px; } .mr-discussion > summary { gap:8px; } }
 
 .discussion-preview { flex-basis:100%; padding-left:24px; font-weight:400; color:var(--color-muted); overflow-wrap:anywhere; }
+
+.mr-comparison-form select { flex: 1 1 240px; min-width: 0; max-width: 100%; }
+.mr-commit-title { overflow-wrap: anywhere; }

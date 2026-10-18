@@ -194,13 +194,18 @@ pub let api_module : @moonback.Module = Module(ctx => {
       )
       let revision = @collaboration.merge_revision(pool, mr, version=selected)
       let git_dir = @repository.resolve_repository_dir(root, scope.repo)
+      let comparison = @gitops.revision_comparison(
+        git_dir,
+        revision,
+        req.query().get("commit").filter(value => !value.is_empty()),
+      )
       let patch = @gitops.merge_git(git_dir, [
         "diff",
         "--no-ext-diff",
         "--no-textconv",
         "--find-renames",
-        revision.base_sha,
-        revision.source_sha,
+        comparison.base_sha,
+        comparison.head_sha,
         "--",
       ])
       @repository.authorize_repository(pool, actor, scope.repo, Read)
@@ -208,6 +213,17 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "version": selected.to_string(),
         "source_sha": revision.source_sha,
         "target_sha": revision.target_sha,
+        "comparison": if comparison.commit is Some(_) {
+          "commit"
+        } else {
+          "all"
+        },
+        "base_sha": comparison.base_sha,
+        "head_sha": comparison.head_sha,
+        "commit_sha": comparison.commit
+        .map(commit => Json::string(commit.hash))
+        .unwrap_or(Json::null()),
+        "parent_count": comparison.parent_count,
         "patch": patch,
       }
     }),

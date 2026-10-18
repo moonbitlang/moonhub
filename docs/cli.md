@@ -127,6 +127,22 @@ the original body is retained in the private repository audit for explicit resto
 Repeated delete or restore requests are idempotent. These operations do not
 change approvals, checks, or the MR's metadata edit version.
 
+The MR diff command accepts an optional full lowercase commit SHA:
+
+```sh
+moonhub mr diff 4 --version 1 --commit <full-commit-sha> --json
+```
+
+Without `--commit`, the diff compares the selected version's merge base and
+source. With `--commit`, it compares an MR commit to its first parent (also for
+merge commits); parentless imported commits compare with the empty tree. The
+commit must belong to that saved version's source-minus-target range and name a
+commit object directly (annotated tag, tree and blob IDs are rejected). JSON
+retains `version`/`source_sha`/`target_sha` and adds `comparison` (`all` or
+`commit`), `base_sha`/`head_sha`, nullable `commit_sha` and `parent_count`; the
+latter is zero for an all-changes comparison. The required `--version` keeps
+historical comparisons explicit.
+
 MR discussions have stable decimal-string IDs. A discussion is rooted in an
 existing comment or review body and keeps the revision where it was opened.
 Replies may be added to an older revision and do not reopen a resolved discussion.

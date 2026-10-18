@@ -194,41 +194,46 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     guard tab == "discussion" || tab == "commits" || tab == "changes" else {
       raise @domain.BadRequest(message="invalid merge request tab")
     }
+    let selected_commit = req
+      .query()
+      .get("commit")
+      .filter(value => !value.is_empty())
+    guard selected_commit is None || tab == "changes" else {
+      raise @domain.BadRequest(
+        message="commit selection requires the Changes view",
+      )
+    }
+    let commit_page = match req.query().get("commit_page") {
+      Some(value) => @web_context.positive_resource_number(value)
+      None => 1L
+    }
+    let mut comparison : @gitops.RevisionComparison? = None
     let mut patch = ""
     let mut diff_error = ""
-    let commits : Array[@gitops.CommitInfo] = []
+    let mut commits : Array[@gitops.CommitInfo] = []
     if revision is Some(revision) {
+      if tab == "changes" || tab == "commits" {
+        commits = @gitops.revision_commits(git_dir, revision, commit_page)
+      }
       if tab == "changes" {
+        let selected = @gitops.revision_comparison(
+          git_dir, revision, selected_commit,
+        )
+        comparison = Some(selected)
         try {
           patch = @gitops.merge_git(git_dir, [
             "diff",
             "--no-ext-diff",
             "--no-textconv",
             "--find-renames",
-            revision.base_sha,
-            revision.source_sha,
+            selected.base_sha,
+            selected.head_sha,
             "--",
           ])
         } catch {
           @domain.BadRequest(message~) | @gitops.Failure(message~) =>
             diff_error = message
           err => raise err
-        }
-      }
-      if tab == "commits" {
-        let output = @gitops.merge_git(git_dir, [
-          "log",
-          "--date=short",
-          "--pretty=format:%H%x1f%s%x1f%an%x1f%ad",
-          "-n",
-          "100",
-          "\{revision.target_sha}..\{revision.source_sha}",
-          "--",
-        ])
-        for line in @domain.split_lines(output) {
-          if @gitops.parse_commit_line(line) is Some(commit) {
-            commits.push(commit)
-          }
         }
       }
     }
@@ -326,6 +331,8 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         discussion_page,
         unresolved,
         commits,
+        commit_page,
+        comparison,
         patch,
         diff_error,
         blocker,

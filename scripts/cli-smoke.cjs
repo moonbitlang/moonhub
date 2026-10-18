@@ -121,7 +121,24 @@ async function main() {
   assert.equal(mr.number, '1');
   assert.equal(mr.version, '1');
   assert.equal(cli(['mr', 'list']).items.length, 1);
-  assert.ok(cli(['mr', 'diff', '1', '--version', '1']).patch.includes('+feature'));
+  const allDiff = cli(['mr', 'diff', '1', '--version', '1']);
+  assert.ok(allDiff.patch.includes('+feature'));
+  assert.equal(allDiff.comparison, 'all');
+  assert.equal(allDiff.commit_sha, null);
+  const commitDiff = cli(['mr', 'diff', '1', '--version', '1', '--commit', source]);
+  assert.equal(commitDiff.comparison, 'commit');
+  assert.equal(commitDiff.commit_sha, source);
+  assert.equal(typeof commitDiff.commit_sha, 'string');
+  const annotated = git(['mktag'], 'object ' + source + '\ntype commit\ntag review-tag\ntagger Fixture <fixture@example.invalid> 1704153600 +0000\n\nTag note\n');
+  cli(['mr', 'diff', '1', '--version', '1', '--commit', annotated], write, 1);
+  const rejectedTag = await fetch(base + '/root/demo/merge-requests/1?tab=changes&version=1&commit=' + annotated, {headers: {Cookie: cookie}});
+  assert.equal(rejectedTag.status, 404);
+
+  assert.equal(commitDiff.base_sha, initial);
+  assert.equal(commitDiff.head_sha, source);
+  assert.equal(commitDiff.parent_count, 1);
+  cli(['mr', 'diff', '1', '--version', '1', '--commit', initial], write, 1);
+  cli(['mr', 'diff', '1', '--version', '1', '--commit', 'HEAD'], write, 1);
   assert.equal(cli(['mr', 'view', '1']).mr.description, fs.readFileSync(body, 'utf8'));
   cli(['mr', 'edit', '1', '--edit-version', '1'], write, 2);
   cli(['mr', 'edit', '1', '--edit-version', '1', '--title', 'English MR title']);
@@ -271,6 +288,81 @@ async function main() {
   await nativePage.getByRole('button', { name: 'Send reply', exact: true }).click();
   await nativePage.getByText('Reply without JavaScript', { exact: true }).first().waitFor();
   await noScript.close();
+  // Commit review retains the MR context and supports native GET navigation.
+  const comparisonTree = tree(['040000 tree ' + github + '\t.github', '100644 blob ' + blob('follow-up\n') + '\tREADME.md']);
+  const longSubject = 'Fix review feedback ' + '长提交主题'.repeat(35);
+  const reviewBase = git(['commit-tree', featureTree, '-p', source, '-m', 'Prepare commit review']);
+  const followUp = git(['commit-tree', comparisonTree, '-p', reviewBase, '-m', longSubject]);
+  git(['update-ref', 'refs/heads/commit-review', followUp]);
+  const commitMr = cli(['mr', 'create', '--title', 'Review changes by commit', '--source', 'commit-review', '--target', 'main']);
+  const commitMrUrl = base + '/root/demo/merge-requests/' + commitMr.number;
+  const selectedDiff = cli(['mr', 'diff', commitMr.number, '--version', '1', '--commit', followUp]);
+  assert.equal(selectedDiff.base_sha, reviewBase);
+  assert.ok(selectedDiff.patch.includes('-feature\n+follow-up'));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(commitMrUrl + '?tab=commits&version=1');
+  await page.locator('.mr-main a[href*="commit=' + followUp + '"]').click();
+  await page.waitForURL(url => url.searchParams.get('commit') === followUp);
+  assert.equal(await page.locator('#mr-commit').inputValue(), followUp);
+  await page.getByText('Reviews apply to the entire MR version.', { exact: false }).waitFor();
+  await page.locator('diffs-container [data-code]').first().waitFor();
+  const commitReviewDir = path.join(root, '.impeccable/review/mr-commit-diffs');
+  fs.mkdirSync(commitReviewDir, { recursive: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(commitReviewDir, 'desktop.png'), fullPage: true });
+  await page.locator('#mr-commit').selectOption(reviewBase);
+  await page.waitForURL(url => url.searchParams.get('commit') === reviewBase);
+  await page.reload();
+  assert.equal(await page.locator('#mr-commit').inputValue(), reviewBase);
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('commit'), followUp);
+  await page.goForward();
+  assert.equal(new URL(page.url()).searchParams.get('commit'), reviewBase);
+  await page.locator('#mr-commit').selectOption('');
+  await page.waitForURL(url => url.searchParams.get('commit') === '');
+  await page.getByText('All changes in v1:', { exact: false }).waitFor();
+  await page.locator('#mr-commit').selectOption(followUp);
+  await page.waitForURL(url => url.searchParams.get('commit') === followUp);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
+  await page.locator('diffs-container [data-code]').first().waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'per-commit changes overflow mobile');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(commitReviewDir, 'mobile.png'), fullPage: true });
+  const newer = git(['commit-tree', featureTree, '-p', followUp, '-m', 'New revision']);
+  git(['update-ref', 'refs/heads/commit-review', newer]);
+  await page.reload();
+  await page.getByText('Viewing an older version.', { exact: false }).waitFor();
+  assert.equal(await page.locator('#mr-commit').inputValue(), followUp);
+  await page.locator('#mr-version').selectOption('2');
+  await page.waitForURL(url => url.searchParams.get('version') === '2' && !url.searchParams.has('commit'));
+  assert.equal(await page.locator('#mr-commit').inputValue(), '');
+  const nativeChanges = await browser.newContext({ javaScriptEnabled: false });
+  await nativeChanges.addCookies([{ name: rootCookie.slice(0, split), value: rootCookie.slice(split + 1), url: base }]);
+  const nativeDiff = await nativeChanges.newPage();
+  await nativeDiff.goto(commitMrUrl + '?tab=changes&version=1');
+  await nativeDiff.locator('#mr-commit').selectOption(followUp);
+  await nativeDiff.locator('.mr-comparison-form').getByRole('button', { name: 'View', exact: true }).click();
+  await nativeDiff.waitForURL(url => url.searchParams.get('commit') === followUp);
+  assert.ok((await nativeDiff.locator('[data-patch]').textContent()).includes('-feature\n+follow-up'));
+  await nativeChanges.close();
+  // Large subjects must not make small diffs inaccessible through the selector.
+  let metadataHead = reviewBase;
+  const hugeSubject = '中'.repeat(8000);
+  for (let i = 0; i < 90; i++) metadataHead = git(['commit-tree', comparisonTree, '-p', metadataHead], hugeSubject + ' ' + i + '\n');
+  git(['update-ref', 'refs/heads/large-metadata', metadataHead]);
+  const metadataMr = cli(['mr', 'create', '--title', 'Bounded metadata previews', '--source', 'large-metadata', '--target', 'main']);
+  const metadataUrl = base + '/root/demo/merge-requests/' + metadataMr.number + '?version=1';
+  for (const query of ['&tab=changes', '&tab=changes&commit=' + metadataHead, '&tab=changes&commit=' + reviewBase, '&tab=commits']) {
+    const response = await fetch(metadataUrl + query, {headers: {Cookie: cookie}});
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(Buffer.byteLength(html) < 500000);
+    assert.ok(!html.includes('Git output is too large'));
+  }
+  const metadataDiff = cli(['mr', 'diff', metadataMr.number, '--version', '1', '--commit', metadataHead]);
+  assert.equal(metadataDiff.commit_sha, metadataHead);
+  assert.equal(typeof metadataDiff.commit_sha, 'string');
   // Discussion responses must fit the CLI budget, and notification targets must
   // still find an old thread/reply after it falls outside the overview page.
   const rootToken = fs.readFileSync(write, 'utf8').trim();
@@ -344,7 +436,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms', 'nullable string commit SHA, annotated tag rejection, bounded large commit metadata and small diff access'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {

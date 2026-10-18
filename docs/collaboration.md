@@ -95,9 +95,31 @@ this keeps overview responses within the CLI response budget without losing
 content.
 
 Git output is bounded to 2 MiB with a 60-second operation timeout. Oversized diffs
-require local inspection instead of exhausting the server. The commits view
-displays at most 100 commits. Diffs use the existing renderer, with large files
-initially collapsed.
+require local inspection instead of exhausting the server. The Commits view and
+Changes commit selector page through 100 commits at a time. Changes defaults to
+the entire selected version (merge base to source); selecting a commit compares
+it with its first parent. Merge commits explicitly identify
+this first-parent comparison; parentless imported commits compare with the empty
+tree. Commit links from the MR remain in its Changes view, preserving the
+selected MR version and review context. A separate Commit details link opens the
+repository commit page. Selecting another MR version
+resets the commit selection to All changes.
+
+The labeled native Changes selector uses a URL-backed GET form and retains a
+View button without JavaScript. Long selected commit titles wrap within the
+existing workspace, including on mobile.
+
+Commit selection uses a full lowercase SHA and is validated against the saved
+version's source-minus-target ancestry, including commits beyond the first page.
+Commits outside that version are rejected even if they exist in the repository.
+Object IDs must name commits directly; annotated tag, tree and blob IDs are not
+accepted. Commit selectors and selected-commit headings use bounded previews
+(2048 UTF-8 bytes for subjects and 512 for author names, plus an ellipsis when
+truncated). Previews end at a complete Unicode scalar; stored Git data is unchanged.
+Metadata is drained as a stream, so large subjects do not block a small diff.
+Historical comparison URLs remain tied to the saved objects after branch updates
+or force pushes. Reviews still apply to the entire MR version, not the selected
+commit. Diffs use the existing renderer, with large files initially collapsed.
 
 ## Review Requests and Notifications
 
