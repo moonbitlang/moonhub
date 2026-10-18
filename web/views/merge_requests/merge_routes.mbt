@@ -181,6 +181,38 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         err => raise err
       }
     }
+    let requested_discussion = req
+      .query()
+      .get("discussion")
+      .map(@web_context.positive_resource_number)
+    if requested_discussion is Some(id) {
+      let discussion = @collaboration.merge_discussion(
+        pool, scope, actor, mr, id,
+      )
+      if discussion.anchor is Some(anchor) {
+        if req.query().get("tab") != Some("changes") ||
+          req.query().get("version") != Some(discussion.version.to_string()) ||
+          req.query().get("commit").unwrap_or("") != anchor.commit_sha {
+          let comment = req
+            .query()
+            .get("comment")
+            .map(@web_context.positive_resource_number)
+          let page = @web_context.positive_resource_number(
+            req.query().get("discussion_page").unwrap_or("1"),
+          )
+          let suffix = comment
+            .map(id => "&comment=\{id}#comment-\{id}")
+            .unwrap_or("#discussion-\{id}")
+          res.send_void(
+            status=303,
+            headers=@web_context.private_page_headers(
+              location="\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}?tab=changes&version=\{discussion.version}&commit=\{anchor.commit_sha}&discussion=\{id}&discussion_page=\{page}\{suffix}",
+            ),
+          )
+          return
+        }
+      }
+    }
     let selected = match req.query().get("version") {
       Some(value) => @web_context.positive_resource_number(value)
       None => mr.version
@@ -226,6 +258,8 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
             "--no-ext-diff",
             "--no-textconv",
             "--find-renames",
+            "--unified=3",
+            "--no-color",
             selected.base_sha,
             selected.head_sha,
             "--",
@@ -305,6 +339,8 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           mr,
           discussion_page,
           filter=discussion_filter,
+          anchor_version=if tab == "changes" { selected } else { 0L },
+          comparison~,
         )
     }
     let unresolved = @collaboration.unresolved_merge_discussions(
@@ -366,14 +402,38 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     )
     let action = @web_context.required_param(req, "action", "action")
     let form = @web_context.protected_form(req, "merge-requests")
-    let discussion = form
+    let mut discussion = form
       .get("discussion")
       .map(@web_context.positive_resource_number)
     let mut reply_page = 1L
     let mut reply_id : Int64? = None
+    let mut inline_error : String? = None
     @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
       let mr = @collaboration.require_merge_request(pool, scope, number)
-      if action == "reply" {
+      if action == "inline-comment" {
+        let created = @collaboration.create_anchored_merge_discussion(
+          pool,
+          scope,
+          actor,
+          mr,
+          git_dir,
+          @web_context.positive_resource_number(
+            form.get("version").unwrap_or(""),
+          ),
+          form.get("commit").filter(value => !value.is_empty()),
+          form.get("path").unwrap_or(""),
+          form.get("side").unwrap_or(""),
+          @web_context.positive_resource_number(
+            form.get("start_line").unwrap_or(""),
+          ),
+          @web_context.positive_resource_number(
+            form.get("end_line").unwrap_or(""),
+          ),
+          form.get("body").unwrap_or(""),
+        )
+        discussion = Some(created)
+        reply_id = Some(created)
+      } else if action == "reply" {
         reply_id = Some(
           @collaboration.reply_merge_discussion(
             pool,
@@ -496,13 +556,48 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           @collaboration.prepare_merge_checks(pool, scope, current, actor~)
         }
       }
-    })
+    }) catch {
+      @domain.BadRequest(message~) =>
+        if action == "inline-comment" {
+          inline_error = Some(message)
+        } else {
+          raise @domain.BadRequest(message~)
+        }
+      err => raise err
+    }
+    if inline_error is Some(_) {
+      let scope = @repository.repository_scope(pool, actor, repo)
+      let base = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}"
+      let version = form.get("version").unwrap_or("")
+      let commit = form.get("commit").unwrap_or("")
+      res.send_html(
+        @web_ui.layout(
+          "Comment on code",
+          assets,
+          Html(b => {
+            b <+
+              "<a href=\"\{base}?tab=changes&amp;version=\{@web_context.url_escape_path(version)}&amp;commit=\{@web_context.url_escape_path(commit)}\">Back to changes</a><h1>Comment on code</h1>"
+            b <+
+              "\{render_inline_composer(base, @web_context.request_form_token(req, "merge-requests"), version, commit, form, inline_error)}"
+          }),
+          current_user=Some(actor),
+          navigation=@web_ui.RepositoryNavigation(
+            scope.repo,
+            "merge-requests",
+            @identity.can_manage_team(pool, actor, scope.team_id),
+          ),
+        ),
+        status=400,
+        headers=@web_context.private_page_headers(),
+      )
+      return
+    }
     let location = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}" +
       (match discussion {
         Some(id) =>
           match reply_id {
             Some(reply) =>
-              "?discussion=\{id}&discussion_page=\{reply_page}#comment-\{reply}"
+              "?discussion=\{id}&discussion_page=\{reply_page}&comment=\{reply}#comment-\{reply}"
             None => "?discussion=\{id}#discussion-\{id}"
           }
         None => ""

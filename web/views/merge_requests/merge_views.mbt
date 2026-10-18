@@ -459,9 +459,71 @@ fn render_merge_detail(
           } else if patch.is_empty() {
             b <+ "<p class=\"muted\">No file changes in this comparison.</p>"
           } else {
+            if comparison is Some(comparison) {
+              b <+
+                "<section class=\"inline-review\" aria-label=\"Code discussions\">"
+              if contributor {
+                b <+
+                  "\{render_inline_composer(base, csrf, version.to_string(), comparison.commit.map(c => c.hash).unwrap_or(""), Map([]), None)}"
+              }
+              b <+ "</section>"
+            }
             b <+
-              "<moonhub-commit-diff><pre data-patch>\{patch}</pre></moonhub-commit-diff>"
+              "<moonhub-commit-diff id=\"diff-code\" data-inline-review><pre data-patch>\{patch}</pre>"
+            for i, discussion in discussions {
+              if i < 50 {
+                if discussion.anchor is Some(anchor) {
+                  if discussion.version == version &&
+                    anchor.base_sha ==
+                    comparison.map(c => c.base_sha).unwrap_or("") &&
+                    anchor.head_sha ==
+                    comparison.map(c => c.head_sha).unwrap_or("") &&
+                    anchor.commit_sha ==
+                    selected_commit.map(c => c.hash).unwrap_or("") {
+                    let preview = StringBuilder()
+                    for ch in discussion.root.body.iter().take(180) {
+                      preview.write_char(ch)
+                    }
+                    b <+
+                      "<a hidden data-inline-thread data-discussion=\"\{discussion.id.to_string()}\" data-preview=\"\{if discussion.root.kind == "comment_deleted" { "Comment deleted." } else { preview.to_string() }}\" data-old-path=\"\{anchor.old_path}\" data-new-path=\"\{anchor.new_path}\" data-side=\"\{anchor.side}\" data-start=\"\{anchor.start_line.to_string()}\" data-end=\"\{anchor.end_line.to_string()}\" href=\"\{base}?discussion=\{discussion.id.to_string()}#discussion-\{discussion.id.to_string()}\">#\{discussion.id.to_string()} · \{if discussion.resolved { "Resolved" } else { "Unresolved" }}</a>"
+                  }
+                }
+              }
+            }
+            b <+ "</moonhub-commit-diff>"
           }
+          b <+
+            "<section class=\"inline-discussions\" aria-label=\"Discussions on this comparison\"><h2>Code discussions</h2>"
+          if discussions.is_empty() {
+            b <+
+              "<p class=\"muted\">No code discussions in this comparison.</p>"
+          }
+          for i, discussion in discussions {
+            if i < 50 {
+              b <+
+                "\{render_merge_discussion(base, csrf, user, discussion, contributor, manager, selected_discussion == Some(discussion.id), discussion_page)}"
+            }
+          }
+          if selected_discussion is Some(id) {
+            if discussion_page > 1L {
+              b <+
+                "<a href=\"\{base}?discussion=\{id.to_string()}&amp;discussion_page=\{(discussion_page - 1L).to_string()}#discussion-\{id.to_string()}\">Earlier replies</a>"
+            }
+            if discussions[0].reply_count > discussion_page * 50L {
+              b <+
+                "<a href=\"\{base}?discussion=\{id.to_string()}&amp;discussion_page=\{(discussion_page + 1L).to_string()}#discussion-\{id.to_string()}\">Later replies</a>"
+            }
+          } else {
+            if discussion_page > 1L {
+              b <+
+                "<a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}\{commit_query}&amp;discussion_page=\{(discussion_page - 1L).to_string()}\">Newer code discussions</a>"
+            }
+            if discussions.length() > 50 {
+              b <+
+                "<a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}\{commit_query}&amp;discussion_page=\{(discussion_page + 1L).to_string()}\">Older code discussions</a>"
+            }
+          }
+          b <+ "</section>"
         }
       }
       b <+

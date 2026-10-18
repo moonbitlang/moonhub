@@ -204,6 +204,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "--no-ext-diff",
         "--no-textconv",
         "--find-renames",
+        "--unified=3",
+        "--no-color",
         comparison.base_sha,
         comparison.head_sha,
         "--",
@@ -263,6 +265,10 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let body = api_body(
         req,
         match action {
+          "inline-comment" =>
+            [
+              "version", "commit", "path", "side", "start_line", "end_line", "body",
+            ]
           "reply" => ["discussion", "body"]
           "resolve-discussion" | "reopen-discussion" =>
             ["discussion", "state_version"]
@@ -281,14 +287,35 @@ pub let api_module : @moonback.Module = Module(ctx => {
           let mr = @collaboration.require_merge_request(pool, scope, id)
           let current = if [
               "comment", "edit", "delete-comment", "restore-comment", "reply", "resolve-discussion",
-              "reopen-discussion",
+              "reopen-discussion", "inline-comment",
             ].contains(action) {
             mr
           } else {
             @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
           }
           let mut reply_id : Int64? = None
+          let mut created_discussion : Int64? = None
           match action {
+            "inline-comment" =>
+              created_discussion = Some(
+                @collaboration.create_anchored_merge_discussion(
+                  pool,
+                  scope,
+                  actor,
+                  current,
+                  git_dir,
+                  number(field(body, "version")),
+                  body
+                  .get("commit")
+                  .map(_ => field(body, "commit"))
+                  .filter(value => !value.is_empty()),
+                  field(body, "path"),
+                  field(body, "side"),
+                  number(field(body, "start_line")),
+                  number(field(body, "end_line")),
+                  field(body, "body"),
+                ),
+              )
             "reply" =>
               reply_id = Some(
                 @collaboration.reply_merge_discussion(
@@ -401,7 +428,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
             }
             _ => raise @domain.BadRequest(message="unsupported MR action")
           }
-          if ["reply", "resolve-discussion", "reopen-discussion"].contains(
+          if created_discussion is Some(id) {
+            {
+              "discussion": discussion_json(
+                @collaboration.merge_discussion(pool, scope, actor, current, id),
+              ),
+            }
+          } else if ["reply", "resolve-discussion", "reopen-discussion"].contains(
               action,
             ) {
             {

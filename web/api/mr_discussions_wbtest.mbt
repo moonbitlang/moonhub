@@ -230,7 +230,7 @@ async test "MR discussion API and browser enforce scopes state versions and CSRF
     )
     assert_eq(replied.code, 303)
     let location = replied.headers.get("location").unwrap_or("")
-    assert_true(location.contains("discussion_page=2#comment-"))
+    assert_true(location.contains("discussion_page=2&comment="))
     let (_, page_html) = @web_testkit.http_get_path_with_cookie(
       port,
       route + "?discussion=" + id + "&discussion_page=2",
@@ -282,7 +282,12 @@ async test "MR discussion API and browser enforce scopes state versions and CSRF
       assert_eq(changed.code, 303)
       let location = changed.headers.get("location").unwrap_or("")
       assert_true(
-        location.contains("discussion_page=2#comment-" + last.id.to_string()),
+        location.contains(
+          "discussion_page=2&comment=" +
+          last.id.to_string() +
+          "#comment-" +
+          last.id.to_string(),
+        ),
       )
       let (landed, html) = @web_testkit.http_get_path_with_cookie(
         port,

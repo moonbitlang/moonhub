@@ -1,5 +1,6 @@
 import {
   "moonbitlang/async",
+  "moonbitlang/core/json",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
