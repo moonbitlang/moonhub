@@ -10,6 +10,7 @@ pub struct MergeDiscussion {
   root : MergeActivity
   replies : Array[MergeActivity]
   reply_count : Int64
+  anchor : @gitops.DiffAnchor?
 }
 
 ///|
@@ -71,6 +72,8 @@ fn load_merge_discussions(
   filter : String,
   page : Int64,
   selected : Int64?,
+  anchor_version : Int64,
+  comparison : @gitops.RevisionComparison?,
 ) -> Array[MergeDiscussion] raise {
   require_discussion_access(pool, scope, actor, mr, false)
   guard page > 0L && page <= 100000L else {
@@ -95,8 +98,20 @@ fn load_merge_discussions(
         )
       None =>
         client.query_all(
-          "\{discussion_select} WHERE d.merge_request_id = ? AND (? = 'all' OR d.resolved = ?) ORDER BY d.id DESC LIMIT 51 OFFSET ?",
-          params=[mr.id, filter, filter == "resolved", (page - 1L) * 50L],
+          "\{discussion_select} WHERE d.merge_request_id = ? AND (? = 'all' OR d.resolved = ?) AND (? = 0 OR (d.version = ? AND json_extract(d.anchor, '$.base_sha') = ? AND json_extract(d.anchor, '$.head_sha') = ? AND json_extract(d.anchor, '$.commit_sha') = ?)) ORDER BY d.id DESC LIMIT 51 OFFSET ?",
+          params=[
+            mr.id,
+            filter,
+            filter == "resolved",
+            anchor_version,
+            anchor_version,
+            comparison.map(c => c.base_sha).unwrap_or(""),
+            comparison.map(c => c.head_sha).unwrap_or(""),
+            comparison
+            .map(c => c.commit.map(commit => commit.hash).unwrap_or(""))
+            .unwrap_or(""),
+            (page - 1L) * 50L,
+          ],
         )
     }
     if rows.is_empty() {
@@ -151,6 +166,9 @@ fn load_merge_discussions(
         root: root_map.get(id).unwrap(),
         replies: reply_map.get(id).unwrap_or([]),
         reply_count: row.get_name("reply_count"),
+        anchor: (row.get_name("anchor") : String?).map(value => {
+          @json.from_json(@json.parse(value))
+        }),
       }
     })
   })
@@ -164,8 +182,20 @@ pub fn list_merge_discussions(
   mr : MergeRequest,
   page : Int64,
   filter~ : String = "all",
+  anchor_version~ : Int64 = 0L,
+  comparison~ : @gitops.RevisionComparison? = None,
 ) -> Array[MergeDiscussion] raise {
-  load_merge_discussions(pool, scope, actor, mr, filter, page, None)
+  load_merge_discussions(
+    pool,
+    scope,
+    actor,
+    mr,
+    filter,
+    page,
+    None,
+    anchor_version,
+    comparison,
+  )
 }
 
 ///|
@@ -177,7 +207,17 @@ pub fn merge_discussion(
   id : Int64,
   page~ : Int64 = 1L,
 ) -> MergeDiscussion raise {
-  load_merge_discussions(pool, scope, actor, mr, "all", page, Some(id))[0]
+  load_merge_discussions(
+    pool,
+    scope,
+    actor,
+    mr,
+    "all",
+    page,
+    Some(id),
+    0L,
+    None,
+  )[0]
 }
 
 ///|
@@ -301,5 +341,55 @@ pub fn merge_discussion_comment_page(
       raise @domain.NotFound(message="discussion comment not found")
     }
     (row.get_name("preceding") : Int64) / 50L + 1L
+  })
+}
+
+///|
+pub async fn create_anchored_merge_discussion(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  git_dir : String,
+  version : Int64,
+  commit : String?,
+  path : String,
+  side : String,
+  start_line : Int64,
+  end_line : Int64,
+  body : String,
+) -> Int64 {
+  require_discussion_access(pool, scope, actor, mr, true)
+  let body = body.trim().to_owned()
+  guard !body.is_empty() && body.length() <= 20000 else {
+    raise @domain.BadRequest(
+      message="comment must contain 1–20000 characters",
+    )
+  }
+  let revision = merge_revision(pool, mr, version~)
+  let anchor = @gitops.validate_diff_anchor(
+    git_dir, revision, commit, path, side, start_line, end_line,
+  )
+  require_discussion_access(pool, scope, actor, mr, true)
+  // Root trigger, anchor and notifications commit atomically.
+  pool.with_client(client => {
+    client.with_transaction(tx => {
+      ignore(
+        tx.execute(
+          "INSERT INTO merge_activity(merge_request_id, actor_id, kind, body, version) VALUES (?, ?, 'comment', ?, ?)",
+          params=[mr.id, actor.id, body, version],
+        ),
+      )
+      let id : Int64 = tx
+        .query_one("SELECT last_insert_rowid() AS id")
+        .get_name("id")
+      ignore(
+        tx.execute(
+          "UPDATE merge_discussion SET anchor = ? WHERE id = ? AND merge_request_id = ?",
+          params=[Json(anchor).stringify(), id, mr.id],
+        ),
+      )
+      id
+    })
   })
 }

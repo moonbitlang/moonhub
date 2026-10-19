@@ -5,6 +5,7 @@ import {
   type CodeViewLayout,
   type CodeViewItem,
   type FileDiffMetadata,
+  type CodeViewLineSelection,
 } from "@pierre/diffs";
 import {
   CodeView,
@@ -165,7 +166,9 @@ const moonhubCodeViewStyles = `
 setCustomExtension("mbt", "moonbit");
 setCustomExtension("mbti", "moonbit");
 
-function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], ready?: () => void): Root {
+type InlineThread = { id: string; oldPath: string; newPath: string; side: "old" | "new"; start: number; end: number; href: string; label: string; preview: string };
+type InlineReview = { threads: InlineThread[]; target?: string; canComment: boolean; select(path: string, side: "old" | "new", start: number, end: number): void };
+function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], ready?: () => void, inline?: InlineReview): Root {
   ensureMoonhubCodeViewStyles();
   const root = createRoot(mount);
   root.render(
@@ -176,13 +179,20 @@ function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], re
       }}
       highlighterOptions={{ preferredHighlighter: "shiki-js" }}
     >
-      <MoonhubCodeView items={items} ready={ready} />
+      <MoonhubCodeView items={items} ready={ready} inline={inline} />
     </WorkerPoolContextProvider>,
   );
   return root;
 }
 
-function MoonhubCodeView({ items, ready }: { items: CodeViewItem<undefined>[]; ready?: () => void }) {
+function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefined>[]; ready?: () => void; inline?: InlineReview }) {
+  const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
+  const selectedItem = items.find(item => item.id === selection?.id);
+  const selectedSide = selection?.range.side === "deletions" ? "old" : "new";
+  const sameSide = !selection?.range.endSide || selection.range.endSide === (selection.range.side ?? "additions");
+  const selectedPath = selectedItem?.type === "diff" ? (selectedSide === "old" ? selectedItem.fileDiff.prevName ?? selectedItem.fileDiff.name : selectedItem.fileDiff.name) : undefined;
+  const start = Math.min(selection?.range.start ?? 0, selection?.range.end ?? 0);
+  const end = Math.max(selection?.range.start ?? 0, selection?.range.end ?? 0);
   const files = items.filter((item): item is CodeViewDiffItem<undefined> => item.type === "diff");
   const [mode, setMode] = useState<"split" | "unified">(() => matchMedia("(max-width: 900px)").matches ? "unified" : "split");
   const [wrap, setWrap] = useState(true);
@@ -194,8 +204,19 @@ function MoonhubCodeView({ items, ready }: { items: CodeViewItem<undefined>[]; r
     const sync = () => { if (!manualMode.current) setMode(media.matches ? "unified" : "split"); };
     media.addEventListener("change", sync); return () => media.removeEventListener("change", sync);
   }, []);
-  const options = useMemo(() => ({ ...codeViewOptions, diffStyle: mode, overflow: wrap ? "wrap" as const : "scroll" as const }), [mode, wrap]);
+  const options = useMemo(() => ({ ...codeViewOptions, enableLineSelection: Boolean(inline?.canComment), diffStyle: mode, overflow: wrap ? "wrap" as const : "scroll" as const }), [mode, wrap, inline]);
   const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
+  useEffect(() => {
+    const thread = inline?.threads.find(thread => thread.id === inline.target);
+    if (!thread) return;
+    const item = items.find(item => item.type === "diff" && (thread.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (thread.side === "old" ? thread.oldPath : thread.newPath));
+    if (!item) return;
+    const range = {start: thread.start, end: thread.end, side: thread.side === "old" ? "deletions" as const : "additions" as const};
+    setSelection({id: item.id, range});
+    updateDiffItem(item.id, diff => { diff.collapsed = false; return true; });
+    const frame = requestAnimationFrame(() => viewerRef.current?.scrollTo({type: "range", id: item.id, range, align: "center"}));
+    return () => cancelAnimationFrame(frame);
+  }, [inline, items]);
   const anyLargeDiffs = useMemo(
     () =>
       items.some(
@@ -272,6 +293,7 @@ function MoonhubCodeView({ items, ready }: { items: CodeViewItem<undefined>[]; r
         setSelectedFile(item.id); viewerRef.current?.scrollTo({ type: "item", id: item.id, align: "start" });
       }}>{item.fileDiff.name ?? item.fileDiff.prevName ?? "File"}</button>)}</nav>}
       <div className="diff-canvas">
+      {inline?.canComment && <div className="inline-line-actions"><span>{selection ? (sameSide ? selectedPath + " · " + selectedSide + " L" + start + "–" + end : "Select lines on one side") : "Select line numbers to start a discussion"}</span><button type="button" disabled={!selection || !sameSide || !selectedPath || end - start >= 100} onClick={() => { if (selectedPath) inline.select(selectedPath, selectedSide, start, end); }}>Comment on selected lines</button></div>}
       {anyLargeDiffs ? (
         <div className="moonhub-code-view-toolbar">
           <span>Large diffs are collapsed by default.</span>
@@ -282,6 +304,12 @@ function MoonhubCodeView({ items, ready }: { items: CodeViewItem<undefined>[]; r
       ) : null}
       <CodeView
         ref={viewerRef}
+        selectedLines={selection}
+        onSelectedLinesChange={setSelection}
+        renderAnnotation={(annotation, item) => {
+          if (!inline || item.type !== "diff" || !("side" in annotation)) return null;
+          return inline.threads.filter(thread => (thread.side === "old" ? "deletions" : "additions") === annotation.side && thread.end === annotation.lineNumber && (thread.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (thread.side === "old" ? thread.oldPath : thread.newPath)).map(thread => <a className="inline-thread-link" key={thread.href} href={thread.href}>{thread.label} · L{thread.start}–{thread.end}<span className="inline-thread-preview">{thread.preview}</span></a>);
+        }}
         initialItems={items}
         className="moonhub-code-view"
         options={options}
@@ -374,10 +402,46 @@ function moonBitLanguageForDiff(
   );
 }
 
+// Recover exact Git paths: the diff parser strips quotes without decoding C escapes.
+function gitPatchPath(raw: string): string {
+  if (!raw.startsWith('"')) return raw.replace(/\t$/, "");
+  const encoded = raw.match(/^"((?:[^"\\]|\\.)*)"/)?.[1];
+  if (encoded == null) return raw;
+  const bytes: number[] = [];
+  const escapes: Record<string, number> = {a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13};
+  for (let i = 0; i < encoded.length;) {
+    if (encoded[i] === "\\") {
+      const octal = encoded.slice(i + 1).match(/^[0-7]{1,3}/)?.[0];
+      if (octal) { bytes.push(parseInt(octal, 8)); i += octal.length + 1; continue; }
+      const escaped = encoded[++i];
+      bytes.push(escapes[escaped] ?? escaped.charCodeAt(0)); i++;
+    } else {
+      const ch = String.fromCodePoint(encoded.codePointAt(i)!);
+      bytes.push(...new TextEncoder().encode(ch)); i += ch.length;
+    }
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
+}
+
 function patchToItems(patch: string): CodeViewItem<undefined>[] {
+  const headers = patch.split(/(?=^diff --git )/m).filter(part => part.startsWith("diff --git ")).map(part => part.split("\n@@ ")[0].split("\n"));
+  let fileNumber = 0;
   return parsePatchFiles(patch, "moonhub", true).flatMap(
     (parsedPatch, patchIndex) =>
       parsedPatch.files.map((fileDiff, fileIndex) => {
+        const header = headers[fileNumber++];
+        if (header) {
+          const path = (prefix: string, stripPrefix: boolean) => {
+            const line = header.find(line => line.startsWith(prefix));
+            if (!line) return undefined;
+            const value = gitPatchPath(line.slice(prefix.length));
+            return value === "/dev/null" ? undefined : stripPrefix ? value.replace(/^[ab]\//, "") : value;
+          };
+          const previous = path("rename from ", false) ?? path("--- ", true);
+          const current = path("rename to ", false) ?? path("+++ ", true);
+          if (current ?? previous) fileDiff.name = current ?? previous!;
+          if (previous && current && previous !== current) fileDiff.prevName = previous;
+        }
         const lang = moonBitLanguageForDiff(fileDiff);
         return {
           id: `patch-${patchIndex}-file-${fileIndex}`,
@@ -426,9 +490,29 @@ class MoonhubCommitDiffElement extends HTMLElement {
     this.append(mount);
     try {
       const items = patchToItems(patch);
+      let inline: InlineReview | undefined;
+      if (this.hasAttribute("data-inline-review")) {
+        const threads: InlineThread[] = [...this.querySelectorAll<HTMLAnchorElement>('[data-inline-thread]')].map(link => ({id: link.dataset.discussion ?? "", oldPath: link.dataset.oldPath ?? "", newPath: link.dataset.newPath ?? "", side: link.dataset.side === "old" ? "old" : "new", start: Number(link.dataset.start), end: Number(link.dataset.end), href: link.href, label: link.textContent ?? "Discussion", preview: link.dataset.preview ?? ""}));
+        for (const item of items) if (item.type === "diff") {
+          item.annotations = threads.filter(t => (t.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (t.side === "old" ? t.oldPath : t.newPath)).filter((t, i, all) => all.findIndex(other => other.side === t.side && other.end === t.end) === i).map(t => ({side: t.side === "old" ? "deletions" as const : "additions" as const, lineNumber: t.end}));
+        }
+        inline = { threads, target: new URL(location.href).searchParams.get("code") ?? undefined, canComment: Boolean(document.querySelector("[data-inline-form]")), select: (path, side, start, end) => {
+          const details = document.querySelector<HTMLDetailsElement>('#inline-composer');
+          const form = details?.querySelector<HTMLFormElement>('[data-inline-form]');
+          if (!details || !form) return;
+          details.open = true;
+          for (const [name, value] of Object.entries({path, side, start_line: String(start), end_line: String(end)})) {
+            const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+            if (field) field.value = value;
+          }
+          form.dispatchEvent(new Event('input', {bubbles:true}));
+          details.scrollIntoView({block:'center'});
+          form.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+        }};
+      }
       const loading = document.createElement("p"); loading.className = "diff-loading"; loading.setAttribute("role", "status"); loading.textContent = "Preparing file changes…";
       mount.before(loading);
-      this.#root = renderCodeView(mount, items, () => { loading.remove(); if (fallback) fallback.hidden = true; });
+      this.#root = renderCodeView(mount, items, () => { loading.remove(); if (fallback) fallback.hidden = true; }, inline);
     } catch (error) {
       mount.remove();
       console.error("moonhub commit diff failed to render", error);

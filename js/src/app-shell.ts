@@ -195,25 +195,27 @@ for (const form of document.querySelectorAll<HTMLFormElement>('[data-branch-comp
 }
 const actor = document.querySelector('.account-identity span')?.textContent ?? '';
 for (const form of document.querySelectorAll<HTMLFormElement>('.mr-form')) {
-  const fields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[name=title], textarea[name=description], textarea[name=body]')];
+  const contentFields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[name=title], textarea[name=description], textarea[name=body]')];
+  const fields: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [...contentFields, ...(form.hasAttribute('data-inline-form') ? form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[name=path], input[name=start_line], input[name=end_line], select[name=side]') : [])];
   if (!actor || !fields.length) continue;
   const version = form.querySelector<HTMLInputElement>('input[name=version]')?.value ?? document.querySelector<HTMLSelectElement>('#mr-version')?.value ?? '';
   const discussion = form.querySelector<HTMLInputElement>('input[name=discussion]')?.value;
   const key = `moonhub.draft:${actor}:${form.action || location.pathname}:${version}${discussion ? `:discussion:${discussion}` : ''}`;
+  const draftKey = key + (form.hasAttribute('data-inline-form') ? ':commit:' + (form.querySelector<HTMLInputElement>('input[name=commit]')?.value ?? '') : '');
   let canStore = true, dirty = false;
   try {
-    const raw = sessionStorage.getItem(key);
+    const raw = sessionStorage.getItem(draftKey);
     if (raw) {
       const draft = JSON.parse(raw) as { at: number; fields: Record<string, string>; pending: boolean };
-      if (Date.now() - draft.at > 86400000 || draft.pending && fields.every(field => !field.value)) sessionStorage.removeItem(key);
-      else if (fields.every(field => !field.value)) {
+      if (Date.now() - draft.at > 86400000 || draft.pending && contentFields.every(field => !field.value)) sessionStorage.removeItem(draftKey);
+      else if (contentFields.every(field => !field.value)) {
         for (const field of fields) field.value = draft.fields[field.name] ?? '';
         const notice = document.createElement('p'); notice.className = 'draft-notice muted'; notice.setAttribute('role', 'status'); notice.textContent = 'Unsent draft restored for this version.'; form.prepend(notice);
       }
     }
   } catch { canStore = false; }
   const save = (pending = false) => {
-    try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), pending, fields: Object.fromEntries(fields.map(field => [field.name, field.value])) })); }
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), pending, fields: Object.fromEntries(fields.map(field => [field.name, field.value])) })); }
     catch { canStore = false; }
   };
   form.addEventListener('input', () => { dirty = true; save(); });

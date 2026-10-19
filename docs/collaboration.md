@@ -60,8 +60,8 @@ before merging. Resolve conflicts locally and push again. The initial release
 uses two-parent merge commits and retains source branches. Required Pipeline
 checks are available through opt-in branch protection, with optional automatic
 `pull_request` workflows discovered from the target branch; see
-[MR checks](merge-checks.md). Forks, squash/rebase, inline line/range anchors and
-auto-merge are outside this release.
+[MR checks](merge-checks.md). Forks, squash/rebase and auto-merge are outside this
+release.
 
 Each comment starts a discussion; review decisions with a nonempty body also
 start one, without changing review semantics. Contributors can reply to current
@@ -89,8 +89,35 @@ reply page, including deleted-comment placeholders. Delete/restore actions retur
 to that same page and comment anchor. Migration 020 backfills existing targets
 without replaying notifications or mail or resetting read state.
 
+Inline code comments start the same discussions with an immutable anchor to a
+saved MR version and comparison: All changes or one commit, base/head object IDs,
+old/new file paths, side, inclusive line range and saved code context. Select
+1–100 consecutive displayed lines on one side within one diff hunk, using the
+path on that side. Binary files, pure renames and positions without a displayed
+text diff cannot accept anchors. Source updates and force pushes never relocate
+an existing anchor. Replies, resolve/reopen and comment delete/restore retain
+the anchor and use the existing permissions and notification rules. Review and
+merge policy is unchanged.
+
+The Changes view shows code discussions for the exact selected version and
+comparison; the Discussion overview includes discussions across all revisions
+and comparisons. Notification and discussion links restore the historical
+Changes version and commit selection. The code-location link highlights the
+anchored range. Saved context remains readable even after source updates; each
+selected code line is saved with up to 120 Unicode scalars plus an ellipsis
+when truncated.
+
+Contributors can click, Shift-click or drag diff line numbers and use Comment on
+selected lines to fill the native Comment on code form. Its path, side, start
+and end fields also work without JavaScript. Validation errors retain the
+submitted location and body. Enhanced drafts are isolated by revision and
+comparison. Repository readers can inspect discussions without a create action.
+Small diffs retain their natural height; larger diffs use bounded scrolling.
+
 Discussion list API responses contain 512-scalar body previews with an explicit
-`body_truncated` flag. Single-discussion reads retain complete root/reply bodies;
+`body_truncated` flag. Inline anchors also preview at most 512 context scalars,
+with `context_truncated` indicating omitted saved context. Single-discussion
+reads retain complete root/reply bodies and the complete saved code snippet;
 this keeps overview responses within the CLI response budget without losing
 content.
 

@@ -143,6 +143,37 @@ retains `version`/`source_sha`/`target_sha` and adds `comparison` (`all` or
 latter is zero for an all-changes comparison. The required `--version` keeps
 historical comparisons explicit.
 
+Create an inline discussion on a displayed line or range in an MR comparison:
+
+```sh
+moonhub mr inline-comment 4 --version 1 --path src/main.mbt \
+  --side new --start-line 12 --body-file comment.md
+moonhub mr inline-comment 4 --version 1 --commit <full-commit-sha> \
+  --path src/main.mbt --side old --start-line 12 --end-line 16 \
+  --body-file comment.md
+```
+
+`--version` is required. Omit `--commit` for All changes, or pass the full
+lowercase SHA of a commit in the saved version. `--side` is `old` or `new`;
+`--path` must match that side's path. `--end-line` defaults to `--start-line`.
+The inclusive range must contain 1–100 consecutive displayed lines within one
+hunk on one side. Binary files, pure renames and absent diff positions are
+rejected. Creation requires a write token and repository contributor access.
+
+The API endpoint is `POST /-/api/v1/repos/:owner/:repo/mrs/:number/inline-comment`.
+Its JSON fields are strings: `version`, optional `commit`, `path`, `side`,
+`start_line`, `end_line` and `body`. Unlike the CLI option, API `end_line` is
+required even for one line. Omitted or empty `commit` selects All changes.
+
+Inline discussions retain their saved version, comparison, base/head object IDs,
+old/new paths, side, line range and code context after source updates. They use
+the same reply, resolve/reopen and delete/restore commands as other discussions.
+Discussion JSON has a nullable `anchor`; anchored lists preview up to 512 Unicode
+scalars of saved `context` with `context_truncated`. A single-discussion read
+returns the complete saved snippet, whose code lines are capped at 120 scalars
+plus an ellipsis when truncated. Notification links restore the anchored
+historical Changes view. Reviews still apply to the entire MR version.
+
 MR discussions have stable decimal-string IDs. A discussion is rooted in an
 existing comment or review body and keeps the revision where it was opened.
 Replies may be added to an older revision and do not reopen a resolved discussion.

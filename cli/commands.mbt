@@ -37,6 +37,10 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("reviewer", long="reviewer", global=true),
     @argparse.OptionArg("comment", long="comment", global=true),
     @argparse.OptionArg("commit", long="commit", global=true),
+    @argparse.OptionArg("path", long="path", global=true),
+    @argparse.OptionArg("side", long="side", global=true),
+    @argparse.OptionArg("start-line", long="start-line", global=true),
+    @argparse.OptionArg("end-line", long="end-line", global=true),
     @argparse.OptionArg("discussion", long="discussion", global=true),
     @argparse.OptionArg("state-version", long="state-version", global=true),
     @argparse.OptionArg("assignee", long="assignee", global=true),
@@ -74,7 +78,8 @@ fn command() -> @argparse.Command {
           ..[
             "view", "diff", "checks", "comment", "review", "request-review", "merge",
             "approve-checks", "close", "reopen", "draft", "ready", "edit", "delete-comment",
-            "restore-comment", "discussions", "reply", "resolve-discussion", "reopen-discussion",
+            "restore-comment", "discussions", "inline-comment", "reply", "resolve-discussion",
+            "reopen-discussion",
           ].map(action => {
             @argparse.Command(action, positionals=[
               @argparse.PositionArg("number"),
@@ -308,6 +313,23 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         None,
       )
     }
+    ("mr", "inline-comment") =>
+      (
+        "\{base}/mrs/\{id}/inline-comment",
+        Some({
+          "version": decimal(required(matches, "version")),
+          "commit": option(matches, "commit").unwrap_or(""),
+          "path": required(matches, "path"),
+          "side": required(matches, "side"),
+          "start_line": decimal(required(matches, "start-line")),
+          "end_line": decimal(
+            option(matches, "end-line").unwrap_or(
+              required(matches, "start-line"),
+            ),
+          ),
+          "body": read_body(matches),
+        }),
+      )
     ("mr", "reply") =>
       (
         "\{base}/mrs/\{id}/reply",

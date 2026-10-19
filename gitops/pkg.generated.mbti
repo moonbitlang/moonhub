@@ -4,6 +4,7 @@ package "hackwaly/moonhub/gitops"
 import {
   "hackwaly/moonhub/domain",
   "moonbitlang/async/fs",
+  "moonbitlang/core/json",
 }
 
 // Values
@@ -49,6 +50,8 @@ pub async fn run_git(String, Array[String]) -> String
 
 pub fn valid_commit_sha(String) -> Bool
 
+pub async fn validate_diff_anchor(String, Revision, String?, String, String, Int64, Int64) -> DiffAnchor
+
 // Errors
 pub(all) suberror GitError {
   GitCommandFailed(code~ : Int, output~ : String)
@@ -72,6 +75,20 @@ pub struct CommitInfo {
   author : String
   date : String
 }
+
+pub struct DiffAnchor {
+  commit_sha : String
+  base_sha : String
+  head_sha : String
+  old_path : String
+  new_path : String
+  side : String
+  start_line : Int64
+  end_line : Int64
+  context : String
+} derive(ToJson, @json.FromJson)
+pub fn DiffAnchor::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffAnchor::to_json(Self) -> Json
 
 pub(all) struct Revision {
   version : Int64

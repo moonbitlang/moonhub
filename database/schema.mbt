@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 20L
+pub let database_schema_version : Int64 = 21L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -73,6 +73,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
   ).text()
   let discussion_targets_migration = @fs.read_file(
     "db/migrations/020_discussion_notification_targets.sql",
+  ).text()
+  let anchors_migration = @fs.read_file(
+    "db/migrations/021_merge_discussion_anchors.sql",
   ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -143,7 +146,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 20L {
         tx.driver.exec_script(discussion_targets_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 20")
+      if version < 21L {
+        tx.driver.exec_script(anchors_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 21")
     })
   })
 }

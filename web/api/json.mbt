@@ -260,5 +260,40 @@ fn discussion_json(
     "root": activity_json(d.root, preview~),
     "replies": d.replies.map(reply => activity_json(reply, preview~)),
     "reply_count": d.reply_count.to_string(),
+    "anchor": d.anchor
+    .map(anchor => {
+      let context = if preview {
+        let text = StringBuilder()
+        for ch in anchor.context.iter().take(512) {
+          text.write_char(ch)
+        }
+        text.to_string()
+      } else {
+        anchor.context
+      }
+      (
+        {
+          "comparison": if anchor.commit_sha.is_empty() {
+            "all"
+          } else {
+            "commit"
+          },
+          "commit_sha": if anchor.commit_sha.is_empty() {
+            Json::null()
+          } else {
+            Json::string(anchor.commit_sha)
+          },
+          "base_sha": anchor.base_sha,
+          "head_sha": anchor.head_sha,
+          "old_path": anchor.old_path,
+          "new_path": anchor.new_path,
+          "side": anchor.side,
+          "start_line": anchor.start_line.to_string(),
+          "end_line": anchor.end_line.to_string(),
+          "context": context,
+          "context_truncated": preview && anchor.context.iter().count() > 512,
+        } : Json)
+    })
+    .unwrap_or(Json::null()),
   }
 }

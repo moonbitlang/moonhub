@@ -18,6 +18,8 @@ pub fn branch_rules(@database.Database, @repository.RepositoryScope) -> Array[Br
 
 pub fn check_received_ref_rules(@database.Database, @repository.RepositoryScope, String) -> Unit raise
 
+pub async fn create_anchored_merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, Int64, String?, String, String, Int64, Int64, String) -> Int64
+
 pub fn create_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, String, String, Int64) -> Int64 raise
 
 pub async fn create_merge_request(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, String, String, String, Bool, issue? : Int64, authorize_checks? : Bool) -> MergeRequest
@@ -40,7 +42,7 @@ pub fn list_issues(@database.Database, @repository.RepositoryScope, String, Int6
 
 pub fn list_merge_activity(@database.Database, MergeRequest, Int64) -> Array[MergeActivity] raise
 
-pub fn list_merge_discussions(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, filter? : String) -> Array[MergeDiscussion] raise
+pub fn list_merge_discussions(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, filter? : String, anchor_version? : Int64, comparison? : @gitops.RevisionComparison?) -> Array[MergeDiscussion] raise
 
 pub fn list_merge_requests(@database.Database, @repository.RepositoryScope, String, Int64, query? : String, author? : Int64, reviewer? : Int64) -> Array[MergeRequest] raise
 
@@ -208,6 +210,7 @@ pub struct MergeDiscussion {
   root : MergeActivity
   replies : Array[MergeActivity]
   reply_count : Int64
+  anchor : @gitops.DiffAnchor?
 }
 
 pub struct MergeListMeta {

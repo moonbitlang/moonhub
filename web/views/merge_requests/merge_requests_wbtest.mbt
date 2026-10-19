@@ -65,7 +65,7 @@ async test "merge request HTTP routes enforce CSRF roles and current revision" {
       port, "/alice/demo/merge-requests/1?tab=changes", alice,
     )
     assert_eq(changes.code, 200)
-    assert_true(diff.contains("<moonhub-commit-diff>"))
+    assert_true(diff.contains("data-inline-review><pre data-patch>"))
     let (queued, _) = @web_testkit.http_post_path_with_cookie(
       port,
       "/alice/demo/merge-requests/1/merge",

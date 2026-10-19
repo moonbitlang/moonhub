@@ -70,6 +70,15 @@ fn render_merge_discussion(
     }
     b <+
       "><summary><span>\{discussion.root.actor} · v\{discussion.version.to_string()}</span><span class=\"discussion-state\" data-resolved=\"\{discussion.resolved.to_string()}\">\{if discussion.resolved { "Resolved" } else { "Unresolved" }}</span><span class=\"muted\">\{discussion.reply_count.to_string()} \{if discussion.reply_count == 1L { "reply" } else { "replies" }}</span><span class=\"discussion-preview\">#\{id.to_string()} · \{preview}</span></summary><div class=\"discussion-content\">"
+    if discussion.anchor is Some(anchor) {
+      let path = if anchor.side == "old" {
+        anchor.old_path
+      } else {
+        anchor.new_path
+      }
+      b <+
+        "<p class=\"discussion-anchor\"><a href=\"\{base}?tab=changes&amp;version=\{discussion.version.to_string()}&amp;commit=\{anchor.commit_sha}&amp;discussion=\{id.to_string()}&amp;code=\{id.to_string()}#diff-code\">\{path} · \{anchor.side} L\{anchor.start_line.to_string()}–\{anchor.end_line.to_string()}</a> · \{if anchor.commit_sha.is_empty() { "All changes" } else { "Commit " + anchor.commit_sha[:12].to_owned() }}</p><pre class=\"anchor-context\">\{anchor.context}</pre>"
+    }
     if !discussion.state_actor.is_empty() {
       b <+
         "<p class=\"muted\">\{if discussion.resolved { "Resolved" } else { "Reopened" }} by \{discussion.state_actor} · <time>\{discussion.state_changed_at}</time></p>"
