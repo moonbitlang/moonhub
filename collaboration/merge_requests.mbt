@@ -143,6 +143,16 @@ pub async fn create_merge_request(
           issue_id,
         ],
       )
+      let id : Int64 = tx
+        .query_one("SELECT last_insert_rowid() AS id")
+        .get_name("id")
+      @attachments.replace_references(
+        tx,
+        scope.id,
+        actor.id,
+        MergeRequest(id),
+        description,
+      )
       number
     })
   })
@@ -216,6 +226,13 @@ pub fn edit_merge_request(
           let _ = tx.execute(
             "UPDATE merge_request SET title = ?, description = ?, updated_at = datetime('now') WHERE id = ?",
             params=[title, description, mr.id],
+          )
+          @attachments.replace_references(
+            tx,
+            scope.id,
+            actor.id,
+            MergeRequest(mr.id),
+            description,
           )
         }
         "draft" | "ready" => {

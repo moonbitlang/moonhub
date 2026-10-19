@@ -1,3 +1,5 @@
+import './markdown-editor';
+
 const root = document.documentElement;
 const sidebar = document.querySelector<HTMLElement>("#app-sidebar");
 const main = document.querySelector<HTMLElement>("#main-content");

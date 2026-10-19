@@ -1,6 +1,7 @@
 import {
   "hackwaly/moonhub/web/api" @user_api,
   "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/attachments",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",
@@ -10,6 +11,7 @@ import {
   "hackwaly/moonhub/web/assets" @web_assets,
   "hackwaly/moonhub/web/context" @web_context,
   "hackwaly/moonhub/web/views/account" @account_views,
+  "hackwaly/moonhub/web/views/attachments" @attachment_views,
   "hackwaly/moonhub/web/views/auth" @auth_views,
   "hackwaly/moonhub/web/views/issues" @issue_views,
   "hackwaly/moonhub/web/views/merge_requests" @merge_request_views,

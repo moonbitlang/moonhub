@@ -42,6 +42,24 @@ fn markdown_inline(value : String, depth~ : Int32 = 0) -> String {
         "</strong>",
       )
       rest = rest[end + 4:]
+    } else if rest.has_prefix("![") &&
+      rest.find("](") is Some(label_end) &&
+      rest[label_end + 2:].find(")") is Some(url_end) &&
+      markdown_image_url(rest[label_end + 2:label_end + 2 + url_end].to_owned()) {
+      let url = markdown_escape(
+        rest[label_end + 2:label_end + 2 + url_end].to_owned(),
+      )
+      let alt = markdown_escape(rest[2:label_end].to_owned())
+      out.write_string(
+        "<a href=\"" +
+        url +
+        "\" target=\"_blank\" rel=\"noopener noreferrer\"><img src=\"" +
+        url +
+        "\" alt=\"" +
+        alt +
+        "\" loading=\"lazy\" decoding=\"async\"></a>",
+      )
+      rest = rest[label_end + 3 + url_end:]
     } else if rest.has_prefix("[") &&
       rest.find("](") is Some(label_end) &&
       rest[label_end + 2:].find(")") is Some(url_end) &&
@@ -64,6 +82,18 @@ fn markdown_inline(value : String, depth~ : Int32 = 0) -> String {
     }
   }
   out.to_string()
+}
+
+///|
+fn markdown_image_url(value : String) -> Bool {
+  let parts = value.split("/").collect()
+  parts.length() == 5 &&
+  parts[0].is_empty() &&
+  @domain.valid_name_key(parts[1].to_owned()) &&
+  @domain.valid_repo_name(parts[2].to_owned()) &&
+  parts[3] == "attachments" &&
+  parts[4].length() == 64 &&
+  parts[4].iter().all(c => c.is_ascii_digit() || (c >= 'a' && c <= 'f'))
 }
 
 ///|

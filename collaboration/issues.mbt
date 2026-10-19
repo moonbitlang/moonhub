@@ -52,6 +52,13 @@ pub fn create_issue(
         params=[scope.id, number, actor.id, title, description, assignee],
       )
       let id : Int64 = row.get_name("id")
+      @attachments.replace_references(
+        tx,
+        scope.id,
+        actor.id,
+        Issue(id),
+        description,
+      )
       let _ = tx.execute(
         "INSERT INTO issue_activity (issue_id, actor_id, kind) VALUES (?, ?, 'opened')",
         params=[id, actor.id],
@@ -95,6 +102,16 @@ pub fn mutate_issue(
           "INSERT INTO issue_activity (issue_id, actor_id, kind, body) VALUES (?, ?, 'comment', ?)",
           params=[issue.id, actor.id, body],
         )
+        let comment_id : Int64 = tx
+          .query_one("SELECT last_insert_rowid() AS id")
+          .get_name("id")
+        @attachments.replace_references(
+          tx,
+          scope.id,
+          actor.id,
+          IssueComment(comment_id),
+          body,
+        )
         let _ = tx.execute(
           "UPDATE issue SET updated_at = datetime('now') WHERE id = ?",
           params=[issue.id],
@@ -134,6 +151,15 @@ pub fn mutate_issue(
         guard changed == 1 else {
           raise @domain.BadRequest(
             message="this issue changed; reload before saving",
+          )
+        }
+        if action == "edit" {
+          @attachments.replace_references(
+            tx,
+            scope.id,
+            actor.id,
+            Issue(issue.id),
+            description,
           )
         }
         if action == "edit" && assignee != issue.assignee_id && assignee != 0L {

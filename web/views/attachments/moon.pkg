@@ -1,0 +1,11 @@
+import {
+  "hackwaly/moonhub/attachments" @image_store,
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/ui" @web_ui,
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/moonback",
+}
+
+supported_targets = "native"

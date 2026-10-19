@@ -366,3 +366,37 @@ navigation, malicious Markdown/log text, draft recovery, tab permissions,
 resource grouping, read watermarks and preservation of live reading position.
 Screenshots and receipts are local evidence under `_build/collaboration-ui/`;
 they are excluded from the source commit.
+
+## Managed Markdown images extension (2026-10-19)
+
+Issue and MR descriptions and comments, including MR discussion roots, inline
+comments and replies, retain their native Markdown textarea. The enhancement
+adds Write / Preview / Add image, clipboard paste and file drop. Keep the
+restrained shared toolbar treatment and named native-button group with
+`aria-pressed` on Write and Preview. This is local editor mode selection, not
+another repository navigation layer.
+
+Upload accepted PNG, JPEG, GIF and WebP files through the repository attachment
+service and insert the returned managed URL at the insertion point. Show format
+and size guidance, polite upload status and actionable failure text; retain the
+draft and offer Retry upload for recoverable failures. Preview and submission
+wait until uploads finish. Preview shows loading, empty and failure states;
+Write restores the textarea. Existing managed Markdown remains usable in native
+forms without JavaScript.
+While an inline image upload is pending, selecting another code location keeps
+the draft at its original lines, and Discard draft waits with explanatory status
+until the upload finishes.
+
+Toolbar controls have a (36px) desktop minimum height and (44px) at (900px) and
+below, with wrapping rather than page overflow. Images remain private and
+access-checked, render within (100%) of available width and a maximum height
+(640px), and preserve aspect ratio. External image URLs remain text or links.
+`docs/attachments.md` records limits, authorization, persistence and CLI behavior.
+
+Browser and CLI acceptance passed for the extension. The three scoped P2
+finishing findings were fixed; the final scoped disposition is ship. Desktop,
+phone and preview evidence is recorded in
+`.impeccable/review/attachments/desktop.png`,
+`.impeccable/review/attachments/mobile.png` and
+`.impeccable/review/attachments/desktop-preview.png`. This extends the existing
+Operate identity without changing the broader collaboration composition.

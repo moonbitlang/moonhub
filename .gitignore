@@ -7,6 +7,7 @@ target
 .mooncakes/
 .moonagent/
 .repos/
+.attachments/
 
 node_modules/
 *.tsbuildinfo

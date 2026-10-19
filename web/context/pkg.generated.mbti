@@ -18,6 +18,8 @@ pub let asset_paths_key : @moonback.TypedKey[Map[String, String]]
 
 pub fn auth_middleware(@database.Database) -> @moonback.Middleware
 
+pub fn authorize_image_form(@moonback.Request) -> Unit raise
+
 pub let browser_access_key : @moonback.TypedKey[BrowserAccess]
 
 pub fn commit_param(@moonback.Request) -> String raise @domain.AppError
@@ -57,6 +59,8 @@ pub fn private_page_headers(location? : String, refresh? : Bool) -> @moonback.He
 pub async fn protected_form(@moonback.Request, String) -> Map[String, String]
 
 pub fn query_rev(@moonback.Request) -> String?
+
+pub async fn read_bounded_body(@moonback.Request, Int) -> Bytes
 
 pub async fn read_form(@moonback.Request) -> Map[String, String]
 

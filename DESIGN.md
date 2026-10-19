@@ -223,6 +223,40 @@ results are separate states. Diagnostics use disclosure, not an unrelated run
 failure badge. Issue lists have Open / Closed, title search and assignment
 filters.
 
+### Managed Markdown image editor
+
+Keep the native, labeled Markdown textarea as the source of truth for Issue and
+MR descriptions and comments, including discussion roots, inline comments and
+replies. Progressive enhancement adds a quiet, wrapping toolbar with Write,
+Preview and Add image. These are native buttons in a named group; Write and
+Preview expose their selected state with `aria-pressed`, stronger text and a
+neutral outlined surface. They are not page navigation.
+
+The toolbar joins the textarea with a subtle surface, thin neutral border and
+modest top corners (6px). Controls have a desktop minimum height (36px), rising
+to (44px) at (900px) and below. Add image stays at the trailing edge in interaction
+blue. Hover uses the white surface; focus has a visible blue outline (2px),
+offset (2px). Dragging files over the textarea uses the same outline. Preview
+keeps the editor width, a minimum height (140px) and content padding (12px).
+
+Add image, clipboard paste and file drop upload PNG, JPEG, GIF or WebP files, up
+to (5 MiB) each, then insert managed Markdown at the insertion point. Keep format
+and size guidance directly below the editor. Upload state and actionable errors
+use polite textual status; preserve the draft, offer Retry upload for recoverable
+failures, and explain when to choose another file or reload. Wait for uploads to
+finish before previewing or submitting. Preview disables Add image and presents
+loading, empty and failure messages; Write restores editing.
+While an inline image upload is pending, selecting another code location keeps
+the draft at its original lines, and Discard draft waits with explanatory status
+until the upload finishes.
+
+Rendered images use the private, access-checked repository attachment service.
+They remain inside the reading column (maximum width 100%, maximum height
+640px), preserve aspect ratio and use modest corners (4px), without cropping.
+External image URLs remain text or links. Native forms still accept existing
+managed image URLs without JavaScript. `docs/attachments.md` owns limits,
+authorization and storage behavior.
+
 ### MR review and Changes
 
 Discussion / Commits / Changes are URL-backed. A labeled native version select
