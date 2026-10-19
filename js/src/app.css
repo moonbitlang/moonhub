@@ -669,7 +669,40 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 .inline-discussions { margin-top: 24px; }
 .anchor-context { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-size: 12px; background: var(--color-surface-subtle); padding: 12px; }
 .discussion-anchor { font-size: 12px; overflow-wrap: anywhere; }
-.inline-line-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--color-border); }
+.inline-line-hint { margin:0; padding:10px 12px; border-bottom:1px solid var(--color-border); color:var(--color-muted); font-size:13px; }
+.inline-annotation { color:var(--color-text); background:var(--color-surface); font:13px/1.5 var(--font-sans); white-space:normal; overflow-wrap:anywhere; }
+.inline-selection-action { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; background:var(--color-accent-soft); color:var(--color-accent); }
+.inline-selection-action button { font-size:13px; }
+.inline-editor { padding:12px; background:var(--color-surface-subtle); border-block:1px solid var(--color-border); }
+.inline-editor header { display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; }
+.inline-editor header span { color:var(--color-muted); overflow-wrap:anywhere; }
+.inline-editor .inline-composer { margin:0; }
+.inline-editor .inline-composer > summary, .inline-editor .inline-manual-help, .inline-editor .inline-location-fields { display:none; }
+.inline-editor textarea { width:100%; min-height:112px; resize:vertical; }
+.inline-editor-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.inline-editor-actions .text-button { margin-left:auto; color:var(--color-muted); background:transparent; font-weight:400; }
+.inline-editor-actions .text-button:hover { color:var(--color-danger); background:var(--color-danger-soft); }
+.diff-workspace .inline-review-content { max-height:none; }
+.moonhub-code-view [slot="gutter-utility-slot"] { right:0; }
+.moonhub-comment-line-button { z-index:4; width:20px; height:20px; min-height:20px; margin-right:calc(-20px + 1ch); padding:2px; border:0; border-radius:4px; touch-action:none; }
+.moonhub-comment-line-button .ui-icon { width:16px; height:16px; flex-basis:16px; }
+.inline-draft-warning { margin:10px 0 0; color:var(--color-warning); }
+.inline-discussion-slot { padding:0 12px; border-block:1px solid var(--color-border); }
+.inline-discussion-slot .mr-discussion { padding-block:12px; border:0; }
+.inline-discussion-slot .discussion-content { padding-top:12px; }
+.inline-discussion-slot .discussion-anchor { margin:0 0 8px; }
+.inline-discussion-slot .anchor-context { display:none; }
+.inline-discussion-slot .discussion-comment { margin-block:8px; }
+.inline-discussion-slot .discussion-replies { margin-block:8px; padding-left:16px; }
+.inline-discussion-slot .discussion-reply { margin-top:12px; }
+.inline-discussion-slot .discussion-comment:target { outline:none; background:var(--color-accent-soft); }
+.inline-discussion-jump { display:block; padding:10px 0; border-top:1px solid var(--color-border); font-size:13px; }
+@media (max-width:600px) {
+  .inline-editor { padding:12px 10px; }
+  .inline-editor-actions button, .inline-selection-action button, .inline-discussion-slot button { min-height:44px; }
+  .inline-editor-actions .text-button { margin-left:0; }
+  .inline-discussion-slot { padding-inline:10px; }
+}
 .inline-thread-link { display: block; padding: 8px 12px; background: var(--color-accent-soft); color: var(--color-accent); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
 .inline-thread-preview { display:block; color:var(--color-text); white-space:pre-wrap; overflow-wrap:anywhere; font-weight:400; }

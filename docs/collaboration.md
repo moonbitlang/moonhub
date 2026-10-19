@@ -107,12 +107,23 @@ anchored range. Saved context remains readable even after source updates; each
 selected code line is saved with up to 120 Unicode scalars plus an ellipsis
 when truncated.
 
-Contributors can click, Shift-click or drag diff line numbers and use Comment on
-selected lines to fill the native Comment on code form. Its path, side, start
-and end fields also work without JavaScript. Validation errors retain the
-submitted location and body. Enhanced drafts are isolated by revision and
-comparison. Repository readers can inspect discussions without a create action.
-Small diffs retain their natural height; larger diffs use bounded scrolling.
+Contributors can use the gutter + beside a diff line, or click, Shift-click or
+drag line numbers and choose Comment on selected lines, to open the native
+comment form directly below that line or range. Start discussion submits the
+form; Ctrl/Command+Enter also submits from the inline editor. Cancel or Escape
+closes the editor without clearing the draft. Nonempty drafts remain bound to
+their original location when another range is selected and survive file
+collapse. When session storage is available, drafts also survive reloads in the
+same browser tab for up to 24 hours, isolated by revision and comparison.
+Discard draft explicitly clears the body before a different location can be
+used. Enter a code location manually provides the path, side, start and end
+fields, including without JavaScript; validation errors retain the submitted
+location and body. Native discussion threads appear below their anchored lines
+with replies, links to further replies and permitted resolve/reopen controls;
+compact links below the enhanced diff provide a discussion index. Without the
+enhanced diff, the native discussion list and forms remain available. Repository
+readers can inspect discussions without a create action. Small diffs retain
+their natural height; larger diffs use bounded scrolling.
 
 Discussion list API responses contain 512-scalar body previews with an explicit
 `body_truncated` flag. Inline anchors also preview at most 512 context scalars,
