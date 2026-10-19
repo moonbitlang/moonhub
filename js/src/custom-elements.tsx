@@ -12,7 +12,7 @@ import {
   type CodeViewHandle,
   WorkerPoolContextProvider,
 } from "@pierre/diffs/react";
-import { type CSSProperties, useMemo, useRef, useState, useEffect } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useMemo, useRef, useState, useEffect, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import DiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?worker&url";
 
@@ -166,8 +166,82 @@ const moonhubCodeViewStyles = `
 setCustomExtension("mbt", "moonbit");
 setCustomExtension("mbti", "moonbit");
 
-type InlineThread = { id: string; oldPath: string; newPath: string; side: "old" | "new"; start: number; end: number; href: string; label: string; preview: string };
-type InlineReview = { threads: InlineThread[]; target?: string; canComment: boolean; select(path: string, side: "old" | "new", start: number, end: number): void };
+type InlineThread = { id: string; oldPath: string; newPath: string; side: "old" | "new"; start: number; end: number; href: string; label: string; preview: string; node: HTMLDetailsElement | null };
+type InlineReview = { threads: InlineThread[]; target?: string; form: HTMLDetailsElement | null };
+type InlineLocation = { id: string; path: string; side: "old" | "new"; start: number; end: number };
+
+// Only displayed, contiguous lines on one side can form an immutable anchor.
+function inlineLocation(items: CodeViewItem<undefined>[], selection: CodeViewLineSelection | null): InlineLocation | undefined {
+  const item = items.find(item => item.id === selection?.id);
+  if (!selection || item?.type !== "diff") return;
+  const { range } = selection;
+  const side = range.side ?? "additions";
+  const start = Math.min(range.start, range.end);
+  const end = Math.max(range.start, range.end);
+  if ((range.endSide && range.endSide !== side) || start < 1 || end - start >= 100) return;
+  const displayed = item.fileDiff.hunks.some(hunk => {
+    const first = side === "deletions" ? hunk.deletionStart : hunk.additionStart;
+    const count = side === "deletions" ? hunk.deletionCount : hunk.additionCount;
+    return start >= first && end < first + count;
+  });
+  if (!displayed) return;
+  return {id: item.id, path: side === "deletions" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name, side: side === "deletions" ? "old" : "new", start, end};
+}
+
+// Relocate the original server-rendered form, keeping native submission, CSRF,
+// draft listeners, and a single set of IDs. Restore it when a diff is virtualized.
+function InlineNativeContent({node, label, focus = false}: {node: HTMLDetailsElement; label?: string; focus?: boolean}) {
+  const host = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!host.current) return;
+    const placeholder = document.createElement(label ? "a" : "span");
+    if (placeholder instanceof HTMLAnchorElement) {
+      placeholder.href = "#" + node.id;
+      placeholder.textContent = label ?? "";
+      placeholder.className = "inline-discussion-jump";
+    }
+    node.before(placeholder);
+    host.current.append(node);
+    if (focus) node.open = true;
+    const actions = node.querySelectorAll<HTMLButtonElement>('[data-inline-cancel], [data-inline-discard]');
+    actions.forEach(button => { button.hidden = false; });
+    if (focus && node.hasAttribute('data-inline-focus')) {
+      node.removeAttribute('data-inline-focus');
+      node.querySelector<HTMLTextAreaElement>('textarea')?.focus({preventScroll:true});
+    }
+    return () => {
+      actions.forEach(button => { button.hidden = true; });
+      placeholder.replaceWith(node);
+    };
+  }, [node, label]);
+  return <div ref={host} />;
+}
+
+// Native details, replies and textarea resizing happen outside React. Keep
+// the virtualized diff's measured row heights in sync with those changes.
+function InlineAnnotation({viewerRef, itemId, children}: {viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>; itemId: string; children: ReactNode}) {
+  const host = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!host.current) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const viewer = viewerRef.current?.getInstance();
+        const rendered = viewer?.getRenderedItems().find(item => item.id === itemId);
+        if (rendered?.type === "diff" && rendered.instance.reconcileHeights()) {
+          viewer?.instanceChanged(rendered.instance, true);
+        }
+      });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(host.current);
+    measure();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [viewerRef, itemId]);
+  return <div ref={host} className="inline-annotation">{children}</div>;
+}
+
 function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], ready?: () => void, inline?: InlineReview): Root {
   ensureMoonhubCodeViewStyles();
   const root = createRoot(mount);
@@ -187,12 +261,9 @@ function renderCodeView(mount: HTMLElement, items: CodeViewItem<undefined>[], re
 
 function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefined>[]; ready?: () => void; inline?: InlineReview }) {
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
-  const selectedItem = items.find(item => item.id === selection?.id);
-  const selectedSide = selection?.range.side === "deletions" ? "old" : "new";
-  const sameSide = !selection?.range.endSide || selection.range.endSide === (selection.range.side ?? "additions");
-  const selectedPath = selectedItem?.type === "diff" ? (selectedSide === "old" ? selectedItem.fileDiff.prevName ?? selectedItem.fileDiff.name : selectedItem.fileDiff.name) : undefined;
-  const start = Math.min(selection?.range.start ?? 0, selection?.range.end ?? 0);
-  const end = Math.max(selection?.range.start ?? 0, selection?.range.end ?? 0);
+  const selected = inlineLocation(items, selection);
+  const [composer, setComposer] = useState<InlineLocation | null>(null);
+  const [draftWarning, setDraftWarning] = useState("");
   const files = items.filter((item): item is CodeViewDiffItem<undefined> => item.type === "diff");
   const [mode, setMode] = useState<"split" | "unified">(() => matchMedia("(max-width: 900px)").matches ? "unified" : "split");
   const [wrap, setWrap] = useState(true);
@@ -204,7 +275,11 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     const sync = () => { if (!manualMode.current) setMode(media.matches ? "unified" : "split"); };
     media.addEventListener("change", sync); return () => media.removeEventListener("change", sync);
   }, []);
-  const options = useMemo(() => ({ ...codeViewOptions, enableLineSelection: Boolean(inline?.canComment), diffStyle: mode, overflow: wrap ? "wrap" as const : "scroll" as const }), [mode, wrap, inline]);
+  const options = useMemo(() => ({
+    ...codeViewOptions, enableLineSelection: Boolean(inline?.form),
+    enableGutterUtility: Boolean(inline?.form), diffStyle: mode,
+    overflow: wrap ? "wrap" as const : "scroll" as const,
+  }), [mode, wrap, inline, items]);
   const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
   useEffect(() => {
     const thread = inline?.threads.find(thread => thread.id === inline.target);
@@ -217,6 +292,58 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     const frame = requestAnimationFrame(() => viewerRef.current?.scrollTo({type: "range", id: item.id, range, align: "center"}));
     return () => cancelAnimationFrame(frame);
   }, [inline, items]);
+  useEffect(() => {
+    if (!inline) return;
+    for (const initial of items) {
+      const item = viewerRef.current?.getItem(initial.id);
+      if (item?.type !== "diff") continue;
+      const annotations = inline.threads.filter(thread => (thread.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (thread.side === "old" ? thread.oldPath : thread.newPath)).map(thread => ({side: thread.side === "old" ? "deletions" as const : "additions" as const, lineNumber: thread.end}));
+      for (const location of [selected, composer]) if (location?.id === item.id) annotations.push({side: location.side === "old" ? "deletions" : "additions", lineNumber: location.end});
+      const unique = annotations.filter((annotation, index) => annotations.findIndex(other => other.side === annotation.side && other.lineNumber === annotation.lineNumber) === index);
+      if (JSON.stringify(item.annotations) === JSON.stringify(unique)) continue;
+      item.annotations = unique;
+      item.version = getNextItemVersion(item);
+      viewerRef.current?.updateItem(item);
+    }
+  }, [inline, items, selection, composer]);
+
+  function openComposer(location: InlineLocation) {
+    const details = inline?.form;
+    const form = details?.querySelector<HTMLFormElement>('[data-inline-form]');
+    if (!details || !form) return;
+    const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    const previousItem = items.find(item => item.type === "diff" && (field("side").value === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === field("path").value);
+    const previous = previousItem && inlineLocation(items, {id: previousItem.id, range: {side: field("side").value === "old" ? "deletions" : "additions", start: Number(field("start_line").value), end: Number(field("end_line").value)}});
+    if (field("body").value.trim() && previous) {
+      setDraftWarning(JSON.stringify(previous) === JSON.stringify(location) ? "" : "Your draft belongs to these lines. Send it, or discard it before commenting elsewhere.");
+      location = previous;
+    } else {
+      setDraftWarning("");
+      for (const [name, value] of Object.entries({path: location.path, side: location.side, start_line: String(location.start), end_line: String(location.end)})) field(name).value = value;
+      form.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+    details.open = true;
+    details.setAttribute('data-inline-focus', '');
+    setComposer({...location});
+    setSelection({id: location.id, range: {start: location.start, end: location.end, side: location.side === "old" ? "deletions" : "additions"}});
+    updateDiffItem(location.id, item => { item.collapsed = false; return true; });
+    requestAnimationFrame(() => {
+      viewerRef.current?.scrollTo({type: "range", id: location.id, range: {start: location.end, end: location.end, side: location.side === "old" ? "deletions" : "additions"}, align: "center"});
+      form.querySelector('textarea')?.focus({preventScroll:true});
+    });
+  }
+
+  function closeComposer(discard = false) {
+    if (discard) {
+      const body = inline?.form?.querySelector<HTMLTextAreaElement>('textarea');
+      if (body) { body.value = ""; body.dispatchEvent(new Event('input', {bubbles:true})); }
+    }
+    if (inline?.form) inline.form.open = false;
+    setComposer(null);
+    setDraftWarning("");
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.inline-selection-action button')?.focus({preventScroll:true}));
+  }
+
   const anyLargeDiffs = useMemo(
     () =>
       items.some(
@@ -293,7 +420,7 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
         setSelectedFile(item.id); viewerRef.current?.scrollTo({ type: "item", id: item.id, align: "start" });
       }}>{item.fileDiff.name ?? item.fileDiff.prevName ?? "File"}</button>)}</nav>}
       <div className="diff-canvas">
-      {inline?.canComment && <div className="inline-line-actions"><span>{selection ? (sameSide ? selectedPath + " · " + selectedSide + " L" + start + "–" + end : "Select lines on one side") : "Select line numbers to start a discussion"}</span><button type="button" disabled={!selection || !sameSide || !selectedPath || end - start >= 100} onClick={() => { if (selectedPath) inline.select(selectedPath, selectedSide, start, end); }}>Comment on selected lines</button></div>}
+      {inline?.form && <p className="inline-line-hint">Use the + beside a line to comment. Select or Shift-click line numbers for a range.{selection && !selected && <span role="status"> Choose up to 100 displayed lines on one side of a hunk.</span>}</p>}
       {anyLargeDiffs ? (
         <div className="moonhub-code-view-toolbar">
           <span>Large diffs are collapsed by default.</span>
@@ -308,10 +435,39 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
         onSelectedLinesChange={setSelection}
         renderAnnotation={(annotation, item) => {
           if (!inline || item.type !== "diff" || !("side" in annotation)) return null;
-          return inline.threads.filter(thread => (thread.side === "old" ? "deletions" : "additions") === annotation.side && thread.end === annotation.lineNumber && (thread.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (thread.side === "old" ? thread.oldPath : thread.newPath)).map(thread => <a className="inline-thread-link" key={thread.href} href={thread.href}>{thread.label} · L{thread.start}–{thread.end}<span className="inline-thread-preview">{thread.preview}</span></a>);
+          const side = annotation.side === "deletions" ? "old" : "new";
+          const path = side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name;
+          const threads = inline.threads.filter(thread => thread.side === side && thread.end === annotation.lineNumber && path === (side === "old" ? thread.oldPath : thread.newPath));
+          const editing = composer?.id === item.id && composer.side === side && composer.end === annotation.lineNumber;
+          const action = inline.form && selected?.id === item.id && selected.side === side && selected.end === annotation.lineNumber && !editing;
+          return <InlineAnnotation viewerRef={viewerRef} itemId={item.id}>
+            {threads.map(thread => thread.node ? <div className="inline-discussion-slot" key={thread.id}><InlineNativeContent node={thread.node} label={thread.label + " · " + path + " · " + side + " L" + thread.start + "–" + thread.end} /></div> : <a className="inline-thread-link" key={thread.id} href={thread.href}>{thread.label}<span>{thread.preview}</span></a>)}
+            {editing && inline.form && <section className="inline-editor" aria-label="New code discussion" onClick={event => {
+              const button = (event.target as HTMLElement).closest('button');
+              if (button?.hasAttribute('data-inline-cancel')) closeComposer();
+              if (button?.hasAttribute('data-inline-discard')) closeComposer(true);
+            }} onKeyDown={event => {
+              if (event.key === "Escape") { event.preventDefault(); closeComposer(); }
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); inline.form?.querySelector('form')?.requestSubmit(); }
+            }}>
+              <header><strong>New discussion</strong><span>{composer.path} · {composer.side} L{composer.start}–{composer.end}</span></header>
+              {draftWarning && <p className="inline-draft-warning" role="status">{draftWarning}</p>}
+              <InlineNativeContent node={inline.form} focus />
+            </section>}
+            {action && <div className="inline-selection-action"><span>{side} L{selected.start}–{selected.end}</span><button type="button" onClick={() => openComposer(selected)}>Comment on selected lines</button></div>}
+          </InlineAnnotation>;
         }}
         initialItems={items}
-        className="moonhub-code-view"
+        className={inline && files.reduce((count, item) => count + getPatchLineCount(item.fileDiff), 0) <= largeDiffLineThreshold ? "moonhub-code-view inline-review-content" : "moonhub-code-view"}
+        renderGutterUtility={inline?.form ? (getHoveredLine, item) => <button type="button" className="moonhub-comment-line-button" aria-label="Comment on selected lines" title="Comment on this line or selection" onPointerDown={event => event.stopPropagation()} onClick={() => {
+          const hovered = getHoveredLine();
+          if (!hovered) return;
+          const side = "side" in hovered && hovered.side === "deletions" ? "deletions" : "additions";
+          const line = inlineLocation(items, {id: item.id, range: {start: hovered.lineNumber, end: hovered.lineNumber, side}});
+          const range = inlineLocation(items, viewerRef.current?.getSelectedLines() ?? null);
+          const location = line && range?.id === line.id && range.side === line.side && line.start >= range.start && line.end <= range.end ? range : line;
+          if (location) openComposer(location);
+        }}><span className="ui-icon" data-icon="plus" aria-hidden="true" /></button> : undefined}
         options={options}
         renderHeaderPrefix={(item) =>
           item.type === "diff" ? (
@@ -492,23 +648,12 @@ class MoonhubCommitDiffElement extends HTMLElement {
       const items = patchToItems(patch);
       let inline: InlineReview | undefined;
       if (this.hasAttribute("data-inline-review")) {
-        const threads: InlineThread[] = [...this.querySelectorAll<HTMLAnchorElement>('[data-inline-thread]')].map(link => ({id: link.dataset.discussion ?? "", oldPath: link.dataset.oldPath ?? "", newPath: link.dataset.newPath ?? "", side: link.dataset.side === "old" ? "old" : "new", start: Number(link.dataset.start), end: Number(link.dataset.end), href: link.href, label: link.textContent ?? "Discussion", preview: link.dataset.preview ?? ""}));
+        const threads: InlineThread[] = [...this.querySelectorAll<HTMLAnchorElement>('[data-inline-thread]')].map(link => ({id: link.dataset.discussion ?? "", oldPath: link.dataset.oldPath ?? "", newPath: link.dataset.newPath ?? "", side: link.dataset.side === "old" ? "old" : "new", start: Number(link.dataset.start), end: Number(link.dataset.end), href: link.href, label: link.textContent ?? "Discussion", preview: link.dataset.preview ?? "", node: document.getElementById("discussion-" + link.dataset.discussion) as HTMLDetailsElement | null}));
         for (const item of items) if (item.type === "diff") {
           item.annotations = threads.filter(t => (t.side === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === (t.side === "old" ? t.oldPath : t.newPath)).filter((t, i, all) => all.findIndex(other => other.side === t.side && other.end === t.end) === i).map(t => ({side: t.side === "old" ? "deletions" as const : "additions" as const, lineNumber: t.end}));
         }
-        inline = { threads, target: new URL(location.href).searchParams.get("code") ?? undefined, canComment: Boolean(document.querySelector("[data-inline-form]")), select: (path, side, start, end) => {
-          const details = document.querySelector<HTMLDetailsElement>('#inline-composer');
-          const form = details?.querySelector<HTMLFormElement>('[data-inline-form]');
-          if (!details || !form) return;
-          details.open = true;
-          for (const [name, value] of Object.entries({path, side, start_line: String(start), end_line: String(end)})) {
-            const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
-            if (field) field.value = value;
-          }
-          form.dispatchEvent(new Event('input', {bubbles:true}));
-          details.scrollIntoView({block:'center'});
-          form.querySelector<HTMLTextAreaElement>('textarea')?.focus();
-        }};
+        const url = new URL(location.href);
+        inline = {threads, target: url.searchParams.get("code") ?? url.searchParams.get("discussion") ?? undefined, form: document.querySelector<HTMLDetailsElement>('#inline-composer')};
       }
       const loading = document.createElement("p"); loading.className = "diff-loading"; loading.setAttribute("role", "status"); loading.textContent = "Preparing file changes…";
       mount.before(loading);
