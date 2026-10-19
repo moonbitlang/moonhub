@@ -1,5 +1,6 @@
 import {
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/attachments",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",

@@ -49,6 +49,12 @@ fn api_actor(
 async fn api_body(
   req : @moonback.Request,
   allowed : Array[String],
+  images? : (
+    @database.Database,
+    String,
+    @repository.RepositoryScope,
+    @domain.CurrentUser,
+  ),
 ) -> Map[String, Json] {
   let mime = req.headers
     .get("content-type")
@@ -65,8 +71,13 @@ async fn api_body(
     10000,
     () => {
       while reader.read_some(max_len=4096) is Some(chunk) {
-        guard bytes.length() + chunk.length() <= 65536 else {
-          raise @domain.BadRequest(message="request body exceeds 64 KiB")
+        guard bytes.length() + chunk.length() <=
+          (if images is Some(_) {
+            @attachments.maximum_body_bytes
+          } else {
+            65536
+          }) else {
+          raise @domain.BadRequest(message="request body is too large")
         }
         for byte in chunk {
           bytes.push(byte)
@@ -84,6 +95,15 @@ async fn api_body(
   for key, _ in fields {
     guard allowed.contains(key) else {
       raise @domain.BadRequest(message="unsupported request field: \{key}")
+    }
+  }
+  if images is Some((pool, root, scope, actor)) {
+    for key in ["description", "body"] {
+      if fields.get(key) is Some(String(value)) {
+        fields[key] = Json(
+          @attachments.prepare_markdown(pool, root, scope, actor, value),
+        )
+      }
     }
   }
   fields

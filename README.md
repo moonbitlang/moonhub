@@ -9,6 +9,8 @@ Branch protection can require existing Pipeline workflows to pass against the
 merged source/target tree. See [MR Pipeline checks](docs/merge-checks.md) for
 setup, execution approval, version-bound results, and upgrade requirements.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
+Descriptions and comments support [managed Markdown image attachments](docs/attachments.md),
+including browser uploads and CLI inline image conversion.
 Request reviewers from an MR discussion and use **Inbox** for pending reviews,
 assigned Issues and collaboration updates. Email reminders are optional. See
 [review requests and notifications](docs/notifications.md).

@@ -269,7 +269,17 @@ pub fn reply_merge_discussion(
           params=[mr.id, actor.id, body, version, id],
         ),
       )
-      tx.query_one("SELECT last_insert_rowid() AS id").get_name("id")
+      let comment_id : Int64 = tx
+        .query_one("SELECT last_insert_rowid() AS id")
+        .get_name("id")
+      @attachments.replace_references(
+        tx,
+        scope.id,
+        actor.id,
+        MergeComment(comment_id),
+        body,
+      )
+      comment_id
     })
   })
 }
@@ -388,6 +398,13 @@ pub async fn create_anchored_merge_discussion(
           "UPDATE merge_discussion SET anchor = ? WHERE id = ? AND merge_request_id = ?",
           params=[Json(anchor).stringify(), id, mr.id],
         ),
+      )
+      @attachments.replace_references(
+        tx,
+        scope.id,
+        actor.id,
+        MergeComment(id),
+        body,
       )
       id
     })

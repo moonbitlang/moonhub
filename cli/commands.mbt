@@ -145,9 +145,9 @@ async fn read_body(matches : @argparse.Matches) -> String {
     None => ""
     Some(path) => {
       guard @fs.kind(path, follow_symlink=false) is Regular &&
-        @fs.file_size(path) <= 20000L else {
+        @fs.file_size(path) <= 16777216L else {
         raise Invalid(
-          "body file must be a regular UTF-8 file of at most 20,000 bytes",
+          "body file must be a regular UTF-8 file of at most 16 MiB (20,000 characters after image upload)",
         )
       }
       @fs.read_file(path).text()

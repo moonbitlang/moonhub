@@ -1,0 +1,59 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/attachments"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async",
+}
+
+// Values
+pub async fn cleanup_pending(@database.Database, String) -> Unit
+
+pub fn image_links(String) -> Array[ImageLink]
+
+pub let maximum_body_bytes : Int
+
+pub let maximum_image_bytes : Int
+
+pub async fn prepare_markdown(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> String
+
+pub async fn read(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> (String, Bytes)
+
+pub fn replace_references(@database.DbTransaction, Int64, Int64, ReferenceTarget, String) -> Unit raise
+
+pub fn start_cleanup_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
+pub async fn upload(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String, Bytes) -> Image
+
+pub fn url(@domain.RepoId, String) -> String
+
+pub fn valid_id(String) -> Bool
+
+// Errors
+
+// Types and methods
+pub struct Image {
+  id : String
+  url : String
+  media_type : String
+  byte_size : Int64
+}
+
+pub struct ImageLink {
+  start : Int
+  end : Int
+  url : String
+}
+
+pub(all) enum ReferenceTarget {
+  MergeRequest(Int64)
+  Issue(Int64)
+  MergeComment(Int64)
+  IssueComment(Int64)
+}
+
+// Type aliases
+
+// Traits

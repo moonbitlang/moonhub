@@ -314,7 +314,7 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
     const previousItem = items.find(item => item.type === "diff" && (field("side").value === "old" ? item.fileDiff.prevName ?? item.fileDiff.name : item.fileDiff.name) === field("path").value);
     const previous = previousItem && inlineLocation(items, {id: previousItem.id, range: {side: field("side").value === "old" ? "deletions" : "additions", start: Number(field("start_line").value), end: Number(field("end_line").value)}});
-    if (field("body").value.trim() && previous) {
+    if ((field("body").value.trim() || (field("body") as HTMLTextAreaElement).dataset.imageUploadPending === 'true') && previous) {
       setDraftWarning(JSON.stringify(previous) === JSON.stringify(location) ? "" : "Your draft belongs to these lines. Send it, or discard it before commenting elsewhere.");
       location = previous;
     } else {
@@ -336,6 +336,7 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
   function closeComposer(discard = false) {
     if (discard) {
       const body = inline?.form?.querySelector<HTMLTextAreaElement>('textarea');
+      if (body?.dataset.imageUploadPending === 'true') { body.dispatchEvent(new Event('markdown-upload-blocked')); return; }
       if (body) { body.value = ""; body.dispatchEvent(new Event('input', {bubbles:true})); }
     }
     if (inline?.form) inline.form.open = false;

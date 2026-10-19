@@ -2,6 +2,7 @@ import {
   "moonbitlang/async",
   "moonbitlang/core/json",
   "hackwaly/moonhub/database",
+  "hackwaly/moonhub/attachments",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",

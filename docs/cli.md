@@ -200,7 +200,12 @@ MR state actions also include `draft`, `ready` and `reopen`, each requiring
 submits a review or merge against a version the user did not select. Reload the
 MR/Issue after a stale-version response before retrying.
 
-Descriptions/comments use `--body-file` (regular UTF-8 file, at most 20,000 bytes).
+Descriptions/comments use `--body-file` (regular UTF-8 file, at most 16 MiB).
+Inline Markdown images using `data:image/png;base64,...` (also JPEG, GIF and WebP)
+are stored by the server and rewritten to managed image URLs. Each image is at
+most 5 MiB, inline images total at most 10 MiB per field, and the final Markdown
+must fit 20,000 characters with at most eight managed images. See
+[image attachments](attachments.md) for authorization, API and retention details.
 Reviewer and assignee values are account IDs, not display names. `auth status`
 shows your account ID; `mr view --json` includes eligible reviewer IDs. `issue edit`
 requires at least one of `--title`, `--body-file` or `--assignee`, and preserves

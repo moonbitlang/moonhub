@@ -108,6 +108,18 @@ fn merge_activity(
     "INSERT INTO merge_activity (merge_request_id, actor_id, kind, body, version) VALUES (?, NULLIF(?, 0), ?, ?, ?)",
     params=[mr.id, actor, kind, body, mr.version],
   )
+  if !body.is_empty() {
+    let id : Int64 = tx
+      .query_one("SELECT last_insert_rowid() AS id")
+      .get_name("id")
+    @attachments.replace_references(
+      tx,
+      mr.repository_id,
+      actor,
+      MergeComment(id),
+      body,
+    )
+  }
 }
 
 ///|

@@ -3,6 +3,35 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.post(
+    "/repos/:owner/:repo/attachments",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let scope = @repository.repository_scope(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+      )
+      @repository.authorize_repository(pool, actor, scope.repo, Write)
+      let bytes = @web_context.read_bounded_body(
+        req, @attachments.maximum_image_bytes,
+      )
+      let image = @attachments.upload(
+        pool,
+        root,
+        scope,
+        actor,
+        req.query().get("filename").unwrap_or("image"),
+        bytes,
+      )
+      {
+        "id": image.id,
+        "url": image.url,
+        "media_type": image.media_type,
+        "byte_size": image.byte_size.to_string(),
+      }
+    }),
+  )
   ctx.get(
     "/user",
     api_handler(req => {
@@ -43,9 +72,16 @@ pub let api_module : @moonback.Module = Module(ctx => {
     "/repos/:owner/:repo/mrs",
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
-      let body = api_body(req, [
-        "title", "description", "source", "target", "draft", "issue",
-      ])
+      let scope = @repository.repository_scope(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+      )
+      let body = api_body(
+        req,
+        ["title", "description", "source", "target", "draft", "issue"],
+        images=(pool, root, scope, actor),
+      )
       @repository.with_repository_write(
         pool,
         root,
@@ -262,6 +298,11 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "write"
       }
       let actor = api_actor(pool, req, permission)
+      let scope = @repository.repository_scope(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+      )
       let body = api_body(
         req,
         match action {
@@ -276,6 +317,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           "delete-comment" | "restore-comment" => ["version", "comment"]
           _ => ["version", "decision", "body", "reviewer", "edit_version"]
         },
+        images=(pool, root, scope, actor),
       )
       let id = number(@web_context.required_param(req, "number", "MR"))
       @repository.with_repository_write(
@@ -488,11 +530,15 @@ pub let api_module : @moonback.Module = Module(ctx => {
     "/repos/:owner/:repo/issues",
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
-      let body = api_body(req, ["title", "description", "assignee"])
       let scope = @repository.repository_scope(
         pool,
         actor,
         @web_context.repo_param(req),
+      )
+      let body = api_body(
+        req,
+        ["title", "description", "assignee"],
+        images=(pool, root, scope, actor),
       )
       let id = @collaboration.create_issue(
         pool,
@@ -555,9 +601,11 @@ pub let api_module : @moonback.Module = Module(ctx => {
       guard ["comment", "close", "reopen", "edit"].contains(action) else {
         raise @domain.BadRequest(message="unsupported Issue action")
       }
-      let body = api_body(req, [
-        "edit_version", "title", "description", "assignee", "body",
-      ])
+      let body = api_body(
+        req,
+        ["edit_version", "title", "description", "assignee", "body"],
+        images=(pool, root, scope, actor),
+      )
       @collaboration.mutate_issue(
         pool,
         scope,

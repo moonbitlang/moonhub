@@ -234,6 +234,11 @@ async function main() {
   const split = rootCookie.indexOf('=');
   await context.addCookies([{ name: rootCookie.slice(0, split), value: rootCookie.slice(split + 1), url: base }]);
   const page = await context.newPage();
+  page.on('pageerror', error => console.error('Browser error:', error.message));
+  if (process.env.MOONHUB_ATTACHMENTS_SMOKE === '1') {
+    await require('./attachments-smoke.cjs')({ page, cli, query, base, root, temp, browser, context, git, blob, tree, github, initial });
+    return;
+  }
 
   // Real browser controls, per-discussion drafts, resolved disclosure and mobile layout.
   fs.writeFileSync(replyFile, 'Please confirm the follow-up behavior.');
@@ -380,6 +385,20 @@ async function main() {
   assert.equal(await inlineForm.locator('[name=path]').isVisible(), false, 'location fields should be bound automatically');
   await until(() => inlineForm.locator('textarea').evaluate(node => node === document.activeElement), 'inline editor did not focus');
   const draftAnchor = await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value])));
+  let releaseUpload;
+  const uploadGate = new Promise(resolve => { releaseUpload = resolve; });
+  await page.route('**/root/demo/attachments?*', async route => { await uploadGate; await route.continue(); });
+  await inlineForm.locator('input[type=file]').setInputFiles({ name: 'anchor.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64') });
+  await page.waitForFunction(() => document.querySelector('[data-inline-form] textarea').dataset.imageUploadPending === 'true');
+  await editor.getByRole('button', {name:'Cancel',exact:true}).click();
+  await editor.waitFor({state:'detached'});
+  await numbers.last().click(); await selectComment.click(); await editor.waitFor();
+  assert.deepEqual(await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value]))), draftAnchor);
+  await editor.getByRole('button', {name:'Discard draft',exact:true}).click();
+  assert.ok((await inlineForm.locator('.markdown-editor-status').textContent()).includes('Wait for image uploads'));
+  releaseUpload();
+  await page.waitForFunction(() => document.querySelector('[data-inline-form] textarea').value.includes('/attachments/'));
+  await page.unroute('**/root/demo/attachments?*');
   await inlineForm.locator('textarea').fill('Retained draft at original lines.');
   await editor.getByRole('button', {name:'Cancel',exact:true}).click();
   await editor.waitFor({state:'detached'});
@@ -387,7 +406,7 @@ async function main() {
   await numbers.last().click();
   await selectComment.click();
   await editor.waitFor();
-  await editor.getByRole('status').waitFor();
+  await editor.locator('.inline-draft-warning').waitFor();
   assert.deepEqual(await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value]))), draftAnchor, 'new selection retargeted an existing draft');
   await page.getByRole('combobox', {name:'Diff view',exact:true}).selectOption('unified');
   await editor.waitFor();
