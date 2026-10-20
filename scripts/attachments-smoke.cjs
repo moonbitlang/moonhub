@@ -42,6 +42,39 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
   cli(['mr', 'restore-comment', mr.number, '--comment', thread, '--version', mr.version]);
   assert.ok(cli(['mr', 'discussions', mr.number, '--discussion', thread]).discussion.root.body.includes(commentImageUrl));
 
+  const archive = path.join(temp, '构建 [logs].zip');
+  const archiveBytes = Buffer.concat([Buffer.from('PK'), Buffer.alloc(6 * 1024 * 1024)]);
+  fs.writeFileSync(archive, archiveBytes);
+  const file = cli(['attachment', 'upload', '--file', archive]);
+  assert.equal(file.media_type, 'application/octet-stream');
+  assert.ok(file.markdown.startsWith('[构建  logs .zip]('));
+  assert.equal(file.byte_size, String(archiveBytes.length));
+  const textFile = path.join(temp, 'build.log'); fs.writeFileSync(textFile, 'Build complete.\n');
+  const textOutput = cli(['attachment', 'upload', '--file', textFile], undefined, 0, {}, false);
+  assert.match(textOutput, /^\[build\.log\]\(\/root\/demo\/attachments\/[a-f0-9]{64}\)$/);
+  fs.writeFileSync(bodyFile, file.markdown);
+  const fileIssue = cli(['issue', 'create', '--title', 'Download build logs', '--body-file', bodyFile]);
+  cli(['issue', 'comment', fileIssue.number, '--body-file', bodyFile]);
+  const freshMr = cli(['mr', 'view', mr.number]).mr;
+  cli(['mr', 'edit', mr.number, '--edit-version', freshMr.edit_version, '--body-file', bodyFile]);
+  cli(['mr', 'comment', mr.number, '--version', freshMr.version, '--body-file', bodyFile]);
+  cli(['mr', 'reply', mr.number, '--discussion', thread, '--body-file', bodyFile]);
+  cli(['mr', 'inline-comment', mr.number, '--version', freshMr.version, '--path', 'README.md', '--side', 'new', '--start-line', '1', '--body-file', bodyFile]);
+  const fileDownload = await context.request.get(base + file.url);
+  assert.equal(fileDownload.status(), 200);
+  assert.equal(fileDownload.headers()['content-type'], 'application/octet-stream');
+  assert.equal(fileDownload.headers()['x-content-type-options'], 'nosniff');
+  assert.ok(fileDownload.headers()['content-disposition'].includes("filename*=UTF-8''%E6%9E%84%E5%BB%BA%20%5Blogs%5D.zip"));
+  assert.deepEqual(await fileDownload.body(), archiveBytes);
+  assert.ok(query("SELECT COUNT(*) AS count FROM attachment_reference WHERE attachment_id='" + file.id + "'")[0].count >= 6);
+  const unauthorized = await browser.newContext();
+  assert.notEqual((await unauthorized.request.get(base + file.url, { maxRedirects: 0 })).status(), 200);
+  await unauthorized.close();
+  const emptyFile = path.join(temp, 'empty.zip'); fs.writeFileSync(emptyFile, '');
+  cli(['attachment', 'upload', '--file', emptyFile], undefined, 2);
+  const oversized = path.join(temp, 'oversized.zip'); fs.writeFileSync(oversized, Buffer.alloc(25 * 1024 * 1024 + 1));
+  cli(['attachment', 'upload', '--file', oversized], undefined, 2);
+
   await page.goto(base + '/root/demo/issues/new');
   const field = page.locator('textarea[name=description]');
   const editor = page.locator('.markdown-editor').first();
@@ -72,7 +105,8 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
   await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('retry.png'));
   await page.unroute('**/root/demo/attachments?*');
   await editor.locator('input[type=file]').setInputFiles({ name: 'unsafe.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
-  await page.waitForFunction(() => document.querySelector('.markdown-editor-status').textContent.includes('Choose a PNG'));
+  await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('[unsafe.svg]('));
+  assert.ok(!(await field.inputValue()).includes('![unsafe.svg]('));
   assert.equal(await editor.getByRole('button', { name: 'Retry upload', exact: true }).isVisible(), false);
   await page.route('**/root/demo/attachments?*', async route => {
     await new Promise(resolve => setTimeout(resolve, 300)); await route.continue();
@@ -83,7 +117,7 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
   }, [...png]);
   await editor.getByRole('button', { name: 'Preview', exact: true }).click();
   assert.equal(await editor.locator('.EasyMDEContainer').isVisible(), true);
-  assert.ok((await editor.locator('[role=status]').textContent()).includes('Wait for image uploads'));
+  assert.ok((await editor.locator('[role=status]').textContent()).includes('Wait for file uploads'));
   await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('pasted.png'));
   await page.unroute('**/root/demo/attachments?*');
   await field.evaluate((element, bytes) => {
@@ -91,17 +125,44 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
     element.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
   }, [...png]);
   await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('dropped.png'));
+  await editor.locator('.CodeMirror').evaluate(element => {
+    const transfer = new DataTransfer(); transfer.items.add(new File(['%PDF-1.7\nfixture'], 'pasted.pdf', { type: 'application/pdf' }));
+    const event = new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true });
+    element.CodeMirror.getInputField().dispatchEvent(event);
+  });
+  await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('[pasted.pdf]('));
+  await editor.locator('.CodeMirror').evaluate(element => {
+    const cm = element.CodeMirror;
+    const end = { line: cm.lastLine(), ch: cm.getLine(cm.lastLine()).length };
+    cm.replaceRange('\n', end);
+    const drop = { line: cm.lastLine(), ch: 0 };
+    cm.scrollIntoView(drop);
+    const point = cm.charCoords(drop, 'window');
+    const transfer = new DataTransfer(); transfer.items.add(new File(['PK logs'], 'dropped.zip', { type: 'application/zip' }));
+    const event = new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true, clientX: point.left + 1, clientY: (point.top + point.bottom) / 2 });
+    element.CodeMirror.getScrollerElement().dispatchEvent(event);
+  });
+  await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('[dropped.zip]('));
+  await editor.getByRole('button', { name: 'Preview', exact: true }).click();
+  await editor.locator('.markdown-editor-preview a', { hasText: 'pasted.pdf' }).waitFor();
+  await editor.getByRole('button', { name: 'Write', exact: true }).click();
   await page.screenshot({ path: path.join(review, 'desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
   assert.ok(await editor.getByRole('button', { name: 'Preview', exact: true }).evaluate(element => element.getBoundingClientRect().height >= 44));
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: path.join(review, 'mobile.png'), fullPage: true });
+  const submitted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/root/demo/issues');
   await page.getByRole('button', { name: 'Create issue', exact: true }).click();
+  const submittedResponse = await submitted;
+  if (submittedResponse.status() !== 303) assert.fail(await submittedResponse.text());
   await page.waitForURL(/\/issues\/\d+$/);
   assert.equal(await page.locator('.discussion-description img').count(), 4);
   await page.reload();
   assert.equal(await page.locator('.discussion-description img').count(), 4);
+  const downloadLink = page.locator('.discussion-description a', { hasText: 'pasted.pdf' });
+  const [download] = await Promise.all([page.waitForEvent('download'), downloadLink.click()]);
+  assert.equal(download.suggestedFilename(), 'pasted.pdf');
   await page.setViewportSize({ width: 1440, height: 1000 });
-  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ status: 'passed', cli: ['issue description/comment', 'MR description/comment/reply/line anchor', 'inline body beyond 64 KiB'], browser: ['file upload', 'failure and retry preserve text', 'clipboard paste', 'file drop', 'server preview', 'mobile submission', 'reload persistence', 'private image access'] }, null, 2));
+  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ status: 'passed', cli: ['issue description/comment', 'MR description/comment/reply/line anchor', 'inline body beyond 64 KiB', 'standalone binary upload over 5 MiB with UTF-8 filename', 'Markdown and JSON upload output', 'empty and oversized file rejection'], browser: ['image and ordinary file upload', 'failure and retry preserve text', 'clipboard image and PDF paste', 'image and ZIP drop', 'server preview', 'mobile submission', 'reload persistence', 'private attachment access', 'forced download with original filename'] }, null, 2));
 };

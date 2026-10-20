@@ -2,7 +2,7 @@
 package "hackwaly/moonhub/cli"
 
 // Values
-pub async fn request(String, String, String, Json?, allow_http? : Bool) -> Json
+pub async fn request(String, String, String, Json?, allow_http? : Bool, raw_body? : Bytes) -> Json
 
 pub async fn run(ArrayView[String]) -> Int
 

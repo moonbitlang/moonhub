@@ -16,6 +16,7 @@ let started;
   if (fs.existsSync(stateFile)) {
     const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     if (process.argv.includes('--restart')) {
+      fs.cpSync(path.join(root, 'db'), path.join(directory, 'db'), { recursive: true });
       process.kill(state.pid, 'SIGTERM');
       for (let i = 0; i < 50; i++) {
         try { process.kill(state.pid, 0); } catch { break; }

@@ -9,9 +9,15 @@ import {
 }
 
 // Values
+pub fn attachment_links(String) -> Array[ImageLink]
+
 pub async fn cleanup_pending(@database.Database, String) -> Unit
 
 pub fn image_links(String) -> Array[ImageLink]
+
+pub fn markdown(Attachment) -> String
+
+pub let maximum_attachment_bytes : Int
 
 pub let maximum_body_bytes : Int
 
@@ -19,13 +25,13 @@ pub let maximum_image_bytes : Int
 
 pub async fn prepare_markdown(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> String
 
-pub async fn read(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> (String, Bytes)
+pub async fn read(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> Download
 
 pub fn replace_references(@database.DbTransaction, Int64, Int64, ReferenceTarget, String) -> Unit raise
 
 pub fn start_cleanup_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
-pub async fn upload(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String, Bytes) -> Image
+pub async fn upload(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String, Bytes) -> Attachment
 
 pub fn url(@domain.RepoId, String) -> String
 
@@ -34,17 +40,25 @@ pub fn valid_id(String) -> Bool
 // Errors
 
 // Types and methods
-pub struct Image {
+pub struct Attachment {
   id : String
   url : String
+  filename : String
   media_type : String
   byte_size : Int64
+}
+
+pub struct Download {
+  filename : String
+  media_type : String
+  bytes : Bytes
 }
 
 pub struct ImageLink {
   start : Int
   end : Int
   url : String
+  image : Bool
 }
 
 pub(all) enum ReferenceTarget {

@@ -442,3 +442,26 @@ Preview evidence is recorded in `.impeccable/review/easymde/desktop.png`,
 `.impeccable/review/easymde/desktop-preview.png`; the browser acceptance receipt
 is `.impeccable/review/easymde/receipt.json`. This records the implemented source
 component within the existing Operate identity.
+
+## Ordinary attachments extension (2026-10-20)
+
+The existing EasyMDE toolbar now says Attach files in place of Add image. The
+multiple-file picker, clipboard file items and drag-drop accept arbitrary files.
+The server detects PNG, JPEG, GIF and WebP images and keeps them embedded, up to
+(5 MiB) each; other files appear as ordinary download links, up to (25 MiB) each.
+A body supports at most (8) total managed attachments. Guidance below the editor
+states these limits, and status distinguishes Image added from File attached.
+
+This is a narrow extension of the existing Operate editor. Its wrapping toolbar,
+spacing, typography, focus and native controls retain the shared treatment,
+including (44px) toolbar and formatting targets at (900px) and below. Upload
+status, recoverable retry, pending preview/submission protection, inline draft
+anchoring and discard protection remain in place. Native forms, draft persistence
+and the safe server-rendered preview retain their existing contract.
+
+Local preview acceptance passed at (1440×1000) and (390×844), recorded in
+`.impeccable/review/general-attachments/receipt.json`. Desktop, mobile and preview
+screenshots are `.impeccable/review/general-attachments/desktop.png`,
+`.impeccable/review/general-attachments/mobile.png` and
+`.impeccable/review/general-attachments/desktop-preview.png`. Independent finish
+review returned ship with no fixes at the attachment-affordance scope.

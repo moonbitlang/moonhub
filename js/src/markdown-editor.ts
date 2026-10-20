@@ -2,6 +2,7 @@ import type { ImageInsertion, MarkdownCommand, MarkdownSource } from './markdown
 
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const maximumImageBytes = 5 * 1024 * 1024;
+const maximumAttachmentBytes = 25 * 1024 * 1024;
 let sourceModule: Promise<typeof import('./markdown-source')> | undefined;
 
 for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[name=body], textarea[name=description]')) {
@@ -32,7 +33,7 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   const previewButton = document.createElement('button');
   previewButton.type = 'button'; previewButton.textContent = 'Preview'; previewButton.setAttribute('aria-pressed', 'false');
   const addImage = document.createElement('button');
-  addImage.type = 'button'; addImage.textContent = 'Add image'; addImage.className = 'markdown-add-image';
+  addImage.type = 'button'; addImage.textContent = 'Attach files'; addImage.className = 'markdown-add-image';
   toolbar.append(edit, previewButton, addImage);
   const formats = document.createElement('div');
   formats.className = 'markdown-editor-formats'; formats.hidden = true;
@@ -56,13 +57,13 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   preview.setAttribute('aria-label', 'Markdown preview');
   const help = document.createElement('p');
   help.className = 'markdown-editor-help muted';
-  help.textContent = 'Markdown supported. Paste or drop images. PNG, JPEG, GIF, WebP · 5 MiB each.';
+  help.textContent = 'Paste or drop files. Images up to 5 MiB; other files up to 25 MiB. Up to 8 attachments per body.';
   const status = document.createElement('p');
   status.className = 'markdown-editor-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); status.hidden = true;
   const retry = document.createElement('button');
   retry.type = 'button'; retry.textContent = 'Retry upload'; retry.hidden = true;
   const picker = document.createElement('input');
-  picker.type = 'file'; picker.accept = [...imageTypes].join(','); picker.multiple = true; picker.hidden = true;
+  picker.type = 'file'; picker.multiple = true; picker.hidden = true;
   editor.append(toolbar, formats, textarea, preview, help, status, retry, picker);
   let pending = 0;
   let failed: File[] = [];
@@ -133,7 +134,7 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
       if (body?.error?.message) return body.error.message;
     }
     if (response.status === 401 || response.status === 403) return 'Your session or access changed. Reload this page, then retry.';
-    return 'Upload failed (' + response.status + '). Retry or choose another image.';
+    return 'Upload failed (' + response.status + '). Retry or choose another file.';
   }
 
   function upload(files: File[], position?: number) {
@@ -148,30 +149,29 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
       textarea.dataset.imageUploadPending = 'true';
       queue = queue.then(async () => {
         await ready;
-        showStatus('Uploading ' + (file.name || 'image') + '…');
+        showStatus('Uploading ' + (file.name || 'attachment') + '…');
         let retryable = true;
         try {
-          if (!imageTypes.has(file.type)) { retryable = false; throw new Error('Choose a PNG, JPEG, GIF or WebP image.'); }
-          if (file.size === 0 || file.size > maximumImageBytes) { retryable = false; throw new Error('Each image must be between 1 byte and 5 MiB.'); }
-          const response = await fetch(base + '/attachments?filename=' + encodeURIComponent(file.name || 'image'), { method: 'POST', headers, body: file, credentials: 'same-origin' });
+          const limit = imageTypes.has(file.type) ? maximumImageBytes : maximumAttachmentBytes;
+          if (file.size === 0 || file.size > limit) { retryable = false; throw new Error('Each file must be between 1 byte and ' + (limit / 1024 / 1024) + ' MiB.'); }
+          const response = await fetch(base + '/attachments?filename=' + encodeURIComponent(file.name || 'attachment'), { method: 'POST', headers, body: file, credentials: 'same-origin' });
           if (!response.ok) { retryable = response.status >= 500 || response.status === 429; throw new Error(await responseError(response)); }
-          const result = await response.json() as { url: string };
-          if (!result.url.startsWith(base + '/attachments/') || !/\/[a-f0-9]{64}$/.test(result.url)) throw new Error('The upload returned an invalid image URL. Retry.');
-          const alt = (file.name || 'image').replace(/[\[\]\\\r\n]/g, ' ');
-          const markdown = '![' + alt + '](' + result.url + ')';
+          const result = await response.json() as { url: string; markdown: string; media_type: string };
+          if (!result.url.startsWith(base + '/attachments/') || !/\/[a-f0-9]{64}$/.test(result.url) || typeof result.markdown !== 'string') throw new Error('The upload returned an invalid attachment. Retry.');
+          const markdown = result.markdown;
           const position = Math.min(selection, textarea.value.length);
-          if (textarea.maxLength > 0 && textarea.value.length + markdown.length > textarea.maxLength) { retryable = false; throw new Error('The image uploaded, but this text is too long. Shorten it and add the image again.'); }
+          if (textarea.maxLength > 0 && textarea.value.length + markdown.length > textarea.maxLength) { retryable = false; throw new Error('The file uploaded, but this text is too long. Shorten it and attach the file again.'); }
           if (insertion) {
-            if (!insertion.insert(markdown)) { retryable = false; throw new Error('Shorten this text, then add the image again.'); }
+            if (!insertion.insert(markdown)) { retryable = false; throw new Error('Shorten this text, then attach the file again.'); }
           } else {
             textarea.setRangeText(markdown, position, position, 'end');
             selection = textarea.selectionStart;
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
           }
-          showStatus('Image added.');
+          showStatus(imageTypes.has(result.media_type) ? 'Image added.' : 'File attached.');
         } catch (error) {
           if (retryable) failed.push(file);
-          failures.push(error instanceof Error ? error.message : 'Upload failed. Retry or choose another image.');
+          failures.push(error instanceof Error ? error.message : 'Upload failed. Retry or choose another file.');
         } finally {
           pending--; retry.hidden = failed.length === 0;
           if (pending === 0) delete textarea.dataset.imageUploadPending;
@@ -185,14 +185,14 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   textarea.addEventListener('select', () => { selection = textarea.selectionStart; });
   textarea.addEventListener('focus', () => { void ensureSource(true); });
   textarea.addEventListener('markdown-focus', event => { event.preventDefault(); writeMode(true); });
-  textarea.addEventListener('markdown-upload-blocked', () => showStatus('Wait for image uploads to finish before discarding this draft.'));
+  textarea.addEventListener('markdown-upload-blocked', () => showStatus('Wait for file uploads to finish before discarding this draft.'));
   textarea.addEventListener('input', () => { selection = textarea.selectionStart; });
   addImage.addEventListener('click', () => picker.click());
   picker.addEventListener('change', () => { upload([...picker.files ?? []]); picker.value = ''; });
   retry.addEventListener('click', () => { const files = failed; failed = []; failures = []; retry.hidden = true; upload(files); });
   edit.addEventListener('click', () => writeMode());
   previewButton.addEventListener('click', async () => {
-    if (pending > 0) { showStatus('Wait for image uploads to finish, then preview.'); return; }
+    if (pending > 0) { showStatus('Wait for file uploads to finish, then preview.'); return; }
     const request = ++previewRequest;
     previewing = true; formats.hidden = true; source?.show(false);
     preview.textContent = 'Loading preview…'; preview.hidden = false; textarea.hidden = true;
@@ -206,7 +206,7 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
     } catch (error) { if (request === previewRequest) preview.textContent = error instanceof Error ? error.message : 'Preview failed. Try again.'; }
   });
   function handlePaste(event: ClipboardEvent) {
-    const files = [...event.clipboardData?.items ?? []].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter((file): file is File => file !== null);
+    const files = [...event.clipboardData?.items ?? []].filter(item => item.kind === 'file').map(item => item.getAsFile()).filter((file): file is File => file !== null);
     if (files.length) { event.preventDefault(); (event as Event & { codemirrorIgnore?: boolean }).codemirrorIgnore = true; upload(files); }
   }
   textarea.addEventListener('paste', handlePaste);
@@ -220,7 +220,7 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
     if (files.length) { event.preventDefault(); upload(files); }
   });
   form.addEventListener('submit', event => {
-    if (pending > 0) { event.preventDefault(); event.stopImmediatePropagation(); showStatus('Wait for image uploads to finish before submitting.'); }
+    if (pending > 0) { event.preventDefault(); event.stopImmediatePropagation(); showStatus('Wait for file uploads to finish before submitting.'); }
     else if (required && !textarea.value.trim()) { event.preventDefault(); event.stopImmediatePropagation(); writeMode(); showStatus('Write a comment before submitting.', true); }
   }, { capture: true });
   const visibility = new ResizeObserver(() => {

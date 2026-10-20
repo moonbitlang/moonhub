@@ -14,19 +14,21 @@ pub let api_module : @moonback.Module = Module(ctx => {
       )
       @repository.authorize_repository(pool, actor, scope.repo, Write)
       let bytes = @web_context.read_bounded_body(
-        req, @attachments.maximum_image_bytes,
+        req, @attachments.maximum_attachment_bytes,
       )
       let image = @attachments.upload(
         pool,
         root,
         scope,
         actor,
-        req.query().get("filename").unwrap_or("image"),
+        req.query().get("filename").unwrap_or("attachment"),
         bytes,
       )
       {
         "id": image.id,
         "url": image.url,
+        "filename": image.filename,
+        "markdown": @attachments.markdown(image),
         "media_type": image.media_type,
         "byte_size": image.byte_size.to_string(),
       }

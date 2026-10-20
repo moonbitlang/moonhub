@@ -32,6 +32,19 @@ test "CLI server validation rejects credential leaking destinations and malforme
 }
 
 ///|
+test "attachment upload accepts file and repository options" {
+  let parsed = command().parse(argv=[
+    "attachment", "upload", "--file", "/tmp/report.pdf", "--repo", "compiler/moonhub",
+    "--json",
+  ])
+  assert_eq(option(parsed, "file"), Some("/tmp/report.pdf"))
+  assert_eq(option(parsed, "repo"), Some("compiler/moonhub"))
+  let (group, options) = parsed.subcommand.unwrap()
+  assert_eq(group, "attachment")
+  assert_eq(options.subcommand.unwrap().0, "upload")
+}
+
+///|
 test "nested collaboration commands retain global options" {
   let parsed = command().parse(argv=[
     "mr", "review", "3", "--server", "https://moonhub.example", "--repo", "compiler/moonhub",

@@ -3,11 +3,12 @@ pub struct ImageLink {
   start : Int32
   end : Int32
   url : String
+  image : Bool
 }
 
 ///|
-// Match the supported inline image syntax, excluding code spans and fences.
-pub fn image_links(markdown : String) -> Array[ImageLink] {
+// Match supported image and file links, excluding code spans and fences.
+pub fn attachment_links(markdown : String) -> Array[ImageLink] {
   let links : Array[ImageLink] = []
   let mut offset = 0
   let mut fenced = false
@@ -21,7 +22,7 @@ pub fn image_links(markdown : String) -> Array[ImageLink] {
         if rest.has_prefix("`") && rest[1:].find("`") is Some(end) {
           column = column + end + 2
           rest = rest[end + 2:]
-        } else if rest.has_prefix("![") {
+        } else if rest.has_prefix("![") || rest.has_prefix("[") {
           guard rest.find("](") is Some(label_end) &&
             rest[label_end + 2:].find(")") is Some(url_end) else {
             break
@@ -31,6 +32,7 @@ pub fn image_links(markdown : String) -> Array[ImageLink] {
             start,
             end: start + url_end,
             url: rest[label_end + 2:label_end + 2 + url_end].to_owned(),
+            image: rest.has_prefix("!["),
           })
           let length = label_end + 3 + url_end
           column = column + length
@@ -45,6 +47,27 @@ pub fn image_links(markdown : String) -> Array[ImageLink] {
     offset = offset + line.length() + 1
   }
   links
+}
+
+///|
+// Data URI extraction only applies to embedded images, never ordinary links.
+pub fn image_links(markdown : String) -> Array[ImageLink] {
+  attachment_links(markdown).filter(link => link.image)
+}
+
+///|
+pub fn markdown(attachment : Attachment) -> String {
+  let label = attachment.filename
+    .replace_all(old="[", new=" ")
+    .replace_all(old="]", new=" ")
+    .replace_all(old="\\", new=" ")
+    .replace_all(old="\u{0060}", new=" ")
+  let prefix = if attachment.media_type == "application/octet-stream" {
+    ""
+  } else {
+    "!"
+  }
+  "\{prefix}[\{label}](\{attachment.url})"
 }
 
 ///|
@@ -105,12 +128,12 @@ pub fn replace_references(
     name: repo_row.get_name("name"),
   }
   let ids : Array[String] = []
-  for image in image_links(markdown) {
+  for image in attachment_links(markdown) {
     if image.url.contains("/attachments/") && image.url.has_prefix("/") {
       let prefix = "/\{repo.path()}/attachments/"
       guard image.url.has_prefix(prefix) else {
         raise @domain.BadRequest(
-          message="images must belong to this repository",
+          message="attachments must belong to this repository",
         )
       }
       let id = image.url[prefix.length():].to_owned()
@@ -118,16 +141,22 @@ pub fn replace_references(
         raise @domain.BadRequest(message="invalid attachment URL")
       }
       guard tx.query_opt(
-          "SELECT id FROM attachment a WHERE a.id = ? AND a.repository_id = ? AND a.ready = 1 AND (a.uploader_id = ? OR EXISTS (SELECT 1 FROM attachment_reference ar WHERE ar.attachment_id = a.id))",
+          "SELECT media_type FROM attachment a WHERE a.id = ? AND a.repository_id = ? AND a.ready = 1 AND (a.uploader_id = ? OR EXISTS (SELECT 1 FROM attachment_reference ar WHERE ar.attachment_id = a.id))",
           params=[id, repository_id, uploader_id],
         )
-        is Some(_) else {
-        raise @domain.BadRequest(message="image attachment is unavailable")
+        is Some(row) else {
+        raise @domain.BadRequest(message="attachment is unavailable")
+      }
+      let media_type : String = row.get_name("media_type")
+      guard !image.image || media_type != "application/octet-stream" else {
+        raise @domain.BadRequest(
+          message="only supported images can be embedded; use a file link",
+        )
       }
       if !ids.contains(id) {
         ids.push(id)
       }
-    } else if image.url.has_prefix("data:") {
+    } else if image.image && image.url.has_prefix("data:") {
       raise @domain.BadRequest(
         message="inline image data must be uploaded before saving",
       )
@@ -135,7 +164,7 @@ pub fn replace_references(
   }
   guard ids.length() <= 8 else {
     raise @domain.BadRequest(
-      message="at most 8 managed images are allowed per body",
+      message="at most 8 managed attachments are allowed per body",
     )
   }
   ignore(

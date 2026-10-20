@@ -223,7 +223,7 @@ results are separate states. Diagnostics use disclosure, not an unrelated run
 failure badge. Issue lists have Open / Closed, title search and assignment
 filters.
 
-### Managed Markdown image editor
+### Managed Markdown attachment editor
 
 Keep the native, labeled Markdown textarea as the submission and draft contract
 for Issue and MR descriptions and comments, including discussion roots, inline
@@ -232,7 +232,7 @@ source, selection and undo/redo history, synchronizing changes back to that
 textarea. Hidden replies mount the source editor when opened. If JavaScript is
 disabled or enhancement fails to load, retain the usable native textarea.
 
-A quiet, wrapping toolbar keeps Write, Preview and Add image. These are native
+A quiet, wrapping toolbar keeps Write, Preview and Attach files. These are native
 buttons in a named group; Write and Preview expose their selected state with
 `aria-pressed`, stronger text and a neutral outlined surface. A separate named
 formatting group offers Bold, Heading, Quote, Code, Insert link, Bulleted list,
@@ -243,8 +243,8 @@ the server-rendered Markdown view. These controls are not page navigation.
 
 The toolbar joins the source with a subtle surface, thin neutral border and
 modest top corners (6px). Controls have a desktop minimum height (36px), rising
-to (44px) at (900px) and below. Add image stays at the trailing edge in interaction
-blue. Hover uses the white surface; focus has a visible blue outline (2px),
+to (44px) at (900px) and below. Attach files stays at the trailing edge in
+interaction blue. Hover uses the white surface; focus has a visible blue outline (2px),
 offset (2px). Formatting controls have square targets (36px desktop, 44px at
 900px and below). Source uses the shared system sans stack (14px/1.65), with
 modest heading emphasis (1.3/1.2/1.1em for levels 1/2/3), thin neutral borders
@@ -253,24 +253,27 @@ bounded (480px); keyboard Tab leaves the field. Focus and file dragging use the
 same visible blue outline. Preview keeps the editor width, a minimum height
 (140px) and content padding (12px).
 
-Add image, clipboard paste and file drop upload PNG, JPEG, GIF or WebP files, up
-to (5 MiB) each, then insert managed Markdown at the insertion point. Image
-bookmarks track intervening source edits so delayed uploads land at the intended
-location and their insertion participates in undo history. Keep format and size
-guidance directly below the editor. Upload state and actionable errors
-use polite textual status; preserve the draft, offer Retry upload for recoverable
+Attach files opens a multiple-file picker without a file-type filter; clipboard
+file items and file drop use the same upload flow. Server-detected PNG, JPEG,
+GIF and WebP images remain embedded, up to (5 MiB) each; other files become
+ordinary download links, up to (25 MiB) each. Each body accepts at most (8) total
+managed attachments. Source bookmarks track intervening edits so delayed uploads
+land at the intended location and their insertion participates in undo history.
+Keep file-size and attachment-count guidance directly below the editor. Upload
+state and actionable errors use polite textual status; preserve the draft, offer
+Retry upload for recoverable
 failures, and explain when to choose another file or reload. Wait for uploads to
-finish before previewing or submitting. Preview disables Add image and presents
+finish before previewing or submitting. Preview disables Attach files and presents
 loading, empty and failure messages; Write restores the source and its history.
-While an inline image upload is pending, selecting another code location keeps
+While an inline file upload is pending, selecting another code location keeps
 the draft at its original lines, and Discard draft waits with explanatory status
 until the upload finishes.
 
-Rendered images use the private, access-checked repository attachment service.
-They remain inside the reading column (maximum width 100%, maximum height
-640px), preserve aspect ratio and use modest corners (4px), without cropping.
+Managed attachments use the private, access-checked repository attachment service.
+Rendered images remain inside the reading column (maximum width 100%, maximum
+height 640px), preserve aspect ratio and use modest corners (4px), without cropping.
 External image URLs remain text or links. Native forms still accept existing
-managed image URLs without JavaScript. `docs/attachments.md` owns limits,
+managed attachment URLs without JavaScript. `docs/attachments.md` owns limits,
 authorization and storage behavior.
 
 ### MR review and Changes
