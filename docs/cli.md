@@ -204,8 +204,12 @@ Descriptions/comments use `--body-file` (regular UTF-8 file, at most 16 MiB).
 Inline Markdown images using `data:image/png;base64,...` (also JPEG, GIF and WebP)
 are stored by the server and rewritten to managed image URLs. Each image is at
 most 5 MiB, inline images total at most 10 MiB per field, and the final Markdown
-must fit 20,000 characters with at most eight managed images. See
-[image attachments](attachments.md) for authorization, API and retention details.
+must fit 20,000 characters with at most eight managed attachments.
+Use `moonhub attachment upload --file /path/to/file --repo compiler/moonhub`
+for standalone uploads (images up to 5 MiB; other files up to 25 MiB). It prints
+Markdown to insert into a body file; `--json` returns metadata and the same
+`markdown` field. Files become download links and recognized images become
+embedded images. See [attachments](attachments.md) for permissions and retention.
 Reviewer and assignee values are account IDs, not display names. `auth status`
 shows your account ID; `mr view --json` includes eligible reviewer IDs. `issue edit`
 requires at least one of `--title`, `--body-file` or `--assignee`, and preserves

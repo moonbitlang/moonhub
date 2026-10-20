@@ -68,11 +68,11 @@ async function main() {
   const execute = await tokenFile('execute', 'runner');
   const merge = await tokenFile('merge', 'merger');
   const cliEnv = { ...env, XDG_CONFIG_HOME: path.join(temp, 'config'), MOONHUB_TOKEN: '', MOONHUB_SERVER: '', MOONHUB_REPOSITORY: '' };
-  function cli(args, token = write, expected = 0, extra = {}) {
-    const r = require('node:child_process').spawnSync(binary, [...args, '--server', base, '--allow-http', '--repo', 'root/demo', '--token-file', token, '--json'], { cwd: temp, env: { ...cliEnv, ...extra }, encoding: 'utf8', timeout: 30000 });
+  function cli(args, token = write, expected = 0, extra = {}, json = true) {
+    const r = require('node:child_process').spawnSync(binary, [...args, '--server', base, '--allow-http', '--repo', 'root/demo', '--token-file', token, ...(json ? ['--json'] : [])], { cwd: temp, env: { ...cliEnv, ...extra }, encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, expected, r.stdout + r.stderr);
     assert.ok(!r.stdout.includes(fs.readFileSync(token, 'utf8')), 'token exposed on stdout');
-    return expected === 0 ? JSON.parse(r.stdout.trim()) : r;
+    return expected === 0 ? (json ? JSON.parse(r.stdout.trim()) : r.stdout.trim()) : r;
   }
   const git = (args, input) => execFileSync('git', ['--git-dir=' + path.join(temp, 'repos/root/demo.git'), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { input, encoding: 'utf8' }).trim();
   const blob = text => git(['hash-object', '-w', '--stdin'], text);
@@ -396,7 +396,7 @@ async function main() {
   await numbers.last().click(); await selectComment.click(); await editor.waitFor();
   assert.deepEqual(await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value]))), draftAnchor);
   await editor.getByRole('button', {name:'Discard draft',exact:true}).click();
-  assert.ok((await inlineForm.locator('.markdown-editor-status').textContent()).includes('Wait for image uploads'));
+  assert.ok((await inlineForm.locator('.markdown-editor-status').textContent()).includes('Wait for file uploads'));
   releaseUpload();
   await page.waitForFunction(() => document.querySelector('[data-inline-form] textarea').value.includes('/attachments/'));
   await page.unroute('**/root/demo/attachments?*');

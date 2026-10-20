@@ -14,20 +14,22 @@ pub let attachments_module : @moonback.Module = Module(ctx => {
       )
       @repository.authorize_repository(pool, actor, scope.repo, Write)
       let bytes = @web_context.read_bounded_body(
-        req, @image_store.maximum_image_bytes,
+        req, @image_store.maximum_attachment_bytes,
       )
       let image = @image_store.upload(
         pool,
         root,
         scope,
         actor,
-        req.query().get("filename").unwrap_or("image"),
+        req.query().get("filename").unwrap_or("attachment"),
         bytes,
       )
       res.send_json(
         {
           "id": image.id,
           "url": image.url,
+          "filename": image.filename,
+          "markdown": @image_store.markdown(image),
           "media_type": image.media_type,
           "byte_size": image.byte_size.to_string(),
         },
@@ -42,22 +44,25 @@ pub let attachments_module : @moonback.Module = Module(ctx => {
       actor,
       @web_context.repo_param(req),
     )
-    let (media_type, bytes) = @image_store.read(
+    let download = @image_store.read(
       pool,
       root,
       scope,
       actor,
-      @web_context.required_param(req, "id", "image"),
+      @web_context.required_param(req, "id", "attachment"),
     )
     let writer = res.respond(headers={
-      "Content-Type": media_type,
-      "Content-Length": bytes.length().to_string(),
+      "Content-Type": download.media_type,
+      "Content-Length": download.bytes.length().to_string(),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "inline",
+      "Content-Disposition": @web_context.attachment_disposition(
+        download.filename,
+        inline=download.media_type != "application/octet-stream",
+      ),
       "Content-Security-Policy": "default-src 'none'; sandbox",
     })
-    writer.write(bytes)
+    writer.write(download.bytes)
   })
   ctx.post(
     "/:owner/:repo/markdown-preview",

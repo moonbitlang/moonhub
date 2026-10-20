@@ -29,6 +29,7 @@ fn command() -> @argparse.Command {
     ),
     @argparse.OptionArg("title", long="title", global=true),
     @argparse.OptionArg("body-file", long="body-file", global=true),
+    @argparse.OptionArg("file", long="file", global=true),
     @argparse.OptionArg("source", long="source", global=true),
     @argparse.OptionArg("target", long="target", global=true),
     @argparse.OptionArg("version", long="version", global=true),
@@ -64,6 +65,9 @@ fn command() -> @argparse.Command {
     ],
     subcommand_required=true,
     subcommands=[
+      @argparse.Command("attachment", subcommand_required=true, subcommands=[
+        @argparse.Command("upload"),
+      ]),
       @argparse.Command("auth", subcommand_required=true, subcommands=[
         @argparse.Command("login"),
         @argparse.Command("status"),
@@ -278,6 +282,34 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     @domain.parse_transport_repo(discover_repo(server, option(matches, "repo"))).path()
   }
   let base = "/repos/" + repo
+  if group == "attachment" && action == "upload" {
+    let path = required(matches, "file")
+    guard @fs.kind(path, follow_symlink=false) is Regular &&
+      @fs.file_size(path) > 0L &&
+      @fs.file_size(path) <= 26214400L else {
+      raise Invalid(
+        "attachment must be a regular file between 1 byte and 25 MiB",
+      )
+    }
+    let filename = path.split("/").collect().last().unwrap().to_owned()
+    let result = request(
+      server,
+      token,
+      "\{base}/attachments?filename=\{escape(filename)}",
+      None,
+      allow_http~,
+      raw_body=@fs.read_file(path).binary(),
+    )
+    if matches.flags.get("json").unwrap_or(false) {
+      println(result.stringify())
+    } else {
+      guard result is { "markdown": String(markdown), .. } else {
+        raise InvalidResponse
+      }
+      println(terminal_text(markdown))
+    }
+    return 0
+  }
   let id = option(options, "number").map(decimal).unwrap_or("")
   let (path, body) : (String, Json?) = match (group, action) {
     ("mr", "list") =>

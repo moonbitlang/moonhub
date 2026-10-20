@@ -52,6 +52,7 @@ pub async fn request(
   path : String,
   body : Json?,
   allow_http~ : Bool = false,
+  raw_body? : Bytes,
 ) -> Json {
   let server = validate_server(server, allow_http)
   check_token(token)
@@ -68,16 +69,23 @@ pub async fn request(
       defer client.close()
       let headers : @http.Headers = {
         "Authorization": "Bearer " + token,
-        "Content-Type": "application/json",
+        "Content-Type": if raw_body is Some(_) {
+          "application/octet-stream"
+        } else {
+          "application/json"
+        },
       }
-      let response = match body {
-        None => client.get("/-/api/v1" + path, extra_headers=headers)
-        Some(body) =>
+      let response = match (body, raw_body) {
+        (None, None) => client.get("/-/api/v1" + path, extra_headers=headers)
+        (None, Some(bytes)) =>
+          client.post("/-/api/v1" + path, bytes, extra_headers=headers)
+        (Some(body), None) =>
           client.post(
             "/-/api/v1" + path,
             body.stringify(),
             extra_headers=headers,
           )
+        (Some(_), Some(_)) => raise Invalid("choose JSON or a raw request body")
       }
       let bytes : Array[Byte] = []
       while client.read_some(max_len=8192) is Some(chunk) {

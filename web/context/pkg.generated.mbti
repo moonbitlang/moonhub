@@ -16,6 +16,8 @@ pub fn app_error_middleware(Map[String, String]) -> @moonback.Middleware
 
 pub let asset_paths_key : @moonback.TypedKey[Map[String, String]]
 
+pub fn attachment_disposition(String, inline~ : Bool) -> String
+
 pub fn auth_middleware(@database.Database) -> @moonback.Middleware
 
 pub fn authorize_image_form(@moonback.Request) -> Unit raise

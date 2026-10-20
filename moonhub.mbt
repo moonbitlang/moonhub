@@ -136,7 +136,7 @@ async fn run_web() -> Unit {
 async fn main {
   let args = @env.args()
   match args.get(1) {
-    Some("auth" | "mr" | "issue" | "ci" | "inbox") => {
+    Some("auth" | "mr" | "issue" | "ci" | "inbox" | "attachment") => {
       let code = @cli.run(args[1:]) catch {
         @cli.Invalid(message) => {
           @stdio.stderr.write("moonhub: \{message}\n")

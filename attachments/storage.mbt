@@ -2,12 +2,16 @@
 pub let maximum_image_bytes : Int32 = 5242880
 
 ///|
+pub let maximum_attachment_bytes : Int32 = 26214400
+
+///|
 pub let maximum_body_bytes : Int32 = 16777216
 
 ///|
-pub struct Image {
+pub struct Attachment {
   id : String
   url : String
+  filename : String
   media_type : String
   byte_size : Int64
 }
@@ -54,18 +58,26 @@ pub async fn upload(
   actor : @domain.CurrentUser,
   filename : String,
   bytes : Bytes,
-) -> Image {
+) -> Attachment {
   @repository.authorize_repository(pool, actor, scope.repo, Write)
-  guard !bytes.is_empty() && bytes.length() <= maximum_image_bytes else {
+  guard !bytes.is_empty() && bytes.length() <= maximum_attachment_bytes else {
     raise @domain.BadRequest(
-      message="each image must be between 1 byte and 5 MiB",
+      message="each attachment must be between 1 byte and 25 MiB",
     )
   }
-  guard filename.length() <= 200 &&
+  guard !filename.is_empty() &&
+    filename.length() <= 200 &&
     !filename.iter().any(c => c.to_int() < 32 || c.to_int() == 127) else {
-    raise @domain.BadRequest(message="invalid image filename")
+    raise @domain.BadRequest(message="invalid attachment filename")
   }
-  let media_type = image_type(bytes)
+  let media_type = image_type(bytes) catch {
+    @domain.BadRequest(_) => "application/octet-stream"
+    err => raise err
+  }
+  guard media_type == "application/octet-stream" ||
+    bytes.length() <= maximum_image_bytes else {
+    raise @domain.BadRequest(message="each image must be at most 5 MiB")
+  }
   let id = @identity.random_hex(32)
   let digest = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
   let byte_size = bytes.length().to_int64()
@@ -113,7 +125,14 @@ pub async fn upload(
       client.execute("UPDATE attachment SET ready = 1 WHERE id = ?", params=[id]),
     )
   })
-  { id, url: url(scope.repo, id), media_type, byte_size, }
+  { id, url: url(scope.repo, id), filename, media_type, byte_size, }
+}
+
+///|
+pub struct Download {
+  filename : String
+  media_type : String
+  bytes : Bytes
 }
 
 ///|
@@ -123,23 +142,25 @@ pub async fn read(
   scope : @repository.RepositoryScope,
   actor : @domain.CurrentUser,
   id : String,
-) -> (String, Bytes) {
+) -> Download {
   @repository.authorize_repository(pool, actor, scope.repo, Read)
-  guard valid_id(id) else { raise @domain.NotFound(message="image not found") }
-  let media_type : String = pool.with_client(client => {
+  guard valid_id(id) else {
+    raise @domain.NotFound(message="attachment not found")
+  }
+  let (filename, media_type) : (String, String) = pool.with_client(client => {
     guard client.query_opt(
-        "SELECT media_type FROM attachment a WHERE id = ? AND repository_id = ? AND ready = 1 AND (uploader_id = ? OR EXISTS (SELECT 1 FROM attachment_reference r WHERE r.attachment_id = a.id))",
+        "SELECT filename, media_type FROM attachment a WHERE id = ? AND repository_id = ? AND ready = 1 AND (uploader_id = ? OR EXISTS (SELECT 1 FROM attachment_reference r WHERE r.attachment_id = a.id))",
         params=[id, scope.id, actor.id],
       )
       is Some(row) else {
-      raise @domain.NotFound(message="image not found")
+      raise @domain.NotFound(message="attachment not found")
     }
-    row.get_name("media_type")
+    (row.get_name("filename"), row.get_name("media_type"))
   })
   let bytes = @fs.read_file(storage_path(root, id)).binary() catch {
-    _ => raise @domain.NotFound(message="image not found")
+    _ => raise @domain.NotFound(message="attachment not found")
   }
-  (media_type, bytes)
+  { filename, media_type, bytes, }
 }
 
 ///|

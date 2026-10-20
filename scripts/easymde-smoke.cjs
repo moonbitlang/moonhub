@@ -47,7 +47,7 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     await page.waitForFunction(() => document.querySelector('textarea[name=description]').dataset.imageUploadPending === 'true');
     await textarea.evaluate(element => { const cm = element.closest('.markdown-editor').querySelector('.CodeMirror').CodeMirror; cm.replaceRange('中文😀 ', { line: 0, ch: 0 }); cm.setCursor({ line: 0, ch: 0 }); });
     await editor.getByRole('button', { name: 'Preview', exact: true }).click();
-    assert.ok((await editor.locator('.markdown-editor-status').textContent()).includes('Wait for image uploads'));
+    assert.ok((await editor.locator('.markdown-editor-status').textContent()).includes('Wait for file uploads'));
     release();
     await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('/attachments/'));
     await page.unroute('**/attachments?*');

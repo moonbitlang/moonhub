@@ -89,13 +89,37 @@ async test "API dumps inline images and browser reads inherit repository permiss
     })
     assert_eq(forged.code, 403)
     ignore(client.read_all())
-    let invalid_image = client.post("/alice/demo/attachments", "<svg></svg>", extra_headers={
+    let file_upload = client.post(
+      "/alice/demo/attachments?filename=diagram.svg",
+      "<svg></svg>",
+      extra_headers={
+        "Cookie": "\{alice_cookie.name}=\{alice_cookie.value}",
+        "X-CSRF-Scope": "issues",
+        "X-CSRF-Token": csrf,
+      },
+    )
+    assert_eq(file_upload.code, 200)
+    let uploaded = @json.parse(client.read_all().text())
+    guard uploaded is { "url": String(url), "markdown": String(markdown), .. } else {
+      fail("missing attachment metadata")
+    }
+    assert_eq(markdown, "[diagram.svg](\{url})")
+    let downloaded = client.get(url, extra_headers={
       "Cookie": "\{alice_cookie.name}=\{alice_cookie.value}",
-      "X-CSRF-Scope": "issues",
-      "X-CSRF-Token": csrf,
     })
-    assert_eq(invalid_image.code, 400)
-    assert_true(client.read_all().text().contains("only PNG"))
+    assert_eq(downloaded.code, 200)
+    assert_eq(
+      downloaded.headers.get("content-type"),
+      Some("application/octet-stream"),
+    )
+    assert_eq(downloaded.headers.get("x-content-type-options"), Some("nosniff"))
+    assert_true(
+      downloaded.headers
+      .get("content-disposition")
+      .unwrap()
+      .has_prefix("attachment;"),
+    )
+    assert_eq(client.read_all().text(), "<svg></svg>")
     assert_eq(
       pool.with_client(client => {
         client.query_all("SELECT id FROM issue").length()
