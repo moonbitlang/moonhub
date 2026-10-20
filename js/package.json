@@ -8,6 +8,7 @@
   "dependencies": {
     "@pierre/diffs": "1.4.2",
     "@vitejs/plugin-react": "latest",
+    "easymde": "2.21.0",
     "lucide": "1.45.0",
     "react": "latest",
     "react-dom": "latest",

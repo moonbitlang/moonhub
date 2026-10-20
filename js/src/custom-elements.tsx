@@ -207,7 +207,8 @@ function InlineNativeContent({node, label, focus = false}: {node: HTMLDetailsEle
     actions.forEach(button => { button.hidden = false; });
     if (focus && node.hasAttribute('data-inline-focus')) {
       node.removeAttribute('data-inline-focus');
-      node.querySelector<HTMLTextAreaElement>('textarea')?.focus({preventScroll:true});
+      const body = node.querySelector<HTMLTextAreaElement>('textarea[name=body]');
+      if (body?.dispatchEvent(new Event('markdown-focus', {cancelable:true}))) body.focus({preventScroll:true});
     }
     return () => {
       actions.forEach(button => { button.hidden = true; });
@@ -329,13 +330,15 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     updateDiffItem(location.id, item => { item.collapsed = false; return true; });
     requestAnimationFrame(() => {
       viewerRef.current?.scrollTo({type: "range", id: location.id, range: {start: location.end, end: location.end, side: location.side === "old" ? "deletions" : "additions"}, align: "center"});
-      form.querySelector('textarea')?.focus({preventScroll:true});
+      const body = form.querySelector<HTMLTextAreaElement>('textarea[name=body]');
+      if (body && !body.dispatchEvent(new Event('markdown-focus', {cancelable:true}))) return;
+      body?.focus({preventScroll:true});
     });
   }
 
   function closeComposer(discard = false) {
     if (discard) {
-      const body = inline?.form?.querySelector<HTMLTextAreaElement>('textarea');
+      const body = inline?.form?.querySelector<HTMLTextAreaElement>('textarea[name=body]');
       if (body?.dataset.imageUploadPending === 'true') { body.dispatchEvent(new Event('markdown-upload-blocked')); return; }
       if (body) { body.value = ""; body.dispatchEvent(new Event('input', {bubbles:true})); }
     }

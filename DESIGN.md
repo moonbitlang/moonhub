@@ -225,27 +225,43 @@ filters.
 
 ### Managed Markdown image editor
 
-Keep the native, labeled Markdown textarea as the source of truth for Issue and
-MR descriptions and comments, including discussion roots, inline comments and
-replies. Progressive enhancement adds a quiet, wrapping toolbar with Write,
-Preview and Add image. These are native buttons in a named group; Write and
-Preview expose their selected state with `aria-pressed`, stronger text and a
-neutral outlined surface. They are not page navigation.
+Keep the native, labeled Markdown textarea as the submission and draft contract
+for Issue and MR descriptions and comments, including discussion roots, inline
+comments and replies. Lazy-loaded EasyMDE (2.21.0) owns the visible Markdown
+source, selection and undo/redo history, synchronizing changes back to that
+textarea. Hidden replies mount the source editor when opened. If JavaScript is
+disabled or enhancement fails to load, retain the usable native textarea.
 
-The toolbar joins the textarea with a subtle surface, thin neutral border and
+A quiet, wrapping toolbar keeps Write, Preview and Add image. These are native
+buttons in a named group; Write and Preview expose their selected state with
+`aria-pressed`, stronger text and a neutral outlined surface. A separate named
+formatting group offers Bold, Heading, Quote, Code, Insert link, Bulleted list,
+Numbered list, Undo and Redo using the existing Lucide icons and accessible
+names. Keep the supported command set, without EasyMDE's external Font Awesome,
+built-in upload or rendered image previews inside the source. Preview remains
+the server-rendered Markdown view. These controls are not page navigation.
+
+The toolbar joins the source with a subtle surface, thin neutral border and
 modest top corners (6px). Controls have a desktop minimum height (36px), rising
 to (44px) at (900px) and below. Add image stays at the trailing edge in interaction
 blue. Hover uses the white surface; focus has a visible blue outline (2px),
-offset (2px). Dragging files over the textarea uses the same outline. Preview
-keeps the editor width, a minimum height (140px) and content padding (12px).
+offset (2px). Formatting controls have square targets (36px desktop, 44px at
+900px and below). Source uses the shared system sans stack (14px/1.65), with
+modest heading emphasis (1.3/1.2/1.1em for levels 1/2/3), thin neutral borders
+and matching bottom corners. Keep source lines wrapping and its vertical scroll
+bounded (480px); keyboard Tab leaves the field. Focus and file dragging use the
+same visible blue outline. Preview keeps the editor width, a minimum height
+(140px) and content padding (12px).
 
 Add image, clipboard paste and file drop upload PNG, JPEG, GIF or WebP files, up
-to (5 MiB) each, then insert managed Markdown at the insertion point. Keep format
-and size guidance directly below the editor. Upload state and actionable errors
+to (5 MiB) each, then insert managed Markdown at the insertion point. Image
+bookmarks track intervening source edits so delayed uploads land at the intended
+location and their insertion participates in undo history. Keep format and size
+guidance directly below the editor. Upload state and actionable errors
 use polite textual status; preserve the draft, offer Retry upload for recoverable
 failures, and explain when to choose another file or reload. Wait for uploads to
 finish before previewing or submitting. Preview disables Add image and presents
-loading, empty and failure messages; Write restores editing.
+loading, empty and failure messages; Write restores the source and its history.
 While an inline image upload is pending, selecting another code location keeps
 the draft at its original lines, and Discard draft waits with explanatory status
 until the upload finishes.

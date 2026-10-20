@@ -578,6 +578,25 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 .markdown-editor-help, .markdown-editor-status { margin:6px 0; font-size:12px; line-height:1.6; }
 .markdown-editor-dragging textarea { outline:2px solid var(--color-accent); outline-offset:2px; }
 @media (max-width:900px) { .markdown-editor-toolbar button { min-height:44px; } }
+.markdown-editor-formats { display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:4px 6px; border:1px solid var(--color-border); border-bottom:0; background:var(--color-surface); }
+.markdown-editor-formats button { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; padding:7px; border:0; border-radius:4px; background:transparent; color:var(--color-muted); cursor:pointer; }
+.markdown-editor-formats button:hover { background:var(--color-accent-soft); color:var(--color-accent); }
+.markdown-editor .EasyMDEContainer { min-width:0; }
+.markdown-editor .EasyMDEContainer .CodeMirror { min-height:110px; height:auto; padding:10px 12px; border:1px solid var(--color-border); border-radius:0 0 6px 6px; background:var(--color-surface); color:var(--color-text); font:14px/1.65 var(--font-sans); }
+.markdown-editor .EasyMDEContainer .CodeMirror-focused { border-color:var(--color-accent); outline:2px solid var(--color-accent); outline-offset:2px; }
+.markdown-editor .EasyMDEContainer .CodeMirror-scroll { min-height:110px; max-height:480px; }
+.markdown-editor .CodeMirror-cursor { border-left-color:var(--color-accent); }
+.markdown-editor .CodeMirror-selected { background:#dbeaff; }
+.markdown-editor .CodeMirror .cm-header { color:var(--color-text); font-weight:650; }
+.markdown-editor .CodeMirror .cm-header-1 { font-size:1.3em; }
+.markdown-editor .CodeMirror .cm-header-2 { font-size:1.2em; }
+.markdown-editor .CodeMirror .cm-header-3 { font-size:1.1em; }
+.markdown-editor .CodeMirror .cm-quote { color:var(--color-muted); font-style:normal; }
+.markdown-editor .CodeMirror .cm-comment { color:var(--color-muted); background:var(--color-surface-subtle); }
+.markdown-editor .CodeMirror .cm-link { color:var(--color-accent); }
+.markdown-editor .CodeMirror .cm-url { color:var(--color-muted); }
+.markdown-editor-dragging .CodeMirror { outline:2px solid var(--color-accent); outline-offset:2px; }
+@media (max-width:900px) { .markdown-editor-formats button { width:44px; height:44px; } }
 .discussion-description { margin:20px 0 28px; }
 .discussion-description > h2 { margin-bottom:16px; }
 .mr-page-heading { margin:0 0 10px; }.mr-title { font-size:24px; }
