@@ -1,5 +1,8 @@
+import type { ImageInsertion, MarkdownCommand, MarkdownSource } from './markdown-source';
+
 const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const maximumImageBytes = 5 * 1024 * 1024;
+let sourceModule: Promise<typeof import('./markdown-source')> | undefined;
 
 for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[name=body], textarea[name=description]')) {
   const form = textarea.form;
@@ -31,6 +34,23 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   const addImage = document.createElement('button');
   addImage.type = 'button'; addImage.textContent = 'Add image'; addImage.className = 'markdown-add-image';
   toolbar.append(edit, previewButton, addImage);
+  const formats = document.createElement('div');
+  formats.className = 'markdown-editor-formats'; formats.hidden = true;
+  formats.setAttribute('role', 'group'); formats.setAttribute('aria-label', 'Markdown formatting');
+  const commands: [MarkdownCommand, string, string][] = [
+    ['bold', 'Bold', 'bold'], ['heading', 'Heading', 'heading'], ['quote', 'Quote', 'quote'],
+    ['code', 'Code', 'code'], ['link', 'Insert link', 'link'],
+    ['unordered-list', 'Bulleted list', 'list'], ['ordered-list', 'Numbered list', 'list-ordered'],
+    ['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo'],
+  ];
+  for (const [command, label, icon] of commands) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.title = label; button.setAttribute('aria-label', label);
+    const glyph = document.createElement('span'); glyph.className = 'ui-icon'; glyph.dataset.icon = icon; glyph.setAttribute('aria-hidden', 'true');
+    button.append(glyph); formats.append(button);
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', () => { source?.command(command); });
+  }
   const preview = document.createElement('div');
   preview.className = 'markdown-body markdown-editor-preview'; preview.hidden = true; preview.tabIndex = 0;
   preview.setAttribute('aria-label', 'Markdown preview');
@@ -43,13 +63,53 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   retry.type = 'button'; retry.textContent = 'Retry upload'; retry.hidden = true;
   const picker = document.createElement('input');
   picker.type = 'file'; picker.accept = [...imageTypes].join(','); picker.multiple = true; picker.hidden = true;
-  editor.append(toolbar, textarea, preview, help, status, retry, picker);
+  editor.append(toolbar, formats, textarea, preview, help, status, retry, picker);
   let pending = 0;
   let failed: File[] = [];
   let failures: string[] = [];
   let queue = Promise.resolve();
   let previewRequest = 0;
   let selection = textarea.selectionStart;
+  let source: MarkdownSource | undefined;
+  let loading: Promise<MarkdownSource | undefined> | undefined;
+  const required = textarea.required;
+  let previewing = false;
+
+  async function ensureSource(focus = false) {
+    if (source) { if (focus) source.focus(); else source.refresh(); return source; }
+    if (!loading) {
+      loading = (async () => {
+        try {
+          sourceModule ??= import('./markdown-source').catch(error => { sourceModule = undefined; throw error; });
+          const { createMarkdownSource } = await sourceModule;
+          if (!editor.isConnected) return;
+          source = createMarkdownSource(textarea, () => showStatus('Markdown must contain at most ' + textarea.maxLength + ' characters.', true));
+          textarea.required = false;
+          formats.hidden = previewing;
+          source.show(!previewing);
+          source.cm.on('paste', (_cm, event) => handlePaste(event));
+          source.cm.on('drop', (cm, event) => {
+            editor.classList.remove('markdown-editor-dragging');
+            const files = [...event.dataTransfer?.files ?? []];
+            if (!files.length) return;
+            event.preventDefault(); (event as Event & { codemirrorIgnore?: boolean }).codemirrorIgnore = true;
+            const position = cm.coordsChar({ left: event.clientX, top: event.clientY }, 'window');
+            upload(files, cm.indexFromPos(position));
+          });
+          source.cm.on('dragover', (_cm, event) => {
+            if (event.dataTransfer?.types.includes('Files')) { event.preventDefault(); editor.classList.add('markdown-editor-dragging'); }
+          });
+          source.container.addEventListener('dragleave', () => editor.classList.remove('markdown-editor-dragging'));
+          return source;
+        } catch {
+          showStatus('The enhanced editor could not load. You can keep writing here, or select Write to retry.', true);
+        } finally { loading = undefined; }
+      })();
+    }
+    const result = await loading;
+    if (focus && !previewing) result?.focus();
+    return result;
+  }
 
   function showStatus(message: string, error = false) {
     status.textContent = message; status.hidden = false;
@@ -58,10 +118,13 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
 
   function writeMode(focus = true) {
     previewRequest++;
-    textarea.hidden = false; preview.hidden = true;
+    previewing = false;
+    textarea.hidden = !!source; preview.hidden = true;
+    source?.show(true); formats.hidden = !source;
     edit.setAttribute('aria-pressed', 'true'); previewButton.setAttribute('aria-pressed', 'false');
     addImage.disabled = false;
-    if (focus) textarea.focus();
+    if (focus) { if (source) source.focus(); else textarea.focus(); }
+    void ensureSource(focus);
   }
 
   async function responseError(response: Response) {
@@ -73,15 +136,18 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
     return 'Upload failed (' + response.status + '). Retry or choose another image.';
   }
 
-  function upload(files: File[]) {
+  function upload(files: File[], position?: number) {
     if (!files.length) return;
     if (pending === 0) { failed = []; failures = []; retry.hidden = true; }
     writeMode(false);
-    selection = textarea.selectionStart;
+    selection = position ?? textarea.selectionStart;
+    let insertion: ImageInsertion | undefined;
+    const ready = ensureSource().then(active => { insertion = active?.bookmark(position); });
     for (const file of files) {
       pending++;
       textarea.dataset.imageUploadPending = 'true';
       queue = queue.then(async () => {
+        await ready;
         showStatus('Uploading ' + (file.name || 'image') + '…');
         let retryable = true;
         try {
@@ -95,9 +161,13 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
           const markdown = '![' + alt + '](' + result.url + ')';
           const position = Math.min(selection, textarea.value.length);
           if (textarea.maxLength > 0 && textarea.value.length + markdown.length > textarea.maxLength) { retryable = false; throw new Error('The image uploaded, but this text is too long. Shorten it and add the image again.'); }
-          textarea.setRangeText(markdown, position, position, 'end');
-          selection = textarea.selectionStart;
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          if (insertion) {
+            if (!insertion.insert(markdown)) { retryable = false; throw new Error('Shorten this text, then add the image again.'); }
+          } else {
+            textarea.setRangeText(markdown, position, position, 'end');
+            selection = textarea.selectionStart;
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          }
           showStatus('Image added.');
         } catch (error) {
           if (retryable) failed.push(file);
@@ -109,9 +179,12 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
         }
       });
     }
+    queue = queue.then(() => insertion?.clear());
   }
 
   textarea.addEventListener('select', () => { selection = textarea.selectionStart; });
+  textarea.addEventListener('focus', () => { void ensureSource(true); });
+  textarea.addEventListener('markdown-focus', event => { event.preventDefault(); writeMode(true); });
   textarea.addEventListener('markdown-upload-blocked', () => showStatus('Wait for image uploads to finish before discarding this draft.'));
   textarea.addEventListener('input', () => { selection = textarea.selectionStart; });
   addImage.addEventListener('click', () => picker.click());
@@ -121,6 +194,7 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   previewButton.addEventListener('click', async () => {
     if (pending > 0) { showStatus('Wait for image uploads to finish, then preview.'); return; }
     const request = ++previewRequest;
+    previewing = true; formats.hidden = true; source?.show(false);
     preview.textContent = 'Loading preview…'; preview.hidden = false; textarea.hidden = true;
     edit.setAttribute('aria-pressed', 'false'); previewButton.setAttribute('aria-pressed', 'true'); addImage.disabled = true;
     if (!textarea.value.trim()) { preview.textContent = 'Nothing to preview yet.'; return; }
@@ -131,10 +205,11 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
       if (request === previewRequest) preview.innerHTML = html;
     } catch (error) { if (request === previewRequest) preview.textContent = error instanceof Error ? error.message : 'Preview failed. Try again.'; }
   });
-  textarea.addEventListener('paste', event => {
+  function handlePaste(event: ClipboardEvent) {
     const files = [...event.clipboardData?.items ?? []].filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter((file): file is File => file !== null);
-    if (files.length) { event.preventDefault(); upload(files); }
-  });
+    if (files.length) { event.preventDefault(); (event as Event & { codemirrorIgnore?: boolean }).codemirrorIgnore = true; upload(files); }
+  }
+  textarea.addEventListener('paste', handlePaste);
   textarea.addEventListener('dragover', event => {
     if (event.dataTransfer?.types.includes('Files')) { event.preventDefault(); editor.classList.add('markdown-editor-dragging'); }
   });
@@ -146,5 +221,10 @@ for (const textarea of document.querySelectorAll<HTMLTextAreaElement>('textarea[
   });
   form.addEventListener('submit', event => {
     if (pending > 0) { event.preventDefault(); event.stopImmediatePropagation(); showStatus('Wait for image uploads to finish before submitting.'); }
+    else if (required && !textarea.value.trim()) { event.preventDefault(); event.stopImmediatePropagation(); writeMode(); showStatus('Write a comment before submitting.', true); }
   }, { capture: true });
+  const visibility = new ResizeObserver(() => {
+    if (editor.getBoundingClientRect().width > 0 && !previewing) void ensureSource();
+  });
+  visibility.observe(editor);
 }

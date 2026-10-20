@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { fillMarkdown } = require('./markdown-browser-helpers.cjs');
 
 module.exports = async function attachmentSmoke({ page, cli, query, base, root, temp, browser, context, git, blob, tree, github, initial }) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64');
@@ -47,7 +48,7 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
   assert.equal(await editor.count(), 1);
   await page.locator('input[name=title]').fill('Investigate screenshot upload');
   const screenshot = await page.screenshot({ clip: { x: 260, y: 80, width: 720, height: 180 } });
-  await field.fill('Screenshot from the report:\n\n');
+  await fillMarkdown(field, 'Screenshot from the report:\n\n');
   await editor.locator('input[type=file]').setInputFiles({ name: 'report.png', mimeType: 'image/png', buffer: screenshot });
   await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('/attachments/'));
   await editor.getByRole('button', { name: 'Preview', exact: true }).click();
@@ -81,7 +82,7 @@ module.exports = async function attachmentSmoke({ page, cli, query, base, root, 
     element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
   }, [...png]);
   await editor.getByRole('button', { name: 'Preview', exact: true }).click();
-  assert.equal(await field.isVisible(), true);
+  assert.equal(await editor.locator('.EasyMDEContainer').isVisible(), true);
   assert.ok((await editor.locator('[role=status]').textContent()).includes('Wait for image uploads'));
   await page.waitForFunction(() => document.querySelector('textarea[name=description]').value.includes('pasted.png'));
   await page.unroute('**/root/demo/attachments?*');

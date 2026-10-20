@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import * as lucide from 'lucide';
 
 const icons = {
+  bold: 'Bold', heading: 'Heading', quote: 'Quote', list: 'List', 'list-ordered': 'ListOrdered', link: 'Link', undo: 'Undo2', redo: 'Redo2',
   'book-open': 'BookOpen', 'chevron-down': 'ChevronDown',
   'chevron-right': 'ChevronRight', 'chevrons-up-down': 'ChevronsUpDown',
   check: 'Check', 'circle-check': 'CircleCheck', 'circle-dot': 'CircleDot',

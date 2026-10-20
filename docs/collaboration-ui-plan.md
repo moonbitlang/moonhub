@@ -370,8 +370,9 @@ they are excluded from the source commit.
 ## Managed Markdown images extension (2026-10-19)
 
 Issue and MR descriptions and comments, including MR discussion roots, inline
-comments and replies, retain their native Markdown textarea. The enhancement
-adds Write / Preview / Add image, clipboard paste and file drop. Keep the
+comments and replies, retain their native Markdown textarea for submission and
+draft persistence. The enhancement adds Write / Preview / Add image, clipboard
+paste and file drop. Keep the
 restrained shared toolbar treatment and named native-button group with
 `aria-pressed` on Write and Preview. This is local editor mode selection, not
 another repository navigation layer.
@@ -381,7 +382,7 @@ service and insert the returned managed URL at the insertion point. Show format
 and size guidance, polite upload status and actionable failure text; retain the
 draft and offer Retry upload for recoverable failures. Preview and submission
 wait until uploads finish. Preview shows loading, empty and failure states;
-Write restores the textarea. Existing managed Markdown remains usable in native
+Write restores editing. Existing managed Markdown remains usable in native
 forms without JavaScript.
 While an inline image upload is pending, selecting another code location keeps
 the draft at its original lines, and Discard draft waits with explanatory status
@@ -400,3 +401,44 @@ phone and preview evidence is recorded in
 `.impeccable/review/attachments/mobile.png` and
 `.impeccable/review/attachments/desktop-preview.png`. This extends the existing
 Operate identity without changing the broader collaboration composition.
+
+## EasyMDE source editor extension (2026-10-20)
+
+The user selected EasyMDE and requested an implemented preview. EasyMDE (2.21.0)
+is the lazy-loaded source surface in `js/src/markdown-source.ts`;
+`js/src/markdown-editor.ts` retains the existing Write / Preview / Add image
+flow, managed image uploads and server-rendered preview. EasyMDE owns visible
+source editing, selection and undo/redo history. Its changes synchronize with
+the original textarea, which still owns form submission and draft persistence.
+Hidden reply editors initialize when opened; disabled JavaScript and failed
+enhancement loading preserve the native textarea path.
+
+The formatting group exposes only Bold, Heading, Quote, Code, Insert link,
+Bulleted list, Numbered list, Undo and Redo. It uses the existing Lucide icons
+with accessible names, (36px) desktop targets and (44px) targets at (900px) and
+below. Source typography stays restrained at (14px/1.65), with heading levels
+1/2/3 at (1.3/1.2/1.1em). Lines wrap within the editor; Tab leaves the field.
+EasyMDE does not download Font Awesome, upload images itself or show rendered
+images in source. The established attachment service, permissions, limits and
+safe server preview remain authoritative.
+
+Image insertion uses source bookmarks that move with intervening edits while
+uploads are pending; completed insertions participate in source undo history.
+Preview/submission still wait for uploads. Inline draft anchoring, discard
+protection, retry guidance and managed-image rendering retain the behavior
+documented above.
+
+Local browser acceptance passed for formatting and undo/redo, server preview
+and source toggling, Unicode draft reload, asynchronous image insertion and
+undo, mobile layout and native submission, lazy replies, inline anchor
+cancel/reopen and keyboard submission, and the no-JavaScript textarea fallback.
+The full CLI regression and attachment browser regression also passed. Native
+Chinese IME composition has not been manually verified; Unicode draft coverage
+does not establish that result. Independent scoped finish review returned ship
+with no material fixes.
+
+Preview evidence is recorded in `.impeccable/review/easymde/desktop.png`,
+`.impeccable/review/easymde/mobile.png` and
+`.impeccable/review/easymde/desktop-preview.png`; the browser acceptance receipt
+is `.impeccable/review/easymde/receipt.json`. This records the implemented source
+component within the existing Operate identity.

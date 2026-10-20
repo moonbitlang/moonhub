@@ -9,6 +9,7 @@ const { execFileSync, spawn } = require('node:child_process');
 const { once } = require('node:events');
 const { DatabaseSync } = require('node:sqlite');
 const { chromium } = require('playwright');
+const { fillMarkdown, pressMarkdown } = require('./markdown-browser-helpers.cjs');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, '_build/cli-smoke');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-cli-'));
@@ -250,8 +251,8 @@ async function main() {
   const secondThread = page.locator('#discussion-' + uiThread);
   await firstThread.locator('.discussion-reply > summary').click();
   await secondThread.locator('.discussion-reply > summary').click();
-  await firstThread.getByRole('textbox').fill('Draft for the first thread');
-  await secondThread.getByRole('textbox').fill('Draft for the second thread');
+  await fillMarkdown(firstThread.locator('textarea[name=body]'), 'Draft for the first thread');
+  await fillMarkdown(secondThread.locator('textarea[name=body]'), 'Draft for the second thread');
   await page.reload();
   assert.equal(await firstThread.locator('textarea[name=body]').inputValue(), 'Draft for the first thread');
   assert.equal(await secondThread.locator('textarea[name=body]').inputValue(), 'Draft for the second thread');
@@ -383,7 +384,7 @@ async function main() {
   assert.equal(await inlineForm.locator('[name=path]').inputValue(), '评审 name.md');
   assert.ok(Number(await inlineForm.locator('[name=start_line]').inputValue()) > 0);
   assert.equal(await inlineForm.locator('[name=path]').isVisible(), false, 'location fields should be bound automatically');
-  await until(() => inlineForm.locator('textarea').evaluate(node => node === document.activeElement), 'inline editor did not focus');
+  await until(() => inlineForm.locator('textarea[name=body]').evaluate(node => node.closest('.markdown-editor').querySelector('.CodeMirror')?.CodeMirror.hasFocus()), 'inline editor did not focus');
   const draftAnchor = await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value])));
   let releaseUpload;
   const uploadGate = new Promise(resolve => { releaseUpload = resolve; });
@@ -399,10 +400,10 @@ async function main() {
   releaseUpload();
   await page.waitForFunction(() => document.querySelector('[data-inline-form] textarea').value.includes('/attachments/'));
   await page.unroute('**/root/demo/attachments?*');
-  await inlineForm.locator('textarea').fill('Retained draft at original lines.');
+  await fillMarkdown(inlineForm.locator('textarea[name=body]'), 'Retained draft at original lines.');
   await editor.getByRole('button', {name:'Cancel',exact:true}).click();
   await editor.waitFor({state:'detached'});
-  assert.equal(await inlineForm.locator('textarea').inputValue(), 'Retained draft at original lines.');
+  assert.equal(await inlineForm.locator('textarea[name=body]').inputValue(), 'Retained draft at original lines.');
   await numbers.last().click();
   await selectComment.click();
   await editor.waitFor();
@@ -410,8 +411,8 @@ async function main() {
   assert.deepEqual(await inlineForm.evaluate(form => Object.fromEntries(['path','side','start_line','end_line'].map(name => [name,form.elements.namedItem(name).value]))), draftAnchor, 'new selection retargeted an existing draft');
   await page.getByRole('combobox', {name:'Diff view',exact:true}).selectOption('unified');
   await editor.waitFor();
-  assert.equal(await inlineForm.locator('textarea').inputValue(), 'Retained draft at original lines.');
-  await inlineForm.locator('textarea').fill('Check this exact line in the selected commit.');
+  assert.equal(await inlineForm.locator('textarea[name=body]').inputValue(), 'Retained draft at original lines.');
+  await fillMarkdown(inlineForm.locator('textarea[name=body]'), 'Check this exact line in the selected commit.');
   const assertInlineLayout = async () => {
     await until(() => page.locator('diffs-container').evaluate(host => {
       const bounds = host.getBoundingClientRect();
@@ -430,7 +431,7 @@ async function main() {
   await page.evaluate(() => window.scrollTo(0,0));
   await page.screenshot({path:path.join(inlineReviewDir,'editor-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
-  await inlineForm.locator('textarea').press('Control+Enter');
+  await pressMarkdown(inlineForm.locator('textarea[name=body]'), 'Control+Enter');
   await page.waitForURL(/discussion=.*#comment-/);
   await page.locator('.inline-discussion-slot').first().waitFor();
   const createdDiscussionId = new URL(page.url()).searchParams.get('discussion');
@@ -439,7 +440,7 @@ async function main() {
   await thread.getByText('Check this exact line in the selected commit.', {exact:true}).waitFor();
   assert.equal(await page.locator('#discussion-' + createdDiscussionId).count(), 1, 'duplicate discussion IDs');
   await thread.locator('.discussion-reply > summary').click();
-  await thread.locator('.discussion-reply textarea').fill('Reply beside the exact code.');
+  await fillMarkdown(thread.locator('.discussion-reply textarea[name=body]'), 'Reply beside the exact code.');
   await assertInlineLayout();
   await thread.getByRole('button', {name:'Send reply',exact:true}).click();
   await page.waitForURL(/comment=/);
@@ -460,10 +461,10 @@ async function main() {
   assert.equal(await gutter.getAttribute('aria-label'), 'Comment on selected lines');
   await gutter.click();
   await editor.waitFor();
-  await inlineForm.locator('textarea').fill('Discard only this draft.');
+  await fillMarkdown(inlineForm.locator('textarea[name=body]'), 'Discard only this draft.');
   await editor.getByRole('button',{name:'Discard draft',exact:true}).click();
   await editor.waitFor({state:'detached'});
-  assert.equal(await inlineForm.locator('textarea').inputValue(), '');
+  assert.equal(await inlineForm.locator('textarea[name=body]').inputValue(), '');
   await page.getByRole('combobox', {name:'Diff view',exact:true}).selectOption('unified');
   await numbers.last().click();
   await numbers.nth(2).click({modifiers:['Shift']});
@@ -481,20 +482,20 @@ async function main() {
   assert.equal(await inlineForm.locator('[name=side]').inputValue(), 'new');
   assert.equal(await inlineForm.locator('[name=start_line]').inputValue(), '2');
   assert.equal(await inlineForm.locator('[name=end_line]').inputValue(), '4');
-  await inlineForm.locator('textarea').fill('Keep this selected range after reload.');
+  await fillMarkdown(inlineForm.locator('textarea[name=body]'), 'Keep this selected range after reload.');
   await page.reload();
   await numbers.last().click();
   await selectComment.click();
   await editor.waitFor();
-  assert.equal(await inlineForm.locator('textarea').inputValue(), 'Keep this selected range after reload.');
+  assert.equal(await inlineForm.locator('textarea[name=body]').inputValue(), 'Keep this selected range after reload.');
   assert.equal(await inlineForm.locator('[name=start_line]').inputValue(), '2');
   assert.equal(await inlineForm.locator('[name=end_line]').inputValue(), '4');
   await page.locator('.moonhub-collapse-diff-button').click();
   await editor.waitFor({state:'detached'});
   await page.locator('.moonhub-collapse-diff-button').click();
   await editor.waitFor();
-  assert.equal(await inlineForm.locator('textarea').inputValue(), 'Keep this selected range after reload.');
-  await inlineForm.locator('textarea').press('Escape');
+  assert.equal(await inlineForm.locator('textarea[name=body]').inputValue(), 'Keep this selected range after reload.');
+  await pressMarkdown(inlineForm.locator('textarea[name=body]'), 'Escape');
   await editor.waitFor({state:'detached'});
   await selectComment.click();
   await editor.getByRole('button',{name:'Discard draft',exact:true}).click();
