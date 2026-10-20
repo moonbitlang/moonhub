@@ -20,6 +20,7 @@ const secret = randomBytes(32).toString('hex');
 let server, browser, receiver;
 const seen = [];
 let receiverStatus = 204;
+let receiverEarlyHints = true;
 const env = { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: path.join(temp, 'mail') };
 async function until(f, message) {
   for (let i = 0; i < 150; i++) { const r = await f(); if (r) return r; await new Promise(r => setTimeout(r, 100)); }
@@ -40,6 +41,7 @@ async function main() {
     const body = Buffer.concat(chunks);
     assert.equal(req.headers['x-moonhub-signature-256'], 'sha256=' + createHmac('sha256', secret).update(body).digest('hex'));
     seen.push({ headers: req.headers, payload: JSON.parse(body), bytes: body.toString() });
+    if (receiverEarlyHints) res.writeEarlyHints({ link: '</health.css>; rel=preload; as=style' });
     res.writeHead(receiverStatus, { 'Content-Length': '0', Location: 'http://127.0.0.1:1/private' }); res.end();
   });
   receiver.listen(0, '127.0.0.1'); await once(receiver, 'listening');
@@ -117,6 +119,7 @@ async function main() {
   await until(() => seen.some(x => x.payload.ref === 'refs/tags/real-tag' && x.payload.action === 'deleted'), 'real tag deletion did not deliver');
   assert.equal(sql('SELECT COUNT(*) AS count FROM repository_ref_event')[0].count, 0);
   // Failed delivery survives a real server restart and is retried with identical identity/body.
+  receiverEarlyHints = false;
   receiverStatus = 503;
   cli(['webhook', 'ping', hook.id]);
   await until(() => cli(['webhook', 'deliveries', hook.id]).items[0].response_code === '503', 'failed attempt missing');
@@ -159,7 +162,7 @@ async function main() {
   cli(['webhook', 'delete', hook.id, '--version', '1'], 1);
   cli(['webhook', 'delete', hook.id, '--version', '2']);
   assert.equal(cli(['webhook', 'list']).items.length, 0);
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ passed: true, syntheticFixture: true, deliveries: seen.length, verified: ['HMAC', 'CLI CRUD', 'issue event', 'tag recovery', 'real receive hooks', 'branch/tag deletion', 'restart retry', 'stable identity', 'attempt history', 'no-JS save', 'stale version', 'desktop/mobile'] }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ passed: true, syntheticFixture: true, deliveries: seen.length, verified: ['HMAC', '103 interim responses', 'CLI CRUD', 'issue event', 'tag recovery', 'real receive hooks', 'branch/tag deletion', 'restart retry', 'stable identity', 'attempt history', 'no-JS save', 'stale version', 'desktop/mobile'] }, null, 2));
   console.log('Webhook end-to-end acceptance passed. Evidence: _build/webhooks-smoke/receipt.json');
 }
 main().catch(err => { console.error(err); process.exitCode = 1; }).finally(async () => {

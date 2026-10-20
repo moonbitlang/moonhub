@@ -136,35 +136,43 @@ async fn[T : @io.Reader + @io.Writer] post_request(
 ) -> Int32 {
   let request = "POST \{target.path} HTTP/1.1\r\nHost: \{target.authority}\r\nUser-Agent: MoonHub-Webhooks/1\r\nContent-Type: application/json\r\nContent-Length: \{@utf8.encode(body).length()}\r\nConnection: close\r\nX-MoonHub-Event: \{kind}\r\nX-MoonHub-Delivery: \{delivery_id}\r\nX-MoonHub-Event-ID: \{event_id}\r\nX-MoonHub-Signature-256: \{signature(secret,body)}\r\n\r\n\{body}"
   @io.Writer::write(stream, request)
-  let bytes : Array[Byte] = []
+  read_response_status(stream)
+}
+
+///|
+// Informational responses can precede the final status, even in one read.
+// Count only header bytes, across every block, under the caller's deadline.
+async fn[R : @io.Reader] read_response_status(stream : R) -> Int32 {
+  let block : Array[Byte] = []
+  let mut header_bytes = 0
   while @io.Reader::read_some(stream, max_len=1024) is Some(chunk) {
     for byte in chunk {
-      bytes.push(byte)
-    }
-    guard bytes.length() <= 32768 else { raise Rejected }
-    let mut header_end = -1
-    if bytes.length() >= 4 {
-      for i in 0..<(bytes.length() - 3) {
-        if bytes[i] == b'\r' &&
-          bytes[i + 1] == b'\n' &&
-          bytes[i + 2] == b'\r' &&
-          bytes[i + 3] == b'\n' {
-          header_end = i
-          break
-        }
+      header_bytes += 1
+      guard header_bytes <= 32768 else { raise Rejected }
+      block.push(byte)
+      let length = block.length()
+      if length < 4 ||
+        block[length - 4] != b'\r' ||
+        block[length - 3] != b'\n' ||
+        block[length - 2] != b'\r' ||
+        block[length - 1] != b'\n' {
+        continue
       }
-    }
-    if header_end >= 0 {
-      let headers = @utf8.decode(Bytes::from_array(bytes)[:header_end])
+      let headers = @utf8.decode(Bytes::from_array(block)[:length - 4])
       let line = headers.split("\r\n").collect()[0]
       let parts = line.split(" ").collect()
       guard parts.length() >= 2 &&
-        ["HTTP/1.0", "HTTP/1.1"].contains(parts[0].to_owned()) else {
+        ["HTTP/1.0", "HTTP/1.1"].contains(parts[0].to_owned()) &&
+        parts[1].length() == 3 &&
+        parts[1].iter().all(ch => ch.is_ascii_digit()) else {
         raise Rejected
       }
       let code = @string.parse_int(parts[1]) catch { _ => raise Rejected }
-      guard code >= 200 && code <= 599 else { raise Rejected }
-      return code
+      guard code >= 100 && code <= 599 && code != 101 else { raise Rejected }
+      if code >= 200 {
+        return code
+      }
+      block.clear()
     }
   }
   raise Rejected

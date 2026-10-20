@@ -102,9 +102,11 @@ pub async fn deliver_next(pool : @database.Database, policy : Policy) -> Bool {
           params=[code.to_int64(), error, job.id, job.attempt],
         ),
       )
+      // Each budget contains five attempts; remaining budget identifies this
+      // retry cycle without resetting the cumulative attempt/history identity.
       ignore(
         tx.execute(
-          "UPDATE webhook_delivery SET status=CASE WHEN ? THEN 'succeeded' WHEN attempts>=max_attempts THEN 'failed' ELSE 'pending' END,response_code=?,last_error=?,lease=NULL,locked_at=NULL,next_attempt_at=datetime('now','+' || CASE WHEN attempts=1 THEN 10 WHEN attempts=2 THEN 60 WHEN attempts=3 THEN 300 ELSE 1800 END || ' seconds'),completed_at=CASE WHEN ? OR attempts>=max_attempts THEN datetime('now') ELSE NULL END WHERE id=? AND status='sending' AND lease=?",
+          "UPDATE webhook_delivery SET status=CASE WHEN ? THEN 'succeeded' WHEN attempts>=max_attempts THEN 'failed' ELSE 'pending' END,response_code=?,last_error=?,lease=NULL,locked_at=NULL,next_attempt_at=datetime('now','+' || CASE max_attempts-attempts WHEN 4 THEN 10 WHEN 3 THEN 60 WHEN 2 THEN 300 ELSE 1800 END || ' seconds'),completed_at=CASE WHEN ? OR attempts>=max_attempts THEN datetime('now') ELSE NULL END WHERE id=? AND status='sending' AND lease=?",
           params=[success, code.to_int64(), error, success, job.id, job.lease],
         ),
       )
@@ -121,9 +123,10 @@ pub fn start_worker(
   group : @async.TaskGroup[Unit],
 ) -> Unit {
   group.spawn_bg(no_wait=true, allow_failure=true, () => {
+    let mut recovery_after = 0L
     for ;; {
       let processed = try {
-        recover_refs(pool, root)
+        recovery_after = recover_refs(pool, root, after=recovery_after)
         deliver_next(pool, policy)
       } catch {
         err if @async.is_cancellation_error(err) => raise err

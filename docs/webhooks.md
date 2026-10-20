@@ -63,7 +63,10 @@ Git reference-transaction hooks persist prepared intents before Git commits.
 Committed updates produce one event. After a crash between Git and SQLite,
 recovery checks the actual ref under the repository write lock before publishing.
 Ambiguous state requires operator inspection before another managed write. The
-committed phase and recovery use the same deduplication identity.
+committed phase and recovery use the same deduplication identity. Background
+recovery advances through repository-ID pages even when a repository fails,
+then wraps to retry earlier repositories; a failing first page cannot starve
+later repositories. The scan cursor resets harmlessly on worker restart.
 
 ## Verify signatures and deduplicate
 
@@ -85,8 +88,12 @@ The Web service runs the worker. Each delivery receives up to five attempts,
 with delays of 10 seconds, 1 minute, 5 minutes and 30 minutes. Network, TLS,
 response errors and all non-2xx statuses are retried. Redirects are never followed.
 Requests have a 10-second overall deadline and a 32 KiB response-header limit;
-response bodies are not retained. Expired one-minute leases recover after
-restart. Manual redelivery adds up to five attempts, retaining prior history.
+informational HTTP responses are skipped until the final status, within the
+same cumulative header limit and request deadline. Response bodies are not
+retained. Expired one-minute leases recover after restart. Manual redelivery
+adds up to five attempts and restarts the 10-second,
+1-minute, 5-minute and 30-minute backoff sequence while retaining cumulative
+attempt numbers and prior history.
 
 Default egress permits HTTPS to public IPv4 destinations with system-root TLS
 verification. The worker resolves once and connects to that exact checked
