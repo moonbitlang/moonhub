@@ -96,4 +96,28 @@ let user_api_dependencies_module : @moonback.Module = Module(ctx => {
   }
   ctx.provide(@web_context.config_db_pool, pool)
   ctx.use_(pipeline_dependencies_module)
+  ctx.use_(webhook_dependencies_module)
+})
+
+///|
+// Only this boundary reads deployment configuration; routes require the provider.
+fn webhook_policy() -> @webhooks.Policy {
+  @webhooks.Policy::new(
+    allowed_origins=@config.env_value("MOONHUB_WEBHOOK_ALLOWED_ORIGINS")
+      .map(value => {
+        value.split(",").map(origin => origin.trim().to_owned()).collect()
+      })
+      .unwrap_or([]),
+  )
+}
+
+///|
+let webhook_dependencies_module : @moonback.Module = Module(ctx => {
+  ctx.provide(
+    @web_context.webhook_policy_key,
+    ctx
+    .config()
+    .get_custom(@web_context.webhook_policy_key)
+    .unwrap_or_else(webhook_policy),
+  )
 })

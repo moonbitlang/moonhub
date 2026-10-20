@@ -71,6 +71,7 @@ pub fn record_received_transaction(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
+      record_webhook_refs(tx, scope, actor.id, source_key, phase, updates)
       let enabled : Bool = tx
         .query_one(
           "SELECT (pipeline_push_enabled OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = repository.id) OR EXISTS (SELECT 1 FROM merge_request m WHERE m.repository_id = repository.id AND m.status = 'open')) AS pipeline_push_enabled FROM repository WHERE id = ?",
@@ -165,6 +166,7 @@ pub async fn recover_ref_events_locked(
   scope : RepositoryScope,
   git_dir : String,
 ) -> Unit {
+  recover_webhook_refs_locked(pool, scope, git_dir)
   let rows = pool.with_client(client => {
     client.query_all(
       "SELECT * FROM repository_ref_event WHERE repository_id = ? AND state IN ('prepared', 'committed') ORDER BY id",

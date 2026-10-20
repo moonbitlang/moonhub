@@ -11,6 +11,8 @@ setup, execution approval, version-bound results, and upgrade requirements.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
 Descriptions and comments support [managed Markdown image attachments](docs/attachments.md),
 including browser uploads and CLI inline image conversion.
+Repository managers can configure [signed Webhooks](docs/webhooks.md) for Push,
+Issue, MR, review and Pipeline events, with retry and delivery history.
 Request reviewers from an MR discussion and use **Inbox** for pending reviews,
 assigned Issues and collaboration updates. Email reminders are optional. See
 [review requests and notifications](docs/notifications.md).

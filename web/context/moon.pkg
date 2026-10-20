@@ -5,6 +5,7 @@ import {
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/webhooks",
   "hackwaly/moonhub/web/ui" @web_ui,
   "moonbitlang/async",
   "moonbitlang/async/http",

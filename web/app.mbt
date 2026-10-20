@@ -17,6 +17,7 @@ let runner_app_module : @moonback.Module = Module(ctx => {
 let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(browser_resources_module)
   ctx.use_(services_module)
+  ctx.use_(webhook_dependencies_module)
   ctx.use_(pipeline_dependencies_module)
   let assets = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
@@ -34,6 +35,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@namespace_views.namespaces_module)
   ctx.use_(@repository_views.repositories_module)
   ctx.use_(@repository_views.deploy_keys_module)
+  ctx.use_(@repository_views.webhooks_module)
   ctx.use_(@merge_request_views.merge_requests_module)
   ctx.use_(@issue_views.issues_module)
   ctx.use_(@attachment_views.attachments_module)
@@ -53,4 +55,5 @@ pub let assets_module : @moonback.Module = Module(ctx => {
 let user_api_module : @moonback.Module = Module(ctx => {
   ctx.use_(user_api_dependencies_module)
   ctx.use_(@user_api.api_module)
+  ctx.use_(@user_api.webhooks_api_module)
 })

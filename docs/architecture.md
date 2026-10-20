@@ -17,6 +17,7 @@ unchanged.
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events and recovery |
 | `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and pending upload cleanup |
+| `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to migration 024 |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |

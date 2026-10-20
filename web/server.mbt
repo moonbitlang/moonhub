@@ -8,6 +8,7 @@ pub async fn serve(config : Config) -> Unit {
     @attachments.start_cleanup_worker(pool, config.root, group)
     @identity.ensure_root_invitation(pool, config.root_user)
     @mail.start_mail_worker(pool, group)
+    @webhooks.start_worker(pool, config.root, webhook_policy(), group)
     let import_config = @repository.repo_import_config_from_env()
     let addresses = @repository.ssh_address_config_from_env()
     @repository.start_repository_worker(

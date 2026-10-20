@@ -1,0 +1,68 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/webhooks"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/repository",
+  "moonbitlang/async",
+}
+
+// Values
+pub fn delete_hook(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Unit raise
+
+pub async fn deliver_next(@database.Database, Policy) -> Bool
+
+pub fn deliveries(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, page? : Int64) -> Array[Delivery] raise
+
+pub fn delivery_detail(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Json raise
+
+pub let event_kinds : Array[String]
+
+pub fn get_hook(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Hook raise
+
+pub fn list_hooks(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[Hook] raise
+
+pub fn ping(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
+
+pub fn redeliver(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Unit raise
+
+pub fn require_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> @repository.RepositoryScope raise
+
+pub fn save_hook(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, String, Array[String], Bool, Policy) -> Int64 raise
+
+pub fn signature(String, String) -> String
+
+pub fn start_worker(@database.Database, String, Policy, @async.TaskGroup[Unit]) -> Unit
+
+// Errors
+
+// Types and methods
+pub struct Delivery {
+  id : Int64
+  event_id : Int64
+  kind : String
+  status : String
+  attempts : Int64
+  response_code : Int64
+  error : String
+  created_at : String
+  next_attempt_at : String
+}
+
+pub(all) struct Hook {
+  id : Int64
+  url : String
+  events : String
+  active : Bool
+  version : Int64
+}
+
+pub(all) struct Policy {
+  allowed_origins : Array[String]
+}
+pub fn Policy::new(allowed_origins? : Array[String]) -> Self
+
+// Type aliases
+
+// Traits

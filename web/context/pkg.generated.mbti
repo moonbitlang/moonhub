@@ -7,6 +7,7 @@ import {
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/webhooks",
   "moonbitlang/async/http",
   "moonbitlang/moonback",
 }
@@ -95,6 +96,8 @@ pub let session_cookie_name : String
 pub fn url_escape_path(String) -> String
 
 pub fn valid_form_token(String, String) -> Bool
+
+pub let webhook_policy_key : @moonback.TypedKey[@webhooks.Policy]
 
 // Errors
 
