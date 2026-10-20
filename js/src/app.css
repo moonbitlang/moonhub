@@ -739,3 +739,38 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 .inline-thread-link { display: block; padding: 8px 12px; background: var(--color-accent-soft); color: var(--color-accent); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
 .inline-thread-preview { display:block; color:var(--color-text); white-space:pre-wrap; overflow-wrap:anywhere; font-weight:400; }
+
+/* Webhooks extend repository settings; long destinations and JSON stay contained. */
+.webhook-settings .ssh-key-heading h2,
+.webhook-settings .path {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.webhook-payload {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.webhook-settings fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.webhook-settings legend {
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.webhook-settings .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+.webhook-settings .ssh-key-content {
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .webhook-settings .checkbox-field { min-height: 44px; }
+}

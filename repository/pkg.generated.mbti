@@ -34,11 +34,15 @@ pub fn pin_legacy_repository_source(@database.Database, @domain.CurrentUser, Rep
 
 pub fn pipeline_push_enabled(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Bool raise
 
+pub fn record_deploy_key_webhook_transaction(@database.Database, RepositoryScope, Int64, String, String, String) -> Unit raise
+
 pub fn record_merged_ref(@database.DbTransaction, Int64, Int64, Int64, String, String) -> Unit raise
 
 pub fn record_received_transaction(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, String) -> Unit raise
 
 pub async fn recover_ref_events_locked(@database.Database, RepositoryScope, String) -> Unit
+
+pub async fn recover_webhook_refs_locked(@database.Database, RepositoryScope, String) -> Unit
 
 pub fn repo_import_config_from_env() -> RepoImportConfig? raise
 

@@ -30,6 +30,7 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("title", long="title", global=true),
     @argparse.OptionArg("body-file", long="body-file", global=true),
     @argparse.OptionArg("file", long="file", global=true),
+    @argparse.OptionArg("delivery", long="delivery", global=true),
     @argparse.OptionArg("source", long="source", global=true),
     @argparse.OptionArg("target", long="target", global=true),
     @argparse.OptionArg("version", long="version", global=true),
@@ -65,6 +66,20 @@ fn command() -> @argparse.Command {
     ],
     subcommand_required=true,
     subcommands=[
+      @argparse.Command(
+        "webhook",
+        subcommand_required=true,
+        subcommands=[
+          @argparse.Command("list"),
+          @argparse.Command("create"),
+          ..["edit", "deliveries", "delivery", "redeliver", "ping", "delete"].map(action => {
+              @argparse.Command(action, positionals=[
+                @argparse.PositionArg("number"),
+              ])
+            },
+          ),
+        ],
+      ),
       @argparse.Command("attachment", subcommand_required=true, subcommands=[
         @argparse.Command("upload"),
       ]),
@@ -312,6 +327,45 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
   }
   let id = option(options, "number").map(decimal).unwrap_or("")
   let (path, body) : (String, Json?) = match (group, action) {
+    ("webhook", "list") => ("\{base}/hooks", None)
+    ("webhook", "create" | "edit") => {
+      let file = required(matches, "body-file")
+      guard @fs.kind(file, follow_symlink=false) is Regular &&
+        @fs.file_size(file) <= 65536L else {
+        raise Invalid("webhook JSON file must be regular and at most 64 KiB")
+      }
+      let body = @json.parse(@fs.read_file(file).text()) catch {
+        _ => raise Invalid("invalid webhook JSON file")
+      }
+      guard body is Object(_) else {
+        raise Invalid("webhook JSON object required")
+      }
+      (
+        "\{base}/hooks" + (if action == "edit" { "/\{id}" } else { "" }),
+        Some(body),
+      )
+    }
+    ("webhook", "deliveries") =>
+      (
+        "\{base}/hooks/\{id}/deliveries?page=\{decimal(required(matches,"page"))}",
+        None,
+      )
+    ("webhook", "delivery") =>
+      (
+        "\{base}/hooks/\{id}/deliveries/\{decimal(required(matches,"delivery"))}",
+        None,
+      )
+    ("webhook", "redeliver") =>
+      (
+        "\{base}/hooks/\{id}/deliveries/\{decimal(required(matches,"delivery"))}/redeliver",
+        Some({}),
+      )
+    ("webhook", "ping") => ("\{base}/hooks/\{id}/ping", Some({}))
+    ("webhook", "delete") =>
+      (
+        "\{base}/hooks/\{id}/delete",
+        Some({ "version": decimal(required(matches, "version")) }),
+      )
     ("mr", "list") =>
       (
         "\{base}/mrs?status=\{escape(required(matches, "status"))}&page=\{decimal(required(matches, "page"))}",

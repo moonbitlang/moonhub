@@ -2,6 +2,8 @@ import {
   "hackwaly/moonhub/web/api" @user_api,
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/attachments",
+  "hackwaly/moonhub/webhooks",
+  "hackwaly/moonhub/config",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",

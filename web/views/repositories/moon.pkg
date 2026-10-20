@@ -4,6 +4,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/webhooks",
   "hackwaly/moonhub/ssh",
   "hackwaly/moonhub/web/assets" @web_assets,
   "hackwaly/moonhub/web/context" @web_context,

@@ -223,6 +223,13 @@ CLI input. The API returns stable JSON error codes and no-store responses, and
 redacts unexpected server/Git errors. Creating/reviewing/merging through the API
 uses the same business services and per-repository write locks as the browser.
 
+## Webhooks
+
+The webhook subcommands manage signed repository integrations, test events,
+delivery history and retries. See [Webhook CLI/API](webhooks.md#cli-and-api) for
+the private JSON configuration format and full command list. Repository manager
+access is required in addition to token permission.
+
 ## Upgrade and verification
 
 Migration 016 adds tokens without changing accounts, sessions or existing jobs.

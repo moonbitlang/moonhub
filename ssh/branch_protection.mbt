@@ -45,7 +45,7 @@ pub async fn record_ref_transaction(
   phase : String,
 ) -> Unit {
   let updates = read_ref_updates()
-  ignore(authorize_git_operation(pool, credential, repo, @repository.Write))
+  let scope = authorize_git_operation(pool, credential, repo, @repository.Write)
   match credential {
     UserKey(id) =>
       @repository.record_received_transaction(
@@ -56,14 +56,9 @@ pub async fn record_ref_transaction(
         phase,
         updates,
       )
-    DeployKey(_) => {
-      guard ["preparing", "prepared", "committed", "aborted"].contains(phase) else {
-        raise @domain.BadRequest(message="invalid reference transaction phase")
-      }
-      // pre-receive validates client refs. This trusted Git transaction may
-      // additionally report HEAD as a side effect of updating its branch.
-      // A repository credential is never a Pipeline execution principal.
-      // Do not attribute this push to its creator or create runnable ref events.
-    }
+    DeployKey(id) =>
+      @repository.record_deploy_key_webhook_transaction(
+        pool, scope, id, source_key, phase, updates,
+      )
   }
 }

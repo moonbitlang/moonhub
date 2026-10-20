@@ -705,6 +705,13 @@ attention. The printed protection backup and original volumes remain available.
 After verifying the restored instance and an off-host backup, operators can
 explicitly remove obsolete volumes; never run an indiscriminate volume prune.
 
+## Webhook destinations
+
+Web sends signed repository Webhooks over HTTPS to public IPv4 receivers.
+For trusted internal endpoints, configure comma-separated exact origins in
+MOONHUB_WEBHOOK_ALLOWED_ORIGINS and restart Web. See
+[Webhook policy and upgrade requirements](../docs/webhooks.md).
+
 ## Verification
 
 For deployment clones, use [repository-scoped deploy keys](../docs/deploy-keys.md)

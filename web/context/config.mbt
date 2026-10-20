@@ -78,3 +78,20 @@ pub let config_ssh_addresses : @moonback.TypedKey[@repository.SshAddressConfig] 
     }
   },
 )
+
+///|
+extenum @moonback.TypedBox += {
+  WebhookPolicy(@webhooks.Policy)
+}
+
+///|
+pub let webhook_policy_key : @moonback.TypedKey[@webhooks.Policy] = TypedKey(
+  name="moonhub.webhook_policy",
+  box=policy => WebhookPolicy(policy),
+  unbox=value => {
+    match value {
+      WebhookPolicy(policy) => Some(policy)
+      _ => None
+    }
+  },
+)

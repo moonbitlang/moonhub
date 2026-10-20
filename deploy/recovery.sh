@@ -343,6 +343,7 @@ restore_backup() {
      MOONHUB_SSH_PUBLIC_URL: env("web"; "MOONHUB_SSH_PUBLIC_URL"),
      MOONHUB_SSH_INTERNAL_URL: env("web"; "MOONHUB_SSH_INTERNAL_URL"),
      MOONHUB_IMPORT_TIMEOUT_SECONDS: env("web"; "MOONHUB_IMPORT_TIMEOUT_SECONDS"),
+     MOONHUB_WEBHOOK_ALLOWED_ORIGINS: env("web"; "MOONHUB_WEBHOOK_ALLOWED_ORIGINS"),
      MOONHUB_BACKUP_DIR: ($state + "/backups")}
     + (if .services["pipeline-provider"] then {
        MOONHUB_PROVIDER_TOKEN_FILE: binding("pipeline-provider"; "/run/secrets/provider_token"),

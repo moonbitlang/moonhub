@@ -8,6 +8,8 @@ import {
 // Values
 pub let api_module : @moonback.Module
 
+pub let webhooks_api_module : @moonback.Module
+
 // Errors
 
 // Types and methods

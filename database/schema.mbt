@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 23L
+pub let database_schema_version : Int64 = 24L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -81,6 +81,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
   let general_attachments_migration = @fs.read_file(
     "db/migrations/023_general_attachments.sql",
   ).text()
+  let webhooks_migration = @fs.read_file("db/migrations/024_webhooks.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -159,7 +160,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 23L {
         tx.driver.exec_script(general_attachments_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 23")
+      if version < 24L {
+        tx.driver.exec_script(webhooks_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 24")
     })
   })
 }

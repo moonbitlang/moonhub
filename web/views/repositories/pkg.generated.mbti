@@ -14,6 +14,8 @@ pub let repo_browser_module : @moonback.Module
 
 pub let repositories_module : @moonback.Module
 
+pub let webhooks_module : @moonback.Module
+
 // Errors
 
 // Types and methods
