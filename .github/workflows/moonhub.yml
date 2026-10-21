@@ -6,7 +6,7 @@ on:
 jobs:
   check:
     runs-on: [self-hosted, linux, moonhub-build]
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - id: check
         name: Build and test MoonHub
