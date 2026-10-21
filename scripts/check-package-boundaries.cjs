@@ -33,11 +33,12 @@ const allowed = {
   ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
     'domain', 'config', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline', 'attachments', 'webhooks',
-    'web/assets', 'web/api', 'web/context', 'web/views/auth', 'web/views/account',
+    'web/assets', 'web/api', 'web/mcp', 'web/context', 'web/views/auth', 'web/views/account',
     'web/views/namespaces', 'web/views/repositories', 'web/views/issues',
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications', 'web/views/attachments',
   ],
   'web/api': ['webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/context'],
+  'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/api', 'web/context'],
   'web/assets': ['domain'],
   'web/context': ['webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
   'web/ui': ['domain', 'identity', 'repository', 'collaboration', 'web/assets'],

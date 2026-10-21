@@ -1,0 +1,26 @@
+import {
+  "hackwaly/moonhub/attachments",
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/gitops",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/pipeline",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/web/api" @user_api,
+  "hackwaly/moonhub/web/context" @web_context,
+  "moonbitlang/async",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+  "moonbitlang/moonback",
+}
+
+import {
+  "moonbitlang/async/http",
+  "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/web/testkit" @web_testkit,
+} for "wbtest"
+
+supported_targets = "native"

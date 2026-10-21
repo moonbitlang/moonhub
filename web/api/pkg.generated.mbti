@@ -2,11 +2,27 @@
 package "hackwaly/moonhub/web/api"
 
 import {
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/pipeline",
   "moonbitlang/moonback",
 }
 
 // Values
+pub fn activity_json(@collaboration.MergeActivity, preview? : Bool) -> Json
+
 pub let api_module : @moonback.Module
+
+pub fn check_json(@collaboration.MergeCheck) -> Json
+
+pub fn conclusion_json(@pipeline.Conclusion?) -> String
+
+pub fn discussion_json(@collaboration.MergeDiscussion, preview? : Bool) -> Json
+
+pub fn issue_json(@collaboration.Issue) -> Json
+
+pub fn mr_json(@collaboration.MergeRequest) -> Json
+
+pub fn run_json(@pipeline.Run) -> Json
 
 pub let webhooks_api_module : @moonback.Module
 

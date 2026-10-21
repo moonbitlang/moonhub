@@ -149,7 +149,7 @@ fn page(req : @moonback.Request) -> Int64 raise {
 }
 
 ///|
-fn mr_json(mr : @collaboration.MergeRequest) -> Json {
+pub fn mr_json(mr : @collaboration.MergeRequest) -> Json {
   {
     "number": mr.number.to_string(),
     "title": mr.title,
@@ -168,7 +168,7 @@ fn mr_json(mr : @collaboration.MergeRequest) -> Json {
 }
 
 ///|
-fn issue_json(issue : @collaboration.Issue) -> Json {
+pub fn issue_json(issue : @collaboration.Issue) -> Json {
   {
     "number": issue.number.to_string(),
     "title": issue.title,
@@ -183,7 +183,7 @@ fn issue_json(issue : @collaboration.Issue) -> Json {
 }
 
 ///|
-fn run_json(run : @pipeline.Run) -> Json {
+pub fn run_json(run : @pipeline.Run) -> Json {
   let status = match run.state {
     Queued => "queued"
     Running => "running"
@@ -206,7 +206,7 @@ fn run_json(run : @pipeline.Run) -> Json {
 }
 
 ///|
-fn conclusion_json(conclusion : @pipeline.Conclusion?) -> String {
+pub fn conclusion_json(conclusion : @pipeline.Conclusion?) -> String {
   match conclusion {
     None => ""
     Some(Success) => "success"
@@ -219,7 +219,7 @@ fn conclusion_json(conclusion : @pipeline.Conclusion?) -> String {
 }
 
 ///|
-fn check_json(check : @collaboration.MergeCheck) -> Json {
+pub fn check_json(check : @collaboration.MergeCheck) -> Json {
   {
     "workflow": check.workflow_path,
     "required": check.required,
@@ -231,7 +231,7 @@ fn check_json(check : @collaboration.MergeCheck) -> Json {
 }
 
 ///|
-fn activity_json(
+pub fn activity_json(
   a : @collaboration.MergeActivity,
   preview~ : Bool = false,
 ) -> Json {
@@ -265,7 +265,7 @@ fn activity_json(
 }
 
 ///|
-fn discussion_json(
+pub fn discussion_json(
   d : @collaboration.MergeDiscussion,
   preview~ : Bool = false,
 ) -> Json {

@@ -28,6 +28,7 @@ unchanged.
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
 | `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
+| `web/mcp` | Stateless MCP 2026-07-28 HTTP transport, tool catalog, business-service adapters and HTTP tests |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
 | `web/ui` | Shared page layout, navigation and reusable presentation |
 | `web/assets` | Asset manifest, asset tags and static file serving |
@@ -198,3 +199,10 @@ middleware and Runner credentials. Identity owns scoped, expiring access tokens;
 `web/views/account` owns their CSRF-protected creation/revocation pages. API
 mutations reuse business services and repository locks. The API never implicitly
 authorizes code execution when creating an MR with a collaboration write token.
+
+`web/mcp` is an outer adapter mounted at `/-/mcp`, independently of browser
+middleware. It obtains database, repository root, Pipeline coordinator and origin
+policy through `ctx.require`, and calls business services directly. It shares
+JSON DTO mapping with `web/api`; business packages do not import MCP. The
+composition boundary reads `MOONHUB_MCP_ALLOWED_ORIGINS`. No Runner credentials
+are converted into MCP credentials. See [MCP](mcp.md).
