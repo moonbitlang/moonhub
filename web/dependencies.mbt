@@ -121,3 +121,17 @@ let webhook_dependencies_module : @moonback.Module = Module(ctx => {
     .unwrap_or_else(webhook_policy),
   )
 })
+
+///|
+let mcp_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(user_api_dependencies_module)
+  ctx.provide(
+    @mcp.allowed_origins_key,
+    @config.env_value("MOONHUB_MCP_ALLOWED_ORIGINS")
+    .map(value => {
+      value.split(",").map(origin => origin.trim().to_owned()).collect()
+    })
+    .unwrap_or([]),
+  )
+  ctx.use_(@mcp.mcp_module)
+})

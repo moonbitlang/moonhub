@@ -4,6 +4,9 @@ The native executable includes a remote collaboration CLI: `auth`, `mr`,
 `issue`, `ci` and `inbox`. Create an access token in Account settings and see
 [CLI setup and commands](docs/cli.md).
 
+AI clients can use the native [MCP 2.0 endpoint](docs/mcp.md) at `/-/mcp`
+(protocol revision 2026-07-28), authenticated with the same scoped access tokens.
+
 Repository collaboration includes Issues and same-repository Merge Requests.
 Branch protection can require existing Pipeline workflows to pass against the
 merged source/target tree. See [MR Pipeline checks](docs/merge-checks.md) for
