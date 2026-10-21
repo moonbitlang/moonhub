@@ -77,6 +77,11 @@ For `tools/call`, also set `Mcp-Name` to the tool name, and include:
 }
 ```
 
+Request IDs may be strings or exact integers in the range
+`-9007199254740991` to `9007199254740991`. Larger IDs must be strings. Numeric
+IDs are checked against their original JSON token before executing a tool, so
+fractional values cannot pass validation through floating-point rounding.
+
 Tool results provide `structuredContent` and the same JSON as text in `content`.
 Arguments follow the published JSON Schema 2020-12 schemas: all values are
 strings, including IDs, versions, pages and `draft: "true"`. Unknown fields,
@@ -104,6 +109,12 @@ Edits use `edit_version`; discussion resolution uses `state_version`.
 Reload current state after stale-version errors.
 
 Paged issue/MR/activity/discussion and Inbox queries return up to 50 entries.
+Discussion lists contain previews and the three most recent replies per thread.
+Pass `discussion` to `moonhub_list_merge_discussions` to return a full
+`discussion` object, including the complete saved anchor context and root/reply
+bodies. In this mode `page` selects a 50-reply page in chronological order, and
+`has_more` reports whether another reply page exists.
+
 CI logs use `after` and return `next_cursor`, `has_more` and `complete`.
 Clients poll unfinished CI using fresh requests. The server does not advertise
 Tasks, subscriptions, resources, prompts, roots, sampling, elicitation or MCP Apps.

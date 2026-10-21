@@ -90,6 +90,236 @@ fn rpc_error(id : Json?, code : Int32, message : String, data : Json?) -> Json {
 }
 
 ///|
+fn skip_json_string(bytes : Bytes, start : Int32) -> Int32 {
+  let mut i = start + 1
+  let mut escaped = false
+  while i < bytes.length() {
+    let byte = bytes[i]
+    if escaped {
+      escaped = false
+    } else if byte == b'\\' {
+      escaped = true
+    } else if byte == b'"' {
+      return i + 1
+    }
+    i = i + 1
+  }
+  bytes.length()
+}
+
+///|
+fn skip_json_value(bytes : Bytes, start : Int32) -> Int32 {
+  if start >= bytes.length() {
+    return start
+  }
+  if bytes[start] == b'"' {
+    return skip_json_string(bytes, start)
+  }
+  if bytes[start] == b'{' || bytes[start] == b'[' {
+    let mut depth = 0
+    let mut i = start
+    let mut in_string = false
+    let mut escaped = false
+    while i < bytes.length() {
+      let byte = bytes[i]
+      if in_string {
+        if escaped {
+          escaped = false
+        } else if byte == b'\\' {
+          escaped = true
+        } else if byte == b'"' {
+          in_string = false
+        }
+      } else if byte == b'"' {
+        in_string = true
+      } else if byte == b'{' || byte == b'[' {
+        depth = depth + 1
+      } else if byte == b'}' || byte == b']' {
+        depth = depth - 1
+        if depth == 0 {
+          return i + 1
+        }
+      }
+      i = i + 1
+    }
+    return bytes.length()
+  }
+  let mut i = start
+  while i < bytes.length() {
+    let byte = bytes[i]
+    if byte == b',' ||
+      byte == b'}' ||
+      byte == b' ' ||
+      byte == b'\n' ||
+      byte == b'\r' ||
+      byte == b'\t' {
+      return i
+    }
+    i = i + 1
+  }
+  i
+}
+
+///|
+// The JSON library omits `repr` for ordinary finite decimals, so retain the
+// original top-level ID value when validating its numeric spelling.
+fn raw_request_id_token(body : String) -> String? {
+  let bytes = @utf8.encode(body)
+  let mut i = 0
+  while i < bytes.length() &&
+        (
+          bytes[i] == b' ' ||
+          bytes[i] == b'\n' ||
+          bytes[i] == b'\r' ||
+          bytes[i] == b'\t'
+        ) {
+    i = i + 1
+  }
+  if i >= bytes.length() || bytes[i] != b'{' {
+    return None
+  }
+  i = i + 1
+  let mut id : String? = None
+  for ;; {
+    while i < bytes.length() &&
+          (
+            bytes[i] == b' ' ||
+            bytes[i] == b'\n' ||
+            bytes[i] == b'\r' ||
+            bytes[i] == b'\t'
+          ) {
+      i = i + 1
+    }
+    if i >= bytes.length() || bytes[i] == b'}' {
+      return id
+    }
+    if bytes[i] != b'"' {
+      return None
+    }
+    let key_end = skip_json_string(bytes, i)
+    let key = @utf8.decode(bytes[i:key_end]) catch { _ => return None }
+    let key_value = @json.parse(key) catch { _ => return None }
+    let is_id = key_value is String("id")
+    i = key_end
+    while i < bytes.length() &&
+          (
+            bytes[i] == b' ' ||
+            bytes[i] == b'\n' ||
+            bytes[i] == b'\r' ||
+            bytes[i] == b'\t'
+          ) {
+      i = i + 1
+    }
+    if i >= bytes.length() || bytes[i] != b':' {
+      return None
+    }
+    i = i + 1
+    while i < bytes.length() &&
+          (
+            bytes[i] == b' ' ||
+            bytes[i] == b'\n' ||
+            bytes[i] == b'\r' ||
+            bytes[i] == b'\t'
+          ) {
+      i = i + 1
+    }
+    let value_start = i
+    let value_end = skip_json_value(bytes, value_start)
+    if is_id {
+      let token = @utf8.decode(bytes[value_start:value_end]) catch {
+        _ => return None
+      }
+      id = Some(token)
+    }
+    i = value_end
+    while i < bytes.length() &&
+          (
+            bytes[i] == b' ' ||
+            bytes[i] == b'\n' ||
+            bytes[i] == b'\r' ||
+            bytes[i] == b'\t'
+          ) {
+      i = i + 1
+    }
+    if i < bytes.length() && bytes[i] == b',' {
+      i = i + 1
+    } else if i >= bytes.length() || bytes[i] == b'}' {
+      return id
+    } else {
+      return None
+    }
+  }
+}
+
+///|
+fn is_supported_numeric_request_id(token : String) -> Bool {
+  let (negative, unsigned) = if token.has_prefix("-") {
+    (true, token[1:].to_owned())
+  } else {
+    (false, token)
+  }
+  let (mantissa, exponent_text) = match unsigned.split_once("e") {
+    Some((mantissa, exponent)) =>
+      (mantissa.to_owned(), Some(exponent.to_owned()))
+    None =>
+      match unsigned.split_once("E") {
+        Some((mantissa, exponent)) =>
+          (mantissa.to_owned(), Some(exponent.to_owned()))
+        None => (unsigned, None)
+      }
+  }
+  let (whole, fraction) = match mantissa.split_once(".") {
+    Some((whole, fraction)) => (whole.to_owned(), fraction.to_owned())
+    None => (mantissa, "")
+  }
+  let digits = whole + fraction
+  if digits.iter().all(ch => ch == '0') {
+    return true
+  }
+  let exponent = match exponent_text {
+    Some(text) => @string.parse_int64(text) catch { _ => return false }
+    None => 0L
+  }
+  if exponent > 100000L || exponent < -100000L {
+    return false
+  }
+  let scale = exponent - fraction.length().to_int64()
+  let integer_digits = if scale < 0L {
+    let remove = -scale
+    if remove > digits.length().to_int64() {
+      return false
+    }
+    let end = digits.length() - remove.to_int()
+    if !digits[end:].iter().all(ch => ch == '0') {
+      return false
+    }
+    digits[:end].to_owned()
+  } else {
+    digits
+  }
+  let mut first_nonzero = 0
+  while first_nonzero < integer_digits.length() &&
+        integer_digits[first_nonzero] == '0' {
+    first_nonzero = first_nonzero + 1
+  }
+  let significant = integer_digits[first_nonzero:].to_owned()
+  if significant.is_empty() {
+    return true
+  }
+  if scale > 0L && significant.length().to_int64() + scale > 16L {
+    return false
+  }
+  let normalized = significant +
+    (if scale > 0L { "0".repeat(scale.to_int()) } else { "" })
+  let value = @string.parse_int64(
+    (if negative { "-" } else { "" }) + normalized,
+  ) catch {
+    _ => return false
+  }
+  value >= -9007199254740991L && value <= 9007199254740991L
+}
+
+///|
 fn complete_result(fields : Map[String, Json]) -> Json {
   fields["resultType"] = Json("complete")
   fields["_meta"] = server_metadata
@@ -272,7 +502,11 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
               )
             }
             let bytes = @web_context.read_bounded_body(req, 65536)
-            let body = @json.parse(@utf8.decode(bytes)) catch {
+            let body_text = @utf8.decode(bytes) catch {
+              _ => raise ProtocolError(400, -32700, "Invalid UTF-8 JSON", None)
+            }
+            let raw_id = raw_request_id_token(body_text)
+            let body = @json.parse(body_text) catch {
               _ => raise ProtocolError(400, -32700, "Invalid UTF-8 JSON", None)
             }
             guard body is Object(envelope) else {
@@ -285,8 +519,8 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
             }
             id = match envelope.get("id") {
               Some(String(_) as value) => Some(value)
-              Some(Number(n, ..) as value) if !n.is_inf() && n == n.floor() =>
-                Some(value)
+              Some(Number(_, ..) as value) if raw_id is Some(token) &&
+                is_supported_numeric_request_id(token) => Some(value)
               _ => None
             }
             guard envelope.get("jsonrpc") == Some(Json("2.0")) &&

@@ -61,6 +61,40 @@ async fn mcp_http(
 }
 
 ///|
+async fn mcp_http_raw(
+  port : Int32,
+  token : String,
+  body : String,
+  rpc_method : String,
+  tool_name~ : String? = None,
+) -> (Int32, Json) {
+  let headers : @http.Headers = {
+    "Authorization": "Bearer " + token,
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+    "MCP-Protocol-Version": "2026-07-28",
+    "Mcp-Method": rpc_method,
+  }
+  if tool_name is Some(name) {
+    headers["Mcp-Name"] = name
+  }
+  let client = @http.Client("http://127.0.0.1:\{port}")
+  defer client.close()
+  let response = client.post("/-/mcp", body, extra_headers=headers)
+  assert_eq(response.headers.get("cache-control"), Some("no-store"))
+  assert_eq(response.headers.get("mcp-session-id"), None)
+  let text = client.read_all().text()
+  (
+    response.code,
+    if text.is_empty() {
+      Json::null()
+    } else {
+      @json.parse(text)
+    },
+  )
+}
+
+///|
 async fn mcp_tool(
   port : Int32,
   token : String,
@@ -222,6 +256,12 @@ async test "MCP validates metadata mirrored headers versions and request IDs ind
         ..
       },
     )
+    let (status, exact_decimal_id) = mcp_http_raw(
+      port, read, "{\"jsonrpc\":\"2.0\",\"id\":1.0,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/clientInfo\":{\"name\":\"raw-id-test\",\"version\":\"1\"}}}}",
+      "tools/list",
+    )
+    assert_eq(status, 200)
+    assert_true(exact_decimal_id is { "id": Number(1, ..), .. })
     let (status, data) = mcp_http(
       port,
       read,
@@ -256,8 +296,15 @@ async test "MCP validates metadata mirrored headers versions and request IDs ind
       read,
       mcp_request("tools/list", Map([]), id=@json.parse("9007199254740993")),
     )
+    assert_eq(status, 400)
+    assert_true(data is { "error": { "code": Number(-32600, ..), .. }, .. })
+    let (status, data) = mcp_http(
+      port,
+      read,
+      mcp_request("tools/list", Map([]), id=Json("9007199254740993")),
+    )
     assert_eq(status, 200)
-    assert_true(data is { "id": Number(_, repr=Some("9007199254740993")), .. })
+    assert_true(data is { "id": String("9007199254740993"), .. })
     let (status, _) = mcp_http(port, read, [mcp_request("tools/list", Map([]))])
     assert_eq(status, 400)
     for value in ["other", "=?base64?%%%%?="] {
@@ -271,6 +318,68 @@ async test "MCP validates metadata mirrored headers versions and request IDs ind
     }
     let (status, _) = mcp_http(port, read, mcp_request("tools/list", Map([])))
     assert_eq(status, 200)
+  })
+}
+
+///|
+test "MCP raw IDs distinguish top-level escaped keys nested data and exact decimals" {
+  for
+    (body, expected) in [
+      ("{\"id\":1,\"params\":{\"id\":2}}", Some("1")),
+      (
+        "{\"params\":{\"id\":2,\"text\":\"}\\\"id\\\":3\"},\"id\":1.0}",
+        Some("1.0"),
+      ),
+      (
+        "{\"params\":[{\"id\":2}],\"i\\u0064\":9007199254740992.5}",
+        Some("9007199254740992.5"),
+      ),
+      ("{\"id\":1,\"id\":1.0000000000000001}", Some("1.0000000000000001")),
+      ("{\"params\":{\"id\":2}}", None),
+    ] {
+    assert_eq(raw_request_id_token(body), expected)
+  }
+  for
+    value in [
+      "0", "-0", "1.0", "10e-1", "1e+2", "-9007199254740991", "9007199254740991",
+    ] {
+    assert_true(is_supported_numeric_request_id(value))
+  }
+  for
+    value in [
+      "9007199254740992", "-9007199254740992", "9007199254740992.5", "90071992547409925e-1",
+      "1.0000000000000001", "1e-9999", "1e9999",
+    ] {
+    assert_false(is_supported_numeric_request_id(value))
+  }
+}
+
+///|
+async test "MCP rejects rounded fractional numeric IDs before mutations" {
+  @web_testkit.with_repository_test_app((port, pool, _, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let write = @identity.create_access_token(pool, actor, "writer", "write", 1)
+    for
+      request_id in [
+        "9007199254740992.5", "90071992547409925e-1", "1.0000000000000001",
+      ] {
+      let body = "{\"jsonrpc\":\"2.0\",\"id\":\{request_id},\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/clientInfo\":{\"name\":\"raw-id-test\",\"version\":\"1\"}},\"name\":\"moonhub_create_issue\",\"arguments\":{\"repository\":\"alice/demo\",\"title\":\"must not execute\"}}}"
+      let (status, data) = mcp_http_raw(
+        port,
+        write,
+        body,
+        "tools/call",
+        tool_name=Some("moonhub_create_issue"),
+      )
+      assert_eq(status, 400)
+      assert_true(data is { "error": { "code": Number(-32600, ..), .. }, .. })
+    }
+    let (_, data) = mcp_tool(port, write, "moonhub_list_issues", {
+      "repository": Json("alice/demo"),
+    })
+    assert_true(
+      data is { "result": { "structuredContent": { "items": [], .. }, .. }, .. },
+    )
   })
 }
 
@@ -698,6 +807,153 @@ async test "MCP merge requests preserve version guards discussions and execution
         "result": {
           "isError": False,
           "structuredContent": { "version": String("1"), .. },
+          ..
+        },
+        ..
+      },
+    )
+  })
+}
+
+///|
+async test "MCP discussion detail returns full context and paginates every reply" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let read = @identity.create_access_token(pool, actor, "reader", "read", 1)
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    let base = @test_support.workflow_commit(
+      dir, @test_support.single_job_workflow,
+    )
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
+    let long_line = "x".repeat(120)
+    let contents = (long_line + "\n").repeat(6)
+    ignore(
+      @test_support.merge_test_commit(dir, "mcp-discussion", base, contents),
+    )
+    let mr = @collaboration.create_merge_request(
+      pool, scope, dir, actor, "MCP discussion detail", "", "mcp-discussion", "master",
+      false,
+    )
+    let root_body = "R".repeat(700)
+    let discussion_id = @collaboration.create_anchored_merge_discussion(
+      pool,
+      scope,
+      actor,
+      mr,
+      dir,
+      1L,
+      None,
+      "README.md",
+      "new",
+      1L,
+      6L,
+      root_body,
+    )
+    for i in 0..<51 {
+      ignore(
+        @collaboration.reply_merge_discussion(
+          pool,
+          scope,
+          actor,
+          mr,
+          discussion_id,
+          "reply \{i}",
+        ),
+      )
+    }
+    let base_args = {
+      "repository": Json("alice/demo"),
+      "number": Json(mr.number.to_string()),
+    }
+    let (_, overview) = mcp_tool(
+      port, read, "moonhub_list_merge_discussions", base_args,
+    )
+    assert_true(
+      overview
+      is {
+        "result": {
+          "structuredContent": {
+            "items": [
+              {
+                "root": { "body": String(_), "body_truncated": True, .. },
+                "replies": Array(overview_replies),
+                "reply_count": String("51"),
+                "anchor": {
+                  "context": String(_),
+                  "context_truncated": True,
+                  ..
+                },
+                ..
+              },
+            ],
+            ..
+          },
+          ..
+        },
+        ..
+      } &&
+      overview_replies.length() == 3,
+    )
+    let first_page_args = {
+      "repository": Json("alice/demo"),
+      "number": Json(mr.number.to_string()),
+      "discussion": Json(discussion_id.to_string()),
+      "page": Json("1"),
+    }
+    let (_, first_page) = mcp_tool(
+      port, read, "moonhub_list_merge_discussions", first_page_args,
+    )
+    assert_true(
+      first_page
+      is {
+        "result": {
+          "structuredContent": {
+            "discussion": {
+              "root": { "body": String(full_root), "body_truncated": False, .. },
+              "replies": Array(first_replies),
+              "reply_count": String("51"),
+              "anchor": {
+                "context": String(full_context),
+                "context_truncated": False,
+                ..
+              },
+              ..
+            },
+            "has_more": True,
+            ..
+          },
+          ..
+        },
+        ..
+      } &&
+      full_root == root_body &&
+      full_context.iter().count() > 512 &&
+      first_replies.length() == 50 &&
+      first_replies[0] is { "body": String("reply 0"), .. },
+    )
+    let second_page_args = {
+      "repository": Json("alice/demo"),
+      "number": Json(mr.number.to_string()),
+      "discussion": Json(discussion_id.to_string()),
+      "page": Json("2"),
+    }
+    let (_, second_page) = mcp_tool(
+      port, read, "moonhub_list_merge_discussions", second_page_args,
+    )
+    assert_true(
+      second_page
+      is {
+        "result": {
+          "structuredContent": {
+            "discussion": {
+              "replies": [{ "body": String("reply 50"), .. }],
+              ..
+            },
+            "has_more": False,
+            ..
+          },
           ..
         },
         ..
