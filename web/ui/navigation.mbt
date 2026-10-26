@@ -115,7 +115,7 @@ fn render_sidebar(
     match navigation {
       TeamNavigation(team, active) => {
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Team\"><p class=\"nav-group-label\">\{team.display_name}</p>"
+          "<nav class=\"nav-group\" aria-label=\"Team\"><p class=\"nav-group-label\">\{team.display_name}</p>"
         let base = "/\{team.name_key}"
         for
           (key, label, icon) in [
