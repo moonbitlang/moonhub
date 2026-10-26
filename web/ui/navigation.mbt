@@ -100,15 +100,17 @@ fn render_sidebar(
         b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
       _ => ()
     }
-    b <+
-      "</div></details><div class=\"sidebar-scroll\"><nav class=\"nav-group\" aria-label=\"Workspace\">"
-    b <+
-      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
-    if current_user is Some(_) {
+    b <+ "</div></details><div class=\"sidebar-scroll\">"
+    if !(navigation is RepositoryNavigation(_, _, _)) {
+      b <+ "<nav class=\"nav-group\" aria-label=\"Workspace\">"
       b <+
-        "\{render_navigation_item("/-/notifications", "Inbox", "mail", navigation is WorkspaceNavigation("notifications"))}"
+        "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
+      if current_user is Some(_) {
+        b <+
+          "\{render_navigation_item("/-/notifications", "Inbox", "mail", navigation is WorkspaceNavigation("notifications"))}"
+      }
+      b <+ "</nav>"
     }
-    b <+ "</nav>"
     match navigation {
       TeamNavigation(team, active) => {
         b <+
