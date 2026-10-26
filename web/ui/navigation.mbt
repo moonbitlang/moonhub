@@ -129,7 +129,7 @@ fn render_sidebar(
       }
       RepositoryNavigation(repo, active, manager) => {
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Repository\"><p class=\"nav-group-label\">Repository</p>"
+          "<nav class=\"nav-group\" aria-label=\"Repository\"><p class=\"nav-group-label\">Repository</p>"
         let base = repo_link(repo)
         for
           (suffix, key, label, icon) in [
