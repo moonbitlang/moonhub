@@ -101,7 +101,8 @@ fn render_sidebar(
       _ => ()
     }
     b <+ "</div></details><div class=\"sidebar-scroll\">"
-    if !(navigation is RepositoryNavigation(_, _, _)) {
+    if !(navigation is RepositoryNavigation(_, _, _) ||
+      navigation is TeamNavigation(_, _)) {
       b <+ "<nav class=\"nav-group\" aria-label=\"Workspace\">"
       b <+
         "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
