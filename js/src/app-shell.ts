@@ -1,4 +1,4 @@
-import { start } from '../../_build/js/release/build/hackwaly/moonhub/web/client/client.js';
+import { start } from '../../_build/js/release/build/web/client/client.js';
 import { mountShell } from './page-shell';
 import { mountMarkdownEditors } from './markdown-editor';
 import { mountRepoClone } from './repo-clone';

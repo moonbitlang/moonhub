@@ -64,10 +64,10 @@ escape hatch; no local framework patches are needed. The dependency base downloa
 the package before offline application builds. Rabbita is Apache-2.0 licensed;
 its license text is identical to the root `LICENSE`, which the final images also
 install as `rabbita-LICENSE`.
-The single-member `moon.work` retains module names in output paths. The native debug CLI is:
+The project builds as a single module. The native debug CLI is:
 
 ```sh
-_build/native/debug/build/hackwaly/moonhub/moonhub.exe --help
+_build/native/debug/build/moonhub.exe --help
 ```
 
 Build the browser before starting the server, because its manifest is loaded
@@ -84,10 +84,10 @@ node scripts/check-package-boundaries.cjs
 
 The JS build first compiles `web/client` to ESM, then Vite bundles it with the
 existing browser modules. Generated `assets/` files and icon CSS stay ignored.
-Docker's asset stage copies both shared packages and the vendored framework;
-its native and browser stages use the same workspace. The dependency base cache
-key includes the workspace and framework source. The deployment compiler is
-pinned to the version used to verify this workspace migration.
+Docker's asset stage copies the shared SPA and client packages. Its native and
+browser stages resolve the same published Rabbita version. The dependency base
+cache key includes `moon.mod` and the dependency resolver; application source
+changes do not invalidate it. The deployment compiler remains pinned.
 
 ## Browser regression suite
 

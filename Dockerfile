@@ -6,7 +6,7 @@ RUN --network=none command -v groupadd && command -v useradd && command -v userm
 
 FROM base AS assets
 WORKDIR /src
-COPY moon.mod moon.work ./
+COPY moon.mod ./
 COPY web/spa/ web/spa/
 COPY web/client/ web/client/
 COPY js/ js/
@@ -23,7 +23,7 @@ FROM base AS runner
 RUN groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \
     && mkdir /workspace && chown runner:runner /workspace
-COPY --from=build /src/_build/native/release/build/hackwaly/moonhub/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
@@ -40,7 +40,7 @@ RUN groupadd --gid 10001 provider \
     && useradd --uid 10001 --gid provider --create-home provider \
     && mkdir -p /var/lib/moonhub/provider \
     && chown provider:provider /var/lib/moonhub/provider
-COPY --from=build /src/_build/native/release/build/hackwaly/moonhub/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY --chmod=755 deploy/provider-entrypoint.sh /usr/local/bin/moonhub-provider-entrypoint
@@ -52,7 +52,7 @@ RUN groupadd --gid 10001 git \
     && useradd --uid 10001 --gid git --create-home --shell /bin/sh git \
     && usermod --password '*' git \
     && chown root:root /home/git
-COPY --from=build /src/_build/native/release/build/hackwaly/moonhub/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY --from=assets /src/assets/ /app/assets/
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY LICENSE /usr/share/doc/moonhub/LICENSE

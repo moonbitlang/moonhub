@@ -25,7 +25,7 @@ try {
   execFileSync('git', ['clone', '--bare', '--no-hardlinks', '--quiet',
     join(root, 'testdata/repos/alice/demo.git'), join(repos, 'alice/demo.git')]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
-  server = spawn(join(root, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe'), [repos,
+  server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',
     '--root-user', 'browser-root', '--root-password', 'browser-test-password'], {
     cwd: directory, env: { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },

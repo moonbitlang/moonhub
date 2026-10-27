@@ -5,7 +5,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
-const binary = path.resolve('_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
+const binary = path.resolve('_build/native/debug/build/moonhub.exe');
 const providerToken = 'a'.repeat(64);
 const attemptId = '9007199254740993';
 const label = 'io.moonhub.pipeline.workspace=1';

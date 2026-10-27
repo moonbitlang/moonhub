@@ -11,7 +11,7 @@ const { chromium, request } = require('playwright');
 const repo = path.resolve(__dirname, '..');
 const output = path.join(repo, '_build', 'ui-browser');
 const metadata = path.join(output, 'preview.json');
-const binary = process.env.MOONHUB_BINARY || path.join(repo, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
+const binary = process.env.MOONHUB_BINARY || path.join(repo, '_build/native/debug/build/moonhub.exe');
 const keep = process.env.MOONHUB_KEEP_PREVIEW === '1';
 const reuse = process.env.MOONHUB_REUSE_PREVIEW === '1' && fs.existsSync(metadata);
 const previous = reuse ? JSON.parse(fs.readFileSync(metadata, 'utf8')) : null;

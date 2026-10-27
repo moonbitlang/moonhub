@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '..');
 const docker = process.env.MOONHUB_SMOKE_DOCKER === '1';
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-deploy-keys-'));
 const output = path.join(root, '_build', docker ? 'deploy-keys-docker' : 'deploy-keys-smoke');
-const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
+const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/moonhub.exe');
 const password = randomBytes(24).toString('hex');
 const env = { ...process.env, DB_PATH: path.join(temp, 'moonhub.db'),
   MOONHUB_REPO_ROOT: path.join(temp, 'repos'), MOONHUB_HOOKS_PATH: path.join(temp, 'hooks'),

@@ -77,7 +77,7 @@ async function main() {
   delete env.MOONHUB_ROOT_PASSWORD_FILE;
   delete env.MOONHUB_SSH_PUBLIC_URL;
   const log = fs.openSync(path.join(output, 'server.log'), 'w', 0o600);
-  server = spawn(process.env.MOONHUB_BINARY || path.join(repo, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe'), [
+  server = spawn(process.env.MOONHUB_BINARY || path.join(repo, '_build/native/debug/build/moonhub.exe'), [
     path.join(temp, 'repos'), '--assets', path.join(repo, 'assets'),
     '--host', '127.0.0.1', '--port', String(port), '--root-user', 'preview',
     '--root-password-file', path.join(temp, 'password'),
