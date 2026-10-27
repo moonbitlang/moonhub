@@ -100,19 +100,22 @@ fn render_sidebar(
         b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
       _ => ()
     }
-    b <+
-      "</div></details><div class=\"sidebar-scroll\"><nav class=\"nav-group\" aria-label=\"Workspace\">"
-    b <+
-      "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
-    if current_user is Some(_) {
+    b <+ "</div></details><div class=\"sidebar-scroll\">"
+    if !(navigation is RepositoryNavigation(_, _, _) ||
+      navigation is TeamNavigation(_, _)) {
+      b <+ "<nav class=\"nav-group\" aria-label=\"Workspace\">"
       b <+
-        "\{render_navigation_item("/-/notifications", "Inbox", "mail", navigation is WorkspaceNavigation("notifications"))}"
+        "\{render_navigation_item("/", "Repositories", "folders", navigation is WorkspaceNavigation("repositories"))}\{render_navigation_item("/-/teams", "Teams", "users", navigation is WorkspaceNavigation("teams"))}"
+      if current_user is Some(_) {
+        b <+
+          "\{render_navigation_item("/-/notifications", "Inbox", "mail", navigation is WorkspaceNavigation("notifications"))}"
+      }
+      b <+ "</nav>"
     }
-    b <+ "</nav>"
     match navigation {
       TeamNavigation(team, active) => {
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Team\"><p class=\"nav-group-label\">\{team.display_name}</p>"
+          "<nav class=\"nav-group\" aria-label=\"Team\"><p class=\"nav-group-label\">\{team.display_name}</p>"
         let base = "/\{team.name_key}"
         for
           (key, label, icon) in [
@@ -127,7 +130,7 @@ fn render_sidebar(
       }
       RepositoryNavigation(repo, active, manager) => {
         b <+
-          "<nav class=\"nav-group context-navigation\" aria-label=\"Repository\"><p class=\"nav-group-label\">Repository</p>"
+          "<nav class=\"nav-group\" aria-label=\"Repository\"><p class=\"nav-group-label\">Repository</p>"
         let base = repo_link(repo)
         for
           (suffix, key, label, icon) in [
