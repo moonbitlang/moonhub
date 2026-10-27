@@ -24,7 +24,6 @@ unchanged.
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Docker provider claim loop and constrained ephemeral-container adapter; no database dependency |
 | `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
-| `vendor/rabbita` | Pinned Rabbita runtime shared by native SSR and the browser, with the documented general-attribute API patch |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
@@ -159,8 +158,8 @@ The browser rendering boundary is described in [frontend architecture](frontend.
 `web/spa` has no business or HTTP dependency. It holds only presentation data;
 `web/client` never imports server or business packages. Existing feature templates
 remain server-owned during migration, while both initial rendering and later
-navigation use the same Rabbita document view. `moon.work` pins the patched
-framework source under `vendor/rabbita` for both targets.
+navigation use the same Rabbita document view. Both targets use the published
+Rabbita version declared in `moon.mod`, including its public attribute escape hatch.
 
 Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.

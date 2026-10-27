@@ -1,8 +1,0 @@
-import {
-  "moonbit-community/rabbita/internal/vdom",
-  "moonbit-community/rabbita/variant",
-  "moonbit-community/rabbita/dom",
-  "moonbit-community/rabbita/html",
-}
-
-supported_targets = "js+native+wasm"

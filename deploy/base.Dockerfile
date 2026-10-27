@@ -22,7 +22,6 @@ RUN sh /tmp/moonhub-install-moonbit.sh "$MOONBIT_VERSION" \
 # Resolve and download module dependencies without copying application sources.
 WORKDIR /src
 COPY moon.mod moon.work ./
-COPY vendor/rabbita/ vendor/rabbita/
 COPY scripts/resolve-dependencies.cjs /src/scripts/resolve-dependencies.cjs
 RUN moon update && node scripts/resolve-dependencies.cjs
 

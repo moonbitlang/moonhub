@@ -11,7 +11,6 @@ try {
   fs.mkdirSync(path.join(root, 'js'));
   fs.mkdirSync(path.join(root, 'scripts'));
   fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
-  fs.cpSync(path.join(__dirname, '../vendor/rabbita'), path.join(root, 'vendor/rabbita'), { recursive: true });
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
   for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));

@@ -37,9 +37,6 @@ ensure_base_image() {
         .dockerignore moon.mod moon.work js/package.json js/package-lock.json scripts/resolve-dependencies.cjs; do
         "${hash_command[@]}" "$file" || return 1
       done
-      while IFS= read -r file; do
-        "${hash_command[@]}" "$file" || return 1
-      done < <(find vendor/rabbita -type f | LC_ALL=C sort)
     } | "${hash_command[@]}"
   )
   key=${key%% *}

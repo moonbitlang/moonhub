@@ -1,5 +1,0 @@
-import {
-  "moonbit-community/rabbita/js",
-}
-
-warnings = "-unused_package"

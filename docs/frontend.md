@@ -58,9 +58,13 @@ behavior. The migration does not change the site's visual design.
 
 ## Framework source and builds
 
-`moon.work` includes the application and `vendor/rabbita`. Both SSR and JS use
-that exact source snapshot; see [the patch record](../vendor/rabbita/PATCHES.md).
-The workspace includes module names in output paths. The native debug CLI is:
+Both SSR and JS use the published `moonbit-community/rabbita@0.17.0` dependency
+declared in `moon.mod`. The template adapter uses its public `Attrs::attribute`
+escape hatch; no local framework patches are needed. The dependency base downloads
+the package before offline application builds. Rabbita is Apache-2.0 licensed;
+its license text is identical to the root `LICENSE`, which the final images also
+install as `rabbita-LICENSE`.
+The single-member `moon.work` retains module names in output paths. The native debug CLI is:
 
 ```sh
 _build/native/debug/build/hackwaly/moonhub/moonhub.exe --help
