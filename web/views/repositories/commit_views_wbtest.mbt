@@ -57,7 +57,9 @@ async test "commit changes escape patch content and normalize merge patches" {
         assert_eq(response.code, 200)
         assert_true(html.contains("<h2>Changes</h2>"))
         assert_true(
-          html.contains("<pre data-patch>diff --git a/README.md b/README.md"),
+          html.contains(
+            "<pre data-patch=\"\">diff --git a/README.md b/README.md",
+          ),
         )
         assert_true(
           html.contains(

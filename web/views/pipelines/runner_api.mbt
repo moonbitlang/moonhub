@@ -86,10 +86,7 @@ fn json_handler(
   handler : async (@moonback.Request) -> Json,
 ) -> @moonback.Handler {
   (req, res) => {
-    let (status, json) = (200, handler(req)) catch {
-      err if @async.is_cancellation_error(err) => raise err
-      err => runner_error(err)
-    }
+    let (status, json) = (200, handler(req)) catch { err => runner_error(err) }
     // Closing error connections avoids draining an oversized or unauthorized body.
     res.send_json(json, status~, headers={
       "Cache-Control": "no-store",
@@ -118,7 +115,6 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       }
       coordinator.read_source(root, id, token)
     } catch {
-      err if @async.is_cancellation_error(err) => raise err
       err => {
         let (status, json) = runner_error(err)
         res.send_json(json, status~, headers={

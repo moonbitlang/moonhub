@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, '_build/pipeline-push-smoke');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-push-'));
-const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/moonhub.exe');
+const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
 const password = randomBytes(24).toString('hex');
 const env = { ...process.env, DB_PATH: path.join(temp, 'moonhub.db'), MOONHUB_REPO_ROOT: path.join(temp, 'repos'),
   MOONHUB_BIN: binary, MOONHUB_HOOKS_PATH: path.join(temp, 'hooks'), MAIL_OUTBOX_DIR: path.join(temp, 'mail') };

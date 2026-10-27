@@ -24,7 +24,7 @@ pub fn[A] Database::with_client(Self, (DbClient) -> A raise) -> A raise
 
 type DbClient
 pub fn DbClient::batch_execute(Self, String) -> Unit raise @moondb.DbError
-pub fn DbClient::execute(Self, String, params? : Array[&DbParam]) -> Int raise @moondb.DbError
+pub fn DbClient::execute(Self, String, params? : Array[&DbParam]) -> Int32 raise @moondb.DbError
 pub fn DbClient::query_all(Self, String, params? : Array[&DbParam]) -> Array[DbRow] raise @moondb.DbError
 pub fn DbClient::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
 pub fn DbClient::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError
@@ -38,7 +38,7 @@ type DbRow
 pub fn[T : DbFromValue] DbRow::get_name(Self, String) -> T raise @moondb.DbError
 
 type DbTransaction
-pub fn DbTransaction::execute(Self, String, params? : Array[&DbParam]) -> Int raise @moondb.DbError
+pub fn DbTransaction::execute(Self, String, params? : Array[&DbParam]) -> Int32 raise @moondb.DbError
 pub fn DbTransaction::query_all(Self, String, params? : Array[&DbParam]) -> Array[DbRow] raise @moondb.DbError
 pub fn DbTransaction::query_one(Self, String, params? : Array[&DbParam]) -> DbRow raise @moondb.DbError
 pub fn DbTransaction::query_opt(Self, String, params? : Array[&DbParam]) -> DbRow? raise @moondb.DbError

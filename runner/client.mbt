@@ -85,7 +85,6 @@ async fn post_retry(
         post_once(server, id, token, operation, body)
       }),
     ) catch {
-      err if @async.is_cancellation_error(err) => raise err
       Rejected(code) if code < 500 && code != 429 => raise Rejected(code)
       InvalidResponse => raise InvalidResponse
       _ => None

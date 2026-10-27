@@ -273,7 +273,6 @@ pub async fn run_next_merge_check(
       check.get_name("name_key"),
       check.get_name("workflow_path"),
     ) catch {
-      err if @async.is_cancellation_error(err) => raise err
       err => {
         let message = match err {
           @workflow.InvalidWorkflow(message)
@@ -341,7 +340,6 @@ pub fn start_merge_checks_worker(
   group.spawn_bg(no_wait=true, () => {
     for ;; {
       let processed = run_next_merge_check(pool, root) catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => {
           println("merge checks worker failed; retrying")
           false

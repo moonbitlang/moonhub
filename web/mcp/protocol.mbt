@@ -608,7 +608,6 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                     "isError": false,
                   })
                 } catch {
-                  err if @async.is_cancellation_error(err) => raise err
                   err => {
                     let message = match err {
                       @domain.BadRequest(message~)
@@ -637,7 +636,6 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
             ({ "jsonrpc": "2.0", "id": id.unwrap(), "result": result } : Json)
           },
         ) catch {
-          err if @async.is_cancellation_error(err) => raise err
           ProtocolError(status, code, message, data) =>
             (status, rpc_error(id, code, message, data))
           @domain.Unauthorized(message~) => {

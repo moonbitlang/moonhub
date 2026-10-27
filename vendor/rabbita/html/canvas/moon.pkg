@@ -1,0 +1,5 @@
+import {
+  "moonbit-community/rabbita/dom",
+}
+
+warnings = "-unused_package"

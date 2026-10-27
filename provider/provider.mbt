@@ -124,23 +124,19 @@ pub async fn run(
   cleanup_stale_workspaces(options)
   for ;; {
     let assignment = claim(options, provider_token) catch {
-      err if @async.is_cancellation_error(err) => raise Stopped
       Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
       _ => {
         println("pipeline provider: claim temporarily unavailable")
-        @async.sleep(options.poll_ms) catch {
-          _ => raise Stopped
-        }
+        @async.sleep(options.poll_ms)
         continue
       }
     }
     match assignment {
-      None => @async.sleep(options.poll_ms) catch { _ => raise Stopped }
+      None => @async.sleep(options.poll_ms)
       Some(claimed) => {
         validate_assignment(claimed.assignment)
         execute_assignment(options, claimed.assignment, claimed.attempt_token) catch {
           CleanupFailure => raise CleanupFailure
-          err if @async.is_cancellation_error(err) => raise Stopped
           _ => println("pipeline provider: runner container failed")
         }
       }

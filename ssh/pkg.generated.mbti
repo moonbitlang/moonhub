@@ -30,7 +30,7 @@ pub fn revoke_own_ssh_key(@database.Database, @domain.CurrentUser, Int64) -> Uni
 
 pub fn revoke_repository_deploy_key(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
 
-pub async fn serve_git_ssh(@database.Database, SshCredential, String) -> Int
+pub async fn serve_git_ssh(@database.Database, SshCredential, String) -> Int32
 
 pub fn set_repository_deploy_key_access(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Bool) -> Unit raise
 

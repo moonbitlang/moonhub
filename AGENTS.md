@@ -107,7 +107,7 @@ from the module root:
 
 ```sh
 moon build --strip -j 1
-_build/native/debug/build/moonhub.exe --help
+_build/native/debug/build/hackwaly/moonhub/moonhub.exe --help
 ```
 
 The examples below use `moonhub`; substitute the executable path when using

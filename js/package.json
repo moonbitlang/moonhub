@@ -2,8 +2,10 @@
   "name": "js",
   "private": true,
   "scripts": {
-    "prebuild": "node scripts/generate-icons.mjs",
-    "build": "vite build"
+    "prebuild": "cd .. && moon build --target js --release web/client && cd js && node scripts/generate-icons.mjs",
+    "build": "vite build",
+    "check": "tsc -b",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@pierre/diffs": "1.4.2",
@@ -16,6 +18,7 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest"

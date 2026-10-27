@@ -13,7 +13,7 @@ pub async fn run(@protocol.Assignment, String, Options) -> Report
 pub(all) suberror RunnerError {
   InvalidConfiguration(String)
   TransportFailure
-  Rejected(Int)
+  Rejected(Int32)
   InvalidResponse
   Stopped(String)
 }
@@ -25,7 +25,7 @@ pub(all) struct Options {
   launcher : String
   allow_http : Bool
   unsafe_local : Bool
-  heartbeat_ms : Int
+  heartbeat_ms : Int32
 }
 
 pub struct Report {

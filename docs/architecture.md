@@ -24,13 +24,16 @@ unchanged.
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Docker provider claim loop and constrained ephemeral-container adapter; no database dependency |
 | `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
+| `vendor/rabbita` | Pinned Rabbita runtime shared by native SSR and the browser, with the documented general-attribute API patch |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
 | `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
 | `web/mcp` | Stateless MCP 2026-07-28 HTTP transport, tool catalog, business-service adapters and HTTP tests |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
-| `web/ui` | Shared page layout, navigation and reusable presentation |
+| `web/ui` | Shared page layout, navigation, reusable presentation and HTML/page-response negotiation |
+| `web/spa` | Serializable authorized page trees, trusted-template adapter and shared Rabbita document view; native and JS |
+| `web/client` | Browser-only Rabbita state, page subscriptions and hydration entry point |
 | `web/assets` | Asset manifest, asset tags and static file serving |
 | `web/views/*` | Feature-specific routes, request handling, rendering and HTTP tests |
 | `test_support` | Disposable database/Git fixtures, mock import transport and SMTP server |
@@ -151,6 +154,13 @@ worker consumes their immutable commit IDs under the shared repository lock and
 creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
+
+The browser rendering boundary is described in [frontend architecture](frontend.md).
+`web/spa` has no business or HTTP dependency. It holds only presentation data;
+`web/client` never imports server or business packages. Existing feature templates
+remain server-owned during migration, while both initial rendering and later
+navigation use the same Rabbita document view. `moon.work` pins the patched
+framework source under `vendor/rabbita` for both targets.
 
 Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.

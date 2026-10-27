@@ -8,7 +8,7 @@ const { execFileSync, spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const directory = path.join(root, '_build/editor-preview');
 const stateFile = path.join(directory, 'preview.json');
-const binary = path.join(root, '_build/native/debug/build/moonhub.exe');
+const binary = path.join(root, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
 const csrf = html => html.match(/name="csrf_token" value="([^"]+)"/)[1];
 let started;
 

@@ -1,0 +1,6 @@
+import {
+  "moonbitlang/core/debug",
+  "moonbit-community/rabbita/internal/key",
+}
+
+supported_targets = "js+native+wasm"

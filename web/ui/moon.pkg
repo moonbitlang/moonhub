@@ -5,11 +5,21 @@ import {
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/web/assets" @web_assets,
   "moonbitlang/moonback",
+  "hackwaly/moonhub/web/spa",
+  "moonbit-community/rabbita",
+  "moonbit-community/rabbita/html",
+  "moonbitlang/async/io",
+  "moonbitlang/core/buffer",
+  "moonbitlang/core/encoding/utf8",
 }
 
 import {
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async",
+  "moonbitlang/async/http",
+  "moonbitlang/core/json",
 } for "wbtest"
 
 supported_targets = "native"
+
+warnings = "-alert_experimental"

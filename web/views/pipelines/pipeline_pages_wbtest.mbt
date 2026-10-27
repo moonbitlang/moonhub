@@ -203,7 +203,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
           assert_true(
             body.contains("data-attempt-id=\"" + assignment.attempt_id + "\""),
           )
-          assert_true(body.contains("src=\"/assets/pipeline-logs-"))
+          assert_true(body.contains("href=\"/assets/pipeline-logs-"))
           assert_true(body.contains("live logs"))
           let (updates, json) = @web_testkit.http_get_path_with_cookie(
             port,

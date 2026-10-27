@@ -1,0 +1,15 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/rabbita/internal/any"
+
+// Values
+pub fn[T] erase(T) -> Any
+
+// Errors
+
+// Types and methods
+pub type Any
+pub fn[T] Any::into(Self) -> T
+
+// Type aliases
+
+// Traits

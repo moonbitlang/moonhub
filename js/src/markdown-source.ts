@@ -46,6 +46,7 @@ export function createMarkdownSource(textarea: HTMLTextAreaElement, onLimit: () 
 
   return {
     cm, container,
+    destroy() { textarea.removeEventListener("input", sync); instance.toTextArea(); delete textarea.dataset.markdownSource; },
     focus() { sync(); cm.refresh(); cm.focus(); },
     refresh() { sync(); cm.refresh(); },
     show(visible: boolean) { container.hidden = !visible; if (visible) cm.refresh(); },

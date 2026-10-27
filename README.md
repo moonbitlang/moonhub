@@ -30,6 +30,15 @@ available; full GitHub Actions compatibility is
 not yet implemented. See
 [the supported subset and delivery plan](docs/pipelines.md).
 
+## Browser frontend
+
+The browser uses Rabbita with native server-side rendering and client hydration.
+Direct URLs return a complete page; subsequent same-origin page navigation and
+ordinary forms update the Rabbita view without replacing the document. Pages
+remain usable through native links and forms when JavaScript is unavailable.
+See [SSR, hydration and browser tests](docs/frontend.md) for the current migration
+boundary and development workflow.
+
 ## Docker and Git SSH
 
 Run HTTP and Git-over-SSH services with Docker Compose. See

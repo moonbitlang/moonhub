@@ -203,7 +203,6 @@ pub fn start_cleanup_worker(
   group.spawn_bg(no_wait=true, () => {
     for ;; {
       cleanup_pending(pool, root) catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => println("attachment cleanup failed; retrying later")
       }
       @async.sleep(3600000)

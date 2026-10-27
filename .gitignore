@@ -23,3 +23,7 @@ backups/
 deploy/deploy.env
 **/id_ed25519
 __pycache__/
+
+# Browser integration test output.
+/js/test-results/
+/js/playwright-report/

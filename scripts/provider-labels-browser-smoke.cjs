@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '..');
 const output = path.join(root, '_build', 'provider-labels-browser');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-provider-labels-'));
 const password = randomBytes(24).toString('hex');
-const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/moonhub.exe');
+const binary = process.env.MOONHUB_BINARY || path.join(root, '_build/native/debug/build/hackwaly/moonhub/moonhub.exe');
 const env = { ...process.env, DB_PATH: path.join(temp, 'moonhub.db'), MAIL_OUTBOX_DIR: path.join(temp, 'mail') };
 let server, browser, keep = false;
 

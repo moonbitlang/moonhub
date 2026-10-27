@@ -1,0 +1,9 @@
+import {
+  "moonbit-community/rabbita/html",
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+}
+
+warnings = "-alert_experimental"
+
+supported_targets = "native+js"

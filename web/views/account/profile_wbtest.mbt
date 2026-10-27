@@ -5,7 +5,7 @@ async test "users change their own display name and never their username" {
       port, "/-/settings/profile", alice,
     )
     assert_eq(page.code, 200)
-    assert_true(body.contains("value=\"alice\" readonly"))
+    assert_true(body.contains("value=\"alice\" readonly=\"\""))
     assert_true(body.contains("value=\"Alice\""))
     assert_true(body.contains("cannot be changed"))
     assert_true(body.contains("No email on file."))

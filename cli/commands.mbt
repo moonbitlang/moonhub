@@ -658,7 +658,6 @@ async fn discover_repo(server : String, explicit : String?) -> String {
         "GIT_TERMINAL_PROMPT": "0",
       })
     }) catch {
-      err if @async.is_cancellation_error(err) => raise err
       _ => continue
     }
     if code == 0 {

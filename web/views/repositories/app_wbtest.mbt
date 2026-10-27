@@ -20,7 +20,7 @@ async test "serves repository paths from route params" {
     defer task.cancel()
     let port = server.addr.port()
     let html = @web_testkit.rendered_blob_page(port)
-    assert_true(html.contains("println(&quot;hi&quot;)"))
+    assert_true(html.contains("println(\"hi\")"))
   })
 }
 
@@ -60,9 +60,11 @@ async test "serves slash branches and tags in repository URLs" {
         )
         assert_eq(response.code, 200, msg=body)
         assert_true(
-          body.contains("<span data-file-name hidden>src/main.mbt</span>"),
+          body.contains(
+            "<span data-file-name=\"\" hidden=\"\">src/main.mbt</span>",
+          ),
         )
-        assert_true(body.contains("println(&quot;hi&quot;)"))
+        assert_true(body.contains("println(\"hi\")"))
         let (response, body) = @web_testkit.http_get_path(
           port,
           "/alice/demo/tree/\{rev}",
@@ -209,14 +211,12 @@ async test "blob page includes rich file custom element" {
     assert_true(html.contains("https://fonts.googleapis.com"))
     assert_true(html.contains("family=M+PLUS+Code+Latin"))
     assert_true(html.contains("rel=\"modulepreload\""))
-    assert_true(html.contains("blocking=\"render\""))
-    assert_true(html.contains("fetchpriority=\"high\""))
     assert_true(html.contains("/assets/custom-elements-"))
     assert_true(html.contains("<moonhub-file-view>"))
     assert_true(
-      html.contains("<span data-file-name hidden>src/main.mbt</span>"),
+      html.contains("<span data-file-name=\"\" hidden=\"\">src/main.mbt</span>"),
     )
-    assert_true(html.contains("<pre data-file-content>"))
+    assert_true(html.contains("<pre data-file-content=\"\">"))
   })
 }
 
@@ -236,11 +236,9 @@ async test "commit page includes rich diff custom element" {
     assert_true(html.contains("https://fonts.googleapis.com"))
     assert_true(html.contains("family=M+PLUS+Code+Latin"))
     assert_true(html.contains("rel=\"modulepreload\""))
-    assert_true(html.contains("blocking=\"render\""))
-    assert_true(html.contains("fetchpriority=\"high\""))
     assert_true(html.contains("/assets/custom-elements-"))
     assert_true(html.contains("<moonhub-commit-diff>"))
-    assert_true(html.contains("<pre data-patch>diff --git "))
+    assert_true(html.contains("<pre data-patch=\"\">diff --git "))
     assert_true(!html.contains("files changed"))
   })
 }

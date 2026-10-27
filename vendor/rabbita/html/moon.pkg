@@ -1,0 +1,18 @@
+import {
+  "moonbit-community/rabbita/internal/vdom",
+  "moonbit-community/rabbita/dom",
+  "moonbit-community/rabbita/common",
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/variant",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/immut/vector",
+  "moonbitlang/core/list",
+}
+
+import {
+  "moonbit-community/rabbita",
+} for "test"
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"

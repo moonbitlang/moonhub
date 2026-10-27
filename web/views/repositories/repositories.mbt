@@ -8,7 +8,6 @@ async fn ssh_import_available(
     ignore(@repository.team_import_credentials(config, owner))
     true
   } catch {
-    err if @async.is_cancellation_error(err) => raise err
     _ => false
   }
 }

@@ -1,0 +1,71 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/rabbita/internal/runtime"
+
+import {
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/internal/duplix",
+  "moonbit-community/rabbita/internal/slotmap",
+  "moonbit-community/rabbita/internal/vdom",
+  "moonbit-community/rabbita/sub",
+  "moonbitlang/core/ref",
+}
+
+// Values
+pub let ambient_host : @ref.Ref[&Host]
+
+pub fn[Model : Eq, Msg] create_state_machine((@cmd.Emit[Msg]) -> (Model, @cmd.Cmd), (Model, Msg, @cmd.Emit[Msg]) -> (Model, @cmd.Cmd), subscriptions? : (Model, @cmd.Emit[Msg]) -> @sub.Sub) -> (@duplix.Node[Model], @cmd.Emit[Msg])
+
+pub fn[Model : Eq, Msg, Input : Eq] create_state_machine_with_input((@cmd.Emit[Msg], Input) -> (Model, @cmd.Cmd), (Model, Input, Msg, @cmd.Emit[Msg]) -> (Model, @cmd.Cmd), subscriptions? : (Model, Input, @cmd.Emit[Msg]) -> @sub.Sub, @duplix.Node[Input]) -> (@duplix.Node[Model], @cmd.Emit[Msg])
+
+// Errors
+
+// Types and methods
+type BrowserHost
+pub fn BrowserHost::BrowserHost(element_id? : String, () -> @duplix.Node[@vdom.VNode]) -> Self
+pub fn BrowserHost::add(Self, @cmd.Cmd) -> Unit
+pub fn BrowserHost::cleanup(Self) -> Unit
+pub fn BrowserHost::flush(Self) -> Unit
+pub fn BrowserHost::get_base_uri(Self) -> String
+pub fn BrowserHost::get_stores(Self) -> @slotmap.SlotMap[Store]
+pub fn BrowserHost::inject_url_changed(Self, String) -> @cmd.Cmd
+pub fn BrowserHost::inject_url_request(Self, String) -> @cmd.Cmd
+pub fn BrowserHost::queue_command(Self, @cmd.Cmd) -> Unit
+pub fn BrowserHost::set_url_changed_injector(Self, @cmd.Injector[String]) -> Unit
+pub fn BrowserHost::set_url_request_injector(Self, @cmd.Injector[String]) -> Unit
+pub impl @cmd.Context for BrowserHost
+pub impl @cmd.Scheduler for BrowserHost
+pub impl Host for BrowserHost
+
+type HydrationHost
+pub fn HydrationHost::HydrationHost(() -> @duplix.Node[@vdom.VNode]) -> Self
+pub fn HydrationHost::add(Self, @cmd.Cmd) -> Unit
+pub fn HydrationHost::cleanup(Self) -> Unit
+pub fn HydrationHost::flush(Self) -> Unit
+pub fn HydrationHost::get_base_uri(Self) -> String
+pub fn HydrationHost::get_stores(Self) -> @slotmap.SlotMap[Store]
+pub fn HydrationHost::inject_url_changed(Self, String) -> @cmd.Cmd
+pub fn HydrationHost::inject_url_request(Self, String) -> @cmd.Cmd
+pub fn HydrationHost::queue_command(Self, @cmd.Cmd) -> Unit
+pub fn HydrationHost::set_url_changed_injector(Self, @cmd.Injector[String]) -> Unit
+pub fn HydrationHost::set_url_request_injector(Self, @cmd.Injector[String]) -> Unit
+pub impl @cmd.Context for HydrationHost
+pub impl @cmd.Scheduler for HydrationHost
+pub impl Host for HydrationHost
+
+type Store
+
+// Type aliases
+pub using @vdom {type Children}
+
+pub using @vdom {type Props}
+
+pub using @vdom {type VDom}
+
+pub using @vdom {type VNode}
+
+// Traits
+pub trait Host : @cmd.Scheduler {
+  fn flush(Self) -> Unit
+  fn cleanup(Self) -> Unit
+  fn get_stores(Self) -> @slotmap.SlotMap[Store]
+}

@@ -1,0 +1,9 @@
+import {
+  "moonbit-community/rabbita/dom",
+  "moonbit-community/rabbita/js",
+  "moonbit-community/rabbita/cmd",
+}
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"

@@ -83,9 +83,12 @@ async test "site administrators reach site settings from every page sidebar" {
         body.contains("aria-label=\"Site settings\" title=\"Site settings\""),
         msg=path,
       )
+      let administration = body
+        .split("<p class=\"nav-group-label\">Administration</p>")
+        .collect()[1]
       assert_true(
-        body.contains(
-          "<p class=\"nav-group-label\">Administration</p><a class=\"nav-item\" href=\"/-/admin/settings/ssh\"",
+        administration[:administration.find("</a>").unwrap()].contains(
+          "href=\"/-/admin/settings/ssh\"",
         ),
         msg=path,
       )

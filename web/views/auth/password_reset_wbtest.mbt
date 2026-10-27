@@ -169,7 +169,7 @@ async test "recovery responses do not disclose account existence and invalid for
     )
     assert_eq(response.code, 200)
     assert_eq(
-      known.replace(old="alice@example.com", new="unknown@example.com"),
+      known.replace_all(old="alice@example.com", new="unknown@example.com"),
       unknown,
     )
     let (response, throttled) = @web_testkit.http_post_path_with_cookie(

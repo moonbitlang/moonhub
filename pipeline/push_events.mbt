@@ -162,7 +162,6 @@ pub fn start_push_worker(
   group.spawn_bg(no_wait=true, () => {
     for ;; {
       let processed = run_next_push_event(pool, root) catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => {
           println("pipeline push event failed; will retry")
           false

@@ -7,9 +7,9 @@ import {
 }
 
 // Values
-pub let format_version : Int
+pub let format_version : Int32
 
-pub let max_source_bytes : Int
+pub let max_source_bytes : Int32
 
 pub fn parse(String) -> Workflow raise InvalidWorkflow
 
@@ -29,7 +29,7 @@ pub struct Job {
   name : String
   needs : Array[String]
   runs_on : Array[String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
   steps : Array[Step]
 } derive(ToJson, @debug.Debug, @json.FromJson)
 pub fn Job::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
@@ -55,7 +55,7 @@ pub struct Step {
   shell : String?
   working_directory : String
   env : Map[String, String]
-  timeout_minutes : Int?
+  timeout_minutes : Int32?
 } derive(ToJson, @debug.Debug, @json.FromJson)
 pub fn Step::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Step::to_json(Self) -> Json

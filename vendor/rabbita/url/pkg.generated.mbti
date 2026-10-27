@@ -1,0 +1,69 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonbit-community/rabbita/url"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn parse(String) -> Url raise
+
+// Errors
+
+// Types and methods
+pub(all) enum Protocol {
+  Http
+  Https
+  Other(String)
+} derive(Compare, Eq, @debug.Debug)
+pub fn Protocol::compare(Self, Self) -> Int32
+pub fn Protocol::equal(Self, Self) -> Bool
+pub fn Protocol::not_equal(Self, Self) -> Bool
+pub fn Protocol::op_ge(Self, Self) -> Bool
+pub fn Protocol::op_gt(Self, Self) -> Bool
+pub fn Protocol::op_le(Self, Self) -> Bool
+pub fn Protocol::op_lt(Self, Self) -> Bool
+pub fn Protocol::output(Self, &Logger) -> Unit
+pub fn Protocol::to_repr(Self) -> @debug.Repr
+pub fn Protocol::to_string(Self) -> String
+pub impl Show for Protocol
+
+pub(all) struct Url {
+  protocol : Protocol
+  host : String
+  port : Int32?
+  path : String
+  query : String?
+  fragment : String?
+} derive(Compare, Eq, @debug.Debug)
+pub fn Url::compare(Self, Self) -> Int32
+pub fn Url::equal(Self, Self) -> Bool
+pub fn Url::not_equal(Self, Self) -> Bool
+pub fn Url::op_ge(Self, Self) -> Bool
+pub fn Url::op_gt(Self, Self) -> Bool
+pub fn Url::op_le(Self, Self) -> Bool
+pub fn Url::op_lt(Self, Self) -> Bool
+pub fn Url::output(Self, &Logger) -> Unit
+pub fn Url::to_repr(Self) -> @debug.Repr
+pub fn Url::to_string(Self) -> String
+pub impl Show for Url
+
+pub(all) enum UrlRequest {
+  Internal(Url)
+  External(String)
+} derive(Compare, Eq, @debug.Debug)
+pub fn UrlRequest::compare(Self, Self) -> Int32
+pub fn UrlRequest::equal(Self, Self) -> Bool
+pub fn UrlRequest::not_equal(Self, Self) -> Bool
+pub fn UrlRequest::op_ge(Self, Self) -> Bool
+pub fn UrlRequest::op_gt(Self, Self) -> Bool
+pub fn UrlRequest::op_le(Self, Self) -> Bool
+pub fn UrlRequest::op_lt(Self, Self) -> Bool
+pub fn UrlRequest::output(Self, &Logger) -> Unit
+pub fn UrlRequest::to_repr(Self) -> @debug.Repr
+pub fn UrlRequest::to_string(Self) -> String
+pub impl Show for UrlRequest
+
+// Type aliases
+
+// Traits

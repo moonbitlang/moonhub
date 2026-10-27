@@ -1,0 +1,12 @@
+import {
+  "moonbit-community/rabbita/dom",
+  "moonbit-community/rabbita/common",
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/url",
+  "moonbit-community/rabbita/internal/key",
+  "moonbitlang/core/ref",
+}
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"
