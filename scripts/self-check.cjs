@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { performance } = require('node:perf_hooks');
 
 // Archive checkouts have no Git index. Track both content and the file set so
@@ -30,14 +30,14 @@ function assertUnchanged(before, after) {
   assert.equal(changed.length, 0, 'moon fmt/info changed inputs:\n' + changed.join('\n'));
 }
 
-function runStage(name, command, args, { cwd, timeoutMs, progressMs = 30000, log = console.log }) {
+function runStage(name, command, args, { cwd, timeoutMs, progressMs = 30000, log = console.log, env = process.env }) {
   const started = performance.now();
   const elapsed = () => ((performance.now() - started) / 1000).toFixed(1) + 's';
   log(`[self-check] START ${name} (timeout ${timeoutMs / 1000}s)`);
   return new Promise((resolve, reject) => {
     // The runner uses Linux. A separate group lets a stage deadline stop npm's
     // child processes too, instead of leaving installers behind after failure.
-    const child = spawn(command, args, { cwd, stdio: 'inherit', detached: true });
+    const child = spawn(command, args, { cwd, env, stdio: 'inherit', detached: true });
     let timedOut = false;
     const progress = setInterval(() => log(`[self-check] RUNNING ${name} (${elapsed()})`), progressMs);
     const timeout = setTimeout(() => {
@@ -68,9 +68,40 @@ function runStage(name, command, args, { cwd, timeoutMs, progressMs = 30000, log
   });
 }
 
+function compilerVersion(root, env) {
+  const result = spawnSync('moonc', ['-v'], { cwd: root, env, encoding: 'utf8', timeout: 30000 });
+  if (result.error || result.status !== 0) return undefined;
+  return result.stdout.trim().match(/^v(\d+\.\d+\.\d+\+[a-zA-Z0-9]+)(?:\s|$)/)?.[1];
+}
+
+async function toolchainEnvironment(root, { env = process.env, run = runStage } = {}) {
+  // Share the deployment pin so an existing runner cannot silently regenerate
+  // interfaces with a different compiler. Never install through its library symlinks.
+  const dockerfile = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8');
+  const pins = [...dockerfile.matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+)$/gm)];
+  assert.equal(pins.length, 1, 'Expected one exact MOONBIT_VERSION pin in deploy/base.Dockerfile');
+  const version = pins[0][1];
+  if (compilerVersion(root, env) === version) return env;
+
+  const home = path.join(root, '.tmp', 'self-check-moon', version);
+  const selected = { ...env, MOON_HOME: home, PATH: path.join(home, 'bin') + path.delimiter + (env.PATH || '') };
+  const receipt = path.join(home, '.moonhub-installed-version');
+  const installed = fs.existsSync(receipt) && fs.readFileSync(receipt, 'utf8') === version;
+  if (!installed || compilerVersion(root, selected) !== version) {
+    fs.mkdirSync(home, { recursive: true });
+    fs.rmSync(receipt, { force: true });
+    await run('Pinned MoonBit toolchain', 'sh', ['deploy/install-moonbit.sh', version],
+      { cwd: root, env: selected, timeoutMs: 300000 });
+    assert.equal(compilerVersion(root, selected), version, 'Installed MoonBit compiler does not match the deployment pin');
+    fs.writeFileSync(receipt, version);
+  }
+  return selected;
+}
+
 async function main() {
   const root = path.resolve(__dirname, '..');
-  const run = (name, command, args, timeoutMs = 300000) => runStage(name, command, args, { cwd: root, timeoutMs });
+  const env = await toolchainEnvironment(root);
+  const run = (name, command, args, timeoutMs = 300000) => runStage(name, command, args, { cwd: root, timeoutMs, env });
   await run('Toolchain versions', 'moon', ['version', '--all'], 30000);
   await run('Mooncakes index', 'moon', ['update']);
   await run('MoonBit dependencies', process.execPath, ['scripts/resolve-dependencies.cjs']);
@@ -88,5 +119,5 @@ async function main() {
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }
 
-module.exports = { snapshotInputs, assertUnchanged, runStage };
+module.exports = { snapshotInputs, assertUnchanged, runStage, toolchainEnvironment };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

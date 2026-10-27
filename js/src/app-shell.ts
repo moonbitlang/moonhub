@@ -48,6 +48,15 @@ function finishForms() {
   });
 }
 
+// Call only before a commit or mutation starts. Invalidate the sequence too:
+// an already received response can still be waiting for its body.
+function cancelNavigation() {
+  request?.abort(); request = undefined;
+  serial++;
+  document.documentElement.removeAttribute('aria-busy');
+  finishForms();
+}
+
 function scrollToPage(url: URL, position?: [number, number]) {
   const main = document.querySelector<HTMLElement>('#main-content');
   main?.focus({ preventScroll: true });
@@ -117,7 +126,8 @@ async function navigate(url: URL, options: { body?: URLSearchParams; pop?: numbe
     lifetime.abort();
     if (options.pop !== undefined) historyIndex = options.pop;
     else {
-      historyIndex++;
+      // A superseded popstate may have moved the browser without mounting it.
+      historyIndex = history.state.moonhub + 1;
       history.pushState({ moonhub: historyIndex }, '', destination);
     }
     currentURL = destination;
@@ -154,8 +164,10 @@ function installNavigation() {
     if (submitting || committing) { event.preventDefault(); return; }
     event.preventDefault();
     if (url.pathname === currentURL.pathname && url.search === currentURL.search && url.hash) {
+      cancelNavigation();
       positions.set(historyIndex, [scrollX, scrollY]);
-      history.pushState({ moonhub: ++historyIndex }, '', url);
+      historyIndex = history.state.moonhub + 1;
+      history.pushState({ moonhub: historyIndex }, '', url);
       currentURL = url;
       scrollToPage(url);
       return;
@@ -183,8 +195,10 @@ function installNavigation() {
   window.addEventListener('popstate', event => {
     if (typeof event.state?.moonhub !== 'number') { location.reload(); return; }
     if (restoringHistory === event.state.moonhub) { restoringHistory = undefined; return; }
-    // Hash-only history entries already point at the currently mounted page.
+    if (submitting || committing) { restoreHistory(event.state.moonhub); return; }
+    // Returning to the mounted page also supersedes any pending page fetch.
     if (location.pathname === currentURL.pathname && location.search === currentURL.search) {
+      cancelNavigation();
       historyIndex = event.state.moonhub;
       currentURL = new URL(location.href);
       scrollToPage(currentURL, positions.get(historyIndex));

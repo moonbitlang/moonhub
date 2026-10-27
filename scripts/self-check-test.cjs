@@ -4,13 +4,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { snapshotInputs, assertUnchanged, runStage } = require('./self-check.cjs');
+const { snapshotInputs, assertUnchanged, runStage, toolchainEnvironment } = require('./self-check.cjs');
 
 test('cold jobs initialize the registry before check and stop at the first failure', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-self-check-'));
   try {
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'bin'));
+    fs.mkdirSync(path.join(root, 'deploy'));
+    fs.copyFileSync(path.join(__dirname, '../deploy/base.Dockerfile'), path.join(root, 'deploy/base.Dockerfile'));
+    const pin = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8').match(/^ARG MOONBIT_VERSION=(.+)$/m)[1];
+    fs.writeFileSync(path.join(root, 'bin/moonc'), '#!/bin/sh\necho "v' + pin + ' (test)"\n', { mode: 0o755 });
     fs.copyFileSync(path.join(__dirname, 'self-check.cjs'), path.join(root, 'scripts/self-check.cjs'));
     fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
     const log = path.join(root, 'commands');
@@ -86,3 +90,52 @@ test('archive checks ignore generated builds, dependency trees and runner HOME',
     assertUnchanged(before, snapshotInputs(root));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const mode of ['install', 'failure', 'wrong-version']) {
+  test(`a mismatched runner uses an isolated pinned toolchain: ${mode}`, async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-toolchain-'));
+    try {
+      fs.mkdirSync(path.join(root, 'deploy'));
+      fs.mkdirSync(path.join(root, 'shared/bin'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'shared/lib'));
+      fs.writeFileSync(path.join(root, 'shared/lib/keep'), 'shared library');
+      fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.17+testpin\n');
+      const compiler = path.join(root, 'shared/bin/moonc');
+      const oldCompiler = '#!/bin/sh\necho "v0.10.15+old (test)"\n';
+      fs.writeFileSync(compiler, oldCompiler, { mode: 0o755 });
+      const env = { ...process.env, MOON_HOME: path.join(root, 'shared'), PATH: path.join(root, 'shared/bin') + ':' + process.env.PATH };
+      let installs = 0;
+      const run = async (name, command, args, options) => {
+        installs++;
+        assert.equal(command, 'sh');
+        assert.deepEqual(args, ['deploy/install-moonbit.sh', '0.10.17+testpin']);
+        assert.equal(options.env.HOME, env.HOME);
+        assert.equal(options.env.MOON_HOME, path.join(root, '.tmp/self-check-moon/0.10.17+testpin'));
+        assert.equal(options.env.PATH.split(path.delimiter)[0], path.join(options.env.MOON_HOME, 'bin'));
+        if (mode === 'failure') throw new Error('Download failed');
+        fs.mkdirSync(path.join(options.env.MOON_HOME, 'bin'), { recursive: true });
+        const version = mode === 'wrong-version' ? '0.10.15+old' : '0.10.17+testpin';
+        fs.writeFileSync(path.join(options.env.MOON_HOME, 'bin/moonc'), '#!/bin/sh\necho "v' + version + ' (test)"\n', { mode: 0o755 });
+      };
+      if (mode === 'install') {
+        const selected = await toolchainEnvironment(root, { env, run });
+        assert.equal(installs, 1);
+        // Child processes (including npm) must inherit the same compiler/home.
+        const result = await runStage('Selected toolchain', process.execPath,
+          ['-e', `const {execFileSync}=require('node:child_process'); if (!execFileSync('moonc',['-v'],{encoding:'utf8'}).startsWith('v0.10.17+testpin ')) process.exit(8); if (process.env.MOON_HOME !== ${JSON.stringify(selected.MOON_HOME)}) process.exit(9);`],
+          { cwd: root, env: selected, timeoutMs: 30000, log: () => {} });
+        assert.equal(result, undefined);
+        assert.deepEqual(await toolchainEnvironment(root, { env, run }), selected);
+        assert.equal(installs, 1, 'reuse a verified installation');
+        fs.writeFileSync(path.join(selected.MOON_HOME, 'bin/moonc'), oldCompiler, { mode: 0o755 });
+        await toolchainEnvironment(root, { env, run });
+        assert.equal(installs, 2, 'repair a cached compiler that no longer matches');
+      } else {
+        await assert.rejects(toolchainEnvironment(root, { env, run }), mode === 'failure' ? /Download failed/ : /does not match/);
+        assert.equal(fs.existsSync(path.join(root, '.tmp/self-check-moon/0.10.17+testpin/.moonhub-installed-version')), false);
+      }
+      assert.equal(fs.readFileSync(compiler, 'utf8'), oldCompiler);
+      assert.equal(fs.readFileSync(path.join(root, 'shared/lib/keep'), 'utf8'), 'shared library');
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+}

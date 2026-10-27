@@ -204,3 +204,57 @@ test('direct authenticated visits hydrate editors and code views, and anchors re
   expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+for (const action of ['forward', 'anchor'] as const) {
+  test(`returning to the mounted page cancels a pending history fetch via ${action}`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/-/login'); await hydrated(page);
+    await page.evaluate(() => { (window as any).documentIdentity = document; });
+    await page.getByRole('link', { name: 'Forgot password?' }).click();
+    await expect(page.getByRole('heading', { name: 'Forgot password', exact: true })).toBeVisible();
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+    await page.evaluate(() => {
+      const next = document.createElement('a'); next.href = '/-/reset-password';
+      document.body.append(next); next.click(); next.remove();
+    });
+    await expect(page.getByRole('heading', { name: 'Reset password', exact: true })).toBeVisible();
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+
+    let release!: () => void;
+    let intercepted!: () => void;
+    let fulfilled!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { intercepted = resolve; });
+    const completed = new Promise<void>(resolve => { fulfilled = resolve; });
+    await page.route('**/-/forgot-password', async route => {
+      const response = await route.fetch();
+      intercepted(); await gate;
+      await route.fulfill({ response }).catch(() => {});
+      fulfilled();
+    });
+    await page.goBack(); await started;
+    await expect(page).toHaveURL(/forgot-password$/);
+    if (action === 'forward') await page.goForward();
+    else await page.evaluate(() => {
+      const anchor = document.createElement('a'); anchor.href = '/-/reset-password#main-content';
+      document.body.append(anchor); anchor.click(); anchor.remove();
+    });
+    await expect(page).toHaveURL(action === 'forward' ? /reset-password$/ : /reset-password#main-content$/);
+    // Cancellation clears busy immediately, before the delayed response arrives.
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+    release(); await completed;
+    await expect(page.getByRole('heading', { name: 'Reset password', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => history.state.moonhub)).toBe(2);
+    await page.unroute('**/-/forgot-password');
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Forgot password', exact: true })).toBeVisible();
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+    expect(await page.evaluate(() => history.state.moonhub)).toBe(1);
+    await page.goForward();
+    await expect(page.getByRole('heading', { name: 'Reset password', exact: true })).toBeVisible();
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+    expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
