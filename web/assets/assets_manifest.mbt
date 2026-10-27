@@ -72,7 +72,7 @@ fn custom_elements_head(
 ) -> @moonback.Html {
   let url = custom_elements_tsx_asset_path(entry_to_asset_path_map)
   let raw =
-    $|<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Code+Latin:wght@400;500;700&amp;display=swap"><link rel="modulepreload" href="\{url}"><script type="module" blocking="render" fetchpriority="high" src="\{url}"></script>
+    $|<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Code+Latin:wght@400;500;700&amp;display=swap"><link rel="modulepreload" href="\{url}">
   @moonback.Html::raw(raw)
 }
 
@@ -86,6 +86,6 @@ pub fn repository_assets_head(
     if code_view {
       b <+ "\{custom_elements_head(assets)}"
     }
-    b <+ "<script type=\"module\" src=\"\{script}\"></script>"
+    b <+ "<link rel=\"modulepreload\" href=\"\{script}\">"
   })
 }

@@ -20,7 +20,7 @@ pub fn authenticate_user(@database.Database, String, String) -> LoginResult? rai
 
 pub fn can_manage_team(@database.Database, @domain.CurrentUser, Int64) -> Bool raise
 
-pub fn create_access_token(@database.Database, @domain.CurrentUser, String, String, Int) -> String raise
+pub fn create_access_token(@database.Database, @domain.CurrentUser, String, String, Int32) -> String raise
 
 pub fn create_invitation_session_token(@database.DbTransaction, Int64) -> String raise @moondb.DbError
 
@@ -54,7 +54,7 @@ pub fn new_password_error(String) -> String?
 
 pub fn personal_namespace(@database.Database, @domain.CurrentUser) -> TeamSummary? raise
 
-pub fn random_hex(Int) -> String
+pub fn random_hex(Int32) -> String
 
 pub fn request_password_reset(@database.Database, String) -> Unit raise
 

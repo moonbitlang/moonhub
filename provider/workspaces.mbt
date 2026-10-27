@@ -15,7 +15,6 @@ async fn docker_control(
     )
     (code, output.text())
   }) catch {
-    err if @async.is_cancellation_error(err) => raise Stopped
     _ => raise DockerFailure(125)
   }
 }

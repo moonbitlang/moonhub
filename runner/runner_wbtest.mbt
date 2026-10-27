@@ -336,6 +336,45 @@ async test "cancellation kills shell and background process group" {
 }
 
 ///|
+async test "task cancellation reports cancelled and kills the process group" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let server = fake_server()
+    let completed : Ref[String?] = { val: None, }
+    let terminated = Ref(false)
+    @async.with_task_group(group => {
+      let task = group.spawn(() => {
+        defer {
+          terminated.val = true
+        }
+        ignore(
+          execute_assignment(
+            test_assignment([
+              test_step("long", "(sleep 1; touch survivor) & wait"),
+            ]),
+            test_options(launcher, workspace),
+            (operation, body, until) => {
+              if operation == "complete" {
+                let request : @protocol.CompleteRequest = @json.from_json(body)
+                completed.val = Some(request.conclusion)
+              }
+              server.post(operation, body, until)
+            },
+          ),
+        )
+      })
+      while !server.events.any(event => event.state == "running") {
+        @async.sleep(10)
+      }
+      task.cancel()
+    })
+    assert_true(terminated.val)
+    assert_eq(completed.val, Some("cancelled"))
+    @async.sleep(1100)
+    assert_true(!@fs.exists(workspace + "/survivor"))
+  })
+}
+
+///|
 async test "lost lease stops execution without waiting indefinitely for heartbeat" {
   @test_support.with_runner_workspace((_, launcher, workspace) => {
     let server = fake_server(available=false, remaining_ms=1400L)

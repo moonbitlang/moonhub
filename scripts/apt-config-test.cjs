@@ -48,7 +48,7 @@ try {
     assert.ok(fs.readFileSync(path.join(root, compose), 'utf8').includes('MOONHUB_BASE_IMAGE: ${MOONHUB_BASE_IMAGE:-moonhub-base:local}'));
   }
   for (const [key, value] of Object.entries(args)) assert.ok(dockerfile.includes(`ARG ${key}=${value}`));
-  assert.ok(dockerfile.includes('RUN moon update && moon tree --package'));
+  assert.ok(dockerfile.includes('RUN moon update && node scripts/resolve-dependencies.cjs'));
   assert.ok(dockerfile.includes('RUN npm ci --no-audit --no-fund'));
   const mainDockerfile = fs.readFileSync(path.join(root, 'Dockerfile'), 'utf8');
   assert.ok(mainDockerfile.includes('ARG MOONHUB_BASE_IMAGE=moonhub-base:local'));

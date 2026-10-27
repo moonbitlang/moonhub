@@ -83,7 +83,6 @@ pub async fn deliver_next(pool : @database.Database, policy : Policy) -> Bool {
     },
     error=Rejected,
   ) catch {
-    err if @async.is_cancellation_error(err) => raise err
     _ => 0
   }
   let success = code >= 200 && code < 300
@@ -129,7 +128,6 @@ pub fn start_worker(
         recovery_after = recover_refs(pool, root, after=recovery_after)
         deliver_next(pool, policy)
       } catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => {
           println("webhook worker could not process an event; retrying")
           false

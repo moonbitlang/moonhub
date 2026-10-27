@@ -7,7 +7,7 @@ import {
 }
 
 // Values
-pub let action_assignment_version : Int
+pub let action_assignment_version : Int32
 
 pub let cancel_grace_ms : Int64
 
@@ -15,7 +15,7 @@ pub let lease_ms : Int64
 
 pub let max_log_bytes : Int64
 
-pub let max_log_chunk_bytes : Int
+pub let max_log_chunk_bytes : Int32
 
 pub let max_log_chunks : Int64
 
@@ -23,13 +23,13 @@ pub let max_source_bytes : Int64
 
 pub fn parse_decimal(String) -> Int64?
 
-pub let version : Int
+pub let version : Int32
 
 // Errors
 
 // Types and methods
 pub(all) struct Assignment {
-  version : Int
+  version : Int32
   attempt_id : String
   run_id : String
   job_id : String
@@ -46,7 +46,7 @@ pub fn Assignment::to_json(Self) -> Json
 pub fn Assignment::to_repr(Self) -> @debug.Repr
 
 pub(all) struct ClaimRequest {
-  version : Int
+  version : Int32
   request_id : String
   attempt_token : String
 } derive(ToJson, @json.FromJson)
@@ -54,7 +54,7 @@ pub fn ClaimRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDec
 pub fn ClaimRequest::to_json(Self) -> Json
 
 pub(all) struct CompleteRequest {
-  version : Int
+  version : Int32
   conclusion : String
   last_log_sequence : String
 } derive(ToJson, @json.FromJson)
@@ -65,7 +65,7 @@ pub(all) struct JobPlan {
   id : String
   name : String
   runs_on : Array[String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
   steps : Array[StepPlan]
 } derive(ToJson, @debug.Debug, @json.FromJson)
 pub fn JobPlan::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
@@ -73,7 +73,7 @@ pub fn JobPlan::to_json(Self) -> Json
 pub fn JobPlan::to_repr(Self) -> @debug.Repr
 
 pub(all) struct LeaseState {
-  version : Int
+  version : Int32
   execution_id : String
   attempt_id : String
   state : String
@@ -99,7 +99,7 @@ pub fn LogChunk::to_json(Self) -> Json
 pub fn LogChunk::to_repr(Self) -> @debug.Repr
 
 pub(all) struct LogRequest {
-  version : Int
+  version : Int32
   sequence : String
   step_id : String
   stream : String
@@ -109,7 +109,7 @@ pub fn LogRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecod
 pub fn LogRequest::to_json(Self) -> Json
 
 pub(all) struct StartRequest {
-  version : Int
+  version : Int32
   execution_id : String
 } derive(ToJson, @json.FromJson)
 pub fn StartRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
@@ -123,7 +123,7 @@ pub(all) struct StepPlan {
   shell : String
   working_directory : String
   env : Map[String, String]
-  timeout_minutes : Int
+  timeout_minutes : Int32
 } derive(ToJson, @debug.Debug)
 pub fn StepPlan::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn StepPlan::to_json(Self) -> Json
@@ -131,10 +131,10 @@ pub fn StepPlan::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for StepPlan
 
 pub(all) struct StepRequest {
-  version : Int
+  version : Int32
   step_id : String
   state : String
-  exit_code : Int
+  exit_code : Int32
 } derive(ToJson, @debug.Debug, @json.FromJson)
 pub fn StepRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn StepRequest::to_json(Self) -> Json
@@ -143,14 +143,14 @@ pub fn StepRequest::to_repr(Self) -> @debug.Repr
 pub(all) struct StepState {
   step_id : String
   state : String
-  exit_code : Int
+  exit_code : Int32
 } derive(ToJson, @debug.Debug, @json.FromJson)
 pub fn StepState::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn StepState::to_json(Self) -> Json
 pub fn StepState::to_repr(Self) -> @debug.Repr
 
 pub(all) struct VersionRequest {
-  version : Int
+  version : Int32
 } derive(ToJson, @json.FromJson)
 pub fn VersionRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn VersionRequest::to_json(Self) -> Json

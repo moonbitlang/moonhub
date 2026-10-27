@@ -155,7 +155,6 @@ async fn claim(
     let result = Some(
       post_claim(options, provider_token, request_id, attempt_token),
     ) catch {
-      err if @async.is_cancellation_error(err) => raise err
       Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
       Rejected(code) => raise Rejected(code)
       _ => None

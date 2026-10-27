@@ -25,7 +25,6 @@ async fn recover_refs(
       defer lock.close()
       @repository.recover_webhook_refs_locked(pool, scope, dir)
     } catch {
-      err if @async.is_cancellation_error(err) => raise err
       _ =>
         println(
           "webhook push recovery requires inspection for repository \{scope.id}",

@@ -439,7 +439,6 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
             scope,
             @web_context.request_form_token(req, "pipelines:create"),
             @pipeline.dispatch_choices(pool, root, actor, scope.repo, branch) catch {
-              err if @async.is_cancellation_error(err) => raise err
               @domain.BadRequest(_) => {
                 let current = @pipeline.dispatch_choices(
                   pool,

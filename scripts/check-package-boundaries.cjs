@@ -9,7 +9,7 @@ const graph = JSON.parse(execFileSync('moon', ['tree', '--package', '--json'], {
   maxBuffer: 10 * 1024 * 1024,
 }));
 assert.equal(graph.status, 'success', JSON.stringify(graph.error));
-assert.equal(graph.version, 2, 'Update this check for the new moon tree schema');
+assert.ok([2, 3].includes(graph.version), 'Update this check for the new moon tree schema');
 
 const allowed = {
   '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli'],
@@ -41,7 +41,9 @@ const allowed = {
   'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/api', 'web/context'],
   'web/assets': ['domain'],
   'web/context': ['webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
-  'web/ui': ['domain', 'identity', 'repository', 'collaboration', 'web/assets'],
+  'web/ui': ['domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/spa'],
+  'web/spa': [],
+  'web/client': ['web/spa'],
   'web/views/notifications': ['collaboration', 'domain', 'web/context', 'web/ui'],
   'web/views/attachments': ['attachments', 'domain', 'repository', 'web/context', 'web/ui'],
   'web/views/auth': ['domain', 'database', 'identity', 'web/context', 'web/ui'],
@@ -65,7 +67,7 @@ const allowed = {
     'web', 'web/context', 'web/views/repositories',
   ],
 };
-const local = new Set(graph.root);
+const local = new Set(graph.root.filter(id => graph.nodes[id].module === "hackwaly/moonhub"));
 const failures = [];
 for (const id of local) {
   const name = graph.nodes[id].rel;

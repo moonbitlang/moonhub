@@ -4,7 +4,6 @@ fn api_handler(
 ) -> @moonback.Handler {
   (req, res) => {
     let (status, json) = (200, handler(req)) catch {
-      err if @async.is_cancellation_error(err) => raise err
       err => {
         let (status, code, message) = match err {
           @domain.Unauthorized(message~) => (401, "unauthorized", message)

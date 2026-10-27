@@ -174,7 +174,6 @@ async fn execute_assignment(
   let result = run_container(
     options, assignment, attempt_token, assignment_path, workspace_volume,
   ) catch {
-    err if @async.is_cancellation_error(err) => raise err
     Stopped => raise Stopped
     _ => raise DockerFailure(125)
   }

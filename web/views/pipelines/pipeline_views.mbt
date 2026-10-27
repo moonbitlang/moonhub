@@ -440,7 +440,7 @@ fn render_pipeline_detail(
       let script = @web_assets.vite_manifest_entry_path(
         assets, "src/pipeline-logs.ts",
       )
-      b <+ "<script type=\"module\" src=\"\{script}\"></script>"
+      b <+ "<link rel=\"modulepreload\" href=\"\{script}\">"
     }),
     current_user=Some(user),
     navigation=@web_ui.RepositoryNavigation(scope.repo, "pipelines", manager),

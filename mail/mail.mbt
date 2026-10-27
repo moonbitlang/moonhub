@@ -201,7 +201,6 @@ pub async fn run_mail_worker(
       worker_id,
       mail_transport_from_db(pool),
     ) catch {
-      err if @async.is_cancellation_error(err) => raise err
       err => {
         println("mail worker error: \{err}")
         false
@@ -227,7 +226,6 @@ pub async fn deliver_next_email(
         mark_email_delivered(pool, message.id, provider_message_id)
         true
       } catch {
-        err if @async.is_cancellation_error(err) => raise err
         err => {
           println("email delivery \{message.id} failed: \{err}")
           mark_email_failed(pool, message.id, "\{err}")

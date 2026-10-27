@@ -30,7 +30,9 @@ unchanged.
 | `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
 | `web/mcp` | Stateless MCP 2026-07-28 HTTP transport, tool catalog, business-service adapters and HTTP tests |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
-| `web/ui` | Shared page layout, navigation and reusable presentation |
+| `web/ui` | Shared page layout, navigation, reusable presentation and HTML/page-response negotiation |
+| `web/spa` | Serializable authorized page trees, trusted-template adapter and shared Rabbita document view; native and JS |
+| `web/client` | Browser-only Rabbita state, page subscriptions and hydration entry point |
 | `web/assets` | Asset manifest, asset tags and static file serving |
 | `web/views/*` | Feature-specific routes, request handling, rendering and HTTP tests |
 | `test_support` | Disposable database/Git fixtures, mock import transport and SMTP server |
@@ -151,6 +153,13 @@ worker consumes their immutable commit IDs under the shared repository lock and
 creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
+
+The browser rendering boundary is described in [frontend architecture](frontend.md).
+`web/spa` has no business or HTTP dependency. It holds only presentation data;
+`web/client` never imports server or business packages. Existing feature templates
+remain server-owned during migration, while both initial rendering and later
+navigation use the same Rabbita document view. Both targets use the published
+Rabbita version declared in `moon.mod`, including its public attribute escape hatch.
 
 Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.

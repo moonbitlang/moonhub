@@ -635,6 +635,10 @@ class MoonhubCommitDiffElement extends HTMLElement {
   #root: Root | undefined;
 
   connectedCallback() {
+    queueMicrotask(() => { if (this.isConnected) this.mount(); });
+  }
+
+  private mount() {
     if (this.#root) {
       return;
     }
@@ -678,6 +682,10 @@ class MoonhubFileViewElement extends HTMLElement {
   #root: Root | undefined;
 
   connectedCallback() {
+    queueMicrotask(() => { if (this.isConnected) this.mount(); });
+  }
+
+  private mount() {
     if (this.#root) {
       return;
     }

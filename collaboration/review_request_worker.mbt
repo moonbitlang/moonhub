@@ -49,7 +49,6 @@ pub fn start_review_requests_worker(
   group.spawn_bg(no_wait=true, allow_failure=true, () => {
     for ;; {
       let processed = refresh_next_requested_review(pool, root) catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => false
       }
       if !processed {

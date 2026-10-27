@@ -227,7 +227,6 @@ async fn Runtime::execute_steps(
         )
       }
     } catch {
-      err if @async.is_cancellation_error(err) => raise err
       Stopped(reason) => raise Stopped(reason)
       TransportFailure | Rejected(_) | InvalidResponse => raise Stopped("lost")
       _ => {
@@ -268,7 +267,6 @@ async fn Runtime::checkout(
     raise InvalidConfiguration("checkout requires an empty source workspace")
   }
   let archive = @async.with_timeout(30000, fetch) catch {
-    err if @async.is_cancellation_error(err) => raise err
     _ => raise InvalidConfiguration("source download failed")
   }
   self.check_live()
@@ -296,7 +294,6 @@ async fn Runtime::monitor(self : Runtime) -> String {
       let status = @async.with_timeout(Int64::max(1L, remaining).to_int(), () => {
         self.request("heartbeat", ToJson::to_json(request))
       }) catch {
-        err if @async.is_cancellation_error(err) => raise err
         _ => {
           self.stopped = if monotonic_ms() >= self.deadline {
             "timed_out"
@@ -340,7 +337,6 @@ async fn extract_source(workspace : String, archive : String) -> Unit {
     inherit_env=false,
     extra_env={ "PATH": "/usr/bin:/bin" },
   ) catch {
-    err if @async.is_cancellation_error(err) => raise err
     _ => 125
   }
   guard code == 0 else { raise Stopped("failure") }
@@ -378,55 +374,52 @@ async fn execute_assignment(
     stopped: "",
     reporting_until: 0L,
   }
-  let mut interrupted : Error? = None
-  let outcome = try {
-    let request : @protocol.StartRequest = {
-      version: @protocol.version,
-      execution_id: runtime.execution_id,
-    }
-    let state = runtime.request("start", ToJson::to_json(request))
-    guard state.state == "running" || state.cancel_requested else {
-      raise Stopped("lost")
-    }
-    guard parse_runner_int64(state.log_sequence) == 0L else {
-      raise Stopped("lost")
-    }
-    runtime.check_live()
-    @fs.mkdir(options.workspace + "/.home", permission=0o700)
-    @fs.mkdir(options.workspace + "/.tmp", permission=0o700)
-    let moon_home = options.workspace + "/.home/.moon"
-    @fs.mkdir(moon_home, permission=0o700)
-    for entry in ["bin", "lib", "include", "config.json"] {
-      let installed = "/opt/moon/" + entry
-      if @fs.exists(installed) {
-        @fs.symlink(target=installed, moon_home + "/" + entry)
+  let completed = @async.handle_cancellation(() => {
+    try {
+      let request : @protocol.StartRequest = {
+        version: @protocol.version,
+        execution_id: runtime.execution_id,
       }
-    }
-    @async.any([
-      () => {
-        if !assignment.job.steps.any(step => !step.uses.is_empty()) &&
-          source is Some(_) {
-          runtime.checkout(scratch, source) catch {
-            err if @async.is_cancellation_error(err) => raise err
-            _ => {
-              runtime.upload("", "stderr", "runner: source checkout failed\n")
-              raise Stopped("failure")
+      let state = runtime.request("start", ToJson::to_json(request))
+      guard state.state == "running" || state.cancel_requested else {
+        raise Stopped("lost")
+      }
+      guard parse_runner_int64(state.log_sequence) == 0L else {
+        raise Stopped("lost")
+      }
+      runtime.check_live()
+      @fs.mkdir(options.workspace + "/.home", permission=0o700)
+      @fs.mkdir(options.workspace + "/.tmp", permission=0o700)
+      let moon_home = options.workspace + "/.home/.moon"
+      @fs.mkdir(moon_home, permission=0o700)
+      for entry in ["bin", "lib", "include", "config.json"] {
+        let installed = "/opt/moon/" + entry
+        if @fs.exists(installed) {
+          @fs.symlink(target=installed, moon_home + "/" + entry)
+        }
+      }
+      @async.any([
+        () => {
+          if !assignment.job.steps.any(step => !step.uses.is_empty()) &&
+            source is Some(_) {
+            runtime.checkout(scratch, source) catch {
+              _ => {
+                runtime.upload("", "stderr", "runner: source checkout failed\n")
+                raise Stopped("failure")
+              }
             }
           }
-        }
-        runtime.check_live()
-        runtime.execute_steps(scratch, source)
-      },
-      () => runtime.monitor(),
-    ])
-  } catch {
-    err if @async.is_cancellation_error(err) => {
-      interrupted = Some(err)
-      "cancelled"
+          runtime.check_live()
+          runtime.execute_steps(scratch, source)
+        },
+        () => runtime.monitor(),
+      ])
+    } catch {
+      Stopped(reason) => reason
+      _ => "lost"
     }
-    Stopped(reason) => reason
-    _ => "lost"
-  }
+  })
+  let outcome = completed.unwrap_or("cancelled")
   let report = @async.protect_from_cancel(() => {
     let outcome = try {
       runtime.cleanup_processes()
@@ -474,8 +467,8 @@ async fn execute_assignment(
       _ => { conclusion: outcome, reported: false, steps: runtime.steps, }
     }
   })
-  if interrupted is Some(err) {
-    raise err
+  if completed is None {
+    @async.pause()
   }
   report
 }

@@ -55,7 +55,7 @@ pub(all) enum MailTransportConfig {
 
 pub struct SmtpSettings {
   host : String
-  port : Int
+  port : Int32
   security : String
   auth : String
   username : String

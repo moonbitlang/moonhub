@@ -186,7 +186,6 @@ pub async fn run_next_merge_job(
       @async.pause()
       raise err
     }
-    err if @async.is_cancellation_error(err) => raise err
     err => {
       println("merge request \{mr.id} failed: \{err}")
       let result : String = pool.with_client(client => {
@@ -244,7 +243,6 @@ pub fn start_merge_worker(
   group.spawn_bg(no_wait=true, () => {
     for ;; {
       let processed = run_next_merge_job(pool, root) catch {
-        err if @async.is_cancellation_error(err) => raise err
         err => {
           println("merge worker error: \{err}")
           false

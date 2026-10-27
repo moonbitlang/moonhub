@@ -63,7 +63,7 @@ pub async fn protected_form(@moonback.Request, String) -> Map[String, String]
 
 pub fn query_rev(@moonback.Request) -> String?
 
-pub async fn read_bounded_body(@moonback.Request, Int) -> Bytes
+pub async fn read_bounded_body(@moonback.Request, Int32) -> Bytes
 
 pub async fn read_form(@moonback.Request) -> Map[String, String]
 

@@ -17,11 +17,11 @@ pub fn image_links(String) -> Array[ImageLink]
 
 pub fn markdown(Attachment) -> String
 
-pub let maximum_attachment_bytes : Int
+pub let maximum_attachment_bytes : Int32
 
-pub let maximum_body_bytes : Int
+pub let maximum_body_bytes : Int32
 
-pub let maximum_image_bytes : Int
+pub let maximum_image_bytes : Int32
 
 pub async fn prepare_markdown(@database.Database, String, @repository.RepositoryScope, @domain.CurrentUser, String) -> String
 
@@ -55,8 +55,8 @@ pub struct Download {
 }
 
 pub struct ImageLink {
-  start : Int
-  end : Int
+  start : Int32
+  end : Int32
   url : String
   image : Bool
 }

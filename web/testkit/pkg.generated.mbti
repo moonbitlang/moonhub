@@ -13,31 +13,31 @@ pub let browser_app_module : @moonback.Module
 
 pub fn extract_attr(String, String, String) -> String
 
-pub async fn http_get_path(Int, String) -> (@http.Response, String)
+pub async fn http_get_path(Int32, String) -> (@http.Response, String)
 
-pub async fn http_get_path_with_cookie(Int, String, @http.Cookie) -> (@http.Response, String)
+pub async fn http_get_path_with_cookie(Int32, String, @http.Cookie) -> (@http.Response, String)
 
-pub async fn http_head(Int, String) -> @http.Response
+pub async fn http_head(Int32, String) -> @http.Response
 
-pub async fn http_post_path_with_cookie(Int, String, String, @http.Cookie) -> (@http.Response, String)
+pub async fn http_post_path_with_cookie(Int32, String, String, @http.Cookie) -> (@http.Response, String)
 
 pub fn invited_admin_password_from_outbox(@database.Database) -> String raise
 
 pub fn latest_invited_admin_outbox_id(@database.Database) -> Int64 raise
 
-pub async fn login_test_user(Int, String, String) -> @http.Cookie
+pub async fn login_test_user(Int32, String, String) -> @http.Cookie
 
 pub let private_error_test_detail : String
 
-pub async fn profile_form_token(Int, @http.Cookie) -> String
+pub async fn profile_form_token(Int32, @http.Cookie) -> String
 
-pub async fn rendered_blob_page(Int) -> String
+pub async fn rendered_blob_page(Int32) -> String
 
-pub async fn rendered_commit_page(Int) -> String
+pub async fn rendered_commit_page(Int32) -> String
 
-pub async fn repository_test_token(Int, String, @http.Cookie) -> String
+pub async fn repository_test_token(Int32, String, @http.Cookie) -> String
 
-pub async fn settings_form_token(Int, @http.Cookie) -> String
+pub async fn settings_form_token(Int32, @http.Cookie) -> String
 
 pub fn test_app_config(repo_root? : String, assets_root? : String) -> @moonback.Config
 
@@ -51,11 +51,11 @@ pub let test_repo_root : String
 
 pub let test_ssh_addresses : @repository.SshAddressConfig
 
-pub async fn with_production_test_app(async (@moonback.App, Int, @database.Database) -> Unit) -> Unit
+pub async fn with_production_test_app(async (@moonback.App, Int32, @database.Database) -> Unit) -> Unit
 
-pub async fn with_repository_test_app(async (Int, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit) -> Unit
+pub async fn with_repository_test_app(async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit) -> Unit
 
-pub async fn with_ssh_settings_app(async (Int, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig, repo_root? : String) -> Unit
+pub async fn with_ssh_settings_app(async (Int32, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig, repo_root? : String) -> Unit
 
 // Errors
 

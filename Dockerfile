@@ -5,8 +5,12 @@ ENV PATH="/opt/moon/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 RUN --network=none command -v groupadd && command -v useradd && command -v usermod && command -v gosu
 
 FROM base AS assets
+WORKDIR /src
+COPY moon.mod ./
+COPY web/spa/ web/spa/
+COPY web/client/ web/client/
+COPY js/ js/
 WORKDIR /src/js
-COPY js/ ./
 RUN --network=none npm run build
 
 FROM base AS build
@@ -22,6 +26,7 @@ RUN groupadd --gid 10001 runner \
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
+COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE
 ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
 USER 10001:10001
@@ -37,6 +42,7 @@ RUN groupadd --gid 10001 provider \
     && chown provider:provider /var/lib/moonhub/provider
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
+COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY --chmod=755 deploy/provider-entrypoint.sh /usr/local/bin/moonhub-provider-entrypoint
 WORKDIR /var/lib/moonhub/provider
 ENTRYPOINT ["/usr/local/bin/moonhub-provider-entrypoint"]
@@ -48,6 +54,8 @@ RUN groupadd --gid 10001 git \
     && chown root:root /home/git
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
 COPY --from=assets /src/assets/ /app/assets/
+COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
+COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY db/ /app/db/
 # Git only records the executable bit, so migration files created under a
 # restrictive umask reach the image unreadable to the git user.

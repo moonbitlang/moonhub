@@ -289,7 +289,6 @@ pub async fn run_next_repository_job(
       @async.pause()
       raise err
     }
-    err if @async.is_cancellation_error(err) => raise err
     err => {
       println("repository job \{job.id} failed: \{err}")
       let message = match err {
@@ -323,7 +322,6 @@ pub fn start_repository_worker(
   group.spawn_bg(no_wait=true, () => {
     for ;; {
       let processed = run_next_repository_job(pool, root, config, addresses~) catch {
-        err if @async.is_cancellation_error(err) => raise err
         err => {
           println("repository worker error: \{err}")
           false

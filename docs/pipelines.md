@@ -805,7 +805,15 @@ MOONHUB_RUNNER_MEMORY=4g
 MOONHUB_RUNNER_CPUS=2
 ```
 
-`scripts/self-check.cjs` initializes the registry in the fresh job HOME, then
+`scripts/self-check.cjs` selects the exact compiler pinned by
+`deploy/base.Dockerfile` before running any MoonBit commands. If the runner's
+compiler differs, it installs that version under `.tmp/self-check-moon/` with
+`deploy/install-moonbit.sh`, verifies it and passes the isolated `MOON_HOME` and
+`PATH` to every stage, including npm's MoonBit prebuild. It never replaces the
+runner's shared toolchain or follows its library symlinks. A completed installation
+is reused only when its compiler still matches the pin.
+
+The script initializes the registry in the selected Moon home, then
 prints each stage's start, result and elapsed time, with a progress line every
 30 seconds while a command is running. Dependency installation has a five-minute
 stage deadline; native tests and compilation each have ten minutes. The workflow's

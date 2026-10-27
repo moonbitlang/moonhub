@@ -1,0 +1,16 @@
+import {
+  "hackwaly/moonhub/web/spa",
+  "moonbit-community/rabbita",
+  "moonbit-community/rabbita/sub",
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/dom",
+  "moonbitlang/core/json",
+}
+
+supported_targets = "js"
+
+warnings = "-alert_experimental"
+
+options(
+  link: { "js": { "exports": [ "start" ], "format": "esm" } },
+)

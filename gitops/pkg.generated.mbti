@@ -28,7 +28,7 @@ pub async fn list_tree(String, String, String) -> Array[TreeEntry]
 
 pub async fn merge_git(String, Array[String], input? : String) -> String
 
-pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int, identity? : String, strict_utf8? : Bool) -> (Int, String)
+pub async fn merge_git_command(String, Array[String], input? : String, limit? : Int32, identity? : String, strict_utf8? : Bool) -> (Int32, String)
 
 pub async fn merged_tree(String, Revision) -> String
 
@@ -54,7 +54,7 @@ pub async fn validate_diff_anchor(String, Revision, String?, String, String, Int
 
 // Errors
 pub(all) suberror GitError {
-  GitCommandFailed(code~ : Int, output~ : String)
+  GitCommandFailed(code~ : Int32, output~ : String)
 }
 pub fn GitError::output(Self, &Logger) -> Unit
 pub fn GitError::to_string(Self) -> String
@@ -103,7 +103,7 @@ pub struct RevisionComparison {
   base_sha : String
   head_sha : String
   commit : CommitInfo?
-  parent_count : Int
+  parent_count : Int32
 }
 
 pub struct TreeEntry {

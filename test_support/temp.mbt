@@ -3,7 +3,6 @@
 // and async/fs tmpdir currently ignores TMPDIR on Linux.
 async fn executable_tmpdir(prefix : String) -> String {
   @fs.mkdir("_build/test-fixtures", permission=0o700) catch {
-    err if @async.is_cancellation_error(err) => raise err
     err => {
       guard @fs.kind("_build/test-fixtures", follow_symlink=false) is Directory else {
         raise err

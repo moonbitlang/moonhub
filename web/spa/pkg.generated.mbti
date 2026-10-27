@@ -1,0 +1,42 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/spa"
+
+import {
+  "moonbit-community/rabbita/html",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn bootstrap_json(Page) -> String
+
+pub fn document(Page, Int32) -> @html.Html
+
+pub fn parse_page(String) -> Page raise
+
+// Errors
+
+// Types and methods
+pub(all) enum Node {
+  Element(String, Array[(String, String)], Array[Node])
+  Text(String)
+} derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+pub fn Node::equal(Self, Self) -> Bool
+pub fn Node::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Node::not_equal(Self, Self) -> Bool
+pub fn Node::to_json(Self) -> Json
+pub fn Node::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Page {
+  head : Array[Node]
+  body : Array[Node]
+} derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+pub fn Page::equal(Self, Self) -> Bool
+pub fn Page::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Page::not_equal(Self, Self) -> Bool
+pub fn Page::to_json(Self) -> Json
+pub fn Page::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
