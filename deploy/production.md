@@ -48,6 +48,21 @@ labels Web, Runner and controller images with the exact commit. It requires
 the commit-tagged task image to the configured ECR repository. Immutable ECR tags
 are recommended. The operator settings file and credentials are excluded from builds.
 
+## Worker network and public addresses
+
+Workers accept no inbound connections; SSM and task traffic are outbound. They
+can use private addresses only when a NAT/proxy or equivalent egress arrangement
+provides every required destination. SSM/ECR endpoints alone do not provide
+Internet access for Ubuntu packages, MoonBit and npm dependencies.
+
+The current production VPC has an Internet Gateway route and no NAT or VPC
+endpoints. Its disposable workers therefore use automatically assigned public
+IPv4 addresses for outbound connectivity. Do not simply disable public addresses
+on that template: provide and verify another egress path first. The private-address follow-up is tracked in Issue #2,
+“Run ASG workers without public IPv4 addresses”. No Elastic IP is
+reserved for workers; termination releases their public addresses. Keep worker
+security-group inbound rules empty.
+
 ## Launch template and initial enrollment
 
 The committed `worker-bootstrap.sh` installs Docker/AWS CLI/SSM, pulls the pinned
@@ -176,8 +191,34 @@ moonhub ci logs RUN --attempt ATTEMPT --after 0 --repo compiler/moonhub --json
 Record the deployed source SHA, ECR image digest, numeric template version, backup
 locations, successful run/attempt and final zero-capacity observation in the MR.
 A queued check or a registered worker alone does not establish task execution.
-Keep the controller running during the configured idle timeout (initially 600
-seconds) and confirm both desired capacity and instance counts return to zero.
+Keep the controller running during the configured idle timeout (the enrollment
+default is 600 seconds; production uses 60 seconds to reduce idle cost) and confirm both desired capacity and instance counts return to zero.
+
+## Post-validation resource cleanup
+
+Keep the controller running after a successful check. First verify the task
+container and its `io.moonhub.pipeline.workspace=1` volume have disappeared. Wait
+for the configured idle timeout, then verify both dedicated ASGs have desired
+capacity zero **and** no instances. Confirm the terminated workers' disposable
+root volumes were deleted; an empty queue alone is not a cleanup result.
+
+Inventory only the resources created for this rollout. Delete unused experimental
+launch templates after checking that neither ASG nor the saved provider configuration
+references them. Remove bootstrap parameters and local per-instance token files
+only for confirmed terminated instances; the controller normally deletes its
+parameter on successful retirement. Use `describe-parameters` for inventory rather
+than printing parameter values. Never delete controller enrollment credentials.
+
+If a temporary AMI, snapshot, EBS volume, EIP, bucket or test instance was created,
+record its ID and remove it when no deployed resource or recovery procedure needs
+it. Do not run account-wide cleanup or delete unrelated untagged resources. Keep
+the deployed ECR image and a deliberate recovery image; remove only confirmed
+unused experimental images. Preserve the operational ASGs, worker role/profile,
+networking and active launch template so future queued jobs can start normally.
+
+Record deleted resource IDs and the final capacity/disk/parameter checks in the
+MR. Verify Web health and controller status again after cleanup. Remove temporary
+root-private administration sessions/scripts used during rollout.
 
 ## Troubleshooting observed during production rollout
 
