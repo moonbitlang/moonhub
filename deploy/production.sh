@@ -90,7 +90,7 @@ build() {
       "dependency-base": {context: $context, dockerfile: "deploy/base.Dockerfile", platforms: [$platform],
         args: {MOONHUB_USE_CN_MIRRORS: $cn, MOONBIT_VERSION: $moon}},
       web: app("runtime"; $web), runner: app("runner"; $runner), controller: app("runner-controller"; $controller)}}' > "$BUILD_STAGE/bake.json"
-  docker buildx bake --builder "$BUILDX" --file "$BUILD_STAGE/bake.json" --progress plain
+  docker buildx bake --allow="fs.read=$BUILD_STAGE" --builder "$BUILDX" --file "$BUILD_STAGE/bake.json" --progress plain
   matching_images
   docker stop "$BUILDER" >/dev/null
   BUILD_STARTED=0
@@ -177,7 +177,12 @@ case "${1:-help}" in
     [ "$#" = 2 ] || exit 2
     clean_checkout
     git check-ref-format --branch "$2" >/dev/null
-    git fetch --no-tags origin "refs/heads/$2:refs/remotes/origin/$2"
+    origin=$(git remote get-url origin)
+    if [[ "$origin" = /* ]] && [ -d "$origin" ]; then
+      git -c "safe.directory=$origin" fetch --no-tags origin "refs/heads/$2:refs/remotes/origin/$2"
+    else
+      git fetch --no-tags origin "refs/heads/$2:refs/remotes/origin/$2"
+    fi
     git switch "$2"
     git merge --ff-only "refs/remotes/origin/$2"
     git rev-parse HEAD

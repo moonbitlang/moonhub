@@ -63,6 +63,7 @@ else if(a[0]==='info')console.log('linux/x86_64');
 else if(a[0]==='inspect')process.exit(1);
 else if(a[0]==='buildx' && a[1]==='bake'){
  const b=JSON.parse(fs.readFileSync(a[a.indexOf('--file')+1]));
+ assert.ok(a.includes('--allow=fs.read='+b.target.web.context));
  assert.deepEqual(b.group.default.targets,['web','runner','controller']);
  assert.equal(b.target.web.labels['org.opencontainers.image.revision'],process.env.TEST_REVISION);
  assert.ok(!fs.existsSync(path.join(b.target.web.context,'private-secret')));
