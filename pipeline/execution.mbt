@@ -1,4 +1,18 @@
 ///|
+let eligible_provider_jobs : String =
+  #|SELECT j.id, j.run_id FROM pipeline_job j JOIN pipeline_run r ON r.id = j.run_id
+  #|JOIN pipeline_provider provider ON provider.id = ?
+  #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
+  #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
+  #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
+  #|AND r.definition_version = ?
+  #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
+  #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
+  #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
+  #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
+  #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
+
+///|
 let attempt_select : String =
   #|SELECT a.*, j.run_id, j.job_key, r.repository_id, r.requested_by_user_id,
   #|  r.cancel_requested, r.definition_json, r.definition_version, r.commit_sha,
@@ -287,13 +301,31 @@ pub fn Coordinator::claim(
       message="request_id must be 32 lowercase hexadecimal characters",
     )
   }
-  self.authenticate_provider(token)
+  check_token(token)
   ignore(self.expire_attempts())
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
         let now = (self.clock)()
-        let provider = authenticate_provider(tx, token)
+        let worker = tx.query_opt(
+          "SELECT id FROM pipeline_worker WHERE token_hash=?",
+          params=[@identity.hash_token(token)],
+        )
+        let worker_id : Int64? = worker.map(row => row.get_name("id"))
+        let provider = if worker_id is Some(_) {
+          let w = authenticate_worker(tx, token)
+          tx.query_one("SELECT * FROM pipeline_provider WHERE id=?", params=[
+            (w.get_name("provider_id") : Int64),
+          ])
+        } else {
+          let p = authenticate_provider(tx, token)
+          guard (p.get_name("mode") : String).is_empty() else {
+            raise @domain.Forbidden(
+              message="Managed controllers cannot claim tasks.",
+            )
+          }
+          p
+        }
         let provider_id : Int64 = provider.get_name("id")
         ignore(
           tx.execute(
@@ -304,8 +336,8 @@ pub fn Coordinator::claim(
         advance_all_runs(tx)
         let hash = @identity.hash_token(request.attempt_token)
         let previous = tx.query_opt(
-          "SELECT id, token_hash FROM pipeline_job_attempt WHERE provider_id = ? AND request_id = ?",
-          params=[provider_id, request.request_id],
+          "SELECT id, token_hash FROM pipeline_job_attempt WHERE provider_id = ? AND request_id = ? AND COALESCE(worker_id,0) = ?",
+          params=[provider_id, request.request_id, worker_id.unwrap_or(0L)],
         )
         let row = match previous {
           Some(previous) => {
@@ -322,43 +354,46 @@ pub fn Coordinator::claim(
             row
           }
           None => {
+            if worker_id is Some(_) {
+              let w = authenticate_worker(tx, token)
+              guard !(w.get_name("draining") : Bool) &&
+                (w.get_name("state") : String) == "ready" &&
+                (w.get_name("applied_revision") : Int64) ==
+                (w.get_name("config_revision") : Int64) &&
+                (provider.get_name("applied_revision") : Int64) ==
+                (provider.get_name("config_revision") : Int64) else {
+                return None
+              }
+            }
             guard tx.query_opt(
-                "SELECT id FROM pipeline_provider WHERE token_hash = ?",
-                params=[hash],
+                "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash = ?",
+                params=[hash, hash],
               )
               is None &&
               tx.query_opt(
                 "SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
                 params=[hash],
               )
+              is None &&
+              tx.query_opt(
+                "SELECT id FROM pipeline_worker WHERE token_hash=?",
+                params=[hash],
+              )
               is None else {
               raise Conflict(
-                "attempt credentials must be unique and distinct from provider credentials",
+                "attempt credentials must be unique and distinct from provider and worker credentials",
               )
             }
             if (provider.get_name("paused") : Bool) ||
               tx.query_opt(
-                "SELECT id FROM pipeline_job_attempt WHERE provider_id = ? AND status <> 'completed' LIMIT 1",
-                params=[provider_id],
+                "SELECT id FROM pipeline_job_attempt WHERE provider_id = ? AND COALESCE(worker_id,0) = ? AND status <> 'completed' LIMIT 1",
+                params=[provider_id, worker_id.unwrap_or(0L)],
               )
               is Some(_) {
               return None
             }
             let job = tx.query_opt(
-              (
-                #|SELECT j.id, j.run_id FROM pipeline_job j JOIN pipeline_run r ON r.id = j.run_id
-                #|JOIN pipeline_provider provider ON provider.id = ?
-                #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
-                #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
-                #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
-                #|AND r.definition_version = ?
-                #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
-                #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
-                #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
-                #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
-                #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
-                #|ORDER BY j.id LIMIT 1
-              ),
+              eligible_provider_jobs + " ORDER BY j.id LIMIT 1",
               params=[
                 provider_id,
                 @workflow.format_version.to_int64(),
@@ -388,6 +423,20 @@ pub fn Coordinator::claim(
                 ],
               )
               .get_name("id")
+            if worker_id is Some(worker_id) {
+              ignore(
+                tx.execute(
+                  "UPDATE pipeline_job_attempt SET worker_id=? WHERE id=?",
+                  params=[worker_id, id],
+                ),
+              )
+              ignore(
+                tx.execute(
+                  "UPDATE pipeline_worker SET state='busy' WHERE id=?",
+                  params=[worker_id],
+                ),
+              )
+            }
             let _ = tx.execute(
               "UPDATE pipeline_run SET status = 'running', updated_at = datetime('now') WHERE id = ?",
               params=[run_id],

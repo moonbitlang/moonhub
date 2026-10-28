@@ -17,12 +17,10 @@ import {
   "moonbitlang/x/sys",
   "hackwaly/moonhub/web",
   "hackwaly/moonhub/runner",
+  "hackwaly/moonhub/runner/cli" @runner_cli,
   "hackwaly/moonhub/provider",
-  "hackwaly/moonhub/pipeline/protocol" @runner_protocol,
   "hackwaly/moonhub/pipeline",
   "moonbitlang/async/signal",
-  "moonbitlang/core/json",
-  "moonbitlang/core/encoding/utf8",
 }
 
 import {

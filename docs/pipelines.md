@@ -25,6 +25,11 @@ Provider and DinD are separate services. Job containers must never receive
 privileged mode, the Docker control socket/certificates, provider credentials,
 or the application's data volume. Isolation checks accompany step 4, not step 7.
 
+## Standalone runner
+
+The independent `moonhub-runner` supports Docker and AWS ASG providers with runtime
+configuration in the administration UI. See [standalone runner](standalone-runner.md).
+
 ## Current Workflow Contract
 
 Same-repository Merge Requests discover `pull_request` workflows automatically

@@ -40,7 +40,7 @@ async test "webhook migration preserves schema 23 history and never replays old 
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
           Int64),
-        24L,
+        database_schema_version,
       )
       assert_eq(
         (

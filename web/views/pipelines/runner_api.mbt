@@ -99,6 +99,72 @@ fn json_handler(
 pub let runner_api_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   let root = ctx.resolve(@web_context.config_root)
+  ctx.post(
+    "/providers/register",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, [
+        "version", "name", "mode", "provider_token", "schema", "defaults",
+      ])
+      let request : @protocol.RegisterProviderRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid registration request.")
+      }
+      ToJson::to_json(coordinator.register_runner(token, request))
+    }),
+  )
+  ctx.post(
+    "/providers/sync",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, [
+        "version", "controller_id", "observed_revision", "applied_revision", "status",
+      ])
+      let request : @protocol.ProviderSyncRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid provider sync.")
+      }
+      ToJson::to_json(coordinator.sync_provider(token, request))
+    }),
+  )
+  ctx.post(
+    "/workers/register",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version", "key", "token"])
+      let request : @protocol.WorkerRegistration = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid worker registration.")
+      }
+      ToJson::to_json(coordinator.register_worker(token, request))
+    }),
+  )
+  ctx.post(
+    "/workers/sync",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version", "state", "applied_revision"])
+      let request : @protocol.WorkerSyncRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid worker sync.")
+      }
+      ToJson::to_json(coordinator.sync_worker(token, request))
+    }),
+  )
+  ctx.post(
+    "/workers/:id/drain",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version"])
+      let request : @protocol.VersionRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid drain request.")
+      }
+      guard request.version == 1 else {
+        raise @domain.BadRequest(message="Unsupported protocol version.")
+      }
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "worker"),
+      )
+      coordinator.drain_worker(token, id)
+      { "version": 1 }
+    }),
+  )
   ctx.get("/attempts/:id/source", async fn(req, res) {
     let archive = try {
       guard @protocol.parse_decimal(
@@ -135,7 +201,6 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     "/claims",
     json_handler(req => {
       let token = bearer_token(req)
-      coordinator.authenticate_provider(token)
       let json = request_json(req, ["version", "request_id", "attempt_token"])
       let request : @protocol.ClaimRequest = @json.from_json(json) catch {
         _ => raise @domain.BadRequest(message="invalid claim request")

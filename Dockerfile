@@ -23,7 +23,7 @@ FROM base AS runner
 RUN groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \
     && mkdir /workspace && chown runner:runner /workspace
-COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /src/_build/native/release/build/cmd/moonhub-runner/moonhub-runner.exe /usr/local/bin/moonhub-runner
 COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
@@ -31,7 +31,7 @@ COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE
 ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
 USER 10001:10001
 WORKDIR /workspace
-ENTRYPOINT ["/usr/local/bin/moonhub", "runner"]
+ENTRYPOINT ["/usr/local/bin/moonhub-runner", "execute"]
 
 FROM runner AS runner-selfhost
 
@@ -46,6 +46,13 @@ COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY --chmod=755 deploy/provider-entrypoint.sh /usr/local/bin/moonhub-provider-entrypoint
 WORKDIR /var/lib/moonhub/provider
 ENTRYPOINT ["/usr/local/bin/moonhub-provider-entrypoint"]
+
+# Standalone Docker controller. ASG users additionally supply AWS CLI.
+FROM base AS runner-controller
+COPY --from=build /src/_build/native/release/build/cmd/moonhub-runner/moonhub-runner.exe /usr/local/bin/moonhub-runner
+COPY LICENSE /usr/share/doc/moonhub/LICENSE
+WORKDIR /var/lib/moonhub-runner
+ENTRYPOINT ["/usr/local/bin/moonhub-runner", "run"]
 
 FROM base AS runtime
 RUN groupadd --gid 10001 git \

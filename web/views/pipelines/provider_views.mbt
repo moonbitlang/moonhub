@@ -15,7 +15,7 @@ fn render_provider_admin(
     assets,
     Html(b => {
       b <+
-        "<div class=\"page-heading\"><div><h1>Pipeline providers</h1><p class=\"page-subtitle\">Manage isolated Docker workers and repository grants.</p></div></div>"
+        "<div class=\"page-heading\"><div><h1>Pipeline providers</h1><p class=\"page-subtitle\">Manage CI resource pools, execution settings and repository grants.</p></div></div>"
       if error is Some(error) {
         b <+
           "<p class=\"flash-error\" role=\"alert\">\{pipeline_html(error)}</p>"
@@ -30,7 +30,7 @@ fn render_provider_admin(
       }
       if token is Some(token) {
         b <+
-          "<p class=\"settings-success\" role=\"status\">Provider created. Store this token in the provider secret now; it is not shown again: <code>\{token}</code></p>"
+          "<p class=\"settings-success\" role=\"status\">Provider created. Save this registration token in a private file and pass it to moonhub-runner using --registration-token-file. It is not shown again: <code>\{token}</code></p>"
       }
       b <+
         "<section class=\"repository-form\"><h2>Register provider</h2><form class=\"form-stack\" method=\"post\" action=\"/-/admin/pipelines/providers\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"field\"><span>Name</span><input name=\"name\" value=\"\{registration.get("name").unwrap_or("")}\" required maxlength=\"64\"></label><label class=\"field\"><span>Labels</span><input name=\"labels\" value=\"\{registration.get("labels").unwrap_or("self-hosted,linux")}\" required maxlength=\"512\"><small class=\"muted\">Comma-separated labels. self-hosted and linux are required.</small></label>\{render_provider_scope_fields(registration.get("scope").unwrap_or("selected"), registration.get("repositories").unwrap_or(""))}<button type=\"submit\">Create provider</button></form></section>"
@@ -62,6 +62,8 @@ fn render_provider_admin(
         b <+
           "<p class=\"muted provider-access-summary\">\{access}</p><p class=\"muted\">\{contact}</p><div class=\"mr-actions\">"
         if !provider.revoked {
+          b <+
+            "<a href=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/configuration\" aria-label=\"Configure \{provider.name}\">Execution settings</a>"
           b <+
             "<a href=\"/-/admin/pipelines/providers/\{provider.id.to_string()}/labels\" aria-label=\"Edit labels for \{provider.name}\">Edit labels</a>"
           b <+

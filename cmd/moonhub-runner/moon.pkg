@@ -1,0 +1,14 @@
+import {
+  "hackwaly/moonhub/provider",
+  "hackwaly/moonhub/runner/cli" @runner_cli,
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/async",
+  "moonbitlang/async/signal",
+  "moonbitlang/async/stdio",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "native"
+
+pkgtype(kind: "executable")
