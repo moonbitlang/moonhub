@@ -64,6 +64,9 @@ cannot select arbitrary cloud resources.
 
 ## ASG mode
 
+For the production Git/SSM deployment, image publication, systemd installation
+and rollback procedure, see [production deployment](../deploy/production.md).
+
 Create dedicated ASGs first: one On-Demand group and optionally a separate Spot
 group. Both need minimum zero, ordinary instance-count capacity without weights,
 and maximum at least the configured total worker limit. Do not attach other

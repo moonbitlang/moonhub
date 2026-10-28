@@ -27,3 +27,6 @@ __pycache__/
 # Browser integration test output.
 /js/test-results/
 /js/playwright-report/
+
+# Operator-owned production settings.
+deploy/production.env

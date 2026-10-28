@@ -167,7 +167,12 @@ pub async fn run_managed(options : ManagedOptions) -> Unit {
       "At least one allowed instance type is required.",
     )
   }
-  @fs.mkdir(options.state_dir, recursive=true, permission=0o700)
+  @fs.mkdir(
+    options.state_dir,
+    recursive=true,
+    permission=0o700,
+    allow_exist=true,
+  )
   let token_path = options.state_dir + "/provider-token"
   let token = if @fs.exists(token_path) {
     private_token(token_path)

@@ -10,6 +10,10 @@ const registration = 'a'.repeat(64);
 
 async function scenario(mode, failCleanup = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
+  for (const directory of ['controller', 'workspace']) {
+    fs.mkdirSync(path.join(root, directory), {mode:0o700});
+    fs.writeFileSync(path.join(root, directory, '.existing'), 'preserved', {mode:0o600});
+  }
   const stateFile = path.join(root, 'state.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], volumes: [], groups: {on: {desired:0, instances:[]}, spot: {desired:0, instances:[]}}}));
   const state = () => JSON.parse(fs.readFileSync(stateFile));
@@ -143,6 +147,9 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     }
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
+    for (const directory of ['controller', 'workspace']) {
+      assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
+    }
     console.log(`Managed ${mode}${failCleanup ? ' cleanup failure' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(r => child.once('exit',r)),delay(20000).then(() => {if (!exited) child.kill('SIGKILL');})]);}
