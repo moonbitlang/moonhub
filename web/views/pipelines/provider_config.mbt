@@ -1,4 +1,42 @@
 ///|
+fn render_provider_workers(
+  workers : Array[@protocol.WorkerView],
+) -> @moonback.Html {
+  let current = workers.filter(w => {
+    !["drained", "failed"].contains(w.state) || w.active_attempts > 0
+  })
+  let history = workers.filter(w => {
+    ["drained", "failed"].contains(w.state) && w.active_attempts == 0
+  })
+  Html(b => {
+    b <+
+      "<section class=\"provider-execution-workers\" aria-labelledby=\"provider-workers-heading\"><h2 id=\"provider-workers-heading\">Current workers (\{current.length().to_string()})</h2><ul class=\"mr-list\" data-current-workers>"
+    for worker in current {
+      b <+
+        "<li><strong>\{worker.key}</strong><p class=\"muted\">\{worker.state} · configuration \{worker.applied_revision} · active tasks \{worker.active_attempts.to_string()}"
+      if worker.draining && !["drained", "failed"].contains(worker.state) {
+        b <+ " · draining"
+      }
+      b <+ "</p></li>"
+    }
+    if current.is_empty() {
+      b <+ "<li class=\"muted\">No current workers.</li>"
+    }
+    b <+
+      "</ul><details class=\"secondary-details provider-worker-history\"><summary><span class=\"ui-icon\" data-icon=\"chevron-right\" aria-hidden=\"true\"></span>Worker history (\{history.length().to_string()})</summary><p class=\"muted\">Recently registered workers that have stopped or failed. Cloud resource termination is tracked separately.</p><ul class=\"mr-list\" data-worker-history>"
+    for worker in history {
+      let state = if worker.state == "drained" { "Stopped" } else { "Failed" }
+      b <+
+        "<li><strong>\{worker.key}</strong><p class=\"muted\">\{state} · configuration \{worker.applied_revision}</p></li>"
+    }
+    if history.is_empty() {
+      b <+ "<li class=\"muted\">No worker history.</li>"
+    }
+    b <+ "</ul></details></section>"
+  })
+}
+
+///|
 fn render_provider_config(
   assets : Map[String, String],
   actor : @domain.CurrentUser,
@@ -55,20 +93,7 @@ fn render_provider_config(
         }
         b <+ "<button type=\"submit\">Save configuration</button></form>"
       }
-      b <+
-        "<section class=\"provider-execution-workers\" aria-labelledby=\"provider-workers-heading\"><h2 id=\"provider-workers-heading\">Workers</h2><ul class=\"mr-list\">"
-      for worker in snapshot.workers {
-        b <+
-          "<li><strong>\{worker.key}</strong><p class=\"muted\">\{worker.state} · configuration \{worker.applied_revision} · active tasks \{worker.active_attempts.to_string()}"
-        if worker.draining {
-          b <+ " · draining"
-        }
-        b <+ "</p></li>"
-      }
-      if snapshot.workers.is_empty() {
-        b <+ "<li class=\"muted\">No workers connected.</li>"
-      }
-      b <+ "</ul></section></section>"
+      b <+ "\{render_provider_workers(snapshot.workers)}</section>"
     }),
     current_user=Some(actor),
     head_end=@web_assets.repository_assets_head(assets),

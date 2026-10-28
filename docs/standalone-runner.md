@@ -57,6 +57,13 @@ with controller status. Configuration changes apply between jobs. New claims req
 both worker and controller acknowledgement of the current revision. Invalid cloud
 settings remain failed/pending and prevent claims.
 
+Execution settings separates current workers from a collapsed **Worker history**.
+Stopped/failed workers with no unfinished tasks appear in history; records with
+unfinished tasks stay current even after failure. Historical worker state does not
+confirm cloud resource termination. The snapshot includes the latest 100 registered
+workers plus any older non-terminal workers or workers with unfinished tasks; it
+does not delete older database records.
+
 Startup fixes mode, credential chain, region, ASG names, launch template ID, SSM
 parameter prefix and instance-type allowlist. These require operator intervention
 to change. A changed schema/allowlist requires a new provider enrollment. The UI

@@ -31,6 +31,13 @@ async function capture(page, state) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true');
     await page.evaluate(() => document.fonts.ready);
+    // Full-page captures preserve sticky elements at their current scroll offset.
+    // Reset test focus and scroll before capturing the page, not production CSS.
+    await page.evaluate(async () => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
     const shell = await page.evaluate(() => ({
       headers: document.querySelectorAll('.site-header').length,
       sidebars: document.querySelectorAll('#app-sidebar').length,
@@ -48,7 +55,7 @@ async function capture(page, state) {
     });
     const layout = await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
-      const controls = [...document.querySelectorAll('main a, main button, main select, main input:not([type=hidden])')].filter(e => e.checkVisibility());
+      const controls = [...document.querySelectorAll('main a, main button, main select, main summary, main input:not([type=hidden])')].filter(e => e.checkVisibility());
       const outside = controls.filter(e => { const r = e.getBoundingClientRect(); return r.left < -1 || r.right > width + 1; }).map(e => e.textContent || e.id);
       const overlaps = [];
       for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
@@ -68,7 +75,11 @@ async function capture(page, state) {
         return { name: element.id || element.className, top: r.top, bottom: r.bottom, height: r.height };
       }),
       workersGap: document.querySelector('.provider-execution-workers').getBoundingClientRect().top - document.querySelector('form.form-stack').getBoundingClientRect().bottom,
+      skipLinkBottom: document.querySelector('.skip-link').getBoundingClientRect().bottom,
     }));
+    assert.deepEqual(geometry.scroll, [0, 0], `${state}/${name}: full-page capture starts at top`);
+    assert.equal(geometry.shells[0].top, 0, `${state}/${name}: header stays at viewport top`);
+    assert.ok(geometry.skipLinkBottom <= 0, `${state}/${name}: unfocused skip link stays outside viewport`);
     assert.ok(geometry.workersGap >= 24, `${state}/${name}: workers section spacing`);
     fs.writeFileSync(path.join(output, `${state}-${name}.json`), JSON.stringify(geometry, null, 2));
     await page.screenshot({ path: path.join(output, `${state}-${name}-viewport.png`), fullPage: false, animations: 'disabled' });
@@ -172,7 +183,38 @@ if (result !== null) console.log(JSON.stringify(result));
     await page.reload();
     return /Configuration 2 · observed 2 · applied 2/.test(await page.getByRole('status').innerText());
   }, 'Runner never acknowledged revision 2');
+  // Seed only this isolated test database; production identities are untouched.
+  execFileSync('python3', ['-c', `
+import sqlite3,sys,time
+db=sqlite3.connect(sys.argv[1]);now=int(time.time()*1000)
+provider=db.execute("SELECT id FROM pipeline_provider WHERE name='dind'").fetchone()[0]
+for key,state,draining in [('current-worker','ready',0),('draining-worker','ready',1),('old-failed-worker','failed',1),('stopped-worker','drained',1)]:
+ db.execute("INSERT INTO pipeline_worker(provider_id,worker_key,token_hash,state,draining,applied_revision,last_seen_ms,idle_since_ms) VALUES(?,?,?,?,?,2,?,?)",(provider,key,'fixture-'+key,state,draining,now,now))
+db.commit()
+`, env.DB_PATH]);
+  await page.reload();
+  const currentWorkers = page.locator('[data-current-workers]');
+  const workerHistory = page.locator('.provider-worker-history');
+  await page.getByRole('heading', { name: 'Current workers (2)', exact: true }).waitFor();
+  assert.equal(await currentWorkers.locator('li').count(), 2);
+  assert.ok((await currentWorkers.innerText()).includes('current-worker'));
+  assert.ok((await currentWorkers.innerText()).includes('draining-worker'));
+  assert.ok(!(await currentWorkers.innerText()).includes('old-failed-worker'));
+  assert.equal(await workerHistory.getAttribute('open'), null);
+  assert.equal(await page.locator('[data-worker-history]').isVisible(), false);
   await capture(page,'saved');
+  const summary = workerHistory.locator('summary');
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('[data-worker-history]').isVisible(), true);
+  assert.equal(await page.locator('[data-worker-history] li').count(), 2);
+  const historicalText = await page.locator('[data-worker-history]').innerText();
+  assert.ok(historicalText.includes('Stopped') && historicalText.includes('Failed'));
+  assert.ok(!historicalText.includes('draining'));
+  await capture(page,'history-open');
+  await summary.focus();
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('[data-worker-history]').isVisible(), false);
   // Direct SSR hydration and repeated SPA navigation must each retain one shell.
   await page.reload();
   await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true');
@@ -200,7 +242,7 @@ if (result !== null) console.log(JSON.stringify(result));
   assert.equal(await page.getByLabel('Runner image', { exact: true }).getAttribute('value'), '<invalid>'+String.fromCharCode(10));
   assert.deepEqual(errors,[]);
   assert.ok(!controllerOutput.includes(fs.readFileSync(path.join(controllerState, 'provider-token'), 'utf8')));
-  console.log('Provider configuration acceptance passed: real CLI enrollment, full ASG schema, applied revision, CAS conflict, escaping, single page shell, desktop and mobile.');
+  console.log('Provider configuration acceptance passed: real CLI enrollment, full ASG schema, applied revision, CAS conflict, escaping, single page shell, worker history keyboard disclosure, desktop and mobile.');
   if (process.env.MOONHUB_KEEP_PREVIEW === '1') {
     fs.writeFileSync(path.join(output, 'preview.json'), JSON.stringify({ base, pid: server.pid, directory: temp, username: 'root', passwordFile: path.join(temp, 'password') }, null, 2), { mode: 0o600 });
     keep = true;

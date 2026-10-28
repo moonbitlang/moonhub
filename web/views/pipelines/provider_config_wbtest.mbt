@@ -195,3 +195,93 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
     )
   })
 }
+
+///|
+async test "worker display separates terminal history without hiding unfinished tasks" {
+  let ready : @protocol.WorkerView = {
+    id: "1",
+    key: "ready-worker",
+    state: "ready",
+    draining: false,
+    applied_revision: "3",
+    last_seen_ms: "1",
+    idle_since_ms: "1",
+    active_attempts: 0,
+  }
+  let stopped = {
+    ..ready,
+    id: "2",
+    key: "stopped-worker",
+    state: "drained",
+    draining: true,
+  }
+  let failed = {
+    ..ready,
+    id: "3",
+    key: "<failed-worker>",
+    state: "failed",
+    draining: true,
+  }
+  let unfinished = {
+    ..failed,
+    id: "4",
+    key: "unfinished-worker",
+    active_attempts: 1,
+  }
+  let draining = { ..ready, id: "5", key: "draining-worker", draining: true, }
+  let app = @moonback.App(
+    Module(ctx => {
+      ctx.get("/empty", async fn(_, res) {
+        res.send_html(render_provider_workers([]))
+      })
+      ctx.get("/history", async fn(_, res) {
+        res.send_html(render_provider_workers([stopped, failed]))
+      })
+      ctx.get("/mixed", async fn(_, res) {
+        res.send_html(
+          render_provider_workers([ready, stopped, failed, unfinished, draining]),
+        )
+      })
+    }),
+  )
+  defer app.close()
+  @async.with_task_group(group => {
+    let listener = @moonback.listen(port=0)
+    let serving = group.spawn(() => app.serve(listener))
+    defer serving.cancel()
+    let port = listener.addr.port()
+    let (_, empty) = @web_testkit.http_get_path(port, "/empty")
+    assert_true(empty.contains("Current workers (0)"))
+    assert_true(empty.contains("No current workers."))
+    assert_true(empty.contains("Worker history (0)"))
+    assert_true(empty.contains("No worker history."))
+    let (_, history) = @web_testkit.http_get_path(port, "/history")
+    assert_true(history.contains("Current workers (0)"))
+    assert_true(history.contains("Worker history (2)"))
+    assert_false(history.contains(" · draining"))
+    assert_true(history.contains("Stopped · configuration 3"))
+    assert_true(history.contains("Failed · configuration 3"))
+    assert_true(history.contains("&lt;failed-worker&gt;"))
+    assert_false(history.contains("<failed-worker>"))
+    assert_true(
+      history.contains(
+        "<details class=\"secondary-details provider-worker-history\"><summary>",
+      ),
+    )
+    let (_, mixed) = @web_testkit.http_get_path(port, "/mixed")
+    assert_true(mixed.contains("Current workers (3)"))
+    assert_true(mixed.contains("Worker history (2)"))
+    assert_true(
+      mixed.contains(
+        "<strong>unfinished-worker</strong><p class=\"muted\">failed · configuration 3 · active tasks 1</p>",
+      ),
+    )
+    assert_true(
+      mixed.contains(
+        "<strong>draining-worker</strong><p class=\"muted\">ready · configuration 3 · active tasks 0 · draining</p>",
+      ),
+    )
+    assert_false(mixed.contains("No current workers."))
+    assert_false(mixed.contains("No worker history."))
+  })
+}
