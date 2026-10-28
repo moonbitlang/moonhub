@@ -66,6 +66,10 @@ if (args[0] === 'ec2') {
   } else throw Error('unexpected volume operation');
 } else if (args[0] === 'run') {
   assert.ok(args.includes('--read-only')); assert.ok(args.includes('--cap-drop'));
+  const manifestMount = args.find(arg => arg.startsWith('type=bind,src='));
+  const manifestPath = manifestMount.slice('type=bind,src='.length).split(',dst=')[0];
+  assert.equal(fs.statSync(manifestPath).mode & 0o777, 0o444, 'non-root task cannot read a root-owned manifest');
+  assert.equal(fs.statSync(require('node:path').dirname(manifestPath)).mode & 0o777, 0o700, 'host assignment directory must remain private');
   process.stdin.resume(); state.containerArgs = args; state.runs = (state.runs || 0) + 1;
   result = JSON.stringify({reported:true,conclusion:'success'});
 } else if (args[0] === 'ps') result = '';

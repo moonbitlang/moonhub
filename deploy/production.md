@@ -112,3 +112,87 @@ and start the controller. Keep old ECR images and launch-template versions until
 rollback is no longer needed. Controller backups contain credentials: keep 0700
 directories and 0600 files. Web backup retention does not delete controller backups;
 remove obsolete controller bundles manually after verifying a newer recovery point.
+
+## IAM responsibilities and launch-template authorization
+
+There are three different AWS identities. Do not assume that a successful command
+from an operator laptop proves that the production controller can run it.
+
+| Identity | Required access |
+| --- | --- |
+| Provisioning operator | Create/update dedicated ECR, roles and instance profile, security group, launch templates and zero-capacity ASGs; install the scoped controller/worker policies. |
+| Web instance role / controller | Describe instance types, AMIs, launch templates (both DescribeLaunchTemplates and DescribeLaunchTemplateVersions) and ASGs; update the dedicated ASGs, set capacity/protection and terminate drained instances; put/delete only its bootstrap parameters; send the bootstrap SSM document only to tagged Runner instances; pass the dedicated worker role to EC2. Image publication additionally requires ECR push access. |
+| Worker instance role | SSM managed-instance connectivity; get/decrypt only its bootstrap parameter prefix; authenticate to ECR and pull only the Runner repository. |
+
+ASG configuration also validates permission to use the selected launch template.
+Grant the controller the required EC2 launch authorization for that template's
+AMI, security groups, subnets and newly created instance/network-interface/volume
+resources, together with applicable tag-on-create permissions. Scope PassRole to
+the worker role. Recheck the policy when changing template resources; permission
+for one template does not automatically authorize a replacement template.
+
+Use instance roles on both hosts. Never place personal credentials in user data,
+`production.env`, Docker build arguments or the Git checkout. Bootstrap parameter
+values and local controller/worker token files are credentials; do not paste them
+into logs or a support ticket.
+
+## Operational checks
+
+Run host commands in an SSM session on `moonhub-web`:
+
+```sh
+cd /srv/moonhub/source
+git status --short --branch
+git rev-parse HEAD
+./deploy/production.sh status
+systemctl show moonhub-runner-controller.service \
+  -p ActiveState -p SubState -p ExecMainStatus
+journalctl -u moonhub-runner-controller.service --since '-10 min' --no-pager
+curl --fail --silent --output /dev/null \
+  https://moonhub-dev.mooncakes.io/-/login
+```
+
+`active/running` alone is insufficient: in Execution settings, the desired,
+observed and applied configuration revisions must agree and status must be applied.
+Check both dedicated ASGs, including instances that have not finished booting:
+
+```sh
+aws autoscaling describe-auto-scaling-groups --region us-west-2 \
+  --auto-scaling-group-names moonhub-runner-on-demand moonhub-runner-spot \
+  --query 'AutoScalingGroups[].{Name:AutoScalingGroupName,Desired:DesiredCapacity,Instances:Instances[].{Id:InstanceId,State:LifecycleState,Health:HealthStatus}}' \
+  --output json --no-cli-pager
+```
+
+Use the authenticated MoonHub CLI from the operator machine for task acceptance:
+
+```sh
+moonhub auth status --json
+moonhub mr checks 23 --repo compiler/moonhub --json
+moonhub ci list --repo compiler/moonhub --json
+moonhub ci view RUN --repo compiler/moonhub --json
+moonhub ci logs RUN --attempt ATTEMPT --after 0 --repo compiler/moonhub --json
+```
+
+Record the deployed source SHA, ECR image digest, numeric template version, backup
+locations, successful run/attempt and final zero-capacity observation in the MR.
+A queued check or a registered worker alone does not establish task execution.
+Keep the controller running during the configured idle timeout (initially 600
+seconds) and confirm both desired capacity and instance counts return to zero.
+
+## Troubleshooting observed during production rollout
+
+| Symptom | Check / resolution |
+| --- | --- |
+| Buildx stops with `additional privileges requested` for the temporary snapshot | Use the committed production entry point, which grants `fs.read` only for its own temporary snapshot. Do not disable filesystem entitlement checks globally. The running services remain untouched. |
+| Controller/worker exits immediately when its persistent directory already exists | Use the fixed runner version that accepts existing directories. Keep enrollment state and private tokens; deleting them can disconnect the enrolled identity. The lifecycle regression test covers pre-created directories and preserves their contents. |
+| Controller runs, observed revision advances, applied revision remains zero / status is failed | Check AWS authorization and resource constraints using the Web instance role. Controller logs deliberately omit AWS response bodies to avoid leaking secrets. |
+| ASG update reports `not authorized to use launch template` | Check EC2 launch/template permissions, PassRole, template resource ARNs and tag permissions, not only `autoscaling:UpdateAutoScalingGroup`. Verify from the production instance identity. |
+| Task is lost before its first log on a root-run host Worker | Use the version that explicitly sets the credential-free manifest to 0444 inside its 0700 host directory. Docker preserves host file ownership/mode; a 0600 root-owned manifest is unreadable to the non-root task UID. The credential still arrives only over stdin. |
+| EC2 exists but worker is not ready | In SSM, inspect `cloud-init status --long`, `/var/log/cloud-init-output.log`, Docker image pull and `journalctl -u moonhub-runner-worker`. User-data installation may take several minutes. Verify outbound SSM/ECR/MoonHub connectivity and the worker role. Do not print bootstrap JSON. |
+| Upgrade refuses active attempts, undrained workers or nonzero ASG capacity | Pause the provider, leave the old controller running to drain it, wait for task completion and scale-in, then retry. Do not force-stop task containers or manually lower desired capacity around protected busy instances. |
+| Restart temporarily cannot acquire the controller lease | Wait for the previous 60-second lease to expire; the systemd restart delay is 65 seconds. Do not create another provider or replace credentials. |
+| Runtime image/template changes do not take effect after changing CLI flags | Saved server configuration wins after enrollment. Update the matching Runner image and numeric template version in Execution settings, then wait for acknowledgement. |
+
+Deployment changes and this runbook belong in the same MR. Update both whenever
+an operational decision changes, and distinguish completed acceptance from pending
+checks in the MR; do not treat provisioning success as end-to-end verification.
