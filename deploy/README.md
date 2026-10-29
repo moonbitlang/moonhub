@@ -269,6 +269,12 @@ initialization and never runs migrations from an authentication request.
 
 ## SSH Import
 
+Push mirrors use the same destination allowlist and host-key policy described
+below, but generate their own keys in the database. For a namespace used only
+for mirroring, provision `known_hosts` and `allowed_hosts` without
+`id_ed25519`. Authorize each mirror's public key from its settings page as a
+write-enabled deploy key at the destination. See [push mirrors](../docs/mirrors.md).
+
 An import is a one-time mirror of Git refs and objects, including branches and
 tags. It preserves Git's cloned default branch and does not keep synchronizing
 with the source. The upstream remote is removed after cloning. Submodule
@@ -325,8 +331,8 @@ jobs. Legacy jobs are classified when first resumed. Other source endpoints are
 used unchanged; configure the canonical address rather than unconfigured aliases.
 
 Compose mounts `${MOONHUB_SSH_IMPORT_DIR:-./deploy/ssh-import}` read-only. At web
-startup, the three files are copied into a private runtime directory owned by the
-unprivileged service user. Symlink credentials are rejected. Private import keys
+startup, the policy files and optional import key are copied into a private
+runtime directory owned by the unprivileged service user. Symlink credentials are rejected. Private import keys
 are never uploaded through the web UI, stored in Git, or included in the Docker
 build context. Keep custom credential directories outside the checkout. Back up
 this directory separately and protect it as a secret.

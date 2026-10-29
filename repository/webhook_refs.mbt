@@ -135,6 +135,7 @@ pub fn record_deploy_key_webhook_transaction(
           message="deploy key cannot write this repository",
         )
       }
+      record_mirror_refs(tx, scope.id, source_key, phase, updates)
       record_webhook_refs(
         tx,
         scope,

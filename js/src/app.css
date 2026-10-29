@@ -793,3 +793,16 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 @media (max-width: 900px) {
   .webhook-settings .checkbox-field { min-height: 44px; }
 }
+
+/* Mirror settings extend the existing repository settings surface. */
+.mirror-settings .ssh-key-heading h2 { overflow-wrap: anywhere; }
+.mirror-settings.ssh-settings--form { max-width: 720px; }
+.mirror-settings fieldset { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.mirror-settings fieldset legend { margin-bottom: 10px; font-weight: 600; }
+.mirror-settings .checkbox-field { align-items: flex-start; }
+.mirror-settings .checkbox-field input { flex: 0 0 16px; width: 16px; min-width: 16px; margin-top: 3px; }
+.mirror-option-help { display: block; margin-top: 4px; font-weight: 400; }
+.mirror-history, .mirror-remove { margin-top: 32px; }
+
+.mirror-identity { margin-top: 24px; }
+.mirror-identity > p { margin: 8px 0 16px; }

@@ -144,7 +144,7 @@ work, fetch the latest target branch and start from it, preserving existing
 uncommitted work. The MoonHub target branch is `master`:
 
 ```sh
-git fetch --no-tags ssh://git@moonhub-dev.mooncakes.io:12222/compiler/moonhub.git master
+git fetch --no-tags ssh://git@moonhub-dev.mooncakes.io:22/compiler/moonhub.git master
 git switch -c codex/<short-topic> FETCH_HEAD
 ```
 
@@ -162,7 +162,7 @@ the intended work:
 ```sh
 git log --oneline FETCH_HEAD..HEAD
 git diff --shortstat FETCH_HEAD...HEAD
-git push ssh://git@moonhub-dev.mooncakes.io:12222/compiler/moonhub.git HEAD:refs/heads/codex/<short-topic>
+git push ssh://git@moonhub-dev.mooncakes.io:22/compiler/moonhub.git HEAD:refs/heads/codex/<short-topic>
 ```
 
 Write a UTF-8 MR description to a temporary file (at most 20,000 bytes).

@@ -239,6 +239,8 @@ fn render_sidebar(
         }
         if manager {
           b <+
+            "\{render_navigation_item(base + "/settings/mirrors", "Mirrors", "git-commit", active == "mirrors")}"
+          b <+
             "\{render_navigation_item(base + "/settings/webhooks", "Webhooks", "settings", active == "webhooks")}"
           b <+
             "\{render_navigation_item(base + "/settings/branches", "Branch protection", "settings", active == "settings")}"

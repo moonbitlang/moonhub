@@ -10,6 +10,8 @@ pub let deploy_keys_module : @moonback.Module
 
 pub let index_module : @moonback.Module
 
+pub let mirrors_module : @moonback.Module
+
 pub let repo_browser_module : @moonback.Module
 
 pub let repositories_module : @moonback.Module

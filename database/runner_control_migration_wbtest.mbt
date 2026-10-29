@@ -37,6 +37,13 @@ async test "runner control upgrade preserves providers and applies idempotently"
       assert_eq((row.get_name("config_revision") : Int64), 0L)
       assert_eq((row.get_name("repository_scope") : String), "selected")
       assert_true(client.query_all("SELECT * FROM pipeline_worker").is_empty())
+      assert_true(
+        client.query_all("SELECT * FROM repository_mirror").is_empty(),
+      )
+      assert_true(
+        client.query_all("SELECT * FROM mirror_ref_intent").is_empty(),
+      )
+      assert_true(client.query_all("SELECT * FROM mirror_attempt").is_empty())
       assert_eq(
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
