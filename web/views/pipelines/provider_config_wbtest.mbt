@@ -57,6 +57,8 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       observed_revision: "1",
       applied_revision: "1",
       status: "applied",
+      schema: None,
+      defaults: None,
     }
     assert_eq(
       post_json(

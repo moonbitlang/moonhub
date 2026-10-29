@@ -250,11 +250,11 @@ pub fn Coordinator::sync_provider(
       tx => {
         let row = authenticate_provider(tx, token)
         let id : Int64 = row.get_name("id")
-        let revision : Int64 = row.get_name("config_revision")
+        let registered_revision : Int64 = row.get_name("config_revision")
         let now = (self.clock)()
         guard !(row.get_name("mode") : String).is_empty() &&
           applied <= observed &&
-          observed <= revision else {
+          observed <= registered_revision else {
           raise @domain.BadRequest(
             message="Invalid configuration acknowledgement.",
           )
@@ -265,6 +265,62 @@ pub fn Coordinator::sync_provider(
           (row.get_name("controller_until_ms") : Int64) <= now else {
           raise Conflict("Another controller holds this provider lease.")
         }
+        match (request.schema, request.defaults) {
+          (Some(schema), Some(defaults)) => {
+            if @protocol.validate_config(schema, defaults) is Some(message) {
+              raise @domain.BadRequest(message~)
+            }
+            let old_schema : Array[@protocol.ConfigField] = @json.from_json(
+              @json.parse((row.get_name("config_schema") : String)),
+            )
+            guard old_schema.length() <= schema.length() else {
+              raise Conflict(
+                "Controller schema can only append configuration fields.",
+              )
+            }
+            for i in 0..<old_schema.length() {
+              guard ToJson::to_json(old_schema[i]).stringify() ==
+                ToJson::to_json(schema[i]).stringify() else {
+                raise Conflict(
+                  "Controller schema can only append configuration fields.",
+                )
+              }
+            }
+            if old_schema.length() < schema.length() {
+              let config : Map[String, String] = @json.from_json(
+                @json.parse((row.get_name("config_json") : String)),
+              )
+              for i in old_schema.length()..<schema.length() {
+                let field = schema[i]
+                config[field.name] = defaults.get(field.name).unwrap_or("")
+              }
+              if @protocol.validate_config(schema, config) is Some(message) {
+                raise @domain.BadRequest(message~)
+              }
+              ignore(
+                tx.execute(
+                  "UPDATE pipeline_provider SET config_schema=?,config_json=?,config_revision=config_revision+1,control_status='pending' WHERE id=?",
+                  params=[
+                    ToJson::to_json(schema).stringify(),
+                    ToJson::to_json(config).stringify(),
+                    id,
+                  ],
+                ),
+              )
+            }
+          }
+          (None, None) => ()
+          _ =>
+            raise @domain.BadRequest(
+              message="Controller schema and defaults must be sent together.",
+            )
+        }
+        let revision : Int64 = tx
+          .query_one(
+            "SELECT config_revision FROM pipeline_provider WHERE id=?",
+            params=[id],
+          )
+          .get_name("config_revision")
         ignore(
           tx.execute(
             "UPDATE pipeline_worker SET draining=1,state='failed' WHERE provider_id=? AND last_seen_ms<? AND state NOT IN ('drained','failed') AND NOT EXISTS (SELECT 1 FROM pipeline_job_attempt a WHERE a.worker_id=pipeline_worker.id AND a.status<>'completed')",

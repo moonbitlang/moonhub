@@ -49,8 +49,11 @@ Open **Execution settings** beside the provider. The server renders its bounded
 schema using generic text, integer and choice fields. No AWS credentials are stored.
 
 - Both modes: runner image, CPU and memory limits per job.
-- ASG: instance type from the local allowlist, total worker limit, idle timeout,
-  numeric launch-template version, purchase policy and Spot wait timeout.
+- ASG: instance type from the local allowlist, total worker limit, standby worker
+  count, idle timeout, numeric launch-template version, purchase policy and Spot
+  wait timeout. Standby workers are kept idle in addition to active and queued
+  work; total workers remain capped by Maximum workers. The default standby count
+  is zero, and pausing the provider scales all workers down.
 
 Saves use compare-and-swap revisions. Desired, observed and applied revisions appear
 with controller status. Configuration changes apply between jobs. New claims require
@@ -66,8 +69,10 @@ does not delete older database records.
 
 Startup fixes mode, credential chain, region, ASG names, launch template ID, SSM
 parameter prefix and instance-type allowlist. These require operator intervention
-to change. A changed schema/allowlist requires a new provider enrollment. The UI
-cannot select arbitrary cloud resources.
+to change. The authenticated lease holder can append schema fields with defaults
+during sync; existing fields and saved values are preserved, and the revision
+advances once. Changing existing schema fields or the instance allowlist requires
+a new provider enrollment. The UI cannot select arbitrary cloud resources.
 
 ## ASG mode
 

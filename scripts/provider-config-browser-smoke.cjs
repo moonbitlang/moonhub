@@ -142,6 +142,9 @@ else if (args[0] === 'autoscaling' && args[1] === 'describe-auto-scaling-groups'
   assert.equal(request.NewInstancesProtectedFromScaleIn, true);
   state.configurations.push(request.MixedInstancesPolicy.LaunchTemplate.Overrides[0].InstanceType);
   fs.writeFileSync(file, JSON.stringify(state));
+} else if (args[0] === 'autoscaling' && args[1] === 'set-desired-capacity') {
+  state.requested = Number(args[args.indexOf('--desired-capacity')+1]);
+  fs.writeFileSync(file, JSON.stringify(state));
 } else throw Error('Unexpected AWS command: '+args.slice(0,2).join(' '));
 if (result !== null) console.log(JSON.stringify(result));
 `, { mode: 0o700 });
@@ -169,20 +172,24 @@ if (result !== null) console.log(JSON.stringify(result));
   await page.getByRole('link',{name:'Configure dind',exact:true}).click();
   await page.getByRole('heading',{name:'Execution settings',exact:true}).waitFor();
   assert.equal(await page.getByLabel('Runner image',{exact:true}).inputValue(),'moonhub:runner');
-  assert.equal(await page.locator('form.form-stack .field').count(), 9);
+  assert.equal(await page.locator('form.form-stack .field').count(), 10);
+  assert.equal(await page.getByLabel('Standby workers', { exact: true }).inputValue(), '0');
   assert.equal(await page.getByLabel('Memory limit per task (MiB)', { exact: true }).inputValue(), '4096');
   await capture(page,'settings');
   await page.getByLabel('CPU limit per task',{exact:true}).fill('1');
   await page.getByLabel('Instance type',{exact:true}).selectOption('c6a.large');
+  await page.getByLabel('Standby workers', {exact:true}).fill('1');
   await page.getByRole('button',{name:'Save configuration',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Configuration 2'}).waitFor();
   assert.equal(await page.getByLabel('CPU limit per task',{exact:true}).inputValue(),'1');
   assert.equal(await page.getByLabel('Instance type',{exact:true}).inputValue(),'c6a.large');
+  assert.equal(await page.getByLabel('Standby workers', {exact:true}).inputValue(),'1');
   await until(() => JSON.parse(fs.readFileSync(cloudState)).configurations.filter(type => type === 'c6a.large').length >= 2, 'Saved configuration never reached both ASGs');
   await until(async () => {
     await page.reload();
     return /Configuration 2 · observed 2 · applied 2/.test(await page.getByRole('status').innerText());
   }, 'Runner never acknowledged revision 2');
+  await until(() => JSON.parse(fs.readFileSync(cloudState)).requested === 1, 'Standby capacity was not requested for the empty queue');
   // Seed only this isolated test database; production identities are untouched.
   execFileSync('python3', ['-c', `
 import sqlite3,sys,time

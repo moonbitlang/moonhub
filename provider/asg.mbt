@@ -400,6 +400,8 @@ async fn run_asg(
           controller_id,
           observed_revision: observed.val,
           applied_revision: applied.val,
+          schema: Some(config_schema(options)),
+          defaults: Some(config_defaults(options)),
           status: status.val,
         }
         let snapshot : @protocol.ProviderSnapshot = @json.from_json(
@@ -553,7 +555,8 @@ fn desired_workers(
     return 0
   }
   let requested = snapshot.workers.filter(w => w.active_attempts > 0).length() +
-    snapshot.queued_jobs
+    snapshot.queued_jobs +
+    number(snapshot.config, "standby_workers")
   let maximum = number(snapshot.config, "max_workers")
   if requested > maximum {
     maximum

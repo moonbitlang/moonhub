@@ -118,6 +118,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       let token = bearer_token(req)
       let payload = request_json(req, [
         "version", "controller_id", "observed_revision", "applied_revision", "status",
+        "schema", "defaults",
       ])
       let request : @protocol.ProviderSyncRequest = @json.from_json(payload) catch {
         _ => raise @domain.BadRequest(message="Invalid provider sync.")

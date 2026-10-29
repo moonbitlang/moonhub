@@ -145,6 +145,8 @@ pub(all) struct ProviderSyncRequest {
   observed_revision : String
   applied_revision : String
   status : String
+  schema : Array[ConfigField]?
+  defaults : Map[String, String]?
 } derive(ToJson, @json.FromJson)
 pub fn ProviderSyncRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn ProviderSyncRequest::to_json(Self) -> Json

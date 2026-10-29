@@ -95,6 +95,8 @@ async test "controller lease excludes a second manager and acknowledgements are 
       observed_revision: "1",
       applied_revision: "1",
       status: "applied",
+      schema: None,
+      defaults: None,
     }
     ignore(c.sync_provider("b".repeat(64), request))
     try
@@ -152,6 +154,8 @@ async test "worker identities share grants but claim independently and drain ato
         observed_revision: "1",
         applied_revision: "1",
         status: "applied",
+        schema: None,
+        defaults: None,
       }),
     )
     ignore(
@@ -199,6 +203,8 @@ async test "worker identities share grants but claim independently and drain ato
         observed_revision: "2",
         applied_revision: "2",
         status: "applied",
+        schema: None,
+        defaults: None,
       }),
     )
     assert_true(
@@ -302,6 +308,8 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
       observed_revision: "1",
       applied_revision: "1",
       status: "applied",
+      schema: None,
+      defaults: None,
     })
     assert_eq(snapshot.workers[0].state, "failed")
     assert_true(snapshot.workers[0].draining)
@@ -337,5 +345,117 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
     let retry = c.register_worker("b".repeat(64), registration)
     assert_eq(retry.id, worker.id)
     assert_eq(retry.state, "failed")
+  })
+}
+
+///|
+async test "controller schema extension preserves configuration and requires the current lease" {
+  let legacy_json =
+    #|{"version":1,"controller_id":"manager","observed_revision":"2","applied_revision":"2","status":"applied"}
+  let legacy : @protocol.ProviderSyncRequest = @json.from_json(
+    @json.parse(legacy_json),
+  )
+  assert_true(legacy.schema is None)
+  assert_true(legacy.defaults is None)
+  @test_support.with_repository_test_data((pool, _) => {
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let c = Coordinator::new(pool)
+    let provider = c.create_provider(
+      admin,
+      "managed",
+      "a".repeat(64),
+      ["self-hosted", "linux"],
+      [],
+    )
+    let registration = control_registration(mode="asg")
+    ignore(c.register_runner("a".repeat(64), registration))
+    c.save_provider_config(admin, provider.id, 1L, { "image": "runner:saved" })
+    ignore(c.sync_provider("b".repeat(64), legacy))
+    let standby : @protocol.ConfigField = {
+      name: "standby_workers",
+      title: "Standby workers",
+      kind: "integer",
+      required: true,
+      choices: [],
+      minimum: 0,
+      maximum: 20,
+      help: "Idle capacity.",
+    }
+    let update = {
+      ..legacy,
+      schema: Some([registration.schema[0], standby]),
+      defaults: Some({ "image": "runner:default", "standby_workers": "0" }),
+    }
+    try
+      c.sync_provider("b".repeat(64), { ..update, controller_id: "other", })
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ =>
+        fail("another controller changed the schema while the lease was held")
+    }
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.schema.length(),
+      1,
+    )
+    let upgraded = c.sync_provider("b".repeat(64), update)
+    assert_eq(upgraded.config_revision, "3")
+    assert_eq(upgraded.config.get("image"), Some("runner:saved"))
+    assert_eq(upgraded.config.get("standby_workers"), Some("0"))
+    let control = c.provider_control(admin, provider.id)
+    assert_eq(control.status, "pending")
+    assert_eq(control.applied_revision, 2L)
+    assert_eq(c.sync_provider("b".repeat(64), update).config_revision, "3")
+    c.save_provider_config(admin, provider.id, 3L, {
+      "image": "runner:saved",
+      "standby_workers": "2",
+    })
+    let applied = c.sync_provider("b".repeat(64), {
+      ..update,
+      observed_revision: "4",
+      applied_revision: "4",
+    })
+    assert_eq(applied.config_revision, "4")
+    assert_eq(applied.config.get("standby_workers"), Some("2"))
+    assert_eq(c.provider_control(admin, provider.id).status, "applied")
+    let changed = { ..registration.schema[0], title: "Changed existing field", }
+    try
+      c.sync_provider("b".repeat(64), {
+        ..update,
+        schema: Some([changed, standby]),
+      })
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("changed an existing schema field")
+    }
+    try
+      c.sync_provider("b".repeat(64), {
+        ..update,
+        schema: Some(registration.schema),
+        defaults: Some(registration.defaults),
+      })
+    catch {
+      Conflict(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("removed an existing schema field")
+    }
+    try c.sync_provider("b".repeat(64), { ..update, defaults: None, }) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted schema without defaults")
+    }
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.config_revision,
+      "4",
+    )
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.config.get("image"),
+      Some("runner:saved"),
+    )
   })
 }

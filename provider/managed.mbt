@@ -113,6 +113,16 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
         maximum=600,
       ),
     )
+    schema.push(
+      config_field(
+        "standby_workers",
+        "Standby workers",
+        "integer",
+        "Keep this many idle workers in addition to active and queued work. Limited by Maximum workers; 0 allows scale-to-zero.",
+        minimum=0,
+        maximum=20,
+      ),
+    )
   }
   schema
 }
@@ -127,6 +137,7 @@ pub fn config_defaults(options : ManagedOptions) -> Map[String, String] {
   if options.mode == "asg" {
     defaults["instance_type"] = options.instance_types[0]
     defaults["max_workers"] = "1"
+    defaults["standby_workers"] = "0"
     defaults["idle_seconds"] = "600"
     defaults["template_version"] = "1"
     defaults["purchase_policy"] = "on-demand"
@@ -247,6 +258,8 @@ pub async fn run_managed(options : ManagedOptions) -> Unit {
         controller_id,
         observed_revision: observed.val,
         applied_revision: applied.val,
+        schema: Some(config_schema(options)),
+        defaults: Some(config_defaults(options)),
         status: if applied.val == "0" {
           "pending"
         } else {

@@ -22,6 +22,18 @@ test "backend schema exposes only locally allowed instance types and purchase po
   let defaults = config_defaults(options)
   assert_eq(@protocol.validate_config(config_schema(options), defaults), None)
   assert_eq(defaults.get("instance_type"), Some("m6a.large"))
+  assert_eq(defaults.get("standby_workers"), Some("0"))
+  let invalid_standby = config_defaults(options)
+  invalid_standby["standby_workers"] = "21"
+  assert_true(
+    @protocol.validate_config(config_schema(options), invalid_standby)
+    is Some(_),
+  )
+  invalid_standby["standby_workers"] = "-1"
+  assert_true(
+    @protocol.validate_config(config_schema(options), invalid_standby)
+    is Some(_),
+  )
   defaults["instance_type"] = "p5.48xlarge"
   assert_true(
     @protocol.validate_config(config_schema(options), defaults) is Some(_),
@@ -70,4 +82,12 @@ test "ASG capacity counts busy tasks and queued jobs, respects cap and pause" {
   assert_eq(desired_workers({ ..snapshot, queued_jobs: 10, }), 3)
   assert_eq(desired_workers({ ..snapshot, paused: true, }), 0)
   assert_eq(desired_workers({ ..snapshot, workers: [], queued_jobs: 0, }), 0)
+  config["standby_workers"] = "1"
+  assert_eq(desired_workers({ ..snapshot, workers: [], queued_jobs: 0, }), 1)
+  assert_eq(desired_workers({ ..snapshot, queued_jobs: 0, }), 2)
+  assert_eq(desired_workers(snapshot), 3)
+  assert_eq(desired_workers({ ..snapshot, queued_jobs: 10, }), 3)
+  assert_eq(desired_workers({ ..snapshot, paused: true, }), 0)
+  config["standby_workers"] = "20"
+  assert_eq(desired_workers({ ..snapshot, workers: [], queued_jobs: 0, }), 3)
 }

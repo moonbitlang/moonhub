@@ -191,8 +191,11 @@ moonhub ci logs RUN --attempt ATTEMPT --after 0 --repo compiler/moonhub --json
 Record the deployed source SHA, ECR image digest, numeric template version, backup
 locations, successful run/attempt and final zero-capacity observation in the MR.
 A queued check or a registered worker alone does not establish task execution.
-Keep the controller running during the configured idle timeout (the enrollment
-default is 600 seconds; production uses 60 seconds to reduce idle cost) and confirm both desired capacity and instance counts return to zero.
+Keep **Standby workers** at `0` when validating scale-to-zero. A positive value
+intentionally retains idle capacity, subject to Maximum workers. Keep the
+controller running during the configured idle timeout (the enrollment default is
+600 seconds; production uses 60 seconds to reduce idle cost) and confirm both
+desired capacity and instance counts return to zero.
 
 ## Post-validation resource cleanup
 

@@ -86,6 +86,8 @@ pub(all) struct ProviderSyncRequest {
   observed_revision : String
   applied_revision : String
   status : String
+  schema : Array[ConfigField]?
+  defaults : Map[String, String]?
 } derive(ToJson, FromJson)
 
 ///|

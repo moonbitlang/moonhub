@@ -78,7 +78,7 @@ save();
 if (result !== null) console.log(typeof result === 'string' ? result : JSON.stringify(result));
 `, {mode:0o700});
   const workers = [];
-  let providerToken, config, schema, revision = '1', observed = '0', applied = '0', claims = 0, queued = 1, paused = false, failure;
+  let providerToken, config, schema, revision = '1', observed = '0', applied = '0', claims = 0, queued = mode === 'asg' ? 0 : 1, paused = false, failure;
   const server = http.createServer(async (req, res) => {
     try {
       let text = ''; for await (const chunk of req) text += chunk;
@@ -88,7 +88,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       if (route === '/providers/register') {
         assert.equal(req.headers.authorization, 'Bearer ' + registration);
         providerToken = body.provider_token; schema = body.schema; config = {...body.defaults};
-        if (mode === 'asg') {config.purchase_policy = 'spot-with-on-demand-fallback'; config.spot_wait_seconds = '30'; config.idle_seconds = '30';}
+        if (mode === 'asg') {config.purchase_policy = 'spot-with-on-demand-fallback'; config.spot_wait_seconds = '30'; config.idle_seconds = '30'; config.standby_workers = '1';}
         result = snapshot();
       } else if (route === '/providers/sync') {
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
@@ -132,16 +132,27 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     child = spawn(binary,args,{stdio:['ignore','pipe','pipe']});
     child.stdout.on('data',b => {output += b;}); child.stderr.on('data',b => {output += b;});
     child.on('exit',() => {exited = true;});
-    const deadline = Date.now() + (mode === 'asg' ? 85000 : 30000);
+    const deadline = Date.now() + (mode === 'asg' ? 110000 : 30000);
+    let standbySince;
     for (;;) {
       if (failure) throw failure;
       const st = state();
+      if (mode === 'asg' && st.booted && revision === '1') {
+        standbySince ??= Date.now();
+        assert.equal(st.groups.on.desired, 1, 'idle standby capacity was lost');
+        assert.ok(!st.calls.some(c => c[1] === 'terminate-instance-in-auto-scaling-group'), 'standby worker was retired by idle timeout');
+        if (Date.now() - standbySince >= 11000) {
+          config = {...config,standby_workers:'0'}; revision = '2';
+        }
+      }
       if (mode === 'asg' && st.calls.some(c => c[1] === 'terminate-instance-in-auto-scaling-group')) {
         await delay(6500);
         assert.equal(state().groups.on.desired,0,'stale group count recreated terminated instance');
         assert.equal(state().groups.spot.desired,0,'unfulfilled spot demand remained');
         const calls = state().calls;
         assert.ok(calls.findIndex(c => c[1] === 'set-desired-capacity' && c.includes('spot')) < calls.findIndex(c => c[1] === 'set-desired-capacity' && c.includes('on')));
+        assert.ok(standbySince, 'no standby worker was provisioned for an empty queue');
+        assert.equal(revision, '2');
         assert.ok(workers[0].draining); break;
       }
       if (mode === 'docker' && failCleanup && exited) {assert.equal(claims,1,'claim after cleanup failure'); assert.equal(st.volumes.length,1); break;}
