@@ -1,5 +1,9 @@
 # Docker Deployment
 
+For the current production deployment on `moonhub-web`, use
+[Git checkout + SSM + standalone ASG](production.md) and `deploy/production.sh`.
+The DinD/shared-host profiles below remain available for existing deployments.
+
 The Compose deployment runs the same image in two services:
 
 - `web`: MoonBit HTTP server, running as the unprivileged `git` user.

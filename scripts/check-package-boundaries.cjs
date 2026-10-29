@@ -12,7 +12,7 @@ assert.equal(graph.status, 'success', JSON.stringify(graph.error));
 assert.ok([2, 3].includes(graph.version), 'Update this check for the new moon tree schema');
 
 const allowed = {
-  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli'],
+  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli', 'runner/cli'],
   cli: ['domain'],
   domain: [],
   config: [],
@@ -27,6 +27,8 @@ const allowed = {
   pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/protocol'],
   'pipeline/protocol': [],
   runner: ['pipeline/protocol'],
+  'runner/cli': ['runner', 'pipeline/protocol'],
+  'cmd/moonhub-runner': ['provider', 'runner/cli'],
   provider: ['pipeline/protocol'],
   'pipeline/workflow': ['vendor/yaml'],
   'vendor/yaml': [],

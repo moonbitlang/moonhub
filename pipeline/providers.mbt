@@ -29,6 +29,7 @@ pub struct Provider {
   repositories : Array[String]
   last_seen_ms : Int64?
   online : Bool
+  mode : String
 } derive(Debug)
 
 ///|
@@ -92,6 +93,7 @@ fn provider_from_row(
   {
     id,
     name: row.get_name("name"),
+    mode: row.get_name("mode"),
     paused: row.get_name("paused"),
     revoked: row.get_name("revoked"),
     scope: ProviderScope::parse(row.get_name("repository_scope")),
@@ -151,8 +153,12 @@ pub fn Coordinator::create_provider(
           )
           is None &&
           tx.query_opt(
-            "SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
-            params=[@identity.hash_token(token)],
+            "SELECT id FROM pipeline_job_attempt WHERE token_hash = ? UNION SELECT id FROM pipeline_worker WHERE token_hash = ? UNION SELECT id FROM pipeline_provider WHERE registration_hash = ?",
+            params=[
+              @identity.hash_token(token),
+              @identity.hash_token(token),
+              @identity.hash_token(token),
+            ],
           )
           is None else {
           raise Conflict("provider name or credential already exists")
@@ -309,8 +315,8 @@ pub fn Coordinator::ensure_provider(
           Some(row) => row
           None => {
             guard tx.query_opt(
-                "SELECT id FROM pipeline_provider WHERE token_hash = ? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
-                params=[hash, hash],
+                "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash=? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ? UNION SELECT id FROM pipeline_worker WHERE token_hash=?",
+                params=[hash, hash, hash, hash],
               )
               is None else {
               raise Conflict("provider credential is already in use")

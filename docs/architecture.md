@@ -22,7 +22,9 @@ unchanged.
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
-| `provider` | Docker provider claim loop and constrained ephemeral-container adapter; no database dependency |
+| `provider` | Standalone Docker/ASG controllers, config synchronization, worker lifecycle and ephemeral-container adapter; no database or Web dependency |
+| `runner/cli` | Shared single-assignment CLI for the standalone and legacy executable |
+| `cmd/moonhub-runner` | Independent runner executable; no Web server or database dependencies |
 | `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |

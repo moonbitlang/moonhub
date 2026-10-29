@@ -171,6 +171,11 @@ async fn execute_assignment(
     create_mode=@fs.CreateNew,
     permission=0o600,
   )
+  // Host workers run as root while task containers use an unprivileged UID.
+  // Docker bind mounts retain the host file mode. Keep the parent private,
+  // but make this credential-free manifest readable through its read-only mount.
+  // Set the mode explicitly because the host service may have a restrictive umask.
+  @fs.chmod(assignment_path, 0o444)
   let result = run_container(
     options, assignment, attempt_token, assignment_path, workspace_volume,
   ) catch {

@@ -1,8 +1,24 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "hackwaly/moonhub/provider"
 
+import {
+  "hackwaly/moonhub/pipeline/protocol",
+}
+
 // Values
+pub fn config_defaults(ManagedOptions) -> Map[String, String]
+
+pub fn config_schema(ManagedOptions) -> Array[@protocol.ConfigField]
+
+pub async fn control_request(String, String, String, Json, allow_http? : Bool) -> Json
+
 pub async fn run(Options, String) -> Unit raise ProviderError
+
+pub async fn run_bootstrap_worker(String, Options) -> Unit
+
+pub async fn run_managed(ManagedOptions) -> Unit
+
+pub async fn run_worker(Options, String) -> Unit
 
 // Errors
 pub(all) suberror ProviderError {
@@ -15,6 +31,21 @@ pub(all) suberror ProviderError {
 }
 
 // Types and methods
+pub(all) struct ManagedOptions {
+  base : Options
+  name : String
+  mode : String
+  state_dir : String
+  registration_token_file : String
+  aws : String
+  region : String
+  asg : String
+  spot_asg : String
+  launch_template : String
+  parameter_prefix : String
+  instance_types : Array[String]
+}
+
 pub(all) struct Options {
   server : String
   runner_server : String

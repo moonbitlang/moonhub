@@ -374,6 +374,10 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .ssh-internal-address h2 { margin-bottom: 16px; }
 .mail-settings { margin-top: 40px; padding-top: 28px; border-top: 1px solid var(--color-border); }
 .mail-settings h2 { margin-bottom: 16px; }
+.provider-execution-workers { margin-top: 32px; }
+.provider-execution-workers h2 { margin-bottom: 16px; }
+.provider-worker-history > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; list-style: none; font-weight: 600; }
+.provider-worker-history[open] > summary .ui-icon { transform: rotate(90deg); }
 .mail-settings button, .ssh-address-settings button { justify-self: start; }
 .mail-advanced { padding-top: 16px; border-top: 1px solid var(--color-border); }
 .mail-advanced summary { color: var(--color-muted); cursor: pointer; font-size: 13px; font-weight: 500; }

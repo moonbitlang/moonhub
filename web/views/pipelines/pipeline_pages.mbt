@@ -51,6 +51,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   ctx.use_(pipeline_updates_module)
+  ctx.use_(provider_config_module)
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     guard actor.is_site_admin else {
