@@ -76,6 +76,96 @@ async function signIn(page: Page, name = 'alice') {
   await expect(page.locator('.account-identity')).toBeAttached();
 }
 
+test('header breadcrumbs navigate settings and remain available on mobile', async ({ page }) => {
+  await signIn(page);
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb', exact: true });
+  for (const [path, label] of [
+    ['/-/admin/settings/mail', 'Email delivery'],
+    ['/-/admin/pipelines/providers', 'Pipeline providers'],
+    ['/-/settings/tokens', 'Access tokens'],
+    ['/-/settings/ssh-keys', 'SSH keys'],
+  ]) {
+    await page.goto(path);
+    await hydrated(page);
+    await expect(trail.getByRole('link', { name: label, exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(trail.locator('ol > li')).toHaveCount(3);
+    await expect(trail.locator('a')).toHaveCount(3);
+  }
+  await page.goto('/-/admin/settings/mail');
+  await hydrated(page);
+  await trail.getByRole('link', { name: 'Site settings', exact: true }).click();
+  await expect(page).toHaveURL(/admin\/settings\/ssh$/);
+  await page.goto('/-/admin/settings/mail');
+  await hydrated(page);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(trail).toBeVisible();
+    await expect(trail.getByRole('link', { name: 'Administration', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const header = (await page.locator('.site-header').boundingBox())!;
+    const trailBounds = (await trail.boundingBox())!;
+    expect(trailBounds.y + trailBounds.height).toBeLessThanOrEqual(header.y + header.height);
+    const account = (await page.locator('summary[aria-label="Account menu"]').boundingBox())!;
+    expect(account.y + account.height).toBeLessThanOrEqual(trailBounds.y);
+    const target = trail.getByRole('link', { name: 'Administration', exact: true });
+    expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  await trail.getByRole('link', { name: 'Administration', exact: true }).click();
+  await expect(page).toHaveURL(/admin\/settings\/ssh$/);
+  await page.goto('/-/settings/tokens');
+  await hydrated(page);
+  await trail.getByRole('link', { name: 'Account', exact: true }).click();
+  await expect(page).toHaveURL(/settings\/profile$/);
+});
+
+test('file breadcrumbs and parent links keep the revision through SPA and keyboard navigation', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await signIn(page);
+  const directory = 'a-very-long-directory-name-for-narrow-mobile-navigation';
+  const base = '/alice/demo/tree/feature/breadcrumbs';
+  await page.goto(`/alice/demo/blob/feature/breadcrumbs/src/${directory}/main.mbt`);
+  await hydrated(page);
+  await page.evaluate(() => { (window as any).documentIdentity = document; });
+  const trail = page.getByRole('navigation', { name: 'File path', exact: true });
+  await expect(trail.locator('[aria-current=page]')).toHaveText('main.mbt');
+  await trail.getByRole('link', { name: directory, exact: true }).click();
+  await expect(page).toHaveURL(base + '/src/' + directory);
+  await page.getByRole('link', { name: 'Parent directory', exact: true }).click();
+  await expect(page).toHaveURL(base + '/src');
+  const files = trail.getByRole('link', { name: 'Files', exact: true });
+  await files.focus();
+  await expect(files).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(base);
+  expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
+  await page.goto(`/alice/demo/blob/feature/breadcrumbs/src/${directory}/main.mbt`);
+  await hydrated(page);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(trail.getByRole('link', { name: directory, exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const bounds = await trail.boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('file path links work with JavaScript disabled', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await page.goto(baseURL + '/-/login');
+  await page.locator('[name=name_key]').fill('alice');
+  await page.locator('[name=password]').fill('browser-test-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.goto(baseURL + '/alice/demo/blob/feature/breadcrumbs/src/a-very-long-directory-name-for-narrow-mobile-navigation/main.mbt');
+  await page.getByRole('navigation', { name: 'File path', exact: true }).getByRole('link', { name: 'src', exact: true }).click();
+  await expect(page).toHaveURL(/tree\/feature\/breadcrumbs\/src$/);
+  await page.getByRole('link', { name: 'Parent directory', exact: true }).click();
+  await expect(page).toHaveURL(/tree\/feature\/breadcrumbs$/);
+  await context.close();
+});
+
 test('authenticated navigation creates one issue, remounts editors and logs out without reloading', async ({ page }) => {
   const errors: string[] = [];
   const documents: string[] = [];

@@ -101,6 +101,37 @@ async fn stream_commit_detail(
 }
 
 ///|
+fn render_file_breadcrumbs(
+  repo : @domain.RepoId,
+  rev : String,
+  path : String,
+) -> @moonback.Html {
+  let base = "\{@web_ui.repo_link(repo)}/tree/\{@web_context.url_escape_path(rev)}"
+  let items : Array[(String, String?)] = [
+    ("Files", if path.is_empty() { None } else { Some(base) }),
+  ]
+  let mut ancestor = ""
+  let segments = path
+    .split("/")
+    .filter(segment => !segment.is_empty())
+    .collect()
+  for i, segment in segments {
+    ancestor = if ancestor.is_empty() {
+      segment.to_owned()
+    } else {
+      "\{ancestor}/\{segment}"
+    }
+    let href = if i == segments.length() - 1 {
+      None
+    } else {
+      Some("\{base}/\{@web_context.url_escape_path(ancestor)}")
+    }
+    items.push((segment.to_owned(), href))
+  }
+  @web_ui.render_breadcrumb_trail(items, label="File path", file_path=true)
+}
+
+///|
 async fn render_tree(
   root~ : String,
   asset_path_map~ : Map[String, String],
@@ -128,10 +159,15 @@ async fn render_tree(
     Html(b => {
       b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url)}"
       b <+
-        "<div class=\"content-stack\"><h2 class=\"file-path-heading\{if path.is_empty() { "" } else { " path" }}\">\{if path.is_empty() { "Files" } else { path }}</h2><div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
+        "<div class=\"content-stack\">\{render_file_breadcrumbs(repo, rev, path)}<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
       if !path.is_empty() {
+        let parent = match path.rev_find("/") {
+          Some(index) =>
+            "\{base}/\{@web_context.url_escape_path(path[:index].to_owned())}"
+          None => base
+        }
         b <+
-          "<tr><td><a href=\"\{base}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
+          "<tr><td><a href=\"\{parent}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
       }
       for entry in entries {
         let child = if path.is_empty() {
@@ -182,7 +218,7 @@ async fn render_blob(
     Html(b => {
       b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url)}"
       b <+
-        "<h2 class=\"path\">\{path}</h2><moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
+        "\{render_file_breadcrumbs(repo, rev, path)}<moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map, code_view=true),
     current_user~,

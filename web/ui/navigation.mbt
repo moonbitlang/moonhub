@@ -51,31 +51,123 @@ fn render_navigation_item(
 }
 
 ///|
-fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
+pub fn render_breadcrumb_trail(
+  items : Array[(String, String?)],
+  label~ : String = "Breadcrumb",
+  file_path~ : Bool = false,
+) -> @moonback.Html {
   Html(b => {
-    b <+ "<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\">"
-    match navigation {
-      WorkspaceNavigation(section) =>
+    b <+
+      "<nav class=\"breadcrumbs\{if file_path { " file-breadcrumbs" } else { "" }}\" aria-label=\"\{label}\"><ol>"
+    for i, (text, href) in items {
+      let current = i == items.length() - 1
+      b <+ "<li>"
+      if i > 0 {
         b <+
-          "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{if section == "teams" { "Teams" } else if section == "notifications" { "Inbox" } else { "Repositories" }}</strong>"
-      TeamNavigation(team, _) =>
+          "<span class=\"ui-icon breadcrumb-separator\" data-icon=\"chevron-right\" aria-hidden=\"true\"></span>"
+      }
+      if current && file_path {
+        b <+ "<h2 aria-current=\"page\">"
+      }
+      match href {
+        Some(href) => {
+          b <+ "<a href=\"\{href}\" title=\"\{text}\""
+          if current {
+            b <+ " aria-current=\"page\""
+          }
+          b <+ ">"
+        }
+        None => b <+ "<span class=\"breadcrumb-label\">"
+      }
+      if file_path && i == 0 {
         b <+
-          "<a href=\"/-/teams\">Teams</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
-      PersonalNavigation(team) =>
-        b <+
-          "<span>Workspace</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>\{team.display_name}</strong>"
-      RepositoryNavigation(repo, _, _) =>
-        b <+
-          "<a href=\"/\{repo.owner}\">\{repo.owner}</a><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><a class=\"breadcrumb-current\" href=\"\{repo_link(repo)}\">\{repo.name}</a>"
-      AccountNavigation(_) =>
-        b <+
-          "<span>Account</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>Settings</strong>"
-      SiteNavigation(_) =>
-        b <+
-          "<span>Administration</span><span class=\"breadcrumb-separator\" aria-hidden=\"true\">/</span><strong>Site settings</strong>"
+          "<span class=\"ui-icon\" data-icon=\"folders\" aria-hidden=\"true\"></span>"
+      }
+      b <+ "\{text}"
+      match href {
+        Some(_) => b <+ "</a>"
+        None => b <+ "</span>"
+      }
+      if current && file_path {
+        b <+ "</h2>"
+      }
+      b <+ "</li>"
     }
-    b <+ "</nav>"
+    b <+ "</ol></nav>"
   })
+}
+
+///|
+fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
+  let items : Array[(String, String?)] = match navigation {
+    WorkspaceNavigation(section) => {
+      let (label, href) = match section {
+        "teams" => ("Teams", "/-/teams")
+        "notifications" => ("Inbox", "/-/notifications")
+        _ => ("Repositories", "/")
+      }
+      [("Workspace", Some("/")), (label, Some(href))]
+    }
+    TeamNavigation(team, active) => {
+      let label = match active {
+        "members" => "Members"
+        "invitations" => "Invitations"
+        _ => "Repositories"
+      }
+      [
+        ("Teams", Some("/-/teams")),
+        (team.display_name, Some("/\{team.name_key}")),
+        (label, Some("/\{team.name_key}?tab=\{active}")),
+      ]
+    }
+    PersonalNavigation(team) =>
+      [("Workspace", Some("/")), (team.display_name, Some("/\{team.name_key}"))]
+    RepositoryNavigation(repo, active, _) => {
+      let base = repo_link(repo)
+      let (label, suffix) = match active {
+        "commits" => ("Commits", "/commits")
+        "issues" => ("Issues", "/issues")
+        "merge-requests" => ("Merge requests", "/merge-requests")
+        "pipelines" => ("Pipelines", "/pipelines")
+        "webhooks" => ("Webhooks", "/settings/webhooks")
+        "settings" => ("Branch protection", "/settings/branches")
+        "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
+        _ => ("Files", "")
+      }
+      [
+        (repo.owner, Some("/\{repo.owner}")),
+        (repo.name, Some(base)),
+        (label, Some(base + suffix)),
+      ]
+    }
+    AccountNavigation(active) => {
+      let (label, href) = match active {
+        "ssh-keys" => ("SSH keys", "/-/settings/ssh-keys")
+        "password" => ("Password", "/-/change-password")
+        "tokens" => ("Access tokens", "/-/settings/tokens")
+        _ => ("Profile", "/-/settings/profile")
+      }
+      [
+        ("Account", Some("/-/settings/profile")),
+        ("Settings", Some("/-/settings/profile")),
+        (label, Some(href)),
+      ]
+    }
+    SiteNavigation(active) => {
+      let (label, href) = match active {
+        "mail" => ("Email delivery", "/-/admin/settings/mail")
+        "pipeline-providers" =>
+          ("Pipeline providers", "/-/admin/pipelines/providers")
+        _ => ("SSH access", "/-/admin/settings/ssh")
+      }
+      [
+        ("Administration", Some("/-/admin/settings/ssh")),
+        ("Site settings", Some("/-/admin/settings/ssh")),
+        (label, Some(href)),
+      ]
+    }
+  }
+  render_breadcrumb_trail(items)
 }
 
 ///|

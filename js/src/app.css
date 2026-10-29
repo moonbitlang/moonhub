@@ -77,11 +77,17 @@ html[data-ui-enhanced] [hidden][data-filter-control], html[data-ui-enhanced] [hi
 .brand:hover { color: var(--color-text); text-decoration: none; }
 .brand-mark { display: grid; width: 27px; height: 27px; flex: 0 0 27px; place-items: center; color: var(--color-accent); }
 .brand-mark .ui-icon { width: 25px; height: 25px; }
-.breadcrumbs { display: flex; min-width: 0; align-items: center; gap: 10px; color: var(--color-muted); font-size: 13px; }
-.breadcrumbs a, .breadcrumbs strong, .breadcrumbs > span:not(.breadcrumb-separator) { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.breadcrumbs a { color: var(--color-muted); }
-.breadcrumbs .breadcrumb-current, .breadcrumbs strong { color: var(--color-text); font-weight: 600; }
-.breadcrumb-separator { flex-shrink: 0; color: #8a95a3; }
+.breadcrumbs { min-width: 0; color: var(--color-muted); font-size: 13px; }
+.breadcrumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.breadcrumbs li { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.breadcrumbs a, .breadcrumbs .breadcrumb-label { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; padding: 4px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.breadcrumbs a { color: var(--color-accent); }
+.breadcrumbs a:hover { color: var(--color-accent-hover); background: var(--color-accent-soft); }
+.breadcrumbs a:focus-visible { outline-offset: 0; }
+.breadcrumbs [aria-current] { color: var(--color-text); font-weight: 600; }
+.breadcrumbs .breadcrumb-separator { width: 14px; height: 14px; flex: 0 0 14px; color: var(--color-subtle); }
+.site-header .breadcrumbs ol { flex-wrap: nowrap; }
+.site-header .breadcrumbs a { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .account-menu { position: relative; flex-shrink: 0; margin-left: auto; }
 .account-menu > summary { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 3px 5px; border-radius: 6px; cursor: pointer; list-style: none; }
 .account-menu > summary:hover { background: var(--color-surface-subtle); }
@@ -273,8 +279,10 @@ textarea { resize: vertical; }
 .repo-clone-field input { min-width: 0; font-size: 12px; }
 .repo-copy-button { width: 38px; height: 38px; padding: 0; }
 .repo-clone-status { min-height: 18px; margin: 10px 0 0; color: var(--color-muted); font-size: 12px; }
-.file-path-heading { margin-bottom: 0; font-size: 16px; font-weight: 600; }
-.file-path-heading.path { font-size: 13px; font-weight: 500; }
+.file-breadcrumbs { font: 13px/1.5 var(--font-mono); }
+.file-breadcrumbs h2 { min-width: 0; margin: 0; font: inherit; }
+.file-breadcrumbs li:first-child { font-family: var(--font-sans); }
+.file-breadcrumbs li:first-child .ui-icon { width: 16px; height: 16px; flex-basis: 16px; color: var(--color-muted); }
 .file-link { display: inline-flex; align-items: center; gap: 10px; color: var(--color-text); overflow-wrap: anywhere; }
 .file-link .ui-icon { color: #6486ad; width: 16px; height: 16px; flex-basis: 16px; }
 .file-table td, .file-table th { padding-block: 10px; }
@@ -395,15 +403,22 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
   .repository-owner { display: none; }
 }
 @media (max-width: 900px) {
-  .site-header__inner { gap: 12px; padding-inline: 12px; }
+  :root:has(.site-header .breadcrumbs) { --header-height: 100px; }
+  .breadcrumbs a, .breadcrumbs .breadcrumb-label { min-height: 44px; }
+  .site-header__inner { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 8px; padding-inline: 12px; }
+  .site-header__inner:has(.breadcrumbs) { grid-template-rows: minmax(0, 1fr) 44px; }
+  .site-header__inner > :not(.breadcrumbs) { align-self: center; }
   .brand-area { width: auto; flex: 0 0 auto; gap: 5px; padding: 0; }
   .brand { font-size: 16px; gap: 7px; }
   .brand-mark { width: 24px; flex-basis: 24px; }
   .mobile-menu-button { display: inline-flex; }
   html[data-ui-enhanced] [hidden][data-sidebar-open] { display: inline-flex !important; }
-  .breadcrumbs { display: none; }
+  .site-header .breadcrumbs { order: 4; grid-column: 1 / -1; overflow-x: auto; }
+  .site-header .breadcrumbs li { flex-shrink: 0; }
+  .site-header .breadcrumbs a { max-width: 65vw; }
   .account-name, .account-menu > summary > .ui-icon { display: none; }
   .account-menu > summary { min-width: 44px; min-height: 44px; justify-content: center; }
+  .site-header .header-inbox + .account-menu { margin-left: 0; }
   .workspace-shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: static; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .sidebar-footer { display: none; }

@@ -22,6 +22,8 @@ pub fn namespace_navigation(@identity.TeamSummary, String) -> PageNavigation
 
 pub fn page_middleware() -> @moonback.Middleware
 
+pub fn render_breadcrumb_trail(Array[(String, String?)], label? : String, file_path? : Bool) -> @moonback.Html
+
 pub fn render_error(Int32, String, Map[String, String], current_user? : @domain.CurrentUser?) -> @moonback.Html
 
 pub fn render_repo_nav(@domain.RepoId, String, String?) -> @moonback.Html
