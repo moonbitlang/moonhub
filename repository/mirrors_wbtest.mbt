@@ -470,3 +470,117 @@ async test "updates arriving during a mirror transfer stay queued and source wri
     assert_eq(mirror_history(pool, actor, repo, id).length(), 2)
   })
 }
+
+///|
+async test "mirror keys are independent durable rotated with versions and cleaned after transfers" {
+  mirror_fixture((pool, root, actor, repo, config, _) => {
+    // Mirrors must not depend on the namespace import identity.
+    @fs.remove(config.credentials_root + "/alice/id_ed25519")
+    let first = save_push_mirror(
+      pool,
+      root,
+      actor,
+      repo,
+      0L,
+      0L,
+      "git@source.example:org/first.git",
+      true,
+      false,
+      false,
+      Some(config),
+    )
+    let second = save_push_mirror(
+      pool,
+      root,
+      actor,
+      repo,
+      0L,
+      0L,
+      "git@source.example:org/second.git",
+      false,
+      false,
+      false,
+      Some(config),
+    )
+    let mirrors = push_mirrors(pool, actor, repo)
+    let public_key = mirrors[0].public_key
+    assert_true(public_key.has_prefix("ssh-ed25519 "))
+    assert_false(public_key == mirrors[1].public_key)
+    let path = root + "/last-identity-path"
+    let expected = root + "/expected-public-key"
+    @fs.write_file(expected, public_key.split(" ").take(2).join(" "))
+    @fs.write_file(
+      config.ssh_wrapper,
+      "#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f \"$MOONHUB_IMPORT_IDENTITY\" | cut -d ' ' -f 1-2)\ntest \"$actual\" = \"$(cat '\{expected}')\"\nprintf '%s' \"$MOONHUB_IMPORT_IDENTITY\" > '\{path}'\nexec git receive-pack '\{root}/remote.git'\n",
+      permission=0o700,
+    )
+    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_eq(push_mirrors(pool, actor, repo)[0].status, "succeeded")
+    assert_false(@fs.exists(@fs.read_file(path).text()))
+    assert_false(
+      @fs.readdir(root + "/.mirrors").any(name => name.has_prefix("key-")),
+    )
+    // The same cleanup must run when the SSH process fails.
+    @fs.write_file(
+      config.ssh_wrapper,
+      "#!/bin/sh\nprintf '%s' \"$MOONHUB_IMPORT_IDENTITY\" > '\{path}'\nexit 1\n",
+      permission=0o700,
+    )
+    push_mirror_action(pool, root, actor, repo, first, 1L, "sync")
+    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_false(@fs.exists(@fs.read_file(path).text()))
+    ignore(
+      save_push_mirror(
+        pool,
+        root,
+        actor,
+        repo,
+        first,
+        2L,
+        "git@source.example:org/first.git",
+        true,
+        false,
+        false,
+        Some(config),
+      ),
+    )
+    assert_eq(push_mirrors(pool, actor, repo)[0].public_key, public_key)
+    rotate_mirror_key(pool, root, actor, repo, first, 3L)
+    let rotated = push_mirrors(pool, actor, repo)
+    assert_false(rotated[0].public_key == public_key)
+    assert_eq(rotated[0].status, "disabled")
+    assert_false(rotated[0].active)
+    assert_eq(rotated[1].public_key, mirrors[1].public_key)
+    assert_eq(rotated[0].version, 4L)
+    try rotate_mirror_key(pool, root, actor, repo, first, 2L) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("rotated a stale mirror key")
+    }
+    let other : @domain.RepoId = { owner: "alice", name: "public", }
+    try rotate_mirror_key(pool, root, actor, other, first, 4L) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("rotated another repository's key")
+    }
+    push_mirror_action(pool, root, actor, repo, first, 4L, "delete")
+    pool.with_client(client => {
+      assert_true(
+        client.query_opt(
+          "SELECT mirror_id FROM mirror_ssh_key WHERE mirror_id=?",
+          params=[first],
+        )
+        is None,
+      )
+      assert_true(
+        client.query_opt(
+          "SELECT mirror_id FROM mirror_ssh_key WHERE mirror_id=?",
+          params=[second],
+        )
+        is Some(_),
+      )
+    })
+  })
+}

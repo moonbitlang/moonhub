@@ -100,7 +100,11 @@ async fn transfer_mirror(
   config : RepoImportConfig,
 ) -> Unit {
   let target = parse_ssh_import_source(job.url)
-  let credentials = team_import_credentials(config, job.scope.repo.owner)
+  let credentials = team_import_credentials(
+    config,
+    job.scope.repo.owner,
+    identity_required=false,
+  )
   authorize_import_source(credentials, target)
   let work = mirror_work_root(root)
   let stage = "\{work}/\{job.id}/\{job.lease}.git"
@@ -152,11 +156,30 @@ async fn transfer_mirror(
       job.scope.repo,
     ),
   )
-  let credentials = team_import_credentials(config, job.scope.repo.owner)
+  let credentials = team_import_credentials(
+    config,
+    job.scope.repo.owner,
+    identity_required=false,
+  )
   authorize_import_source(credentials, target)
   environment["GIT_SSH"] = config.ssh_wrapper
   environment["GIT_SSH_VARIANT"] = "ssh"
-  environment["MOONHUB_IMPORT_IDENTITY"] = credentials.identity
+  let key : String = pool.with_client(client => {
+    guard client.query_opt(
+        "SELECT private_key FROM mirror_ssh_key WHERE mirror_id=?",
+        params=[job.id],
+      )
+      is Some(row) else {
+      raise @domain.BadRequest(
+        message="Save mirror settings to generate a dedicated SSH key",
+      )
+    }
+    row.get_name("private_key")
+  })
+  let identity = stage + "/mirror_identity"
+  @fs.write_file(identity, key, create_mode=@fs.CreateNew, permission=0o600)
+  defer @fs.remove(identity)
+  environment["MOONHUB_IMPORT_IDENTITY"] = identity
   environment["MOONHUB_IMPORT_KNOWN_HOSTS"] = credentials.known_hosts
   let args = [
     "--git-dir=\{stage}",
@@ -221,9 +244,9 @@ pub async fn sync_next_mirror(
     ""
   } catch {
     @domain.BadRequest(_) =>
-      "Sync failed. Check namespace SSH credentials, allowed hosts, remote access and branch protection; then retry."
+      "Sync failed. Check that this mirror’s public key has write access, and verify allowed hosts, SSH host keys and branch protection; then retry."
     _ =>
-      "Sync failed. Check namespace SSH credentials, allowed hosts, remote access and branch protection; then retry."
+      "Sync failed. Check that this mirror’s public key has write access, and verify allowed hosts, SSH host keys and branch protection; then retry."
   }
   pool.with_client(client => {
     client.with_transaction(tx => {

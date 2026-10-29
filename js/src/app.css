@@ -788,3 +788,6 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 .mirror-settings .checkbox-field input { flex: 0 0 16px; width: 16px; min-width: 16px; margin-top: 3px; }
 .mirror-option-help { display: block; margin-top: 4px; font-weight: 400; }
 .mirror-history, .mirror-remove { margin-top: 32px; }
+
+.mirror-identity { margin-top: 24px; }
+.mirror-identity > p { margin: 8px 0 16px; }

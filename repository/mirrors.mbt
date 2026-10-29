@@ -2,6 +2,7 @@
 pub(all) struct PushMirror {
   id : Int64
   url : String
+  public_key : String
   active : Bool
   force_push : Bool
   prune : Bool
@@ -44,12 +45,13 @@ pub fn push_mirrors(
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT * FROM repository_mirror WHERE repository_id=? ORDER BY id",
+      "SELECT m.id,m.url,m.active,m.force_push,m.prune,m.version,m.status,m.attempts,m.last_error,m.last_success_at,m.next_attempt_at,COALESCE(k.public_key,'') AS public_key FROM repository_mirror m LEFT JOIN mirror_ssh_key k ON k.mirror_id=m.id WHERE m.repository_id=? ORDER BY m.id",
       params=[scope.id],
     )
     .map(row => {
       id: row.get_name("id"),
       url: row.get_name("url"),
+      public_key: row.get_name("public_key"),
       active: row.get_name("active"),
       force_push: row.get_name("force_push"),
       prune: row.get_name("prune"),
@@ -135,16 +137,46 @@ pub async fn save_push_mirror(
   let scope = require_mirror_manager(pool, actor, repo)
   guard config is Some(config) else {
     raise @domain.BadRequest(
-      message="SSH mirroring is not configured; ask an administrator to configure namespace credentials",
+      message="SSH mirroring is not configured; ask an administrator to configure allowed destination hosts and SSH host keys",
     )
   }
   let target = parse_ssh_import_source(url.trim().to_owned())
-  let credentials = team_import_credentials(config, repo.owner)
+  let credentials = team_import_credentials(
+    config,
+    repo.owner,
+    identity_required=false,
+  )
   authorize_import_source(credentials, target)
   // Configuration writes serialize with a claimed transfer. A busy transfer can be retried.
   let lock = mirror_lock(root, id)
   defer lock.close()
   ignore(require_mirror_manager(pool, actor, repo))
+  if id != 0L {
+    guard pool.with_client(client => {
+      client.query_opt(
+        "SELECT id FROM repository_mirror WHERE id=? AND repository_id=? AND version=?",
+        params=[id, scope.id, version],
+      )
+      is Some(_)
+    }) else {
+      raise @domain.BadRequest(
+        message="mirror changed or was removed; reload before saving",
+      )
+    }
+  }
+  let key = if id == 0L ||
+    !pool.with_client(client => {
+      client.query_opt(
+        "SELECT mirror_id FROM mirror_ssh_key WHERE mirror_id=?",
+        params=[id],
+      )
+      is Some(_)
+    }) {
+    Some(generate_mirror_key(root))
+  } else {
+    None
+  }
+  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(
@@ -210,6 +242,14 @@ pub async fn save_push_mirror(
           )
         }
         (row.get_name("id") : Int64)
+      }
+      if key is Some(key) {
+        ignore(
+          tx.execute(
+            "INSERT INTO mirror_ssh_key(mirror_id,private_key,public_key) VALUES(?,?,?)",
+            params=[saved, key.private_key, key.public_key],
+          ),
+        )
       }
       ignore(
         tx.execute(

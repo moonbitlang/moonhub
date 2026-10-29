@@ -137,7 +137,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
       )
     })
   }
-  for action in ["sync", "delete"] {
+  for action in ["sync", "delete", "rotate-key"] {
     ctx.post("/:owner/:repo/settings/mirrors/:mirror/" + action, async fn(
       req,
       res,
@@ -146,21 +146,24 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
       let repo = @web_context.repo_param(req)
       let scope = @repository.require_mirror_manager(pool, actor, repo)
       let form = @web_context.protected_form(req, "mirrors:\{scope.id}")
-      @repository.push_mirror_action(
-        pool,
-        root,
-        actor,
-        repo,
-        @web_context.positive_resource_number(
-          @web_context.required_param(req, "mirror", "mirror"),
-        ),
-        @web_context.positive_resource_number(form.get("version").unwrap_or("")),
-        action,
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "mirror", "mirror"),
       )
+      let version = @web_context.positive_resource_number(
+        form.get("version").unwrap_or(""),
+      )
+      if action == "rotate-key" {
+        @repository.rotate_mirror_key(pool, root, actor, repo, id, version)
+      } else {
+        @repository.push_mirror_action(
+          pool, root, actor, repo, id, version, action,
+        )
+      }
       res.send_void(
         status=303,
         headers=@web_context.private_page_headers(
-          location="\{@web_ui.repo_link(repo)}/settings/mirrors",
+          location="\{@web_ui.repo_link(repo)}/settings/mirrors" +
+            (if action == "rotate-key" { "/" + id.to_string() } else { "" }),
         ),
       )
     })
@@ -171,7 +174,8 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
 let new_mirror : @repository.PushMirror = {
   id: 0L,
   url: "",
-  active: true,
+  public_key: "",
+  active: false,
   force_push: false,
   prune: false,
   version: 0L,

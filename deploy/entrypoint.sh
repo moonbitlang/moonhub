@@ -16,6 +16,10 @@ case "${1:-web}" in
       [ "${#team}" -le 63 ] || { printf '%s\n' 'SSH import team name is too long' >&2; exit 1; }
       install -d -m 0700 -o git -g git "/run/moonhub/ssh-import/$team"
       for file in id_ed25519 known_hosts allowed_hosts; do
+        # Push mirrors use database-backed keys; an import key is optional.
+        if [ "$file" = id_ed25519 ] && [ ! -e "$directory/$file" ] && [ ! -L "$directory/$file" ]; then
+          continue
+        fi
         if [ ! -f "$directory/$file" ] || [ -L "$directory/$file" ]; then
           printf 'Missing or invalid SSH import file: %s/%s\n' "$team" "$file" >&2
           exit 1

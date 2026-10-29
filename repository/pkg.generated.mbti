@@ -68,6 +68,8 @@ pub fn resolve_repository_import_source(@database.Database, @domain.CurrentUser,
 
 pub fn retry_repository_job(@database.Database, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit raise
 
+pub async fn rotate_mirror_key(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Unit
+
 pub async fn run_next_repository_job(@database.Database, String, RepoImportConfig?, addresses? : SshAddressConfig) -> Bool
 
 pub async fn save_push_mirror(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, Bool, Bool, Bool, RepoImportConfig?) -> Int64
@@ -84,7 +86,7 @@ pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @a
 
 pub async fn sync_next_mirror(@database.Database, String, RepoImportConfig?) -> Bool
 
-pub async fn team_import_credentials(RepoImportConfig, String) -> TeamImportCredentials
+pub async fn team_import_credentials(RepoImportConfig, String, identity_required? : Bool) -> TeamImportCredentials
 
 pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[TeamRepository] raise
 
@@ -105,6 +107,7 @@ pub(all) struct MirrorAttempt {
 pub(all) struct PushMirror {
   id : Int64
   url : String
+  public_key : String
   active : Bool
   force_push : Bool
   prune : Bool

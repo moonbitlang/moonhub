@@ -19,6 +19,7 @@ async test "mirror forms enforce authorization CSRF versions and preserve valida
         let csrf = @web_testkit.extract_attr(
           form, "name=\"csrf_token\"", "value=\"",
         )
+        assert_false(form.contains("name=\"active\" value=\"1\" checked"))
         assert_false(form.contains("name=\"force_push\" value=\"1\" checked"))
         assert_false(form.contains("name=\"prune\" value=\"1\" checked"))
         let fields = "csrf_token=\{csrf}&url=git%40source.example%3Aorg%2Fdemo.git&active=1"
@@ -34,6 +35,13 @@ async test "mirror forms enforce authorization CSRF versions and preserve valida
         let repo : @domain.RepoId = { owner: "alice", name: "demo", }
         let mirror = @repository.push_mirrors(pool, actor, repo)[0]
         let edit = route + "/" + mirror.id.to_string()
+        let (_, settings) = @web_testkit.http_get_path_with_cookie(
+          port, edit, alice,
+        )
+        assert_true(settings.contains(mirror.public_key))
+        assert_true(settings.contains("readonly"))
+        assert_false(settings.contains("PRIVATE KEY"))
+        assert_true(body.contains("No push mirrors yet"))
         pool.with_client(client => {
           ignore(
             client.execute(
@@ -59,6 +67,8 @@ async test "mirror forms enforce authorization CSRF versions and preserve valida
         assert_true(body.contains("name=\"prune\" value=\"1\" checked"))
         assert_true(body.contains("Current status: Up to date"))
         assert_false(body.contains("No sync attempts yet."))
+        assert_true(body.contains(mirror.public_key))
+        assert_false(body.contains("PRIVATE KEY"))
         let (outside, _) = @web_testkit.http_get_path_with_cookie(
           port, route, bob,
         )
@@ -88,10 +98,48 @@ async test "mirror forms enforce authorization CSRF versions and preserve valida
           alice,
         )
         assert_eq(stale.code, 400)
+        let (rotation_csrf, _) = @web_testkit.http_post_path_with_cookie(
+          port,
+          edit + "/rotate-key",
+          "version=2",
+          alice,
+        )
+        assert_eq(rotation_csrf.code, 403)
+        let (forbidden_rotation, _) = @web_testkit.http_post_path_with_cookie(
+          port,
+          edit + "/rotate-key",
+          "csrf_token=\{csrf}&version=2",
+          bob,
+        )
+        assert_eq(forbidden_rotation.code, 403)
+        let (stale_rotation, _) = @web_testkit.http_post_path_with_cookie(
+          port,
+          edit + "/rotate-key",
+          "csrf_token=\{csrf}&version=1",
+          alice,
+        )
+        assert_eq(stale_rotation.code, 400)
+        let (rotated, _) = @web_testkit.http_post_path_with_cookie(
+          port,
+          edit + "/rotate-key",
+          "csrf_token=\{csrf}&version=2",
+          alice,
+        )
+        assert_eq(rotated.code, 303)
+        let updated = @repository.push_mirrors(pool, actor, repo)[0]
+        assert_false(updated.public_key == mirror.public_key)
+        assert_false(updated.active)
+        assert_eq(updated.version, 3L)
+        let (_, settings) = @web_testkit.http_get_path_with_cookie(
+          port, edit, alice,
+        )
+        assert_true(settings.contains(updated.public_key))
+        assert_false(settings.contains(mirror.public_key))
+        assert_false(settings.contains("PRIVATE KEY"))
         let (deleted, _) = @web_testkit.http_post_path_with_cookie(
           port,
           edit + "/delete",
-          "csrf_token=\{csrf}&version=2",
+          "csrf_token=\{csrf}&version=3",
           alice,
         )
         assert_eq(deleted.code, 303)

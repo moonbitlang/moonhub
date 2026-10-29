@@ -27,7 +27,7 @@ fn render_mirrors(
         "<section class=\"ssh-settings mirror-settings\"><div class=\"page-heading page-heading--actions\"><div><h1>Push mirrors</h1><p class=\"muted\">Keep another remote up to date with this repository.</p></div><a class=\"button-link\" href=\"\{base}/new\">Add mirror</a></div><p>After a push or merge, MoonHub syncs all branches and tags in the background. Enabling a mirror also syncs existing refs.</p>"
       if !configured {
         b <+
-          "<p class=\"flash-error\" role=\"status\">SSH mirroring is not configured. Ask an administrator to set up namespace credentials and allowed destination hosts.</p>"
+          "<p class=\"flash-error\" role=\"status\">SSH mirroring is not configured. Ask an administrator to allow destination hosts and pin their SSH host keys.</p>"
       }
       if mirrors.is_empty() {
         b <+
@@ -97,8 +97,15 @@ fn render_mirror_form(
       if error is Some(message) {
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
+      if !mirror.public_key.is_empty() {
+        b <+
+          "<section class=\"mirror-identity\" aria-labelledby=\"mirror-identity-title\"><h2 id=\"mirror-identity-title\">SSH authentication</h2><p>Add this mirror’s public key to the destination repository as a deploy key with write access. Then enable automatic sync below.</p><div class=\"field\"><label for=\"mirror-public-key\">Public key</label><textarea id=\"mirror-public-key\" class=\"ssh-public-key\" rows=\"3\" readonly spellcheck=\"false\" aria-describedby=\"mirror-key-help\">\{mirror.public_key}</textarea><p id=\"mirror-key-help\" class=\"muted\">This key is used only by this mirror. The private key is stored on the server and is never displayed.</p></div></section>"
+      } else {
+        b <+
+          "<p class=\"settings-notice\">Save this mirror to generate its own SSH key. Add the public key to the destination with write access before enabling automatic sync.</p>"
+      }
       b <+
-        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><div class=\"field\"><label for=\"mirror-url\">Destination SSH URL</label><input id=\"mirror-url\" name=\"url\" type=\"text\" maxlength=\"2048\" value=\"\{mirror.url}\" placeholder=\"git@github.com:organization/repository.git\" required aria-describedby=\"mirror-url-help\"><p id=\"mirror-url-help\" class=\"muted\">Use user@host:path or ssh://user@host:port/path. The namespace SSH identity needs write access to the destination. An administrator must allow the host and pin its SSH host key.</p></div><fieldset><legend>Sync behavior</legend>"
+        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><div class=\"field\"><label for=\"mirror-url\">Destination SSH URL</label><input id=\"mirror-url\" name=\"url\" type=\"text\" maxlength=\"2048\" value=\"\{mirror.url}\" placeholder=\"git@github.com:organization/repository.git\" required aria-describedby=\"mirror-url-help\"><p id=\"mirror-url-help\" class=\"muted\">Use user@host:path or ssh://user@host:port/path. An administrator must allow the destination host and pin its SSH host key.</p></div><fieldset><legend>Sync behavior</legend>"
       for
         (name, label, help, checked) in [
           (
@@ -147,8 +154,13 @@ fn render_mirror_form(
           }
           b <+ "</ul>"
         }
+        b <+ "</section>"
+        if !mirror.public_key.is_empty() {
+          b <+
+            "<details class=\"mirror-remove\"><summary>Rotate SSH key</summary><p>Generate a new key for this mirror and disable automatic sync. Add the new public key to the destination, remove the old deploy key there, then enable sync again.</p><form method=\"post\" action=\"\{action}/rotate-key\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><button type=\"submit\" class=\"ssh-danger-button\">Generate new SSH key</button></form></details>"
+        }
         b <+
-          "</section><details class=\"mirror-remove\"><summary>Remove mirror</summary><p>Stop syncing and remove this configuration and its history. The destination repository is kept.</p><form method=\"post\" action=\"\{action}/delete\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><button type=\"submit\" class=\"ssh-danger-button\">Remove mirror</button></form></details>"
+          "<details class=\"mirror-remove\"><summary>Remove mirror</summary><p>Stop syncing and remove this configuration and its history. The destination repository is kept.</p><form method=\"post\" action=\"\{action}/delete\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><button type=\"submit\" class=\"ssh-danger-button\">Remove mirror</button></form></details>"
       }
       b <+ "</section>"
     }),

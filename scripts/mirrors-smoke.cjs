@@ -32,12 +32,13 @@ async function until(check, message) {
   fs.mkdirSync(path.join(temp, 'credentials/root'), { recursive: true });
   fs.cpSync(path.join(root, 'db'), path.join(temp, 'db'), { recursive: true });
   fs.writeFileSync(path.join(temp, 'password'), password, { mode: 0o600 });
-  for (const [name, value] of Object.entries({ id_ed25519: 'local test identity', known_hosts: 'local test host key', allowed_hosts: 'github.com:22\n' })) {
+  for (const [name, value] of Object.entries({ known_hosts: 'local test host key', allowed_hosts: 'github.com:22\n' })) {
     fs.writeFileSync(path.join(temp, 'credentials/root', name), value, { mode: 0o600 });
   }
   const remote = path.join(temp, 'github.git');
   execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe' });
-  fs.writeFileSync(env.MOONHUB_IMPORT_SSH, '#!/bin/sh\nexec git receive-pack "' + remote + '"\n', { mode: 0o700 });
+  const authorized = path.join(temp, 'authorized-public-key');
+  fs.writeFileSync(env.MOONHUB_IMPORT_SSH, '#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f "$MOONHUB_IMPORT_IDENTITY" | cut -d " " -f 1-2)\ntest "$actual" = "$(cat "' + authorized + '")"\nexec git receive-pack "' + remote + '"\n', { mode: 0o700 });
   const listener = http.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening');
   const port = listener.address().port; await new Promise(r => listener.close(r));
   const base = 'http://127.0.0.1:' + port;
@@ -64,8 +65,17 @@ async function until(check, message) {
   git(dir, ['tag', '-a', 'v1', '-m', 'Release', initial]);
   git(dir, ['update-ref', 'refs/moonhub/private', initial]);
   const route = '/root/demo/settings/mirrors';
-  await form(route, { csrf_token: csrf(await html(route + '/new')), url: 'git@github.com:moonhub-preview/demo.git', active: '1' });
+  const newForm = await html(route + '/new');
+  assert.ok(!newForm.includes('name="active" value="1" checked'));
+  await form(route, { csrf_token: csrf(newForm), url: 'git@github.com:moonhub-preview/demo.git' });
   const mirror = () => sql('SELECT * FROM repository_mirror')[0];
+  const keyPair = () => sql('SELECT private_key,public_key FROM mirror_ssh_key WHERE mirror_id=?', mirror().id)[0];
+  const edit = route + '/' + mirror().id;
+  assert.equal(mirror().status, 'disabled');
+  assert.ok((await html(edit)).includes(keyPair().public_key));
+  assert.ok(!(await html(edit)).includes(keyPair().private_key));
+  fs.writeFileSync(authorized, keyPair().public_key.split(' ').slice(0, 2).join(' '), { mode: 0o600 });
+  await form(edit, { csrf_token: csrf(await html(edit)), version: String(mirror().version), url: mirror().url, active: '1' });
   await until(() => mirror().status === 'succeeded', 'initial sync failed');
   assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), initial);
   assert.equal(git(remote, ['rev-parse', 'refs/tags/v1']), git(dir, ['rev-parse', 'refs/tags/v1']));
@@ -88,7 +98,6 @@ async function until(check, message) {
   const head = sourceGit(['rev-parse', 'HEAD']);
   await until(() => mirror().status === 'succeeded' && git(remote, ['for-each-ref', '--format=%(objectname)', 'refs/heads/topic']) === head, 'incoming push not mirrored');
   // Turn on pruning and verify actual branch/tag deletion.
-  const edit = route + '/' + mirror().id;
   await form(edit, { csrf_token: csrf(await html(edit)), version: String(mirror().version), url: mirror().url, active: '1', prune: '1' });
   await until(() => mirror().status === 'succeeded', 'edited mirror not synced');
   sourceGit(['push', 'fixture:/root/demo.git', ':refs/heads/topic', ':refs/tags/received']);
@@ -121,8 +130,22 @@ async function until(check, message) {
   await nativePage.getByLabel('Enable automatic sync').uncheck(); await nativePage.getByRole('button', { name: 'Save mirror', exact: true }).click();
   await nativePage.waitForURL(base + edit); assert.equal(mirror().status, 'disabled');
   assert.equal(await nativePage.getByLabel('Enable automatic sync').isChecked(), false);
+  const oldPublicKey = keyPair().public_key;
+  await nativePage.getByText('Rotate SSH key', { exact: true }).click();
+  await nativePage.getByRole('button', { name: 'Generate new SSH key', exact: true }).click();
+  await nativePage.waitForURL(base + edit);
+  assert.equal(mirror().status, 'disabled');
+  assert.notEqual(keyPair().public_key, oldPublicKey);
+  assert.equal(await nativePage.getByLabel('Public key', { exact: true }).inputValue(), keyPair().public_key);
+  assert.ok(!(await nativePage.content()).includes('PRIVATE KEY'));
+  fs.writeFileSync(authorized, keyPair().public_key.split(' ').slice(0, 2).join(' '), { mode: 0o600 });
+  await nativePage.getByLabel('Enable automatic sync').check();
+  await nativePage.getByRole('button', { name: 'Save mirror', exact: true }).click();
+  await nativePage.waitForURL(base + edit);
+  await until(() => mirror().status === 'succeeded', 'rotated key could not sync');
+  assert.deepEqual(fs.readdirSync(path.join(temp, 'repos/.mirrors')).filter(name => name.startsWith('key-') || name.startsWith('snapshot-')), []);
   await native.close(); assert.deepEqual(errors, []);
-  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ result: 'passed', cases: ['initial branches and annotated tags', 'internal refs excluded', 'real SSH receive hooks', 'branch and tag deletion', 'real MR merge triggers mirror', 'desktop and mobile layouts', 'native disable form'], errors }, null, 2));
+  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ result: 'passed', cases: ['initial branches and annotated tags', 'internal refs excluded', 'real SSH receive hooks', 'branch and tag deletion', 'real MR merge triggers mirror', 'desktop and mobile layouts', 'native disable form', 'database-backed independent SSH identity', 'public-key setup without namespace import key', 'native key rotation and reauthorization', 'temporary key cleanup'], errors }, null, 2));
   console.log('Mirror integration and browser acceptance passed. Screenshots: ' + review);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close(); if (server && server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'exit'); }
