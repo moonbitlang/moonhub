@@ -96,11 +96,42 @@ ID and instance-type allowlist stable for an enrolled provider.
 ./deploy/production.sh status
 ```
 
-Upgrade builds and publishes before stopping anything. It refuses active attempts.
-For an enrolled provider, pause it in Site settings, allow workers to drain/terminate,
-and leave the controller running until the ASGs reach desired zero. The script stops
-the controller and checks that no undrained workers or active attempts remain before
-switching Web. A refused upgrade restarts a previously running controller.
+Upgrade builds and publishes before pausing claims. At the switch boundary it
+checks for active attempts and pauses the production provider in one database
+transaction. Active attempts still refuse the upgrade without interrupting tasks.
+The script records the provider's original pause state and restores it after the
+switch; a provider that was already paused stays paused.
+
+If the installed standalone controller binary and systemd settings match the new
+build, an enrolled provider can keep idle workers and nonzero ASG capacity. The
+script stops the controller before the temporary pause, preventing that pause from
+triggering worker retirement. Saved execution settings must already be applied.
+Workers still cleaning up a task, active attempts and undrained workers belonging
+to another provider continue to block the switch. The controller restarts only
+after the original pause state has been restored. A successful upgrade starts the
+controller even if it was inactive beforehand, so idle retirement can resume.
+New commit-tagged bootstrap Runner image defaults do not change an enrolled
+provider's saved execution settings.
+
+When the controller binary or settings change, the script automatically pauses the
+provider and leaves the old controller running to drain workers and both ASGs to
+zero before replacing it. Pause triggers draining without waiting for idle timeout.
+The wait is bounded by `MOONHUB_PRODUCTION_DRAIN_TIMEOUT` (default 600 seconds,
+allowed range 0–3600). A refused or failed upgrade attempts to restore the original
+pause state and restarts a previously running controller, including one that was
+waiting for systemd's automatic restart delay.
+
+The controller backup contains `provider-state.json`, written before the pause
+transaction commits. If Web is unavailable and automatic restoration fails, the
+script reports this journal's path and exits unsuccessfully. Restore Web health,
+then restore the original pause state using that journal (substitute the real
+Compose project and backup path):
+
+```sh
+docker exec -i --user git PROJECT-web-1 node --no-warnings - restore \
+  "$(cat /path/to/controller-backup/provider-state.json)" \
+  < deploy/production-provider-state.cjs
+```
 
 The existing `deploy.sh` creates a complete Web/SSH data and image backup before
 the switch. The production wrapper additionally saves the old controller unit,
@@ -110,7 +141,7 @@ installs a systemd unit with a 65-second restart delay for the 60-second server 
 New registration tokens are written only to root-private files and passed to the
 application over stdin. An enrolled provider does not require its original token.
 
-After upgrade, resume the provider if it was paused. Verify Web/SSH health,
+After upgrade, verify the provider has its original pause state, Web/SSH health,
 controller active status, all-repository grants and observed/applied configuration
 revisions. Trigger a real production pipeline through the MoonHub CLI; verify an
 ASG launches a worker, the worker executes and reports the task, cleanup succeeds,
@@ -233,7 +264,9 @@ root-private administration sessions/scripts used during rollout.
 | ASG update reports `not authorized to use launch template` | Check EC2 launch/template permissions, PassRole, template resource ARNs and tag permissions, not only `autoscaling:UpdateAutoScalingGroup`. Verify from the production instance identity. |
 | Task is lost before its first log on a root-run host Worker | Use the version that explicitly sets the credential-free manifest to 0444 inside its 0700 host directory. Docker preserves host file ownership/mode; a 0600 root-owned manifest is unreadable to the non-root task UID. The credential still arrives only over stdin. |
 | EC2 exists but worker is not ready | In SSM, inspect `cloud-init status --long`, `/var/log/cloud-init-output.log`, Docker image pull and `journalctl -u moonhub-runner-worker`. User-data installation may take several minutes. Verify outbound SSM/ECR/MoonHub connectivity and the worker role. Do not print bootstrap JSON. |
-| Upgrade refuses active attempts, undrained workers or nonzero ASG capacity | Pause the provider, leave the old controller running to drain it, wait for task completion and scale-in, then retry. Do not force-stop task containers or manually lower desired capacity around protected busy instances. |
+| Upgrade refuses active attempts or times out draining workers/ASGs | Let active tasks and cleanup finish, then retry. The script pauses/restores the provider automatically. Controller changes require full drain; unchanged controllers permit paused idle workers. Check controller/AWS health if draining stalls; do not force-stop tasks or lower desired capacity around protected busy instances. |
+| Upgrade reports provider pause restoration failure | Recover Web health and restore the original state with the reported `provider-state.json` journal as described above. The upgrade exits unsuccessfully if restoration fails. |
+| Idle workers exceed `idle_seconds` with `standby_workers=0` | Check `systemctl status moonhub-runner-controller.service` and its journal on the Web host. The controller performs ASG retirement; worker heartbeats alone do not prove it is running. Recover the controller service, then allow a reconciliation cycle to drain and terminate idle instances. |
 | Restart temporarily cannot acquire the controller lease | Wait for the previous 60-second lease to expire; the systemd restart delay is 65 seconds. Do not create another provider or replace credentials. |
 | Runtime image/template changes do not take effect after changing CLI flags | Saved server configuration wins after enrollment. Update the matching Runner image and numeric template version in Execution settings, then wait for acknowledgement. |
 

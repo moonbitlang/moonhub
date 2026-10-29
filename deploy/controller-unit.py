@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Render a systemd controller unit from operator-owned production settings."""
 import os
+import re
+import sys
 
 
 def unit_quote(value):
@@ -49,5 +51,18 @@ WantedBy=multi-user.target
 '''
 
 
+def equivalent(installed, candidate):
+    # Enrolled providers use the saved server configuration, so a new build's
+    # runner-image bootstrap default does not itself change execution settings.
+    image = '("--runner-image" )"[^"]*"'
+    old, old_count = re.subn(image, lambda m: m.group(1) + '"<enrolled-runner-image>"', installed)
+    new, new_count = re.subn(image, lambda m: m.group(1) + '"<enrolled-runner-image>"', candidate)
+    return old_count == new_count == 1 and old == new
+
+
 if __name__ == '__main__':
-    print(render(os.environ), end='')
+    candidate = render(os.environ)
+    if len(sys.argv) == 3 and sys.argv[1] == '--matches':
+        with open(sys.argv[2]) as installed:
+            sys.exit(0 if equivalent(installed.read(), candidate) else 1)
+    print(candidate, end='')

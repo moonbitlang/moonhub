@@ -139,7 +139,13 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
           ToJson::to_json(request),
           allow_http=base.allow_http,
         ),
-      )
+      ) catch {
+        Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
+        _ => {
+          @async.sleep(base.poll_ms)
+          continue
+        }
+      }
       latest.val = Some(ready)
       if ready.draining {
         state.val = "drained"

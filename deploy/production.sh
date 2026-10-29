@@ -26,6 +26,9 @@ BUILDER=${MOONHUB_BUILD_CONTAINER:-$PROJECT-buildkit}
 CACHE=${MOONHUB_BUILD_CACHE:-$PROJECT-buildkit-cache}
 BUILDER_LABEL=${MOONHUB_BUILD_OWNER:-$PROJECT}
 BUILD_STAGE=''
+CONTROLLER_STAGE=''
+PROVIDER_STATE_FILE=''
+RESTORE_PROVIDER=0
 BUILDX=''
 BUILD_STARTED=0
 RESTART_CONTROLLER=0
@@ -34,13 +37,20 @@ cleanup() {
   if [ "$BUILD_STARTED" = 1 ]; then docker stop "$BUILDER" >/dev/null 2>&1 || true; fi
   if [ -n "$BUILDX" ]; then docker buildx rm "$BUILDX" >/dev/null 2>&1 || true; fi
   if [ -n "$BUILD_STAGE" ]; then rm -rf -- "$BUILD_STAGE"; fi
-  if [ "$RESTART_CONTROLLER" = 1 ]; then systemctl start "$SERVICE" || true; fi
+  if [ -n "$CONTROLLER_STAGE" ]; then rm -rf -- "$CONTROLLER_STAGE"; fi
+  if [ "$RESTORE_PROVIDER" = 1 ] && ! restore_provider; then
+    printf 'Provider pause state could not be restored; recovery journal: %s\n' "$PROVIDER_STATE_FILE" >&2
+    result=1
+  fi
+  if [ "$RESTART_CONTROLLER" = 1 ]; then systemctl start "$SERVICE" || result=1; fi
   rmdir "$LOCK" 2>/dev/null || true
   return "$result"
 }
 LOCK=${MOONHUB_PRODUCTION_LOCK_DIR:-/tmp/$PROJECT-production.lock}
 mkdir "$LOCK" 2>/dev/null || { printf 'Another production operation is running: %s\n' "$LOCK" >&2; exit 1; }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 clean_checkout() {
   [ -z "$(git status --porcelain --untracked-files=normal)" ] || { printf 'Refusing dirty source checkout.\n' >&2; return 1; }
 }
@@ -113,11 +123,52 @@ web_deploy() {
   rm -f -- "$settings"
   return "$result"
 }
+prepare_controller() {
+  [ -z "$CONTROLLER_STAGE" ] || return 0
+  : "${MOONHUB_SERVER:?}" "${MOONHUB_ASG:?}" "${MOONHUB_LAUNCH_TEMPLATE:?}" "${MOONHUB_INSTANCE_TYPES:?}" "${MOONHUB_PARAMETER_PREFIX:?}"
+  matching_images
+  CONTROLLER_STAGE=$(mktemp -d /tmp/moonhub-production-controller.XXXXXX)
+  local container result=0
+  container=$(docker create --entrypoint /bin/true "$CONTROLLER_IMAGE")
+  docker cp "$container:/usr/local/bin/moonhub-runner" "$CONTROLLER_STAGE/moonhub-runner" || result=$?
+  docker rm "$container" >/dev/null
+  [ "$result" = 0 ] || return "$result"
+  export MOONHUB_TASK_IMAGE=$TASK_IMAGE MOONHUB_CONTROLLER_STATE_DIR=$STATE MOONHUB_REGISTRATION_TOKEN_FILE=$TOKEN
+  python3 "$ROOT/deploy/controller-unit.py" > "$CONTROLLER_STAGE/controller.service"
+}
+controller_unchanged() {
+  [ -f "$STATE/registered.json" ] &&
+    [ -f /etc/systemd/system/$SERVICE ] &&
+    [ -f /usr/local/bin/moonhub-runner ] &&
+    cmp -s "$CONTROLLER_STAGE/moonhub-runner" /usr/local/bin/moonhub-runner &&
+    python3 "$ROOT/deploy/controller-unit.py" --matches /etc/systemd/system/$SERVICE
+}
+stop_controller() {
+  local state
+  state=$(systemctl show "$SERVICE" -p ActiveState --value)
+  # A controller waiting for RestartSec is activating, not active. Stopping it
+  # cancels that retry, so failed upgrades must restart it as well.
+  case "$state" in active|activating|reloading) RESTART_CONTROLLER=1 ;; esac
+  systemctl stop "$SERVICE"
+}
+restore_provider() {
+  if [ -s "$PROVIDER_STATE_FILE" ]; then
+    docker exec -i --user git "$PROJECT-web-1" node --no-warnings - restore "$(cat "$PROVIDER_STATE_FILE")" < "$ROOT/deploy/production-provider-state.cjs" || return 1
+  fi
+  RESTORE_PROVIDER=0
+}
+asgs_empty() {
+  local groups=("$MOONHUB_ASG")
+  if [ -n "${MOONHUB_SPOT_ASG:-}" ]; then groups+=("$MOONHUB_SPOT_ASG"); fi
+  "$AWS" autoscaling describe-auto-scaling-groups --region "$MOONHUB_AWS_REGION" \
+    --auto-scaling-group-names "${groups[@]}" --output json --no-cli-pager | \
+    jq -e --argjson count "${#groups[@]}" '.AutoScalingGroups | length == $count and all(.[]; .DesiredCapacity == 0 and (.Instances | length == 0))' >/dev/null
+}
 install_controller() {
   : "${MOONHUB_SERVER:?}" "${MOONHUB_ASG:?}" "${MOONHUB_LAUNCH_TEMPLATE:?}" "${MOONHUB_INSTANCE_TYPES:?}" "${MOONHUB_PARAMETER_PREFIX:?}"
   [ "${MOONHUB_PROVIDER_SCOPE:-all}" = all ] || { printf 'Production provider must authorize all repositories.\n' >&2; return 1; }
   [ -z "${MOONHUB_PROVIDER_REPOSITORIES:-}" ] || { printf 'All-repository scope cannot include selected repositories.\n' >&2; return 1; }
-  matching_images
+  prepare_controller
   install -d -m 700 "$(dirname "$TOKEN")" "$STATE"
   if [ ! -f "$STATE/registered.json" ]; then
     if [ ! -f "$TOKEN" ]; then openssl rand -hex 32 > "$TOKEN"; chmod 600 "$TOKEN"; fi
@@ -126,15 +177,9 @@ install_controller() {
       moonhub pipeline-provider-ensure --preserve-existing --name "$1" --token-file "$token" --labels "$2" --scope all --admin "$3"
     ' register "${MOONHUB_PROVIDER_NAME:-asg}" "${MOONHUB_PROVIDER_LABELS:-self-hosted,linux,moonhub-build}" "${MOONHUB_ROOT_USER:-root}" < "$TOKEN"
   fi
-  local container
-  container=$(docker create --entrypoint /bin/true "$CONTROLLER_IMAGE")
-  docker cp "$container:/usr/local/bin/moonhub-runner" /usr/local/bin/moonhub-runner.new
-  docker rm "$container" >/dev/null
-  chmod 755 /usr/local/bin/moonhub-runner.new
+  install -m 755 "$CONTROLLER_STAGE/moonhub-runner" /usr/local/bin/moonhub-runner.new
   mv /usr/local/bin/moonhub-runner.new /usr/local/bin/moonhub-runner
-  export MOONHUB_TASK_IMAGE=$TASK_IMAGE MOONHUB_CONTROLLER_STATE_DIR=$STATE MOONHUB_REGISTRATION_TOKEN_FILE=$TOKEN
-  python3 "$ROOT/deploy/controller-unit.py" > /etc/systemd/system/$SERVICE.new
-  chmod 644 /etc/systemd/system/$SERVICE.new
+  install -m 644 "$CONTROLLER_STAGE/controller.service" /etc/systemd/system/$SERVICE.new
   mv /etc/systemd/system/$SERVICE.new /etc/systemd/system/$SERVICE
   systemctl daemon-reload
   systemctl enable "$SERVICE"
@@ -145,30 +190,57 @@ upgrade() {
   clean_checkout
   build
   publish
-  local active backup
-  active=$(docker exec -i --user git "$PROJECT-web-1" node --no-warnings - < "$ROOT/deploy/active-attempts.cjs")
-  [[ "$active" =~ ^[0-9]+$ ]] && [ "$active" = 0 ] || { printf 'Active attempts prevent production switch.\n' >&2; return 1; }
-  backup=${MOONHUB_BACKUP_DIR:-$ROOT/backups}/controller-$(date -u +%Y%m%d-%H%M%S)-$RELEASE
-  mkdir -m 700 -p "$backup"
+  prepare_controller
+  local backup unchanged=0
+  local drain_timeout=${MOONHUB_PRODUCTION_DRAIN_TIMEOUT:-600}
+  [[ "$drain_timeout" =~ ^[0-9]+$ ]] && [ "$drain_timeout" -le 3600 ] || { printf 'Drain timeout must be 0 through 3600 seconds.\n' >&2; return 1; }
+  if controller_unchanged; then unchanged=1; fi
+  local backup_root=${MOONHUB_BACKUP_DIR:-$ROOT/backups}
+  mkdir -m 700 -p "$backup_root"
+  backup=$(mktemp -d "$backup_root/controller-$(date -u +%Y%m%d-%H%M%S)-$RELEASE.XXXXXX")
+  PROVIDER_STATE_FILE=$backup/provider-state.json
+  if [ "$unchanged" = 1 ]; then
+    stop_controller
+  fi
+  RESTORE_PROVIDER=1
+  # The transaction checks active attempts and pauses claims atomically. Builds
+  # and publication have already finished, keeping the pause window short.
+  docker exec -i --user git "$PROJECT-web-1" node --no-warnings - pause "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-provider-state.cjs" > "$PROVIDER_STATE_FILE"
+  printf 'Provider claims paused for production switch.\n'
+  if [ "$unchanged" = 0 ]; then
+    printf 'Controller changed; waiting for paused workers and both ASGs to drain.\n'
+    local deadline=$((SECONDS + drain_timeout))
+    while ! {
+      docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-readiness.cjs" > /dev/null 2> "$backup/readiness.log" && asgs_empty
+    }; do
+      [ "$SECONDS" -lt "$deadline" ] || {
+        cat "$backup/readiness.log" >&2
+        printf 'Timed out draining workers/ASGs; Web remains unchanged.\n' >&2; return 1;
+      }
+      sleep 5
+    done
+  fi
   if systemctl cat "$SERVICE" >/dev/null 2>&1; then
-    if systemctl is-active --quiet "$SERVICE"; then RESTART_CONTROLLER=1; fi
-    systemctl stop "$SERVICE"
+    if [ "$unchanged" = 0 ]; then
+      stop_controller
+    fi
     cp /etc/systemd/system/$SERVICE "$backup/"
   fi
   if [ -d "$STATE" ]; then cp -a "$STATE" "$backup/state"; fi
   if [ -f /usr/local/bin/moonhub-runner ]; then cp /usr/local/bin/moonhub-runner "$backup/"; fi
   cp "$SETTINGS" "$backup/production.env"
-  # A stopped controller cannot allocate new workers. Registered workers must
-  # already be drained so none can claim during Web image export or restart.
-  docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-readiness.cjs"
-  local groups=("$MOONHUB_ASG")
-  if [ -n "${MOONHUB_SPOT_ASG:-}" ]; then groups+=("$MOONHUB_SPOT_ASG"); fi
-  "$AWS" autoscaling describe-auto-scaling-groups --region "$MOONHUB_AWS_REGION"     --auto-scaling-group-names "${groups[@]}" --output json --no-cli-pager |     jq -e --argjson count "${#groups[@]}" '.AutoScalingGroups | length == $count and all(.[]; .DesiredCapacity == 0 and (.Instances | length == 0))' >/dev/null || {
-      printf 'Drain both ASGs to zero before production switch.
-' >&2; return 1;
-    }
+  local readiness=("${MOONHUB_PROVIDER_NAME:-asg}")
+  if [ "$unchanged" = 1 ]; then readiness+=(--allow-idle-workers); fi
+  docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${readiness[@]}" < "$ROOT/deploy/production-readiness.cjs"
+  if [ "$unchanged" = 0 ]; then
+    asgs_empty || { printf 'Drain both ASGs to zero before production switch.\n' >&2; return 1; }
+  fi
   web_deploy upgrade
-  install_controller
+  if [ "$unchanged" = 0 ]; then install_controller; fi
+  # Restore claims before starting an unchanged controller so its first sync
+  # does not retire the workers just because of the temporary deployment pause.
+  restore_provider
+  if [ "$unchanged" = 1 ]; then systemctl start "$SERVICE"; fi
   RESTART_CONTROLLER=0
   printf 'Production checkout %s; task image %s; controller backup %s\n' "$REVISION" "$TASK_IMAGE" "$backup"
 }
