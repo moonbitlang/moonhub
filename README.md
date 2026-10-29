@@ -14,6 +14,8 @@ setup, execution approval, version-bound results, and upgrade requirements.
 See [collaboration architecture and supported behavior](docs/collaboration.md).
 Descriptions and comments support [managed Markdown image attachments](docs/attachments.md),
 including browser uploads and CLI inline image conversion.
+Repository managers can configure [push mirrors](docs/mirrors.md) to sync
+branches and tags to an SSH remote such as GitHub.
 Repository managers can configure [signed Webhooks](docs/webhooks.md) for Push,
 Issue, MR, review and Pipeline events, with retry and delivery history.
 Request reviewers from an MR discussion and use **Inbox** for pending reviews,

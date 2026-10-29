@@ -10,6 +10,7 @@ pub async fn serve(config : Config) -> Unit {
     @mail.start_mail_worker(pool, group)
     @webhooks.start_worker(pool, config.root, webhook_policy(), group)
     let import_config = @repository.repo_import_config_from_env()
+    @repository.start_mirror_worker(pool, config.root, import_config, group)
     let addresses = @repository.ssh_address_config_from_env()
     @repository.start_repository_worker(
       pool,

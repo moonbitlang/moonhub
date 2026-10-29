@@ -26,6 +26,8 @@ pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser,
 
 pub fn list_ref_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RefEventStatus] raise
 
+pub fn mirror_history(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[MirrorAttempt] raise
+
 pub fn namespace_repositories(@database.Database, @domain.CurrentUser, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
 
 pub let no_ssh_address_config : SshAddressConfig
@@ -33,6 +35,10 @@ pub let no_ssh_address_config : SshAddressConfig
 pub fn pin_legacy_repository_source(@database.Database, @domain.CurrentUser, RepositoryJob, SshAddressConfig) -> RepositoryJob raise
 
 pub fn pipeline_push_enabled(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Bool raise
+
+pub async fn push_mirror_action(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String) -> Unit
+
+pub fn push_mirrors(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[PushMirror] raise
 
 pub fn record_deploy_key_webhook_transaction(@database.Database, RepositoryScope, Int64, String, String, String) -> Unit raise
 
@@ -50,6 +56,8 @@ pub fn repository_job_source(@database.Database, @domain.CurrentUser, Repository
 
 pub fn repository_scope(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
 
+pub fn require_mirror_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
+
 pub fn require_repository_job(@database.Database, @identity.TeamSummary, String) -> RepositoryJob raise
 
 pub fn require_repository_manager(@database.Database, @domain.CurrentUser, @identity.TeamSummary) -> Unit raise
@@ -62,13 +70,19 @@ pub fn retry_repository_job(@database.Database, @domain.CurrentUser, @identity.T
 
 pub async fn run_next_repository_job(@database.Database, String, RepoImportConfig?, addresses? : SshAddressConfig) -> Bool
 
+pub async fn save_push_mirror(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, Bool, Bool, Bool, RepoImportConfig?) -> Int64
+
 pub fn save_ssh_endpoint(@database.Database, @domain.CurrentUser, SshAddressConfig, String, String) -> Unit raise
 
 pub async fn set_pipeline_push_enabled(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Bool) -> Unit
 
 pub fn ssh_address_config_from_env() -> SshAddressConfig raise
 
+pub fn start_mirror_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit]) -> Unit
+
 pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
+
+pub async fn sync_next_mirror(@database.Database, String, RepoImportConfig?) -> Bool
 
 pub async fn team_import_credentials(RepoImportConfig, String) -> TeamImportCredentials
 
@@ -81,6 +95,27 @@ pub async fn[A] with_repository_write(@database.Database, String, @domain.Curren
 // Errors
 
 // Types and methods
+pub(all) struct MirrorAttempt {
+  status : String
+  error : String
+  started_at : String
+  completed_at : String?
+}
+
+pub(all) struct PushMirror {
+  id : Int64
+  url : String
+  active : Bool
+  force_push : Bool
+  prune : Bool
+  version : Int64
+  status : String
+  attempts : Int64
+  error : String
+  last_success_at : String?
+  next_attempt_at : String
+}
+
 pub struct RefEventStatus {
   reference : String
   commit_sha : String

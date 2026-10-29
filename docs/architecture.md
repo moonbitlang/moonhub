@@ -15,7 +15,7 @@ unchanged.
 | `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
-| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events and recovery |
+| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events, recovery and outbound push mirrors |
 | `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and pending upload cleanup |
 | `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to migration 024 |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
@@ -155,6 +155,11 @@ worker consumes their immutable commit IDs under the shared repository lock and
 creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
+
+Push mirror configuration, ref intents, snapshotting and delivery workers belong
+to `repository`; `web/views/repositories` owns the authorized settings forms.
+The source write lock covers only the local snapshot; a separate per-mirror lock
+serializes external transfers and configuration changes. See [push mirrors](mirrors.md).
 
 The browser rendering boundary is described in [frontend architecture](frontend.md).
 `web/spa` has no business or HTTP dependency. It holds only presentation data;

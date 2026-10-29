@@ -71,6 +71,7 @@ pub fn record_received_transaction(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
+      record_mirror_refs(tx, scope.id, source_key, phase, updates)
       record_webhook_refs(tx, scope, actor.id, source_key, phase, updates)
       let enabled : Bool = tx
         .query_one(
@@ -166,6 +167,7 @@ pub async fn recover_ref_events_locked(
   scope : RepositoryScope,
   git_dir : String,
 ) -> Unit {
+  recover_mirror_refs_locked(pool, scope, git_dir)
   recover_webhook_refs_locked(pool, scope, git_dir)
   let rows = pool.with_client(client => {
     client.query_all(
