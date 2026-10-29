@@ -32,7 +32,7 @@ pub fn repo_param(
 
 ///|
 pub fn rev_param(req : @moonback.Request) -> String raise @domain.AppError {
-  let rev = required_param(req, "rev", "revision")
+  let rev = decode_url_path(required_param(req, "rev", "revision"))
   guard @domain.valid_repo_path(rev) else {
     raise @domain.BadRequest(message="invalid revision")
   }
@@ -50,7 +50,7 @@ pub fn commit_param(req : @moonback.Request) -> String raise @domain.AppError {
 
 ///|
 pub fn path_param(req : @moonback.Request) -> String raise @domain.AppError {
-  let path = required_param(req, "path", "path")
+  let path = decode_url_path(required_param(req, "path", "path"))
   guard @domain.valid_repo_path(path) else {
     raise @domain.BadRequest(message="invalid path")
   }

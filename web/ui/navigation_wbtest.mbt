@@ -1,4 +1,112 @@
 ///|
+async test "all shell breadcrumbs link to existing sections and identify the current destination" {
+  @web_testkit.with_ssh_settings_app((port, _, _, _, admin) => {
+    for
+      (path, current, destinations) in [
+        ("/", "Repositories", ["/", "/"]),
+        ("/-/teams", "Teams", ["/", "/-/teams"]),
+        ("/-/notifications", "Inbox", ["/", "/-/notifications"]),
+        ("/alice", "Alice", ["/", "/alice"]),
+        (
+          "/workshop?tab=members",
+          "Members",
+          ["/-/teams", "/workshop", "/workshop?tab=members"],
+        ),
+        (
+          "/workshop?tab=invitations",
+          "Invitations",
+          ["/-/teams", "/workshop", "/workshop?tab=invitations"],
+        ),
+        ("/alice/demo", "Files", ["/alice", "/alice/demo"]),
+        (
+          "/alice/demo/issues",
+          "Issues",
+          ["/alice", "/alice/demo", "/alice/demo/issues"],
+        ),
+        (
+          "/alice/demo/commits",
+          "Commits",
+          ["/alice", "/alice/demo", "/alice/demo/commits"],
+        ),
+        (
+          "/alice/demo/merge-requests",
+          "Merge requests",
+          ["/alice", "/alice/demo", "/alice/demo/merge-requests"],
+        ),
+        (
+          "/alice/demo/pipelines",
+          "Pipelines",
+          ["/alice", "/alice/demo", "/alice/demo/pipelines"],
+        ),
+        (
+          "/alice/demo/settings/branches",
+          "Branch protection",
+          ["/alice/demo", "/alice/demo/settings/branches"],
+        ),
+        (
+          "/alice/demo/settings/deploy-keys",
+          "Deploy keys",
+          ["/alice/demo", "/alice/demo/settings/deploy-keys"],
+        ),
+        (
+          "/alice/demo/settings/webhooks",
+          "Webhooks",
+          ["/alice/demo", "/alice/demo/settings/webhooks"],
+        ),
+        ("/-/settings/profile", "Profile", ["/-/settings/profile"]),
+        (
+          "/-/settings/ssh-keys",
+          "SSH keys",
+          ["/-/settings/profile", "/-/settings/ssh-keys"],
+        ),
+        (
+          "/-/settings/tokens",
+          "Access tokens",
+          ["/-/settings/profile", "/-/settings/tokens"],
+        ),
+        (
+          "/-/change-password",
+          "Password",
+          ["/-/settings/profile", "/-/change-password"],
+        ),
+        ("/-/admin/settings/ssh", "SSH access", ["/-/admin/settings/ssh"]),
+        (
+          "/-/admin/settings/mail",
+          "Email delivery",
+          ["/-/admin/settings/ssh", "/-/admin/settings/mail"],
+        ),
+        (
+          "/-/admin/pipelines/providers",
+          "Pipeline providers",
+          ["/-/admin/settings/ssh", "/-/admin/pipelines/providers"],
+        ),
+      ] {
+      let (response, html) = @web_testkit.http_get_path_with_cookie(
+        port, path, admin,
+      )
+      assert_eq(response.code, 200, msg=path)
+      let trail = html.split("aria-label=\"Breadcrumb\"><ol>").collect()[1]
+      let trail = trail[:trail.find("</nav>").unwrap()]
+      assert_true(
+        trail.contains("aria-current=\"page\">\{current}</a>"),
+        msg=path,
+      )
+      assert_eq(trail.split("aria-current=").count(), 2, msg=path)
+      for href in destinations {
+        assert_true(
+          trail.contains("href=\"\{href}\""),
+          msg=path + " -> " + href,
+        )
+        let (target, _) = @web_testkit.http_get_path_with_cookie(
+          port, href, admin,
+        )
+        assert_eq(target.code, 200, msg=href)
+      }
+    }
+  })
+}
+
+///|
 async test "workspace shell selects the team view and keeps private actions authorized" {
   @web_testkit.with_ssh_settings_app((port, _, alice, bob, _) => {
     for tab in ["repositories", "members", "invitations"] {

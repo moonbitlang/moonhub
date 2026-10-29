@@ -24,6 +24,17 @@ try {
   mkdirSync(join(repos, 'alice'), { recursive: true });
   execFileSync('git', ['clone', '--bare', '--no-hardlinks', '--quiet',
     join(root, 'testdata/repos/alice/demo.git'), join(repos, 'alice/demo.git')]);
+  const git = (args, input) => execFileSync('git', ['--git-dir', join(repos, 'alice/demo.git'),
+    '-c', 'user.name=Browser fixture', '-c', 'user.email=browser@moonhub.invalid', ...args],
+    { encoding: 'utf8', input }).trim();
+  // Dedicated ref for deep paths; the default fixture stays intact for other tests.
+  const blob = git(['rev-parse', 'master:README.md']);
+  let tree = git(['mktree'], `100644 blob ${blob}\tmain.mbt\n`);
+  for (const name of ['a-very-long-directory-name-for-narrow-mobile-navigation', 'src']) {
+    tree = git(['mktree'], `040000 tree ${tree}\t${name}\n`);
+  }
+  const commit = git(['commit-tree', tree, '-p', 'master', '-m', 'Nested browser fixture']);
+  git(['update-ref', 'refs/heads/feature/breadcrumbs', commit]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',

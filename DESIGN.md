@@ -173,6 +173,10 @@ height. Filters stack at (700px), Inbox rows/actions at (600px). Pipeline, Issue
 and Inbox page links stay one horizontally scrollable row with a clear selected
 view. The mobile drawer is dismissible and keyboard-accessible.
 
+Shell pages keep breadcrumbs visible on mobile in a second (44px) header row,
+bringing the header to (100px). Long context trails scroll within that row;
+file paths wrap within the content area. Header controls stay together above it.
+
 **The Navigation Roles Rule.** Context navigation chooses scope, page links
 choose a feature view, filters narrow records, local selectors choose a job,
 step, file or revision, and buttons perform actions. Preserve those distinctions.
@@ -211,6 +215,13 @@ and reject duplicate submission. Native selects and protected POST forms are
 the baseline.
 
 ### Navigation and records
+
+Context and file breadcrumbs share an ordered list, quiet Lucide chevrons,
+blue links, a soft hover surface and visible keyboard focus. The final item
+uses stronger text and `aria-current`; file paths retain a heading for the
+current file or directory. Ancestors link to existing scope pages, and file
+path links preserve the selected revision. Settings trails name their active
+section. Touch targets reach (44px) at (900px) and below.
 
 Page links have muted text, a stronger selected label, blue underline and
 aria-current. They retain ordinary link keyboard behavior, not a tab-widget
