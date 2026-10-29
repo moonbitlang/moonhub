@@ -31,6 +31,8 @@ pub let config_assets_root : @moonback.TypedKey[String]
 
 pub let config_db_pool : @moonback.TypedKey[@database.Database]
 
+pub let config_mirror : @moonback.TypedKey[@repository.MirrorConfig]
+
 pub let config_repo_import : @moonback.TypedKey[@repository.RepoImportConfig]
 
 pub let config_root : @moonback.TypedKey[String]

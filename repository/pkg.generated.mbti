@@ -16,7 +16,11 @@ pub fn authorize_repository(@database.Database, @domain.CurrentUser, @domain.Rep
 
 pub fn can_access_repository(@database.Database, @domain.CurrentUser, @domain.RepoId, RepoOperation) -> Bool raise
 
+pub async fn confirm_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String) -> Unit
+
 pub async fn create_managed_repository(@database.Database, String, @domain.RepoId, String, Bool) -> Unit
+
+pub let default_mirror_config : MirrorConfig
 
 pub async fn discard_repository_job(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit
 
@@ -24,9 +28,15 @@ pub fn effective_ssh_endpoint(@database.Database, SshAddressConfig) -> SshEndpoi
 
 pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String, String, String, addresses? : SshAddressConfig) -> @domain.RepoId
 
+pub async fn initialize_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, MirrorConfig) -> Unit
+
 pub fn list_ref_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RefEventStatus] raise
 
+pub fn mirror_config_from_env() -> MirrorConfig raise
+
 pub fn mirror_history(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[MirrorAttempt] raise
+
+pub fn mirror_host_fingerprints(String) -> Array[String] raise
 
 pub fn namespace_repositories(@database.Database, @domain.CurrentUser, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
 
@@ -72,7 +82,7 @@ pub async fn rotate_mirror_key(@database.Database, String, @domain.CurrentUser, 
 
 pub async fn run_next_repository_job(@database.Database, String, RepoImportConfig?, addresses? : SshAddressConfig) -> Bool
 
-pub async fn save_push_mirror(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, Bool, Bool, Bool, RepoImportConfig?) -> Int64
+pub async fn save_push_mirror(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, Bool, Bool, Bool) -> Int64
 
 pub fn save_ssh_endpoint(@database.Database, @domain.CurrentUser, SshAddressConfig, String, String) -> Unit raise
 
@@ -80,13 +90,13 @@ pub async fn set_pipeline_push_enabled(@database.Database, String, @domain.Curre
 
 pub fn ssh_address_config_from_env() -> SshAddressConfig raise
 
-pub fn start_mirror_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit]) -> Unit
+pub fn start_mirror_worker(@database.Database, String, MirrorConfig, @async.TaskGroup[Unit]) -> Unit
 
 pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
 
-pub async fn sync_next_mirror(@database.Database, String, RepoImportConfig?) -> Bool
+pub async fn sync_next_mirror(@database.Database, String, MirrorConfig) -> Bool
 
-pub async fn team_import_credentials(RepoImportConfig, String, identity_required? : Bool) -> TeamImportCredentials
+pub async fn team_import_credentials(RepoImportConfig, String) -> TeamImportCredentials
 
 pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[TeamRepository] raise
 
@@ -104,10 +114,23 @@ pub(all) struct MirrorAttempt {
   completed_at : String?
 }
 
+pub(all) struct MirrorConfig {
+  ssh_command : String
+  timeout_ms : Int32
+  keyscan_command : String
+}
+
+pub(all) struct MirrorHostCheck {
+  challenge : String
+  fingerprints : Array[String]
+}
+
 pub(all) struct PushMirror {
   id : Int64
   url : String
   public_key : String
+  host_keys : String
+  host_check : MirrorHostCheck?
   active : Bool
   force_push : Bool
   prune : Bool

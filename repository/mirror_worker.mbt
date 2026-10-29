@@ -4,6 +4,7 @@ priv struct MirrorJob {
   scope : RepositoryScope
   actor : @domain.CurrentUser
   url : String
+  host_keys : String
   force_push : Bool
   prune : Bool
   generation : Int64
@@ -82,6 +83,7 @@ fn claim_mirror(pool : @database.Database, id : Int64) -> MirrorJob? raise {
         scope,
         actor,
         url: row.get_name("url"),
+        host_keys: row.get_name("host_keys"),
         force_push: row.get_name("force_push"),
         prune: row.get_name("prune"),
         generation,
@@ -97,15 +99,10 @@ async fn transfer_mirror(
   pool : @database.Database,
   root : String,
   job : MirrorJob,
-  config : RepoImportConfig,
+  config : MirrorConfig,
 ) -> Unit {
   let target = parse_ssh_import_source(job.url)
-  let credentials = team_import_credentials(
-    config,
-    job.scope.repo.owner,
-    identity_required=false,
-  )
-  authorize_import_source(credentials, target)
+  ignore(mirror_known_hosts(target, job.host_keys))
   let work = mirror_work_root(root)
   let stage = "\{work}/\{job.id}/\{job.lease}.git"
   @fs.mkdir(stage, permission=0o700)
@@ -156,13 +153,8 @@ async fn transfer_mirror(
       job.scope.repo,
     ),
   )
-  let credentials = team_import_credentials(
-    config,
-    job.scope.repo.owner,
-    identity_required=false,
-  )
-  authorize_import_source(credentials, target)
-  environment["GIT_SSH"] = config.ssh_wrapper
+  let known_hosts = mirror_known_hosts(target, job.host_keys)
+  environment["GIT_SSH_COMMAND"] = config.ssh_command
   environment["GIT_SSH_VARIANT"] = "ssh"
   let key : String = pool.with_client(client => {
     guard client.query_opt(
@@ -179,8 +171,15 @@ async fn transfer_mirror(
   let identity = stage + "/mirror_identity"
   @fs.write_file(identity, key, create_mode=@fs.CreateNew, permission=0o600)
   defer @fs.remove(identity)
-  environment["MOONHUB_IMPORT_IDENTITY"] = identity
-  environment["MOONHUB_IMPORT_KNOWN_HOSTS"] = credentials.known_hosts
+  let hosts_file = stage + "/known_hosts"
+  @fs.write_file(
+    hosts_file,
+    known_hosts,
+    create_mode=@fs.CreateNew,
+    permission=0o600,
+  )
+  environment["MOONHUB_MIRROR_IDENTITY"] = identity
+  environment["MOONHUB_MIRROR_KNOWN_HOSTS"] = hosts_file
   let args = [
     "--git-dir=\{stage}",
     "-c",
@@ -207,7 +206,7 @@ async fn transfer_mirror(
 pub async fn sync_next_mirror(
   pool : @database.Database,
   root : String,
-  config : RepoImportConfig?,
+  config : MirrorConfig,
 ) -> Bool {
   let id : Int64? = pool.with_client(client => {
     client
@@ -235,18 +234,15 @@ pub async fn sync_next_mirror(
   }
   guard claimed is Some(job) else { return true }
   let error = try {
-    guard config is Some(config) else {
-      raise @domain.BadRequest(message="SSH mirroring is not configured")
-    }
     @async.with_timeout(config.timeout_ms, () => {
       transfer_mirror(pool, root, job, config)
     })
     ""
   } catch {
     @domain.BadRequest(_) =>
-      "Sync failed. Check that this mirror’s public key has write access, and verify allowed hosts, SSH host keys and branch protection; then retry."
+      "Sync failed. Check that this mirror’s public key has write access, and verify the destination’s host fingerprint and branch protection; then retry."
     _ =>
-      "Sync failed. Check that this mirror’s public key has write access, and verify allowed hosts, SSH host keys and branch protection; then retry."
+      "Sync failed. Check that this mirror’s public key has write access, and verify the destination’s host fingerprint and branch protection; then retry."
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -330,7 +326,7 @@ async fn recover_mirror_repositories(
 pub fn start_mirror_worker(
   pool : @database.Database,
   root : String,
-  config : RepoImportConfig?,
+  config : MirrorConfig,
   group : @async.TaskGroup[Unit],
 ) -> Unit {
   group.spawn_bg(no_wait=true, allow_failure=true, () => {

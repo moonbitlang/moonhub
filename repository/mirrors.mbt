@@ -3,6 +3,8 @@ pub(all) struct PushMirror {
   id : Int64
   url : String
   public_key : String
+  host_keys : String
+  host_check : MirrorHostCheck?
   active : Bool
   force_push : Bool
   prune : Bool
@@ -45,13 +47,18 @@ pub fn push_mirrors(
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT m.id,m.url,m.active,m.force_push,m.prune,m.version,m.status,m.attempts,m.last_error,m.last_success_at,m.next_attempt_at,COALESCE(k.public_key,'') AS public_key FROM repository_mirror m LEFT JOIN mirror_ssh_key k ON k.mirror_id=m.id WHERE m.repository_id=? ORDER BY m.id",
+      "SELECT m.id,m.url,m.host_keys,m.active,m.force_push,m.prune,m.version,m.status,m.attempts,m.last_error,m.last_success_at,m.next_attempt_at,COALESCE(k.public_key,'') AS public_key,c.challenge AS challenge,c.host_keys AS candidate_keys FROM repository_mirror m LEFT JOIN mirror_ssh_key k ON k.mirror_id=m.id LEFT JOIN mirror_host_check c ON c.mirror_id=m.id AND c.version=m.version AND c.url=m.url AND c.created_at>=datetime('now','-10 minutes') WHERE m.repository_id=? ORDER BY m.id",
       params=[scope.id],
     )
     .map(row => {
       id: row.get_name("id"),
       url: row.get_name("url"),
       public_key: row.get_name("public_key"),
+      host_keys: row.get_name("host_keys"),
+      host_check: (row.get_name("challenge") : String?).map(challenge => {
+        challenge,
+        fingerprints: mirror_host_fingerprints(row.get_name("candidate_keys")),
+      }),
       active: row.get_name("active"),
       force_push: row.get_name("force_push"),
       prune: row.get_name("prune"),
@@ -132,37 +139,38 @@ pub async fn save_push_mirror(
   active : Bool,
   force_push : Bool,
   prune : Bool,
-  config : RepoImportConfig?,
 ) -> Int64 {
   let scope = require_mirror_manager(pool, actor, repo)
-  guard config is Some(config) else {
-    raise @domain.BadRequest(
-      message="SSH mirroring is not configured; ask an administrator to configure allowed destination hosts and SSH host keys",
-    )
-  }
   let target = parse_ssh_import_source(url.trim().to_owned())
-  let credentials = team_import_credentials(
-    config,
-    repo.owner,
-    identity_required=false,
-  )
-  authorize_import_source(credentials, target)
   // Configuration writes serialize with a claimed transfer. A busy transfer can be retried.
   let lock = mirror_lock(root, id)
   defer lock.close()
   ignore(require_mirror_manager(pool, actor, repo))
-  if id != 0L {
-    guard pool.with_client(client => {
-      client.query_opt(
-        "SELECT id FROM repository_mirror WHERE id=? AND repository_id=? AND version=?",
-        params=[id, scope.id, version],
-      )
-      is Some(_)
-    }) else {
-      raise @domain.BadRequest(
-        message="mirror changed or was removed; reload before saving",
-      )
+  let inherited : String = if id != 0L {
+    let previous = pool.with_client(client => {
+      guard client.query_opt(
+          "SELECT url,host_keys FROM repository_mirror WHERE id=? AND repository_id=? AND version=?",
+          params=[id, scope.id, version],
+        )
+        is Some(row) else {
+        raise @domain.BadRequest(
+          message="mirror changed or was removed; reload before saving",
+        )
+      }
+      ((row.get_name("url") : String), (row.get_name("host_keys") : String))
+    })
+    let old = parse_ssh_import_source(previous.0)
+    if old.host == target.host && old.port == target.port {
+      previous.1
+    } else {
+      ""
     }
+  } else {
+    ""
+  }
+  let host_keys = normalize_mirror_host_keys(inherited)
+  if active {
+    ignore(mirror_known_hosts(target, host_keys))
   }
   let key = if id == 0L ||
     !pool.with_client(client => {
@@ -201,7 +209,7 @@ pub async fn save_push_mirror(
         }
         tx
         .query_one(
-          "INSERT INTO repository_mirror(repository_id,creator_id,url,active,force_push,prune,status) VALUES(?,?,?,?,?,?,?) RETURNING id",
+          "INSERT INTO repository_mirror(repository_id,creator_id,url,active,force_push,prune,status,host_keys) VALUES(?,?,?,?,?,?,?,?) RETURNING id",
           params=[
             scope.id,
             actor.id,
@@ -214,15 +222,17 @@ pub async fn save_push_mirror(
             } else {
               "disabled"
             },
+            host_keys,
           ],
         )
         .get_name("id")
       } else {
         guard tx.query_opt(
-            "UPDATE repository_mirror SET creator_id=?,url=?,active=?,force_push=?,prune=?,version=version+1,generation=generation+1,status=?,attempts=0,next_attempt_at=datetime('now'),last_error='',lease=NULL,locked_at=NULL WHERE id=? AND repository_id=? AND version=? RETURNING id",
+            "UPDATE repository_mirror SET creator_id=?,url=?,host_keys=?,active=?,force_push=?,prune=?,version=version+1,generation=generation+1,status=?,attempts=0,next_attempt_at=datetime('now'),last_error='',lease=NULL,locked_at=NULL WHERE id=? AND repository_id=? AND version=? RETURNING id",
             params=[
               actor.id,
               target.url,
+              host_keys,
               active,
               force_push,
               prune,
@@ -243,6 +253,11 @@ pub async fn save_push_mirror(
         }
         (row.get_name("id") : Int64)
       }
+      ignore(
+        tx.execute("DELETE FROM mirror_host_check WHERE mirror_id=?", params=[
+          saved,
+        ]),
+      )
       if key is Some(key) {
         ignore(
           tx.execute(

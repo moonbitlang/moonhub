@@ -3,7 +3,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let assets = ctx.require(@web_context.asset_paths_key)
-  let config = ctx.resolve(@web_context.config_repo_import)
+  let mirror_config = ctx.require(@web_context.config_mirror)
   ctx.get("/:owner/:repo/settings/mirrors", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
@@ -15,7 +15,6 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
         repo,
         @repository.push_mirrors(pool, actor, repo),
         @web_context.request_form_token(req, "mirrors:\{scope.id}"),
-        config is Some(_),
       ),
       headers=@web_context.private_page_headers(),
     )
@@ -109,7 +108,6 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
         mirror.active,
         mirror.force_push,
         mirror.prune,
-        config,
       ) catch {
         @domain.BadRequest(message~) => {
           res.send_html(
@@ -121,6 +119,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
               history,
               @web_context.request_form_token(req, "mirrors:\{scope.id}"),
               Some(message),
+              destination_saved=mirror.url == current.url,
             ),
             status=400,
             headers=@web_context.private_page_headers(),
@@ -137,7 +136,10 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
       )
     })
   }
-  for action in ["sync", "delete", "rotate-key"] {
+  for
+    action in [
+      "sync", "delete", "rotate-key", "initialize-host", "confirm-host",
+    ] {
     ctx.post("/:owner/:repo/settings/mirrors/:mirror/" + action, async fn(
       req,
       res,
@@ -152,18 +154,62 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
       let version = @web_context.positive_resource_number(
         form.get("version").unwrap_or(""),
       )
-      if action == "rotate-key" {
-        @repository.rotate_mirror_key(pool, root, actor, repo, id, version)
-      } else {
-        @repository.push_mirror_action(
-          pool, root, actor, repo, id, version, action,
-        )
+      try {
+        if action == "initialize-host" {
+          @repository.initialize_mirror_host(
+            pool, root, actor, repo, id, version, mirror_config,
+          )
+        } else if action == "confirm-host" {
+          @repository.confirm_mirror_host(
+            pool,
+            root,
+            actor,
+            repo,
+            id,
+            version,
+            form.get("challenge").unwrap_or(""),
+          )
+        } else if action == "rotate-key" {
+          @repository.rotate_mirror_key(pool, root, actor, repo, id, version)
+        } else {
+          @repository.push_mirror_action(
+            pool, root, actor, repo, id, version, action,
+          )
+        }
+      } catch {
+        @domain.BadRequest(message~) => {
+          let mirror = find_mirror(
+            @repository.push_mirrors(pool, actor, repo),
+            id,
+          )
+          res.send_html(
+            render_mirror_form(
+              assets,
+              actor,
+              repo,
+              mirror,
+              @repository.mirror_history(pool, actor, repo, id),
+              @web_context.request_form_token(req, "mirrors:\{scope.id}"),
+              Some(message),
+            ),
+            status=400,
+            headers=@web_context.private_page_headers(),
+          )
+          return
+        }
+        err => raise err
       }
       res.send_void(
         status=303,
         headers=@web_context.private_page_headers(
           location="\{@web_ui.repo_link(repo)}/settings/mirrors" +
-            (if action == "rotate-key" { "/" + id.to_string() } else { "" }),
+            (if action == "rotate-key" ||
+              action == "initialize-host" ||
+              action == "confirm-host" {
+              "/" + id.to_string()
+            } else {
+              ""
+            }),
         ),
       )
     })
@@ -175,6 +221,8 @@ let new_mirror : @repository.PushMirror = {
   id: 0L,
   url: "",
   public_key: "",
+  host_keys: "",
+  host_check: None,
   active: false,
   force_push: false,
   prune: false,

@@ -269,11 +269,12 @@ initialization and never runs migrations from an authentication request.
 
 ## SSH Import
 
-Push mirrors use the same destination allowlist and host-key policy described
-below, but generate their own keys in the database. For a namespace used only
-for mirroring, provision `known_hosts` and `allowed_hosts` without
-`id_ed25519`. Authorize each mirror's public key from its settings page as a
-write-enabled deploy key at the destination. See [push mirrors](../docs/mirrors.md).
+Push mirrors have independent database-backed credentials and destination trust.
+Repository managers initialize the destination and confirm its displayed SSH
+host fingerprint in the mirror settings;
+no import directory or credential files are needed. Authorize each mirror's
+public key as a write-enabled deploy key at the destination. See
+[push mirrors](../docs/mirrors.md).
 
 An import is a one-time mirror of Git refs and objects, including branches and
 tags. It preserves Git's cloned default branch and does not keep synchronizing

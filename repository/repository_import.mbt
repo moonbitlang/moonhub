@@ -138,7 +138,6 @@ fn parse_ssh_import_source(value : String) -> SshImportSource raise {
 pub async fn team_import_credentials(
   config : RepoImportConfig,
   owner : String,
-  identity_required~ : Bool = true,
 ) -> TeamImportCredentials {
   guard @domain.valid_name_key(owner) else {
     raise @domain.BadRequest(message="invalid import namespace")
@@ -148,11 +147,7 @@ pub async fn team_import_credentials(
   guard @fs.realpath(directory) == directory else {
     raise @domain.BadRequest(message="invalid SSH import credentials directory")
   }
-  let files = ["known_hosts", "allowed_hosts"]
-  if identity_required {
-    files.push("id_ed25519")
-  }
-  for file in files {
+  for file in ["id_ed25519", "known_hosts", "allowed_hosts"] {
     guard @fs.kind("\{directory}/\{file}", follow_symlink=false) is Regular else {
       raise @domain.BadRequest(
         message="SSH import credential files must be regular files",

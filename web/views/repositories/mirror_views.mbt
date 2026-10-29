@@ -16,7 +16,6 @@ fn render_mirrors(
   repo : @domain.RepoId,
   mirrors : Array[@repository.PushMirror],
   csrf : String,
-  configured : Bool,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(repo)}/settings/mirrors"
   @web_ui.layout(
@@ -25,10 +24,6 @@ fn render_mirrors(
     Html(b => {
       b <+
         "<section class=\"ssh-settings mirror-settings\"><div class=\"page-heading page-heading--actions\"><div><h1>Push mirrors</h1><p class=\"muted\">Keep another remote up to date with this repository.</p></div><a class=\"button-link\" href=\"\{base}/new\">Add mirror</a></div><p>After a push or merge, MoonHub syncs all branches and tags in the background. Enabling a mirror also syncs existing refs.</p>"
-      if !configured {
-        b <+
-          "<p class=\"flash-error\" role=\"status\">SSH mirroring is not configured. Ask an administrator to allow destination hosts and pin their SSH host keys.</p>"
-      }
       if mirrors.is_empty() {
         b <+
           "<p class=\"ssh-keys-empty muted\">No push mirrors yet. Add an SSH destination, such as a GitHub repository, to start syncing.</p>"
@@ -76,6 +71,7 @@ fn render_mirror_form(
   history : Array[@repository.MirrorAttempt],
   csrf : String,
   error : String?,
+  destination_saved~ : Bool = true,
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(repo)}/settings/mirrors"
   let title = if mirror.id == 0L {
@@ -99,13 +95,62 @@ fn render_mirror_form(
       }
       if !mirror.public_key.is_empty() {
         b <+
-          "<section class=\"mirror-identity\" aria-labelledby=\"mirror-identity-title\"><h2 id=\"mirror-identity-title\">SSH authentication</h2><p>Add this mirror’s public key to the destination repository as a deploy key with write access. Then enable automatic sync below.</p><div class=\"field\"><label for=\"mirror-public-key\">Public key</label><textarea id=\"mirror-public-key\" class=\"ssh-public-key\" rows=\"3\" readonly spellcheck=\"false\" aria-describedby=\"mirror-key-help\">\{mirror.public_key}</textarea><p id=\"mirror-key-help\" class=\"muted\">This key is used only by this mirror. The private key is stored on the server and is never displayed.</p></div></section>"
+          "<section class=\"mirror-identity\" aria-labelledby=\"mirror-identity-title\"><h2 id=\"mirror-identity-title\">SSH authentication</h2><p>Add this mirror’s public key to the destination repository as a deploy key with write access. Confirm the destination’s host fingerprint before enabling automatic sync.</p><div class=\"field\"><label for=\"mirror-public-key\">Public key</label><textarea id=\"mirror-public-key\" class=\"ssh-public-key\" rows=\"3\" readonly spellcheck=\"false\" aria-describedby=\"mirror-key-help\">\{mirror.public_key}</textarea><p id=\"mirror-key-help\" class=\"muted\">This key is used only by this mirror. The private key is stored on the server and is never displayed.</p></div></section>"
       } else {
         b <+
-          "<p class=\"settings-notice\">Save this mirror to generate its own SSH key. Add the public key to the destination with write access before enabling automatic sync.</p>"
+          "<p class=\"settings-notice\">Save this mirror to generate its own SSH key. Next, initialize the destination and confirm its host fingerprint, then add the deploy key and enable sync.</p>"
+      }
+      if mirror.id != 0L && destination_saved {
+        b <+
+          "<section class=\"mirror-identity\" aria-labelledby=\"mirror-host-title\"><h2 id=\"mirror-host-title\">Destination host verification</h2><p>Saved destination: <strong>\{mirror.url}</strong></p>"
+        if !mirror.host_keys.is_empty() {
+          b <+
+            "<p role=\"status\">Host key trusted. Add the deploy key at the destination, then enable automatic sync.</p><p>Trusted Ed25519 host fingerprint:</p>"
+          for
+            fingerprint in @repository.mirror_host_fingerprints(
+              mirror.host_keys,
+            ) {
+            b <+
+              "<p><code class=\"ssh-key-fingerprint\">\{fingerprint}</code></p>"
+          }
+        }
+        if mirror.host_check is Some(check) {
+          b <+ "<p>Ed25519 host fingerprint received from this destination:</p>"
+          for fingerprint in check.fingerprints {
+            b <+
+              "<p><code class=\"ssh-key-fingerprint\">\{fingerprint}</code></p>"
+          }
+          if !mirror.host_keys.is_empty() &&
+            check.fingerprints !=
+            @repository.mirror_host_fingerprints(mirror.host_keys) {
+            b <+
+              "<p class=\"flash-error\" role=\"alert\">The host key has changed. Confirm with the server administrator before replacing the trusted key.</p>"
+          }
+          b <+
+            "<p>Compare this fingerprint with the host’s published fingerprint or ask its administrator. Fetching a key does not verify the server’s identity. Confirm only if it matches. This confirmation expires after 10 minutes.</p>"
+        } else if mirror.host_keys.is_empty() {
+          b <+
+            "<p>Initialize this destination to view its SSH host fingerprint. Sync stays disabled until you confirm that you trust the host.</p>"
+        }
+        b <+ "<div class=\"ssh-form-actions\">"
+        if mirror.host_check is Some(check) {
+          b <+
+            "<form method=\"post\" action=\"\{action}/confirm-host\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><input type=\"hidden\" name=\"challenge\" value=\"\{check.challenge}\"><button type=\"submit\">Trust this host key</button></form>"
+        }
+        if !mirror.active {
+          b <+
+            "<form method=\"post\" action=\"\{action}/initialize-host\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><button type=\"submit\" class=\"secondary-button\">\{if mirror.host_check is Some(_) || !mirror.host_keys.is_empty() {"Fetch host fingerprint again"} else {"Initialize destination"}}</button></form>"
+        } else {
+          b <+
+            "<p class=\"muted\">Disable automatic sync and save before checking a replacement host key.</p>"
+        }
+        b <+ "</div></section>"
+      } else if mirror.id != 0L {
+        b <+
+          "<p class=\"settings-notice\">Save the destination address with automatic sync disabled before initializing it.</p>"
       }
       b <+
-        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><div class=\"field\"><label for=\"mirror-url\">Destination SSH URL</label><input id=\"mirror-url\" name=\"url\" type=\"text\" maxlength=\"2048\" value=\"\{mirror.url}\" placeholder=\"git@github.com:organization/repository.git\" required aria-describedby=\"mirror-url-help\"><p id=\"mirror-url-help\" class=\"muted\">Use user@host:path or ssh://user@host:port/path. An administrator must allow the destination host and pin its SSH host key.</p></div><fieldset><legend>Sync behavior</legend>"
+        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{mirror.version.to_string()}\"><div class=\"field\"><label for=\"mirror-url\">Destination SSH URL</label><input id=\"mirror-url\" name=\"url\" type=\"text\" maxlength=\"2048\" value=\"\{mirror.url}\" placeholder=\"git@github.com:organization/repository.git\" required aria-describedby=\"mirror-url-help\"><p id=\"mirror-url-help\" class=\"muted\">Use user@host:path or ssh://user@host:port/path. Save address changes with automatic sync disabled, then initialize the destination to confirm its SSH host fingerprint.</p></div><fieldset><legend>Sync behavior</legend>"
       for
         (name, label, help, checked) in [
           (
@@ -131,6 +176,9 @@ fn render_mirror_form(
           "<label class=\"checkbox-field\"><input type=\"checkbox\" name=\"\{name}\" value=\"1\""
         if checked {
           b <+ " checked"
+        }
+        if name == "active" && mirror.host_keys.is_empty() {
+          b <+ " disabled"
         }
         b <+
           "><span><strong>\{label}</strong><span class=\"mirror-option-help muted\">\{help}</span></span></label>"
