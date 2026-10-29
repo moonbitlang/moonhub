@@ -79,6 +79,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
 `, {mode:0o700});
   const workers = [];
   let providerToken, config, schema, revision = '1', observed = '0', applied = '0', claims = 0, queued = mode === 'asg' ? 0 : 1, paused = false, failure;
+  let readyFailures = 0, recoverReadyAt = 0;
   const server = http.createServer(async (req, res) => {
     try {
       let text = ''; for await (const chunk of req) text += chunk;
@@ -99,11 +100,17 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
         assert.notEqual(body.token, providerToken);
         let worker = workers.find(w => w.key === body.key);
-        if (!worker) {worker = {id:String(workers.length + 1),key:body.key,state:mode === 'asg' ? 'ready' : 'starting',draining:false,applied_revision:'0',last_seen_ms:String(Date.now()),idle_since_ms:'1',active_attempts:0}; workers.push(worker);}
+        if (!worker) {worker = {id:String(workers.length + 1),key:body.key,state:mode === 'asg' ? 'ready' : 'starting',draining:false,applied_revision:'0',last_seen_ms:String(Date.now()),idle_since_ms:String(Date.now()),active_attempts:0}; workers.push(worker);}
         worker.secret = body.token;
         result = worker;
       } else if (route === '/workers/sync') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
+        if (mode === 'docker' && !failCleanup && body.state === 'ready') {
+          recoverReadyAt ||= Date.now() + 1200;
+          if (Date.now() < recoverReadyAt) {
+            readyFailures++; res.writeHead(503); res.end('{}'); return;
+          }
+        }
         worker.state = worker.draining && body.state === 'ready' ? 'drained' : body.state;
         worker.applied_revision = body.applied_revision; worker.last_seen_ms = String(Date.now());
         result = {version:1,provider_id:'1',worker_id:worker.id,paused,draining:worker.draining,config_revision:revision,config};
@@ -132,7 +139,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     child = spawn(binary,args,{stdio:['ignore','pipe','pipe']});
     child.stdout.on('data',b => {output += b;}); child.stderr.on('data',b => {output += b;});
     child.on('exit',() => {exited = true;});
-    const deadline = Date.now() + (mode === 'asg' ? 110000 : 30000);
+    const deadline = Date.now() + (mode === 'asg' ? 140000 : 30000);
     let standbySince;
     for (;;) {
       if (failure) throw failure;
@@ -141,7 +148,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         standbySince ??= Date.now();
         assert.equal(st.groups.on.desired, 1, 'idle standby capacity was lost');
         assert.ok(!st.calls.some(c => c[1] === 'terminate-instance-in-auto-scaling-group'), 'standby worker was retired by idle timeout');
-        if (Date.now() - standbySince >= 11000) {
+        if (Date.now() - standbySince >= 31000) {
           config = {...config,standby_workers:'0'}; revision = '2';
         }
       }
@@ -153,6 +160,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         assert.ok(calls.findIndex(c => c[1] === 'set-desired-capacity' && c.includes('spot')) < calls.findIndex(c => c[1] === 'set-desired-capacity' && c.includes('on')));
         assert.ok(standbySince, 'no standby worker was provisioned for an empty queue');
         assert.equal(revision, '2');
+        assert.ok(Date.now() - Number(workers[0].idle_since_ms) >= 30000, 'worker retired before its idle timeout');
         assert.ok(workers[0].draining); break;
       }
       if (mode === 'docker' && failCleanup && exited) {assert.equal(claims,1,'claim after cleanup failure'); assert.equal(st.volumes.length,1); break;}
@@ -160,6 +168,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       if (exited || Date.now() > deadline) throw Error(`${mode} timed out/stopped: ${output}; revisions=${observed}/${applied}/${revision}; claims=${claims}; workers=${JSON.stringify(workers.map(({secret,...w}) => w))}; calls=${JSON.stringify(st.calls.map(c => c.slice(0,3)))}`);
       await delay(100);
     }
+    if (mode === 'docker' && !failCleanup) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
     for (const directory of ['controller', 'workspace']) {
