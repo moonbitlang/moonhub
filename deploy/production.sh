@@ -92,7 +92,7 @@ build() {
   docker buildx inspect "$BUILDX" --bootstrap >/dev/null
   jq -n --arg context "$BUILD_STAGE" --arg platform "$platform" --arg revision "$REVISION" \
     --arg web "$WEB_IMAGE" --arg runner "$LOCAL_RUNNER_IMAGE" --arg controller "$CONTROLLER_IMAGE" \
-    --arg cn "${MOONHUB_USE_CN_MIRRORS:-0}" --arg moon "${MOONBIT_VERSION:-0.10.17+093cb8f9c}" '
+    --arg cn "${MOONHUB_USE_CN_MIRRORS:-0}" --arg moon "${MOONBIT_VERSION:-0.10.17+d971670cd}" '
     def app($target; $tag): {context: $context, dockerfile: "Dockerfile", target: $target,
       contexts: {"moonhub-base:local": "target:dependency-base"}, args: {MOONHUB_BASE_IMAGE: "moonhub-base:local"},
       platforms: [$platform], tags: [$tag], output: ["type=docker"], labels: {"org.opencontainers.image.revision": $revision}};
