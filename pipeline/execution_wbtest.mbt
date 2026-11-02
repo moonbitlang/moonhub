@@ -1231,3 +1231,61 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
     )
   })
 }
+
+///|
+async test "MoonBit setup assignments and reruns retain the snapshotted toolchain version" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo = protocol_repo
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let source =
+      #|on: workflow_dispatch
+      #|jobs:
+      #|  check:
+      #|    runs-on: [self-hosted, linux]
+      #|    steps:
+      #|      - uses: moonhub/checkout@v1
+      #|      - uses: moonhub/setup-moonbit@v1
+      #|        with: {version: 0.10.17+093cb8f9c}
+      #|      - run: moon version --all
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    let run = create_run(
+      pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
+    )
+    assert_eq(
+      run.definition.jobs[0].steps[1].moonbit_version,
+      Some("0.10.17+093cb8f9c"),
+    )
+    ignore(
+      @test_support.workflow_commit(
+        repo.git_dir(root),
+        source.replace_all(old="0.10.17+093cb8f9c", new="nightly"),
+      ),
+    )
+    let coordinator = merge_check_provider(pool)
+    let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+    assert_eq(assignment.version, @protocol.toolchain_assignment_version)
+    assert_eq(assignment.commit_sha, sha)
+    assert_eq(assignment.job.steps[0].uses, "moonhub/checkout@v1")
+    assert_eq(assignment.job.steps[0].moonbit_version, "")
+    assert_eq(assignment.job.steps[1].uses, "moonhub/setup-moonbit@v1")
+    assert_eq(assignment.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
+    assert_eq(assignment.job.steps[2].moonbit_version, "")
+    let decoded : @protocol.Assignment = @json.from_json(
+      ToJson::to_json(assignment),
+    )
+    assert_eq(decoded.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
+    let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+    ignore(coordinator.start(id, token, 1))
+    ignore(coordinator.complete(id, token, completion()))
+    let rerun = rerun_run(pool, root, actor, repo, run.number)
+    assert_eq(rerun.commit_sha, sha)
+    assert_eq(rerun.workflow_source, source)
+    assert_eq(
+      ToJson::to_json(rerun.definition),
+      ToJson::to_json(run.definition),
+    )
+    let (again, _) = claim_dag_attempt(coordinator, provider_secret)
+    assert_eq(again.version, @protocol.toolchain_assignment_version)
+    assert_eq(again.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
+  })
+}

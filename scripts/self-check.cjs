@@ -75,12 +75,16 @@ function compilerVersion(root, env) {
 }
 
 async function toolchainEnvironment(root, { env = process.env, run = runStage } = {}) {
-  // Share the deployment pin so an existing runner cannot silently regenerate
-  // interfaces with a different compiler. Never install through its library symlinks.
+  // Local self-checks use the deployment pin. CI uses the toolchain selected by its workflow.
+  // Never install through the image's shared library symlinks.
   const dockerfile = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8');
   const pins = [...dockerfile.matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+)$/gm)];
   assert.equal(pins.length, 1, 'Expected one exact MOONBIT_VERSION pin in deploy/base.Dockerfile');
   const version = pins[0][1];
+  if (env.CI === 'true') {
+    assert.ok(compilerVersion(root, env), 'CI must select MoonBit before running self-check');
+    return env;
+  }
   if (compilerVersion(root, env) === version) return env;
 
   const home = path.join(root, '.tmp', 'self-check-moon', version);

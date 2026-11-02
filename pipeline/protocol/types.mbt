@@ -6,6 +6,10 @@ pub let version : Int32 = 1
 pub let action_assignment_version : Int32 = 2
 
 ///|
+// V3 assignments add the built-in MoonBit setup action and version input.
+pub let toolchain_assignment_version : Int32 = 3
+
+///|
 pub let lease_ms : Int64 = 60000L
 
 ///|
@@ -139,6 +143,7 @@ pub(all) struct StepPlan {
   name : String
   run : String
   uses : String
+  moonbit_version : String
   shell : String
   working_directory : String
   env : Map[String, String]
@@ -146,7 +151,7 @@ pub(all) struct StepPlan {
 } derive(Debug, ToJson)
 
 ///|
-// V1 assignments stored by older providers have no `uses` field.
+// Legacy assignments have no `uses` or `moonbit_version` fields.
 pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
   guard json
     is {
@@ -169,11 +174,21 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
       }
     _ => ""
   }
+  let moonbit_version = match json {
+    Object(fields) =>
+      match fields.get("moonbit_version") {
+        None => ""
+        Some(value) =>
+          @json.from_json(value, path=path.add_key("moonbit_version"))
+      }
+    _ => ""
+  }
   {
     id: @json.from_json(id, path=path.add_key("id")),
     name: @json.from_json(name, path=path.add_key("name")),
     run: @json.from_json(run, path=path.add_key("run")),
     uses,
+    moonbit_version,
     shell: @json.from_json(shell, path=path.add_key("shell")),
     working_directory: @json.from_json(
       directory,

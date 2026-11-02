@@ -64,6 +64,12 @@ Supported configuration:
   `uses: actions/checkout@v4` or `uses: moonhub/checkout@v1`, plus optional
   `id`, `name` and `timeout-minutes`. It cannot also have `run`, `with`, `env`,
   `shell` or `working-directory`.
+- Built-in MoonBit setup accepts `uses: moonhub/setup-moonbit@v1`, plus
+  optional `id`, `name`, `timeout-minutes` and `with.version`. The version is a
+  literal string; omitted versions default to `latest`. `stable` maps to
+  `latest` and `bleeding` to `nightly`. `latest`, `nightly`, `pre-release` and
+  explicit versions such as `0.10.17+093cb8f9c` are supported. Setup steps cannot
+  also specify `run`, `shell`, `working-directory` or `env`.
 - Environment precedence is workflow < job < step. Values must be scalar;
   strings, integers, booleans, and real-number spellings are retained as strings.
   Names must be POSIX-like identifiers. `MOONHUB_`, `GITHUB_`, and `RUNNER_`
@@ -81,9 +87,9 @@ Supported configuration:
 
 All unknown fields are rejected before mapping. This includes `permissions`,
 `concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
-`outputs`, and `with`. Other `uses` values and expressions outside the `env`
-subset below are rejected rather than executed literally. No field is silently
-stripped.
+and `outputs`. `with` is accepted only for MoonBit setup, and its only supported
+input is `version`. Other `uses` values and expressions outside the `env` subset
+below are rejected rather than executed literally. No field is silently stripped.
 
 ### Run Context and Environment References
 
@@ -137,6 +143,48 @@ updates. Back up the database and repositories together and upgrade Web/SSH
 together; an older server binary cannot open schema 18. Runner/provider protocols
 are unchanged: they receive ordinary resolved env strings and do not evaluate
 expressions. No secrets or remote actions are added.
+
+### MoonBit Toolchain Setup
+
+```yaml
+name: MoonBit CI
+on: [workflow_dispatch, pull_request]
+jobs:
+  test:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: moonhub/checkout@v1
+      - uses: moonhub/setup-moonbit@v1
+        with:
+          version: nightly
+      - run: moon version --all
+      - run: moon test --target native --strip -j 1
+```
+
+Setup downloads the official installer over HTTPS from
+`https://cli.moonbitlang.com/install/unix.sh`, then installs the requested
+compiler, tools and core library into a fresh directory in the job's private
+home. No Action repository is downloaded or executed. The image's `/opt/moon`
+toolchain remains unchanged. The image's registry configuration is copied into
+the new writable Moon home when available.
+
+Subsequent shell steps receive the selected `MOON_HOME` and its `bin` directory
+at the front of `PATH`, including when workflow/job/step env specifies those
+variables. Before setup, jobs use the image's default toolchain. A later setup
+step can select another version for the remaining steps. Job containers never
+share installed toolchains or caches.
+
+Setup may appear before or after explicit checkout. Jobs without an explicit
+checkout still prepare pinned source automatically before the first step.
+Installation has its own step outcome and streamed logs, including
+`moon version --all`; download or installation failure stops later steps.
+Step/job timeouts, cancellation and lease loss also stop setup and its processes.
+
+The normalized version selector is saved in the immutable workflow snapshot
+and retained on rerun. Floating channels such as `stable`/`latest` and `nightly`
+are resolved by the official installer at execution time and can change between
+runs. Use an explicit version for reproducible compiler selection. This feature
+does not add GitHub Actions expressions, matrix jobs or arbitrary `uses` support.
 
 ### Source Preparation
 
@@ -242,12 +290,14 @@ run only application-owned fixtures.
 
 ## Runner Protocol (Step 2)
 
-Checkout jobs use assignment payload `version: 2`, with a string `uses` field
-on each step (`""` for shell steps). Pure shell jobs retain assignment V1;
-new decoders accept old V1 steps without `uses`. Lease, claim and result HTTP
-messages remain V1 under the existing API prefix. Older Runners/providers reject
-action assignments rather than silently skip checkout. Upgrade Web, SSH, provider
-and Runner images together before enabling these workflows.
+Checkout jobs use assignment payload `version: 2`; jobs using MoonBit setup use
+assignment `version: 3`. Each step has string `uses` and `moonbit_version` fields
+(`""` when unused). Pure shell jobs retain assignment V1; new decoders accept
+legacy steps without these fields. Lease, claim and result HTTP messages remain
+V1 under the existing API prefix. Older Runners/providers reject new action
+assignments rather than silently skip them. Upgrade Web, SSH, provider and
+Runner images together before enabling these workflows. No database migration
+is needed.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`

@@ -383,9 +383,119 @@ test "checkout rejects mixed unsupported and repeated actions and keeps legacy s
     "env": {},
   })
   assert_eq(legacy.uses, None)
+  assert_eq(legacy.moonbit_version, None)
   assert_eq(legacy.shell, None)
   assert_eq(legacy.timeout_minutes, None)
   let workflow = parse(action)
   let restored : Workflow = @json.from_json(ToJson::to_json(workflow))
   assert_eq(restored.jobs[0].steps[0].uses, Some("moonhub/checkout@v1"))
+}
+
+///|
+test "MoonBit setup normalizes inputs and round trips with checkout in either order" {
+  let source = basic_workflow.replace_all(
+    old="run: echo hello",
+    new="uses: moonhub/setup-moonbit@v1",
+  )
+  assert_eq(parse(source).jobs[0].steps[0].moonbit_version, Some("latest"))
+  assert_eq(
+    parse(source + "\n        with: {}").jobs[0].steps[0].moonbit_version,
+    Some("latest"),
+  )
+  for
+    (input, expected) in [
+      ("stable", "latest"),
+      ("latest", "latest"),
+      ("bleeding", "nightly"),
+      ("nightly", "nightly"),
+      ("pre-release", "pre-release"),
+      ("0.10.17+093cb8f9c", "0.10.17+093cb8f9c"),
+    ] {
+    let workflow = parse(
+      source +
+      "\n        with: {version: '\{input}'}\n      - uses: moonhub/checkout@v1",
+    )
+    let setup = workflow.jobs[0].steps[0]
+    assert_eq(setup.moonbit_version, Some(expected))
+    assert_eq(setup.run, "")
+    assert_eq(setup.shell, None)
+    assert_eq(setup.working_directory, ".")
+    assert_true(setup.env.is_empty())
+    let restored : Workflow = @json.from_json(ToJson::to_json(workflow))
+    assert_eq(ToJson::to_json(restored), ToJson::to_json(workflow))
+  }
+  let checkout_first = source.replace_all(
+    old="uses: moonhub/setup-moonbit@v1",
+    new="uses: actions/checkout@v4\n      - uses: moonhub/setup-moonbit@v1",
+  )
+  assert_eq(
+    parse(checkout_first).jobs[0].steps[1].moonbit_version,
+    Some("latest"),
+  )
+  expect_invalid(
+    checkout_first + "\n      - uses: moonhub/checkout@v1",
+    "one checkout",
+  )
+}
+
+///|
+test "MoonBit setup rejects arbitrary inputs expressions unsafe versions and mixed semantics" {
+  let source = basic_workflow.replace_all(
+    old="run: echo hello",
+    new="uses: moonhub/setup-moonbit@v1",
+  )
+  for
+    version in [
+      "",
+      " stable",
+      "main",
+      "../nightly",
+      "--help",
+      "0.1;touch injected",
+      "$(id)",
+      "0.1/other",
+      "0.1?x=1",
+      "0.1#x",
+      "0.1..2",
+      "0.1%2fother",
+      "0.1'quote",
+      "0." + "a".repeat(128),
+    ] {
+    expect_invalid(
+      source + "\n        with: {version: \"\{version}\"}",
+      "version",
+    )
+  }
+  expect_invalid(
+    source + "\n        with: {version: '${{ github.sha }}'}",
+    "expressions",
+  )
+  for
+    inputs in [
+      "{version: true}", "{version: 123}", "{version: null}", "{version: []}", "{version: {}}",
+      "{version: stable, unknown: true}", "[]", "null",
+    ] {
+    expect_invalid(source + "\n        with: \{inputs}", "with")
+  }
+  for
+    field in [
+      "env: {X: y}", "shell: bash", "working-directory: src", "run: echo mixed",
+    ] {
+    expect_invalid(
+      source + "\n        \{field}",
+      if field.has_prefix("run:") {
+        "exactly one"
+      } else {
+        "not supported"
+      },
+    )
+  }
+  expect_invalid(source.replace_all(old="@v1", new="@main"), "built-in")
+  expect_invalid(
+    source.replace_all(
+      old="moonhub/setup-moonbit@v1",
+      new="moonbit-community/setup-moonbit@main",
+    ),
+    "built-in",
+  )
 }

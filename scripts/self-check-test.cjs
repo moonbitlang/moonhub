@@ -103,7 +103,7 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
       const compiler = path.join(root, 'shared/bin/moonc');
       const oldCompiler = '#!/bin/sh\necho "v0.10.15+old (test)"\n';
       fs.writeFileSync(compiler, oldCompiler, { mode: 0o755 });
-      const env = { ...process.env, MOON_HOME: path.join(root, 'shared'), PATH: path.join(root, 'shared/bin') + ':' + process.env.PATH };
+      const env = { ...process.env, CI: '', MOON_HOME: path.join(root, 'shared'), PATH: path.join(root, 'shared/bin') + ':' + process.env.PATH };
       let installs = 0;
       const run = async (name, command, args, options) => {
         installs++;
@@ -139,3 +139,26 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 }
+
+test('CI keeps the workflow-selected MoonBit toolchain', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-moonbit-'));
+  try {
+    fs.mkdirSync(path.join(root, 'deploy'));
+    fs.mkdirSync(path.join(root, 'nightly/bin'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.17+testpin\n');
+    fs.writeFileSync(path.join(root, 'nightly/bin/moonc'), '#!/bin/sh\necho "v0.11.0+nightly (test)"\n', { mode: 0o755 });
+    const env = {
+      ...process.env,
+      CI: 'true',
+      MOON_HOME: path.join(root, 'nightly'),
+      PATH: path.join(root, 'nightly/bin') + path.delimiter + process.env.PATH,
+    };
+    let installs = 0;
+    const selected = await toolchainEnvironment(root, {
+      env,
+      run: async () => { installs++; throw new Error('CI must not reinstall the deployment pin'); },
+    });
+    assert.equal(selected, env);
+    assert.equal(installs, 0);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

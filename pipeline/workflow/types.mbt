@@ -34,6 +34,7 @@ pub struct Step {
   name : String
   run : String
   uses : String?
+  moonbit_version : String?
   shell : String?
   working_directory : String
   env : Map[String, String]

@@ -175,6 +175,7 @@ test "wire job plan has no language-specific optional field representation" {
         name: "Run",
         run: "echo test",
         uses: "",
+        moonbit_version: "",
         shell: "",
         working_directory: ".",
         env: Map([]),
@@ -214,4 +215,35 @@ test "legacy wire steps without uses still decode and action names remain string
   )
   let decoded : StepPlan = @json.from_json(ToJson::to_json(action))
   assert_eq(decoded.uses, action.uses)
+}
+
+///|
+test "MoonBit setup wire versions survive round trip while older steps still decode" {
+  let legacy : StepPlan = @json.from_json({
+    "id": "setup",
+    "name": "Setup",
+    "run": "",
+    "uses": "moonhub/setup-moonbit@v1",
+    "shell": "",
+    "working_directory": ".",
+    "env": {},
+    "timeout_minutes": 0,
+  })
+  assert_eq(legacy.moonbit_version, "")
+  let setup = { ..legacy, moonbit_version: "0.10.17+093cb8f9c", }
+  let decoded : StepPlan = @json.from_json(ToJson::to_json(setup))
+  assert_eq(decoded.moonbit_version, setup.moonbit_version)
+  for raw in ["null", "true", "123", "[\"latest\"]"] {
+    guard ToJson::to_json(setup) is Object(fields) else {
+      fail("expected object")
+    }
+    fields["moonbit_version"] = @json.parse(raw)
+    try {
+      let _ : StepPlan = @json.from_json(ToJson::to_json(fields))
+    } catch {
+      _ => ()
+    } noraise {
+      _ => fail("accepted non-string MoonBit version")
+    }
+  }
 }

@@ -23,6 +23,8 @@ pub let max_source_bytes : Int64
 
 pub fn parse_decimal(String) -> Int64?
 
+pub let toolchain_assignment_version : Int32
+
 pub fn validate_config(Array[ConfigField], Map[String, String]) -> String?
 
 pub let version : Int32
@@ -174,6 +176,7 @@ pub(all) struct StepPlan {
   name : String
   run : String
   uses : String
+  moonbit_version : String
   shell : String
   working_directory : String
   env : Map[String, String]
