@@ -838,14 +838,15 @@ needed when local Runner images are loaded into DinD by the deploy script.
 
 ## MoonHub Self-Hosting Checks
 
-`.github/workflows/moonhub.yml` runs a manual check of this repository using the
-existing archive checkout. It requires `self-hosted`, `linux` and `moonhub-build`
-provider labels. The `runner-selfhost` target remains compatible with existing
-settings; the shared dependency base now includes Node/npm in both Runner
-targets. Docker CLI binaries are also present in the shared base, but jobs have
-no Docker socket or deployment credentials. MoonBit defaults to `0.10.14+7d59c7ec9` across
-Web, provider and Runner builds. Preserve the built images for recovery: upstream
-toolchain archives have limited retention.
+`.github/workflows/moonhub.yml` runs this repository's check on pushes to `master`
+and on manual dispatch, using the existing archive checkout. It selects MoonBit
+`nightly` with the built-in setup step and requires `self-hosted`, `linux` and
+`moonhub-build` provider labels. The `runner-selfhost` target remains compatible
+with existing settings; the shared dependency base now includes Node/npm in both
+Runner targets. Docker CLI binaries are also present in the shared base, but jobs
+have no Docker socket or deployment credentials. Web, provider and Runner builds
+use the deployment pin `0.10.17+093cb8f9c`. Preserve the built images for recovery:
+upstream toolchain archives have limited retention.
 
 For the provider assigned to MoonHub, use these settings in `deploy/deploy.env`
 (replace the repository path with its registered namespace):
@@ -860,19 +861,20 @@ MOONHUB_RUNNER_MEMORY=4g
 MOONHUB_RUNNER_CPUS=2
 ```
 
-`scripts/self-check.cjs` selects the exact compiler pinned by
-`deploy/base.Dockerfile` before running any MoonBit commands. If the runner's
-compiler differs, it installs that version under `.tmp/self-check-moon/` with
+In CI, `scripts/self-check.cjs` keeps the workflow-selected compiler, so this job
+checks MoonHub against `nightly`. Local self-check runs continue to use the exact
+compiler pinned by `deploy/base.Dockerfile`; if the available compiler differs,
+the script installs the pin under `.tmp/self-check-moon/` with
 `deploy/install-moonbit.sh`, verifies it and passes the isolated `MOON_HOME` and
 `PATH` to every stage, including npm's MoonBit prebuild. It never replaces the
-runner's shared toolchain or follows its library symlinks. A completed installation
-is reused only when its compiler still matches the pin.
+runner's shared toolchain or follows its library symlinks. A completed local
+installation is reused only when its compiler still matches the pin.
 
 The script initializes the registry in the selected Moon home, then
 prints each stage's start, result and elapsed time, with a progress line every
 30 seconds while a command is running. Dependency installation has a five-minute
-stage deadline; native tests and compilation each have ten minutes. The workflow's
-30-minute job deadline still bounds the entire run. A stage timeout terminates
+stage deadline; native tests have twenty minutes and compilation has ten minutes.
+The workflow's 40-minute job deadline still bounds the entire run. A stage timeout terminates
 its process group and fails the check without starting later stages. It then
 runs check/fmt/info in order, rejects modified or
 added/deleted MoonBit inputs and interfaces without requiring `.git`, checks
