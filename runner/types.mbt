@@ -47,6 +47,7 @@ priv struct Runtime {
   mut deadline : Int64
   mut stopped : String
   mut reporting_until : Int64
+  mut moon_home : String
 }
 
 ///|

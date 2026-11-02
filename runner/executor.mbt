@@ -3,9 +3,9 @@ async fn validate_options(
   assignment : @protocol.Assignment,
   options : Options,
 ) -> Options {
-  guard [@protocol.version, @protocol.action_assignment_version].contains(
-      assignment.version,
-    ) &&
+  guard [
+      @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
+    ].contains(assignment.version) &&
     assignment.state == "leased" &&
     assignment.has_valid_numbers() &&
     assignment.job.steps.length() > 0 &&
@@ -35,7 +35,7 @@ async fn validate_options(
   let ids : Map[String, Bool] = Map([])
   let mut checkouts = 0
   for step in assignment.job.steps {
-    if !step.uses.is_empty() {
+    if ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) {
       checkouts += 1
     }
     guard !step.id.is_empty() &&
@@ -44,15 +44,23 @@ async fn validate_options(
       !step.run.contains("\u{0000}") &&
       !step.run.contains("${{") &&
       (if step.uses.is_empty() {
-        !step.run.trim().is_empty()
+        !step.run.trim().is_empty() && step.moonbit_version.is_empty()
       } else {
-        ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) &&
-        assignment.version == @protocol.action_assignment_version &&
         step.run.is_empty() &&
         step.shell.is_empty() &&
         step.working_directory == "." &&
         step.env.is_empty() &&
-        checkouts == 1
+        (if step.uses == "moonhub/setup-moonbit@v1" {
+          assignment.version == @protocol.toolchain_assignment_version &&
+          valid_moonbit_version(step.moonbit_version)
+        } else {
+          ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) &&
+          [
+            @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
+          ].contains(assignment.version) &&
+          step.moonbit_version.is_empty() &&
+          checkouts == 1
+        })
       }) &&
       step.timeout_minutes >= 0 &&
       step.timeout_minutes <= 360 &&
@@ -139,6 +147,12 @@ async fn Runtime::execute_script(
   for key, value in step.env {
     env[key] = value
   }
+  if !self.moon_home.is_empty() && step.uses.is_empty() {
+    env["MOON_HOME"] = self.moon_home
+    env["PATH"] = self.moon_home +
+      "/bin:" +
+      env.get("PATH").unwrap_or("/usr/local/bin:/usr/bin:/bin")
+  }
   env["GITHUB_WORKSPACE"] = self.options.workspace
   env["GITHUB_SHA"] = self.assignment.commit_sha
   env["GITHUB_REPOSITORY"] = self.assignment.repository
@@ -187,6 +201,7 @@ async fn Runtime::execute_steps(
   self : Runtime,
   scratch : String,
   source : (async () -> Bytes)?,
+  moonbit_installer : async () -> Bytes,
 ) -> String {
   for index, step in self.assignment.job.steps {
     self.check_live()
@@ -201,7 +216,21 @@ async fn Runtime::execute_steps(
       } else {
         remaining
       }
-      if !step.uses.is_empty() {
+      if step.uses == "moonhub/setup-moonbit@v1" {
+        @async.with_timeout(
+          Int64::min(timeout, 2147483647L).to_int(),
+          () => {
+            self.setup_moonbit(
+              step,
+              index,
+              scratch,
+              moonbit_installer,
+              Int64::min(timeout, 2147483647L).to_int(),
+            )
+          },
+          error=Stopped("timed_out"),
+        )
+      } else if !step.uses.is_empty() {
         @async.with_timeout(
           Int64::min(timeout, 30000L).to_int(),
           () => self.checkout(scratch, source),
@@ -233,7 +262,9 @@ async fn Runtime::execute_steps(
         self.upload(
           step.id,
           "stderr",
-          if step.uses.is_empty() {
+          if step.uses == "moonhub/setup-moonbit@v1" {
+            "runner: MoonBit setup failed\n"
+          } else if step.uses.is_empty() {
             "runner: could not prepare or start step\n"
           } else {
             "runner: source checkout failed\n"
@@ -348,6 +379,7 @@ async fn execute_assignment(
   options : Options,
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
   source? : async () -> Bytes,
+  moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
 ) -> Report {
   let options = validate_options(assignment, options)
   let scratch = @fs.tmpdir(prefix="moonhub-runner-")
@@ -373,6 +405,7 @@ async fn execute_assignment(
     assignment.job.timeout_minutes.to_int64() * 60000L,
     stopped: "",
     reporting_until: 0L,
+    moon_home: "",
   }
   let completed = @async.handle_cancellation(() => {
     try {
@@ -400,7 +433,9 @@ async fn execute_assignment(
       }
       @async.any([
         () => {
-          if !assignment.job.steps.any(step => !step.uses.is_empty()) &&
+          if !assignment.job.steps.any(step => {
+              ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses)
+            }) &&
             source is Some(_) {
             runtime.checkout(scratch, source) catch {
               _ => {
@@ -410,7 +445,7 @@ async fn execute_assignment(
             }
           }
           runtime.check_live()
-          runtime.execute_steps(scratch, source)
+          runtime.execute_steps(scratch, source, moonbit_installer)
         },
         () => runtime.monitor(),
       ])

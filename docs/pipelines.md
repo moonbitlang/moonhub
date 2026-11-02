@@ -64,6 +64,12 @@ Supported configuration:
   `uses: actions/checkout@v4` or `uses: moonhub/checkout@v1`, plus optional
   `id`, `name` and `timeout-minutes`. It cannot also have `run`, `with`, `env`,
   `shell` or `working-directory`.
+- Built-in MoonBit setup accepts `uses: moonhub/setup-moonbit@v1`, plus
+  optional `id`, `name`, `timeout-minutes` and `with.version`. The version is a
+  literal string; omitted versions default to `latest`. `stable` maps to
+  `latest` and `bleeding` to `nightly`. `latest`, `nightly`, `pre-release` and
+  explicit versions such as `0.10.17+093cb8f9c` are supported. Setup steps cannot
+  also specify `run`, `shell`, `working-directory` or `env`.
 - Environment precedence is workflow < job < step. Values must be scalar;
   strings, integers, booleans, and real-number spellings are retained as strings.
   Names must be POSIX-like identifiers. `MOONHUB_`, `GITHUB_`, and `RUNNER_`
@@ -81,9 +87,9 @@ Supported configuration:
 
 All unknown fields are rejected before mapping. This includes `permissions`,
 `concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
-`outputs`, and `with`. Other `uses` values and expressions outside the `env`
-subset below are rejected rather than executed literally. No field is silently
-stripped.
+and `outputs`. `with` is accepted only for MoonBit setup, and its only supported
+input is `version`. Other `uses` values and expressions outside the `env` subset
+below are rejected rather than executed literally. No field is silently stripped.
 
 ### Run Context and Environment References
 
@@ -137,6 +143,48 @@ updates. Back up the database and repositories together and upgrade Web/SSH
 together; an older server binary cannot open schema 18. Runner/provider protocols
 are unchanged: they receive ordinary resolved env strings and do not evaluate
 expressions. No secrets or remote actions are added.
+
+### MoonBit Toolchain Setup
+
+```yaml
+name: MoonBit CI
+on: [workflow_dispatch, pull_request]
+jobs:
+  test:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: moonhub/checkout@v1
+      - uses: moonhub/setup-moonbit@v1
+        with:
+          version: nightly
+      - run: moon version --all
+      - run: moon test --target native --strip -j 1
+```
+
+Setup downloads the official installer over HTTPS from
+`https://cli.moonbitlang.com/install/unix.sh`, then installs the requested
+compiler, tools and core library into a fresh directory in the job's private
+home. No Action repository is downloaded or executed. The image's `/opt/moon`
+toolchain remains unchanged. The image's registry configuration is copied into
+the new writable Moon home when available.
+
+Subsequent shell steps receive the selected `MOON_HOME` and its `bin` directory
+at the front of `PATH`, including when workflow/job/step env specifies those
+variables. Before setup, jobs use the image's default toolchain. A later setup
+step can select another version for the remaining steps. Job containers never
+share installed toolchains or caches.
+
+Setup may appear before or after explicit checkout. Jobs without an explicit
+checkout still prepare pinned source automatically before the first step.
+Installation has its own step outcome and streamed logs, including
+`moon version --all`; download or installation failure stops later steps.
+Step/job timeouts, cancellation and lease loss also stop setup and its processes.
+
+The normalized version selector is saved in the immutable workflow snapshot
+and retained on rerun. Floating channels such as `stable`/`latest` and `nightly`
+are resolved by the official installer at execution time and can change between
+runs. Use an explicit version for reproducible compiler selection. This feature
+does not add GitHub Actions expressions, matrix jobs or arbitrary `uses` support.
 
 ### Source Preparation
 
@@ -242,12 +290,14 @@ run only application-owned fixtures.
 
 ## Runner Protocol (Step 2)
 
-Checkout jobs use assignment payload `version: 2`, with a string `uses` field
-on each step (`""` for shell steps). Pure shell jobs retain assignment V1;
-new decoders accept old V1 steps without `uses`. Lease, claim and result HTTP
-messages remain V1 under the existing API prefix. Older Runners/providers reject
-action assignments rather than silently skip checkout. Upgrade Web, SSH, provider
-and Runner images together before enabling these workflows.
+Checkout jobs use assignment payload `version: 2`; jobs using MoonBit setup use
+assignment `version: 3`. Each step has string `uses` and `moonbit_version` fields
+(`""` when unused). Pure shell jobs retain assignment V1; new decoders accept
+legacy steps without these fields. Lease, claim and result HTTP messages remain
+V1 under the existing API prefix. Older Runners/providers reject new action
+assignments rather than silently skip them. Upgrade Web, SSH, provider and
+Runner images together before enabling these workflows. No database migration
+is needed.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
@@ -788,14 +838,15 @@ needed when local Runner images are loaded into DinD by the deploy script.
 
 ## MoonHub Self-Hosting Checks
 
-`.github/workflows/moonhub.yml` runs a manual check of this repository using the
-existing archive checkout. It requires `self-hosted`, `linux` and `moonhub-build`
-provider labels. The `runner-selfhost` target remains compatible with existing
-settings; the shared dependency base now includes Node/npm in both Runner
-targets. Docker CLI binaries are also present in the shared base, but jobs have
-no Docker socket or deployment credentials. MoonBit defaults to `0.10.14+7d59c7ec9` across
-Web, provider and Runner builds. Preserve the built images for recovery: upstream
-toolchain archives have limited retention.
+`.github/workflows/moonhub.yml` runs this repository's check on pushes to `master`
+and on manual dispatch, using the existing archive checkout. It selects MoonBit
+`nightly` with the built-in setup step and requires `self-hosted`, `linux` and
+`moonhub-build` provider labels. The `runner-selfhost` target remains compatible
+with existing settings; the shared dependency base now includes Node/npm in both
+Runner targets. Docker CLI binaries are also present in the shared base, but jobs
+have no Docker socket or deployment credentials. Web, provider and Runner builds
+use the deployment pin `0.10.17+093cb8f9c`. Preserve the built images for recovery:
+upstream toolchain archives have limited retention.
 
 For the provider assigned to MoonHub, use these settings in `deploy/deploy.env`
 (replace the repository path with its registered namespace):
@@ -810,19 +861,20 @@ MOONHUB_RUNNER_MEMORY=4g
 MOONHUB_RUNNER_CPUS=2
 ```
 
-`scripts/self-check.cjs` selects the exact compiler pinned by
-`deploy/base.Dockerfile` before running any MoonBit commands. If the runner's
-compiler differs, it installs that version under `.tmp/self-check-moon/` with
+In CI, `scripts/self-check.cjs` keeps the workflow-selected compiler, so this job
+checks MoonHub against `nightly`. Local self-check runs continue to use the exact
+compiler pinned by `deploy/base.Dockerfile`; if the available compiler differs,
+the script installs the pin under `.tmp/self-check-moon/` with
 `deploy/install-moonbit.sh`, verifies it and passes the isolated `MOON_HOME` and
 `PATH` to every stage, including npm's MoonBit prebuild. It never replaces the
-runner's shared toolchain or follows its library symlinks. A completed installation
-is reused only when its compiler still matches the pin.
+runner's shared toolchain or follows its library symlinks. A completed local
+installation is reused only when its compiler still matches the pin.
 
 The script initializes the registry in the selected Moon home, then
 prints each stage's start, result and elapsed time, with a progress line every
 30 seconds while a command is running. Dependency installation has a five-minute
-stage deadline; native tests and compilation each have ten minutes. The workflow's
-30-minute job deadline still bounds the entire run. A stage timeout terminates
+stage deadline; native tests have twenty minutes and compilation has ten minutes.
+The workflow's 40-minute job deadline still bounds the entire run. A stage timeout terminates
 its process group and fails the check without starting later stages. It then
 runs check/fmt/info in order, rejects modified or
 added/deleted MoonBit inputs and interfaces without requiring `.git`, checks

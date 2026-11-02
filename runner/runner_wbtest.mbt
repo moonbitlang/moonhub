@@ -11,6 +11,7 @@ fn test_step(
     name: id,
     run,
     uses: "",
+    moonbit_version: "",
     shell,
     working_directory: directory,
     env,

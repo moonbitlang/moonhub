@@ -448,7 +448,11 @@ pub fn Coordinator::claim(
         let name : String = row.get_name("repo_name")
         let job = attempt_job(row)
         Some({
-          version: if job.steps.any(step => step.uses is Some(_)) {
+          version: if job.steps.any(step => {
+              step.uses == Some("moonhub/setup-moonbit@v1")
+            }) {
+            @protocol.toolchain_assignment_version
+          } else if job.steps.any(step => step.uses is Some(_)) {
             @protocol.action_assignment_version
           } else {
             @protocol.version
@@ -471,6 +475,7 @@ pub fn Coordinator::claim(
               name: step.name,
               run: step.run,
               uses: step.uses.unwrap_or(""),
+              moonbit_version: step.moonbit_version.unwrap_or(""),
               shell: step.shell.unwrap_or(""),
               working_directory: step.working_directory,
               env: step.env,

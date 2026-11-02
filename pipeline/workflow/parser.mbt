@@ -419,7 +419,8 @@ fn parse_job(
     check_fields(
       fields,
       [
-        "id", "name", "run", "uses", "env", "shell", "working-directory", "timeout-minutes",
+        "id", "name", "run", "uses", "with", "env", "shell", "working-directory",
+        "timeout-minutes",
       ],
       ctx,
     )
@@ -435,18 +436,57 @@ fn parse_job(
     guard (run is Some(_) && uses is None) || (run is None && uses is Some(_)) else {
       raise InvalidWorkflow("\{ctx} requires exactly one of run or uses")
     }
-    if uses is Some(action) {
-      guard action == "actions/checkout@v4" || action == "moonhub/checkout@v1" else {
+    let moonbit_version = if uses == Some("moonhub/setup-moonbit@v1") {
+      check_fields(
+        fields,
+        ["id", "name", "uses", "with", "timeout-minutes"],
+        ctx,
+      )
+      let inputs = match fields.get("with") {
+        None => Map([])
+        Some(value) => yaml_as_obj(value, "\{ctx}.with")
+      }
+      check_fields(inputs, ["version"], "\{ctx}.with")
+      let requested = yaml_as_optional_string(
+        inputs.get("version"),
+        "\{ctx}.with.version",
+      ).unwrap_or("latest")
+      let version = match requested {
+        "stable" => "latest"
+        "bleeding" => "nightly"
+        value => value
+      }
+      guard valid_moonbit_version(version) else {
         raise InvalidWorkflow(
-          "\{ctx}.uses supports only the built-in checkout action",
+          "\{ctx}.with.version must be latest, stable, nightly, bleeding, pre-release or a literal MoonBit version",
         )
       }
-      guard !steps.any(step => step.uses is Some(_)) else {
+      Some(version)
+    } else if uses is Some(action) {
+      guard action == "actions/checkout@v4" || action == "moonhub/checkout@v1" else {
+        raise InvalidWorkflow(
+          "\{ctx}.uses supports only the built-in checkout and moonhub/setup-moonbit@v1 actions",
+        )
+      }
+      guard !steps.any(step => {
+        [Some("actions/checkout@v4"), Some("moonhub/checkout@v1")].contains(
+          step.uses,
+        )
+      }) else {
         raise InvalidWorkflow("each job supports only one checkout step")
       }
       check_fields(fields, ["id", "name", "uses", "timeout-minutes"], ctx)
+      None
     } else {
+      check_fields(
+        fields,
+        [
+          "id", "name", "run", "env", "shell", "working-directory", "timeout-minutes",
+        ],
+        ctx,
+      )
       ignore(required_string(fields.get("run"), "\{ctx}.run"))
+      None
     }
     let step_defaults = inherit_defaults(job_defaults, {
       shell: parse_shell(fields.get("shell"), "\{ctx}.shell"),
@@ -462,6 +502,7 @@ fn parse_job(
       ),
       run: run.unwrap_or(""),
       uses,
+      moonbit_version,
       shell: if uses is Some(_) {
         None
       } else {
@@ -551,4 +592,27 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
     raise InvalidWorkflow("normalized workflow exceeds 1 MiB")
   }
   workflow
+}
+
+///|
+// Keep literal versions safe as both an installer argument and a download path.
+fn valid_moonbit_version(version : String) -> Bool {
+  ["latest", "nightly", "pre-release"].contains(version) ||
+  (
+    version.length() <= 128 &&
+    version.get_char(0) is Some(first) &&
+    first.is_ascii_digit() &&
+    !version.contains("..") &&
+    version
+    .iter()
+    .all(ch => {
+      ch.is_ascii_alphabetic() ||
+      ch.is_ascii_digit() ||
+      ch == '.' ||
+      ch == '+' ||
+      ch == '-'
+    }) &&
+    version.get_char(version.length() - 1) is Some(last) &&
+    (last.is_ascii_alphabetic() || last.is_ascii_digit())
+  )
 }
