@@ -71,7 +71,7 @@ function runStage(name, command, args, { cwd, timeoutMs, progressMs = 30000, log
 function compilerVersion(root, env) {
   const result = spawnSync('moonc', ['-v'], { cwd: root, env, encoding: 'utf8', timeout: 30000 });
   if (result.error || result.status !== 0) return undefined;
-  return result.stdout.trim().match(/^v(\d+\.\d+\.\d+\+[a-zA-Z0-9]+)(?:\s|$)/)?.[1];
+  return result.stdout.trim().match(/^v(\d+\.\d+\.\d+\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)(?:\s|$)/)?.[1];
 }
 
 async function toolchainEnvironment(root, { env = process.env, run = runStage } = {}) {
