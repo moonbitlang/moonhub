@@ -159,7 +159,12 @@ the push worker lifecycle and the repository-level opt-in form.
 Push mirror configuration, ref intents, snapshotting and delivery workers belong
 to `repository`; `web/views/repositories` owns the authorized settings forms.
 The source write lock covers only the local snapshot; a separate per-mirror lock
-serializes external transfers and configuration changes. See [push mirrors](mirrors.md).
+serializes external transfers and configuration changes. Per-mirror keys and the
+per-mirror destination host-key pins and pending fingerprint confirmations live
+in the database. Repository managers initialize and explicitly confirm each
+destination before enabling sync. Mirror transport
+settings are independent of SSH import configuration; transfer-only credential
+files are generated and cleaned by the worker. See [push mirrors](mirrors.md).
 
 The browser rendering boundary is described in [frontend architecture](frontend.md).
 `web/spa` has no business or HTTP dependency. It holds only presentation data;

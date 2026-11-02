@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 27L
+pub let database_schema_version : Int64 = 28L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -86,6 +86,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
   ).text()
   let mirrors_migration = @fs.read_file("db/migrations/026_push_mirrors.sql").text()
   let mirror_keys_migration = @fs.read_file("db/migrations/027_mirror_keys.sql").text()
+  let mirror_host_keys_migration = @fs.read_file(
+    "db/migrations/028_mirror_host_keys.sql",
+  ).text()
   let webhooks_migration = @fs.read_file("db/migrations/024_webhooks.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -177,7 +180,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 27L {
         tx.driver.exec_script(mirror_keys_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 27")
+      if version < 28L {
+        tx.driver.exec_script(mirror_host_keys_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 28")
     })
   })
 }

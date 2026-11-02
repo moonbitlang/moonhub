@@ -10,6 +10,7 @@ pub async fn with_ssh_settings_app(
   addresses~ : @repository.SshAddressConfig = @repository.no_ssh_address_config,
   repo_root~ : String = test_repo_root,
   import_config~ : @repository.RepoImportConfig? = None,
+  mirror_config~ : @repository.MirrorConfig = @repository.default_mirror_config,
 ) -> Unit {
   @test_support.with_ssh_test_db(pool => {
     let cookies = pool.with_client(client => {
@@ -25,6 +26,7 @@ pub async fn with_ssh_settings_app(
         @web_context.config_assets_root, test_assets_root,
       ),
       @moonback.Config::custom(@web_context.config_db_pool, pool),
+      @moonback.Config::custom(@web_context.config_mirror, mirror_config),
       @moonback.Config::custom(@web_context.config_ssh_addresses, addresses),
     ]
     if import_config is Some(config) {

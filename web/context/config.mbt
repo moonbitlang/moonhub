@@ -95,3 +95,20 @@ pub let webhook_policy_key : @moonback.TypedKey[@webhooks.Policy] = TypedKey(
     }
   },
 )
+
+///|
+extenum @moonback.TypedBox += {
+  MirrorConfig(@repository.MirrorConfig)
+}
+
+///|
+pub let config_mirror : @moonback.TypedKey[@repository.MirrorConfig] = TypedKey(
+  name="moonhub.mirror",
+  box=config => MirrorConfig(config),
+  unbox=value => {
+    match value {
+      MirrorConfig(config) => Some(config)
+      _ => None
+    }
+  },
+)

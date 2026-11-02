@@ -10,7 +10,8 @@ pub async fn serve(config : Config) -> Unit {
     @mail.start_mail_worker(pool, group)
     @webhooks.start_worker(pool, config.root, webhook_policy(), group)
     let import_config = @repository.repo_import_config_from_env()
-    @repository.start_mirror_worker(pool, config.root, import_config, group)
+    let mirror_config = @repository.mirror_config_from_env()
+    @repository.start_mirror_worker(pool, config.root, mirror_config, group)
     let addresses = @repository.ssh_address_config_from_env()
     @repository.start_repository_worker(
       pool,
@@ -35,6 +36,7 @@ pub async fn serve(config : Config) -> Unit {
         config.assets_root,
       ),
       @moonback.Config::custom(@web_context.config_db_pool, pool),
+      @moonback.Config::custom(@web_context.config_mirror, mirror_config),
       @moonback.Config::custom(@web_context.config_ssh_addresses, addresses),
     ]
     if import_config is Some(config) {

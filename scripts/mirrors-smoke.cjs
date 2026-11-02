@@ -17,7 +17,8 @@ const database = path.join(temp, 'moonhub.db');
 const password = randomBytes(24).toString('hex');
 let server, browser;
 const env = { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: path.join(temp, 'mail'),
-  MOONHUB_SSH_IMPORT_ROOT: path.join(temp, 'credentials'), MOONHUB_IMPORT_SSH: path.join(temp, 'outbound-ssh') };
+  MOONHUB_MIRROR_SSH_COMMAND: path.join(temp, 'outbound-ssh'),
+  MOONHUB_MIRROR_KEYSCAN: path.join(temp, 'keyscan') };
 function sql(statement, ...params) {
   const db = new DatabaseSync(database, { timeout: 5000 });
   try { return db.prepare(statement).all(...params); } finally { db.close(); }
@@ -29,16 +30,15 @@ async function until(check, message) {
 (async () => {
   fs.mkdirSync(review, { recursive: true });
   fs.mkdirSync(path.join(temp, 'repos'));
-  fs.mkdirSync(path.join(temp, 'credentials/root'), { recursive: true });
   fs.cpSync(path.join(root, 'db'), path.join(temp, 'db'), { recursive: true });
   fs.writeFileSync(path.join(temp, 'password'), password, { mode: 0o600 });
-  for (const [name, value] of Object.entries({ known_hosts: 'local test host key', allowed_hosts: 'github.com:22\n' })) {
-    fs.writeFileSync(path.join(temp, 'credentials/root', name), value, { mode: 0o600 });
-  }
+  delete env.MOONHUB_SSH_IMPORT_ROOT; delete env.MOONHUB_IMPORT_SSH;
+  const hostKeys = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB';
+  fs.writeFileSync(env.MOONHUB_MIRROR_KEYSCAN, "#!/bin/sh\nprintf '%s\\n' 'github.com " + hostKeys + "'\n", { mode: 0o700 });
   const remote = path.join(temp, 'github.git');
   execFileSync('git', ['init', '--bare', remote], { stdio: 'pipe' });
   const authorized = path.join(temp, 'authorized-public-key');
-  fs.writeFileSync(env.MOONHUB_IMPORT_SSH, '#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f "$MOONHUB_IMPORT_IDENTITY" | cut -d " " -f 1-2)\ntest "$actual" = "$(cat "' + authorized + '")"\nexec git receive-pack "' + remote + '"\n', { mode: 0o700 });
+  fs.writeFileSync(env.MOONHUB_MIRROR_SSH_COMMAND, '#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f "$MOONHUB_MIRROR_IDENTITY" | cut -d " " -f 1-2)\ntest "$actual" = "$(cat "' + authorized + '")"\nexec git receive-pack "' + remote + '"\n', { mode: 0o700 });
   const listener = http.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening');
   const port = listener.address().port; await new Promise(r => listener.close(r));
   const base = 'http://127.0.0.1:' + port;
@@ -75,6 +75,13 @@ async function until(check, message) {
   assert.ok((await html(edit)).includes(keyPair().public_key));
   assert.ok(!(await html(edit)).includes(keyPair().private_key));
   fs.writeFileSync(authorized, keyPair().public_key.split(' ').slice(0, 2).join(' '), { mode: 0o600 });
+  await form(edit, { csrf_token: csrf(await html(edit)), version: String(mirror().version), url: mirror().url, active: '1' }, 400);
+  await form(edit + '/initialize-host', { csrf_token: csrf(await html(edit)), version: String(mirror().version) });
+  const confirmation = await html(edit);
+  assert.ok(confirmation.includes('SHA256:')); assert.equal(mirror().host_keys, '');
+  const challenge = confirmation.match(/name="challenge" value="([^"]+)"/)[1];
+  await form(edit + '/confirm-host', { csrf_token: csrf(confirmation), version: String(mirror().version), challenge });
+  assert.equal(mirror().host_keys, hostKeys); assert.equal(mirror().active, 0);
   await form(edit, { csrf_token: csrf(await html(edit)), version: String(mirror().version), url: mirror().url, active: '1' });
   await until(() => mirror().status === 'succeeded', 'initial sync failed');
   assert.equal(git(remote, ['rev-parse', 'refs/heads/main']), initial);
@@ -130,6 +137,18 @@ async function until(check, message) {
   await nativePage.getByLabel('Enable automatic sync').uncheck(); await nativePage.getByRole('button', { name: 'Save mirror', exact: true }).click();
   await nativePage.waitForURL(base + edit); assert.equal(mirror().status, 'disabled');
   assert.equal(await nativePage.getByLabel('Enable automatic sync').isChecked(), false);
+  assert.equal(mirror().host_keys, hostKeys);
+  await nativePage.getByRole('button', { name: 'Fetch host fingerprint again', exact: true }).click();
+  await nativePage.waitForURL(base + edit);
+  assert.ok((await nativePage.content()).includes('SHA256:'));
+  await nativePage.screenshot({ path: path.join(review, 'desktop-initialize.png'), fullPage: true });
+  await nativePage.setViewportSize({ width: 390, height: 844 });
+  await nativePage.screenshot({ path: path.join(review, 'mobile-initialize.png'), fullPage: true });
+  assert.ok(await nativePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await nativePage.getByRole('button', { name: 'Trust this host key', exact: true }).click();
+  await nativePage.waitForURL(base + edit);
+  assert.equal(sql('SELECT COUNT(*) AS count FROM mirror_host_check')[0].count, 0);
+  assert.ok(!fs.existsSync(path.join(temp, 'credentials')));
   const oldPublicKey = keyPair().public_key;
   await nativePage.getByText('Rotate SSH key', { exact: true }).click();
   await nativePage.getByRole('button', { name: 'Generate new SSH key', exact: true }).click();
@@ -145,7 +164,7 @@ async function until(check, message) {
   await until(() => mirror().status === 'succeeded', 'rotated key could not sync');
   assert.deepEqual(fs.readdirSync(path.join(temp, 'repos/.mirrors')).filter(name => name.startsWith('key-') || name.startsWith('snapshot-')), []);
   await native.close(); assert.deepEqual(errors, []);
-  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ result: 'passed', cases: ['initial branches and annotated tags', 'internal refs excluded', 'real SSH receive hooks', 'branch and tag deletion', 'real MR merge triggers mirror', 'desktop and mobile layouts', 'native disable form', 'database-backed independent SSH identity', 'public-key setup without namespace import key', 'native key rotation and reauthorization', 'temporary key cleanup'], errors }, null, 2));
+  fs.writeFileSync(path.join(review, 'receipt.json'), JSON.stringify({ result: 'passed', cases: ['initial branches and annotated tags', 'internal refs excluded', 'real SSH receive hooks', 'branch and tag deletion', 'real MR merge triggers mirror', 'desktop and mobile layouts', 'native disable form', 'database-backed independent SSH identity', 'save without SSH import configuration or directories', 'self-service initialization and host fingerprint confirmation without JavaScript', 'native key rotation and reauthorization', 'temporary key cleanup'], errors }, null, 2));
   console.log('Mirror integration and browser acceptance passed. Screenshots: ' + review);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close(); if (server && server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'exit'); }

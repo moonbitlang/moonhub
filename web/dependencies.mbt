@@ -45,6 +45,12 @@ let services_module : @moonback.Module = Module(ctx => {
     .unwrap_or(@repository.no_ssh_address_config)
   ctx.provide(@web_context.config_db_pool, pool)
   ctx.provide(@web_context.config_ssh_addresses, addresses)
+  ctx.provide(
+    @web_context.config_mirror,
+    config
+    .get_custom(@web_context.config_mirror)
+    .unwrap_or(@repository.default_mirror_config),
+  )
   if config.get_custom(@web_context.config_repo_import) is Some(import_config) {
     ctx.provide(@web_context.config_repo_import, import_config)
   }

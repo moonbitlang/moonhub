@@ -33,19 +33,45 @@ materializes a mode `0600` key file in a private temporary directory only for th
 transfer and removes it afterward. Key generation also uses private temporary
 files, which are removed after the key pair is saved.
 
-Destination trust remains an administrator policy, shared with SSH imports:
-`MOONHUB_SSH_IMPORT_ROOT/<namespace>/known_hosts` and `allowed_hosts`, with
-`MOONHUB_IMPORT_SSH` as the SSH wrapper. Here namespace means the repository's
-owner account or team. For GitHub, allow `github.com:22` and verify and pin its
-SSH host key. Mirrors do not require or use the namespace's `id_ed25519` import
-key. See [SSH setup](../deploy/README.md#ssh-import). HTTPS/token URLs and
-arbitrary Git transports are rejected.
+After saving a disabled mirror, choose **Initialize destination**. MoonHub fetches
+its Ed25519 host public key and displays the SHA256 fingerprint for the saved
+SSH destination. Compare it with the host's published fingerprint or verify it
+with the server administrator, then choose **Trust this host key**. Fetching a
+key alone does not establish its authenticity. Add the mirror's public key as a
+write-enabled deploy key at the destination, then enable automatic sync.
 
-The exact normalized host and port must remain in the namespace allowlist.
-SSH runs without an agent, with strict host verification and the mirror's key.
-The worker rechecks the configuration and the configuring user's active account
-and management permission before every transfer. Revoked management access stops
-queued work; another manager can save the configuration to take ownership.
+The pending scan and confirmed host trust are stored in the database, scoped to
+this mirror and destination host/port. Confirmation uses a one-time challenge,
+expires after ten minutes, and is invalidated by another scan or configuration
+change. The submitted form cannot replace the scanned key. Another mirror does
+not inherit trust. No site-administrator approval, SSH import configuration,
+namespace credentials or manually created directory is needed.
+
+Changing the destination host or port clears its trust and requires initialization
+again. To replace a changed host key, disable sync, save, fetch the fingerprint
+again and explicitly confirm the replacement after checking with the server
+administrator. A changed fingerprint is highlighted. Merely fetching a new key
+never replaces a trusted key or enables sync. Saving and rotating a disabled
+mirror do not require network access or trusted host keys. Existing mirrors
+preserve their identities and history on upgrade; initialize their destinations
+before enabling them. An enabled legacy mirror without pins fails closed.
+
+SSH runs without an agent and verifies the destination strictly against a mode
+`0600` temporary known_hosts file generated from that mirror's database pins.
+The host key and identity files are removed with the private transfer directory.
+Unknown or changed server host keys cause sync to fail. The worker rechecks the
+configuring user's active account and management permission before external I/O.
+Revoked access stops queued work; another manager can save the mirror to take
+ownership. HTTPS/token URLs and arbitrary Git transports are rejected.
+
+The mirror transport defaults to `/usr/bin/ssh` with isolated settings and
+strict host checking; it does not use the SSH import wrapper. Deployments may
+set `MOONHUB_MIRROR_SSH_COMMAND` to a trusted command that honors
+`MOONHUB_MIRROR_IDENTITY` and `MOONHUB_MIRROR_KNOWN_HOSTS`. This is
+an operator-only override, not a repository form field. Host initialization uses
+`/usr/bin/ssh-keyscan` (or the operator-only `MOONHUB_MIRROR_KEYSCAN` override),
+with a five-second connection timeout, ten-second overall timeout and bounded
+output. It does not authenticate with or expose the mirror identity.
 
 ## Force updates and deletion
 
@@ -81,7 +107,7 @@ five attempts. **Sync now** starts another retry cycle. A subsequent source upda
 also starts a new cycle. The page shows status, last successful sync and the ten
 most recent attempts; the database retains the most recent fifty attempts.
 Diagnostics contain application-authored recovery guidance, never Git/SSH output
-or credential paths. The transfer timeout uses `MOONHUB_IMPORT_TIMEOUT_SECONDS`.
+or credential paths. The transfer timeout uses `MOONHUB_MIRROR_TIMEOUT_SECONDS`.
 
 Prepared reference transactions are recovered under the source write lock after
 a process interruption, including branch and tag deletion. Aborted pushes are

@@ -140,25 +140,27 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
   });
 }
 
-test('CI keeps the workflow-selected MoonBit toolchain', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-moonbit-'));
-  try {
-    fs.mkdirSync(path.join(root, 'deploy'));
-    fs.mkdirSync(path.join(root, 'nightly/bin'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.17+testpin\n');
-    fs.writeFileSync(path.join(root, 'nightly/bin/moonc'), '#!/bin/sh\necho "v0.11.0+nightly (test)"\n', { mode: 0o755 });
-    const env = {
-      ...process.env,
-      CI: 'true',
-      MOON_HOME: path.join(root, 'nightly'),
-      PATH: path.join(root, 'nightly/bin') + path.delimiter + process.env.PATH,
-    };
-    let installs = 0;
-    const selected = await toolchainEnvironment(root, {
-      env,
-      run: async () => { installs++; throw new Error('CI must not reinstall the deployment pin'); },
-    });
-    assert.equal(selected, env);
-    assert.equal(installs, 0);
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
-});
+for (const version of ['0.10.17+093cb8f9c', '0.10.18+fd7c30161-nightly']) {
+  test(`CI keeps the workflow-selected MoonBit toolchain: ${version}`, async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-moonbit-'));
+    try {
+      fs.mkdirSync(path.join(root, 'deploy'));
+      fs.mkdirSync(path.join(root, 'nightly/bin'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.17+testpin\n');
+      fs.writeFileSync(path.join(root, 'nightly/bin/moonc'), '#!/bin/sh\necho "v' + version + ' (2026-11-02)"\n', { mode: 0o755 });
+      const env = {
+        ...process.env,
+        CI: 'true',
+        MOON_HOME: path.join(root, 'nightly'),
+        PATH: path.join(root, 'nightly/bin') + path.delimiter + process.env.PATH,
+      };
+      let installs = 0;
+      const selected = await toolchainEnvironment(root, {
+        env,
+        run: async () => { installs++; throw new Error('CI must not reinstall the deployment pin'); },
+      });
+      assert.equal(selected, env);
+      assert.equal(installs, 0);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+}

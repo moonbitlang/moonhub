@@ -1,11 +1,55 @@
 ///|
+// Preconfirmed trust is fixture data for transfer and concurrency tests.
+// Production saves cannot accept host keys; managers must initialize and confirm.
+async fn save_fixture_mirror(
+  pool : @database.Database,
+  root : String,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  id : Int64,
+  version : Int64,
+  url : String,
+  active : Bool,
+  force_push : Bool,
+  prune : Bool,
+  host_keys~ : String = "",
+) -> Int64 {
+  if id != 0L || host_keys.is_empty() {
+    return save_push_mirror(
+      pool, root, actor, repo, id, version, url, active, force_push, prune,
+    )
+  }
+  let id = save_push_mirror(
+    pool, root, actor, repo, id, version, url, false, force_push, prune,
+  )
+  pool.with_client(client => {
+    ignore(
+      client.execute(
+        "UPDATE repository_mirror SET host_keys=?,active=?,status=? WHERE id=?",
+        params=[
+          host_keys,
+          active,
+          if active {
+            "pending"
+          } else {
+            "disabled"
+          },
+          id,
+        ],
+      ),
+    )
+  })
+  id
+}
+
+///|
 async fn mirror_fixture(
   f : async (
     @database.Database,
     String,
     @domain.CurrentUser,
     @domain.RepoId,
-    RepoImportConfig,
+    MirrorConfig,
     String,
   ) -> Unit,
 ) -> Unit {
@@ -19,9 +63,13 @@ async fn mirror_fixture(
         "config", "receive.denyDeleteCurrent", "ignore",
       ]),
     )
-    let config = @test_support.mock_import_config(root, remote)
+    let wrapper = root + "/mirror-ssh"
+    let config : MirrorConfig = {
+      ..default_mirror_config,
+      ssh_command: wrapper,
+    }
     @fs.write_file(
-      config.ssh_wrapper,
+      config.ssh_command,
       "#!/bin/sh\nexec git receive-pack '\{remote}'\n",
       permission=0o700,
     )
@@ -59,7 +107,7 @@ async test "push mirrors copy branches and annotated tags without private refs, 
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", sha]))
     ignore(@gitops.merge_git(dir, ["tag", "-a", "v1", "-m", "release", sha]))
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/moonhub/secret", sha]))
-    let id = save_push_mirror(
+    let id = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -70,9 +118,9 @@ async test "push mirrors copy branches and annotated tags without private refs, 
       true,
       false,
       false,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(push_mirrors(pool, actor, repo)[0].status, "succeeded")
     assert_eq(mirror_refs(dir), mirror_refs(remote))
     assert_eq(@gitops.merge_git(remote, ["for-each-ref", "refs/moonhub/"]), "")
@@ -84,7 +132,7 @@ async test "push mirrors copy branches and annotated tags without private refs, 
       @gitops.merge_git(dir, ["update-ref", "refs/heads/master", previous]),
     )
     push_mirror_action(pool, root, actor, repo, id, 1L, "sync")
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     let failed = push_mirrors(pool, actor, repo)[0]
     assert_eq(failed.status, "pending")
     assert_eq(failed.attempts, 1L)
@@ -98,7 +146,7 @@ async test "push mirrors copy branches and annotated tags without private refs, 
       @gitops.merge_git(remote, ["update-ref", "refs/tags/remote-only", sha]),
     )
     ignore(
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -109,14 +157,14 @@ async test "push mirrors copy branches and annotated tags without private refs, 
         true,
         true,
         false,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       ),
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(@gitops.branch_sha(remote, "master"), previous)
     assert_true(mirror_refs(remote).contains("remote-only"))
     ignore(
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -127,10 +175,10 @@ async test "push mirrors copy branches and annotated tags without private refs, 
         true,
         true,
         true,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       ),
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(mirror_refs(dir), mirror_refs(remote))
     assert_eq(mirror_history(pool, actor, repo, id).length(), 4)
     push_mirror_action(pool, root, actor, repo, id, 4L, "delete")
@@ -141,7 +189,7 @@ async test "push mirrors copy branches and annotated tags without private refs, 
 ///|
 async test "mirror intents capture committed branch and tag deletions, recover interruptions and ignore aborts" {
   mirror_fixture((pool, root, actor, repo, config, remote) => {
-    let id = save_push_mirror(
+    let id = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -152,20 +200,20 @@ async test "mirror intents capture committed branch and tag deletions, recover i
       true,
       false,
       true,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     let dir = repo.git_dir(root)
     let sha = @gitops.branch_sha(dir, "master")
     let zero = "0".repeat(40)
     let key = "a".repeat(32)
     let line = "\{zero} \{sha} refs/tags/received"
     record_received_transaction(pool, actor, repo, key, "prepared", line)
-    assert_false(sync_next_mirror(pool, root, Some(config)))
+    assert_false(sync_next_mirror(pool, root, config))
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/tags/received", sha]))
     // Simulate a lost committed hook: recovery inspects actual refs under the write lock.
     ignore(recover_mirror_repositories(pool, root, 0L))
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_true(mirror_refs(remote).contains("refs/tags/received"))
     let deleted = "\{sha} \{zero} refs/tags/received"
     record_received_transaction(
@@ -185,7 +233,7 @@ async test "mirror intents capture committed branch and tag deletions, recover i
       "committed",
       deleted,
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_false(mirror_refs(remote).contains("refs/tags/received"))
     record_received_transaction(
       pool,
@@ -203,7 +251,7 @@ async test "mirror intents capture committed branch and tag deletions, recover i
       "aborted",
       line,
     )
-    assert_false(sync_next_mirror(pool, root, Some(config)))
+    assert_false(sync_next_mirror(pool, root, config))
     assert_true(list_ref_events(pool, actor, repo).is_empty())
     assert_eq(mirror_history(pool, actor, repo, id).length(), 3)
   })
@@ -212,7 +260,7 @@ async test "mirror intents capture committed branch and tag deletions, recover i
 ///|
 async test "mirror configuration requires manager, validates hosts and versions, disables and rechecks revoked access" {
   mirror_fixture((pool, root, actor, repo, config, _) => {
-    let id = save_push_mirror(
+    let id = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -223,15 +271,14 @@ async test "mirror configuration requires manager, validates hosts and versions,
       true,
       false,
       false,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
     for
       url in [
-        "https://github.com/org/repo.git", "git@denied.example:org/repo.git", "git@source.example:../repo.git",
-        "ext::sh -c bad",
+        "https://github.com/org/repo.git", "git@source.example:../repo.git", "ext::sh -c bad",
       ] {
       try
-        save_push_mirror(
+        save_fixture_mirror(
           pool,
           root,
           actor,
@@ -242,7 +289,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
           true,
           false,
           false,
-          Some(config),
+          host_keys=@test_support.test_ssh_public_key,
         )
       catch {
         @domain.BadRequest(_) => ()
@@ -252,7 +299,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
       }
     }
     try
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -263,7 +310,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
         false,
         false,
         false,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       )
     catch {
       @domain.BadRequest(_) => ()
@@ -272,7 +319,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
       _ => fail("accepted stale version")
     }
     ignore(
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -283,10 +330,10 @@ async test "mirror configuration requires manager, validates hosts and versions,
         false,
         false,
         false,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       ),
     )
-    assert_false(sync_next_mirror(pool, root, Some(config)))
+    assert_false(sync_next_mirror(pool, root, config))
     pool.with_client(client => {
       ignore(
         client.execute(
@@ -302,7 +349,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
       _ => fail("member inspected mirror configuration")
     }
     ignore(
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -313,7 +360,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
         true,
         false,
         false,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       ),
     )
     pool.with_client(client => {
@@ -321,7 +368,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
         client.execute("DELETE FROM team_member WHERE team_id=1 AND user_id=1"),
       )
     })
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     let admin = @identity.active_user_by_name(pool, "admin")
     assert_eq(push_mirrors(pool, admin, repo)[0].status, "failed")
     assert_eq(mirror_history(pool, admin, repo, id).length(), 0)
@@ -331,7 +378,7 @@ async test "mirror configuration requires manager, validates hosts and versions,
 ///|
 async test "empty source prunes final refs and failed workers exhaust retry budgets" {
   mirror_fixture((pool, root, actor, repo, config, remote) => {
-    let id = save_push_mirror(
+    let id = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -342,19 +389,19 @@ async test "empty source prunes final refs and failed workers exhaust retry budg
       true,
       false,
       true,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     ignore(
       @gitops.merge_git(repo.git_dir(root), [
         "update-ref", "-d", "refs/heads/master",
       ]),
     )
     push_mirror_action(pool, root, actor, repo, id, 1L, "sync")
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(mirror_refs(remote), "")
     @fs.write_file(
-      config.ssh_wrapper,
+      config.ssh_command,
       "#!/bin/sh\nprintf 'sensitive diagnostic' >&2\nexit 1\n",
       permission=0o700,
     )
@@ -368,11 +415,11 @@ async test "empty source prunes final refs and failed workers exhaust retry budg
           ),
         )
       })
-      assert_true(sync_next_mirror(pool, root, Some(config)))
+      assert_true(sync_next_mirror(pool, root, config))
     }
     assert_eq(push_mirrors(pool, actor, repo)[0].status, "failed")
     assert_eq(push_mirrors(pool, actor, repo)[0].attempts, 5L)
-    assert_false(sync_next_mirror(pool, root, Some(config)))
+    assert_false(sync_next_mirror(pool, root, config))
     assert_false(
       mirror_history(pool, actor, repo, id)[0].error.contains("sensitive"),
     )
@@ -391,7 +438,7 @@ async test "empty source prunes final refs and failed workers exhaust retry budg
         ),
       )
     })
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(push_mirrors(pool, actor, repo)[0].attempts, 2L)
     assert_false(
       mirror_history(pool, actor, repo, id).any(attempt => {
@@ -404,7 +451,7 @@ async test "empty source prunes final refs and failed workers exhaust retry budg
 ///|
 async test "updates arriving during a mirror transfer stay queued and source writes remain available" {
   mirror_fixture((pool, root, actor, repo, config, remote) => {
-    let id = save_push_mirror(
+    let id = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -415,19 +462,17 @@ async test "updates arriving during a mirror transfer stay queued and source wri
       true,
       false,
       false,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
     let marker = root + "/transfer-started"
     let release = root + "/transfer-release"
     @fs.write_file(
-      config.ssh_wrapper,
+      config.ssh_command,
       "#!/bin/sh\ntouch '\{marker}'\nwhile [ ! -f '\{release}' ]; do sleep 0.05; done\nexec git receive-pack '\{remote}'\n",
       permission=0o700,
     )
     @async.with_task_group(group => {
-      let transfer = group.spawn(() => {
-        sync_next_mirror(pool, root, Some(config))
-      })
+      let transfer = group.spawn(() => sync_next_mirror(pool, root, config))
       @async.with_timeout(10000, () => {
         while !@fs.exists(marker) {
           @async.sleep(20)
@@ -464,7 +509,7 @@ async test "updates arriving during a mirror transfer stay queued and source wri
     })
     assert_eq(push_mirrors(pool, actor, repo)[0].status, "pending")
     assert_false(mirror_refs(remote).contains("during-transfer"))
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(push_mirrors(pool, actor, repo)[0].status, "succeeded")
     assert_true(mirror_refs(remote).contains("during-transfer"))
     assert_eq(mirror_history(pool, actor, repo, id).length(), 2)
@@ -474,9 +519,8 @@ async test "updates arriving during a mirror transfer stay queued and source wri
 ///|
 async test "mirror keys are independent durable rotated with versions and cleaned after transfers" {
   mirror_fixture((pool, root, actor, repo, config, _) => {
-    // Mirrors must not depend on the namespace import identity.
-    @fs.remove(config.credentials_root + "/alice/id_ed25519")
-    let first = save_push_mirror(
+    // No SSH import directories or configuration exist in this fixture.
+    let first = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -487,9 +531,9 @@ async test "mirror keys are independent durable rotated with versions and cleane
       true,
       false,
       false,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
-    let second = save_push_mirror(
+    let second = save_fixture_mirror(
       pool,
       root,
       actor,
@@ -500,7 +544,7 @@ async test "mirror keys are independent durable rotated with versions and cleane
       false,
       false,
       false,
-      Some(config),
+      host_keys=@test_support.test_ssh_public_key,
     )
     let mirrors = push_mirrors(pool, actor, repo)
     let public_key = mirrors[0].public_key
@@ -510,11 +554,11 @@ async test "mirror keys are independent durable rotated with versions and cleane
     let expected = root + "/expected-public-key"
     @fs.write_file(expected, public_key.split(" ").take(2).join(" "))
     @fs.write_file(
-      config.ssh_wrapper,
-      "#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f \"$MOONHUB_IMPORT_IDENTITY\" | cut -d ' ' -f 1-2)\ntest \"$actual\" = \"$(cat '\{expected}')\"\nprintf '%s' \"$MOONHUB_IMPORT_IDENTITY\" > '\{path}'\nexec git receive-pack '\{root}/remote.git'\n",
+      config.ssh_command,
+      "#!/bin/sh\nset -eu\nactual=$(/usr/bin/ssh-keygen -y -f \"$MOONHUB_MIRROR_IDENTITY\" | cut -d ' ' -f 1-2)\ntest \"$actual\" = \"$(cat '\{expected}')\"\nprintf '%s' \"$MOONHUB_MIRROR_IDENTITY\" > '\{path}'\nexec git receive-pack '\{root}/remote.git'\n",
       permission=0o700,
     )
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_eq(push_mirrors(pool, actor, repo)[0].status, "succeeded")
     assert_false(@fs.exists(@fs.read_file(path).text()))
     assert_false(
@@ -522,15 +566,15 @@ async test "mirror keys are independent durable rotated with versions and cleane
     )
     // The same cleanup must run when the SSH process fails.
     @fs.write_file(
-      config.ssh_wrapper,
-      "#!/bin/sh\nprintf '%s' \"$MOONHUB_IMPORT_IDENTITY\" > '\{path}'\nexit 1\n",
+      config.ssh_command,
+      "#!/bin/sh\nprintf '%s' \"$MOONHUB_MIRROR_IDENTITY\" > '\{path}'\nexit 1\n",
       permission=0o700,
     )
     push_mirror_action(pool, root, actor, repo, first, 1L, "sync")
-    assert_true(sync_next_mirror(pool, root, Some(config)))
+    assert_true(sync_next_mirror(pool, root, config))
     assert_false(@fs.exists(@fs.read_file(path).text()))
     ignore(
-      save_push_mirror(
+      save_fixture_mirror(
         pool,
         root,
         actor,
@@ -541,7 +585,7 @@ async test "mirror keys are independent durable rotated with versions and cleane
         true,
         false,
         false,
-        Some(config),
+        host_keys=@test_support.test_ssh_public_key,
       ),
     )
     assert_eq(push_mirrors(pool, actor, repo)[0].public_key, public_key)
@@ -582,5 +626,125 @@ async test "mirror keys are independent durable rotated with versions and cleane
         is Some(_),
       )
     })
+  })
+}
+
+///|
+test "mirror host keys validate encoding and pin only the selected destination" {
+  let key = @test_support.test_ssh_public_key
+  assert_eq(normalize_mirror_host_keys(key + "\n" + key + " comment"), key)
+  assert_eq(normalize_mirror_host_keys("\n\n"), "")
+  assert_eq(
+    mirror_known_hosts(
+      parse_ssh_import_source("git@source.example:org/demo.git"),
+      key,
+    ),
+    "source.example " + key + "\n",
+  )
+  assert_eq(
+    mirror_known_hosts(
+      parse_ssh_import_source("ssh://git@source.example:2222/org/demo.git"),
+      key,
+    ),
+    "[source.example]:2222 " + key + "\n",
+  )
+  for
+    line in [
+      "*.example " + key,
+      "@cert-authority " + key,
+      "source.example " + key,
+      "ssh-ed25519 invalid",
+      "ssh-ed25519 AAAA",
+      "ssh-rsa AAAA",
+      "ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    ] {
+    try normalize_mirror_host_keys(line) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted invalid host key")
+    }
+  }
+  try
+    mirror_known_hosts(
+      parse_ssh_import_source("git@source.example:org/demo.git"),
+      "",
+    )
+  catch {
+    @domain.BadRequest(_) => ()
+    err => raise err
+  } noraise {
+    _ => fail("enabled a mirror without host trust")
+  }
+}
+
+///|
+async test "mirror trust is scoped versioned and temporary host files are cleaned" {
+  mirror_fixture((pool, root, actor, repo, config, remote) => {
+    let key = @test_support.test_ssh_public_key
+    let id = save_fixture_mirror(
+      pool,
+      root,
+      actor,
+      repo,
+      0L,
+      0L,
+      "git@source.example:org/demo.git",
+      true,
+      false,
+      false,
+      host_keys=key,
+    )
+    try
+      save_fixture_mirror(
+        pool, root, actor, repo, 0L, 0L, "git@source.example:org/other.git", true,
+        false, false,
+      )
+    catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("another mirror inherited destination trust")
+    }
+    let observed = root + "/host-path"
+    let expected = root + "/expected-hosts"
+    @fs.write_file(expected, "source.example " + key + "\n")
+    @fs.write_file(
+      config.ssh_command,
+      "#!/bin/sh\nset -eu\ntest -f \"$MOONHUB_MIRROR_IDENTITY\"\ncat \"$MOONHUB_MIRROR_KNOWN_HOSTS\" | cmp - '\{expected}'\nprintf '%s' \"$MOONHUB_MIRROR_KNOWN_HOSTS\" > '\{observed}'\nexec git receive-pack '\{remote}'\n",
+      permission=0o700,
+    )
+    assert_true(sync_next_mirror(pool, root, config))
+    assert_eq(push_mirrors(pool, actor, repo)[0].status, "succeeded")
+    assert_false(@fs.exists(@fs.read_file(observed).text()))
+    ignore(
+      save_fixture_mirror(
+        pool, root, actor, repo, id, 1L, "git@source.example:org/demo.git", false,
+        false, false,
+      ),
+    )
+    assert_eq(push_mirrors(pool, actor, repo)[0].host_keys, key)
+    assert_false(sync_next_mirror(pool, root, config))
+    try
+      save_fixture_mirror(
+        pool,
+        root,
+        actor,
+        repo,
+        id,
+        1L,
+        "git@source.example:org/demo.git",
+        true,
+        false,
+        false,
+        host_keys=key,
+      )
+    catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("overwrote newer trust configuration")
+    }
+    assert_false(@fs.exists(root + "/credentials"))
   })
 }

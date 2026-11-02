@@ -67,7 +67,7 @@ The base installs dependencies with `npm ci`; the application image builds brows
 assets and compiles the native executable on Linux, without running tests. No
 host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
 to select an archived MoonBit toolchain release;
-its default is `0.10.17+093cb8f9c`, matching the formatter syntax in this
+its default is `0.10.17+d971670cd`, matching the formatter syntax in this
 repository. Upgrade the dependency base and Runner together with the application;
 older Runner images cannot parse the new inclusive range patterns. Dependency
 resolution migrates the downloaded `nexacodes/email@0.1.0` legacy manifest before
@@ -269,11 +269,12 @@ initialization and never runs migrations from an authentication request.
 
 ## SSH Import
 
-Push mirrors use the same destination allowlist and host-key policy described
-below, but generate their own keys in the database. For a namespace used only
-for mirroring, provision `known_hosts` and `allowed_hosts` without
-`id_ed25519`. Authorize each mirror's public key from its settings page as a
-write-enabled deploy key at the destination. See [push mirrors](../docs/mirrors.md).
+Push mirrors have independent database-backed credentials and destination trust.
+Repository managers initialize the destination and confirm its displayed SSH
+host fingerprint in the mirror settings;
+no import directory or credential files are needed. Authorize each mirror's
+public key as a write-enabled deploy key at the destination. See
+[push mirrors](../docs/mirrors.md).
 
 An import is a one-time mirror of Git refs and objects, including branches and
 tags. It preserves Git's cloned default branch and does not keep synchronizing
