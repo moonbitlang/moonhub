@@ -38,7 +38,13 @@ async test "pull request automatically runs built-in checkout against its merged
       let base = @test_support.workflow_commit(dir, workflow)
       ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
       ignore(
-        @test_support.merge_test_commit(dir, branch, base, "live-output\n"),
+        @test_support.merge_test_commit(
+          dir,
+          branch,
+          base,
+          "live-output\n",
+          preserve_files=true,
+        ),
       )
       let actor = @identity.active_user_by_name(pool, "alice")
       let scope = @repository.repository_scope(pool, actor, repo)
@@ -148,7 +154,10 @@ async test "pull request automatically runs built-in checkout against its merged
           @fs.read_file(workspace + "/README.md").text(),
           "live-output\n",
         )
-        assert_true(!@fs.exists(workspace + "/.github/workflows/build.yml"))
+        assert_eq(
+          @fs.read_file(workspace + "/.github/workflows/build.yml").text(),
+          workflow,
+        )
         assert_eq(
           @collaboration.merge_checks(pool, mr)[0].conclusion,
           "success",

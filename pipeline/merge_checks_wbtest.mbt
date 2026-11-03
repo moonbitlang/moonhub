@@ -1,4 +1,71 @@
 ///|
+// Preserve other files while explicitly editing, adding or deleting workflows.
+async fn merge_check_commit(
+  dir : String,
+  branch : String,
+  parent : String,
+  content : String,
+  workflows? : Array[(String, String)],
+) -> String {
+  let entries = @domain.split_lines(@gitops.merge_git(dir, ["ls-tree", parent])).filter(line => {
+      !line.has_suffix("\tREADME.md") &&
+      !(workflows is Some(_) && line.has_suffix("\t.github"))
+    },
+  )
+  if workflows is Some(files) && !files.is_empty() {
+    let workflow_entries : Array[String] = []
+    for (name, source) in files {
+      let blob = @gitops.merge_git(
+          dir,
+          ["hash-object", "-w", "--stdin"],
+          input=source,
+        )
+        .trim()
+        .to_owned()
+      workflow_entries.push("100644 blob \{blob}\t\{name}\n")
+    }
+    let workflows_tree = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input=workflow_entries.join(""),
+      )
+      .trim()
+      .to_owned()
+    let github = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="040000 tree \{workflows_tree}\tworkflows\n",
+      )
+      .trim()
+      .to_owned()
+    entries.push("040000 tree \{github}\t.github")
+  }
+  let blob = @gitops.merge_git(
+      dir,
+      ["hash-object", "-w", "--stdin"],
+      input=content,
+    )
+    .trim()
+    .to_owned()
+  entries.push("100644 blob \{blob}\tREADME.md")
+  let tree = @gitops.merge_git(dir, ["mktree"], input=entries.join("\n") + "\n")
+    .trim()
+    .to_owned()
+  let commit = @gitops.merge_git(dir, [
+      "commit-tree",
+      tree,
+      "-p",
+      parent,
+      "-m",
+      "Update " + branch,
+    ])
+    .trim()
+    .to_owned()
+  ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/" + branch, commit]))
+  commit
+}
+
+///|
 async fn with_merge_check_fixture(
   f : async (
     @database.Database,
@@ -8,6 +75,7 @@ async fn with_merge_check_fixture(
     @collaboration.MergeRequest,
   ) -> Unit,
   workflow~ : String = @test_support.single_job_workflow,
+  source_workflow~ : String? = None,
   required~ : Bool = true,
   authorize~ : Bool = true,
 ) -> Unit {
@@ -17,8 +85,12 @@ async fn with_merge_check_fixture(
     let dir = protocol_repo.git_dir(root)
     let base = @test_support.workflow_commit(dir, workflow)
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
-    // The proposed change deletes its workflow; policy must still use target's.
-    ignore(@test_support.merge_test_commit(dir, "feature", base, "MR source\n"))
+    // Ordinary source edits retain workflows; deletion is tested explicitly.
+    ignore(
+      merge_check_commit(dir, "feature", base, "MR source\n", workflows=[
+        ("build.yml", source_workflow.unwrap_or(workflow)),
+      ]),
+    )
     if required {
       @collaboration.save_branch_rule(
         pool,
@@ -109,7 +181,7 @@ async test "pull request execution approval survives discovery but not a new sou
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(coordinator.start(id, token, 1))
-      let source = @test_support.merge_test_commit(
+      let source = merge_check_commit(
         dir,
         "feature",
         @gitops.branch_sha(dir, "feature"),
@@ -124,9 +196,7 @@ async test "pull request execution approval survives discovery but not a new sou
         "awaiting_approval",
       )
       // Manager push authorization works without push workflows or branch rules.
-      let next = @test_support.merge_test_commit(
-        dir, "feature", source, "manager source\n",
-      )
+      let next = merge_check_commit(dir, "feature", source, "manager source\n")
       @repository.record_received_transaction(
         pool,
         actor,
@@ -182,7 +252,7 @@ async test "pull request types filter opening and fire on source update and reop
       poll_merge_checks(pool, root)
       assert_true(@collaboration.merge_checks(pool, mr).is_empty())
       ignore(
-        @test_support.merge_test_commit(
+        merge_check_commit(
           dir,
           "feature",
           @gitops.branch_sha(dir, "feature"),
@@ -251,7 +321,7 @@ fn finish_merge_check(
 }
 
 ///|
-async test "MR checks pin merged trees use target workflow deduplicate and gate actual merges" {
+async test "MR checks pin merged trees and workflows deduplicate and gate actual merges" {
   with_merge_check_fixture((pool, root, scope, actor, mr) => {
     let dir = protocol_repo.git_dir(root)
     let revision = @collaboration.merge_revision(pool, mr)
@@ -362,7 +432,7 @@ async test "MR source changes cancel active checks and need explicit approval fo
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
     ignore(coordinator.start(id, token, 1))
     ignore(
-      @test_support.merge_test_commit(
+      merge_check_commit(
         dir,
         "feature",
         @gitops.branch_sha(dir, "feature"),
@@ -591,13 +661,11 @@ async test "MR worker and merge worker reject changed target and revoked permiss
 }
 
 ///|
-async test "MR required workflows fail closed when target config is absent and manager pushes authorize new versions" {
+async test "MR required workflows fail closed when config is absent and manager pushes authorize new versions" {
   with_merge_check_fixture((pool, root, scope, actor, mr) => {
     let dir = protocol_repo.git_dir(root)
     let old = @gitops.branch_sha(dir, "feature")
-    let next = @test_support.merge_test_commit(
-      dir, "scratch", old, "push fixture\n",
-    )
+    let next = merge_check_commit(dir, "scratch", old, "push fixture\n")
     @repository.record_received_transaction(
       pool,
       actor,
@@ -729,7 +797,7 @@ async test "reopening discovers source changes made while closed as reopened the
       poll_merge_checks(pool, root)
       @collaboration.edit_merge_request(pool, scope, actor, mr, "close", "", "")
       ignore(
-        @test_support.merge_test_commit(
+        merge_check_commit(
           dir,
           "feature",
           @gitops.branch_sha(dir, "feature"),
@@ -749,7 +817,7 @@ async test "reopening discovers source changes made while closed as reopened the
       assert_eq(reopened.version, mr.version + 1L)
       assert_eq(@collaboration.merge_checks(pool, reopened).length(), 1)
       ignore(
-        @test_support.merge_test_commit(
+        merge_check_commit(
           dir,
           "feature",
           @gitops.branch_sha(dir, "feature"),
@@ -812,7 +880,7 @@ async test "oversized workflow records a preparation error without starving requ
       .trim()
       .to_owned()
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
-    ignore(@test_support.merge_test_commit(dir, "feature", base, "feature\n"))
+    ignore(merge_check_commit(dir, "feature", base, "feature\n"))
     @collaboration.save_branch_rule(
       pool,
       scope,
@@ -873,7 +941,7 @@ async test "reopening observes source before a subsequent push triggers synchron
       )
       @collaboration.prepare_merge_checks(pool, scope, reopened, actor~)
       ignore(
-        @test_support.merge_test_commit(
+        merge_check_commit(
           dir,
           "feature",
           @gitops.branch_sha(dir, "feature"),
@@ -893,5 +961,440 @@ async test "reopening observes source before a subsequent push triggers synchron
       new="[synchronize]",
     ),
     required=false,
+  )
+}
+
+///|
+async test "proposed workflow shell and setup changes are pinned before approval and retained on rerun" {
+  let proposed = context_workflow
+    .replace_all(
+      old="      - id: check",
+      new="      - id: setup\n        uses: moonhub/setup-moonbit@v1\n        with: {version: nightly}\n      - id: check",
+    )
+    .replace_all(old="echo fixture", new="moon version --all")
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      assert_eq(
+        @collaboration.merge_checks(pool, mr)[0].state,
+        "awaiting_approval",
+      )
+      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      let candidate = merge_check_snapshot(
+        dir,
+        mr,
+        @collaboration.merge_revision(pool, mr),
+      )
+      assert_eq(
+        read_workflow_source(dir, candidate, ".github/workflows/build.yml"),
+        proposed,
+      )
+      @collaboration.approve_merge_checks(pool, scope, actor, mr, mr.version)
+      poll_merge_checks(pool, root)
+      let run = list_runs(pool, actor, protocol_repo)[0]
+      assert_eq(run.commit_sha, candidate)
+      assert_eq(run.workflow_source, proposed)
+      assert_eq(
+        run.definition.jobs[0].steps[0].moonbit_version,
+        Some("nightly"),
+      )
+      assert_eq(run.definition.jobs[0].steps[1].run, "moon version --all")
+      assert_eq(run.definition.jobs[0].steps[1].env.get("SHA"), Some(candidate))
+      let coordinator = merge_check_provider(pool)
+      let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+      assert_eq(assignment.version, @protocol.toolchain_assignment_version)
+      assert_eq(assignment.commit_sha, candidate)
+      assert_eq(assignment.job.steps[0].uses, "moonhub/setup-moonbit@v1")
+      assert_eq(assignment.job.steps[0].moonbit_version, "nightly")
+      assert_eq(assignment.job.steps[1].run, "moon version --all")
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(coordinator.start(id, token, 1))
+      ignore(coordinator.complete(id, token, completion()))
+      let again = rerun_run(pool, root, actor, protocol_repo, run.number)
+      assert_eq(again.commit_sha, candidate)
+      assert_eq(again.workflow_source, proposed)
+      assert_eq(
+        ToJson::to_json(again.definition),
+        ToJson::to_json(run.definition),
+      )
+      assert_eq(ToJson::to_json(again.context), ToJson::to_json(run.context))
+      finish_merge_check(coordinator)
+      let changed = merge_check_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "feature"),
+        "next source\n",
+        workflows=[
+          ("build.yml", proposed.replace_all(old="nightly", new="latest")),
+        ],
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(latest.version, mr.version + 1L)
+      assert_eq(@collaboration.merge_revision(pool, latest).source_sha, changed)
+      assert_eq(
+        @collaboration.merge_checks(pool, latest)[0].state,
+        "awaiting_approval",
+      )
+      assert_eq(
+        get_run(pool, actor, protocol_repo, run.number).workflow_source,
+        proposed,
+      )
+      assert_eq(
+        get_run(pool, actor, protocol_repo, again.number).commit_sha,
+        candidate,
+      )
+      try rerun_run(pool, root, actor, protocol_repo, again.number) catch {
+        @domain.BadRequest(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("historical MR snapshot authorized the new comparison")
+      }
+    },
+    workflow=context_workflow,
+    source_workflow=Some(proposed),
+    authorize=false,
+  )
+}
+
+///|
+async test "invalid source workflow fails preparation without executing the target definition" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      poll_merge_checks(pool, root)
+      let checks = @collaboration.merge_checks(pool, mr)
+      assert_eq(checks.length(), 1)
+      assert_eq(checks[0].state, "error")
+      assert_true(checks[0].error.contains("uses"))
+      assert_true(checks[0].run_number is None)
+      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_false(
+        @collaboration.merge_blocker(
+          pool,
+          scope,
+          mr,
+          @collaboration.merge_revision(pool, mr),
+        ).is_empty(),
+      )
+    },
+    source_workflow=Some(
+      @test_support.single_job_workflow.replace_all(
+        old="run: echo fixture",
+        new="uses: unsupported/action@v1",
+      ),
+    ),
+  )
+}
+
+///|
+async test "deleting a required workflow in the source remains a blocking preparation error" {
+  with_merge_check_fixture((pool, root, scope, actor, mr) => {
+    let dir = protocol_repo.git_dir(root)
+    ignore(
+      merge_check_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "feature"),
+        "delete workflow\n",
+        workflows=[],
+      ),
+    )
+    poll_merge_checks(pool, root)
+    let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+    @collaboration.approve_merge_checks(
+      pool,
+      scope,
+      actor,
+      latest,
+      latest.version,
+    )
+    poll_merge_checks(pool, root)
+    let check = @collaboration.merge_checks(pool, latest)[0]
+    assert_true(check.required)
+    assert_eq(check.state, "error")
+    assert_eq(check.error, "workflow is missing or is not a regular file")
+    assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+    assert_false(
+      @collaboration.merge_blocker(
+        pool,
+        scope,
+        latest,
+        @collaboration.merge_revision(pool, latest),
+      ).is_empty(),
+    )
+  })
+}
+
+///|
+async test "candidate discovery includes source additions and excludes optional deletions and changed triggers" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      ignore(
+        merge_check_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "add workflow\n",
+          workflows=[("added.yml", pull_request_workflow)],
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      let checks = @collaboration.merge_checks(pool, latest)
+      assert_eq(checks.length(), 1)
+      assert_eq(checks[0].workflow_path, ".github/workflows/added.yml")
+      assert_false(checks[0].required)
+      assert_eq(checks[0].state, "awaiting_approval")
+      @collaboration.approve_merge_checks(
+        pool,
+        scope,
+        actor,
+        latest,
+        latest.version,
+      )
+      poll_merge_checks(pool, root)
+      let run = list_runs(pool, actor, protocol_repo)[0]
+      assert_eq(run.workflow_path, ".github/workflows/added.yml")
+      assert_eq(run.workflow_source, pull_request_workflow)
+      let coordinator = merge_check_provider(pool)
+      finish_merge_check(coordinator)
+      ignore(
+        merge_check_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "feature"),
+          "change trigger\n",
+          workflows=[("added.yml", @test_support.single_job_workflow)],
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_true(@collaboration.merge_checks(pool, latest).is_empty())
+      assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+    },
+    workflow=pull_request_workflow,
+    required=false,
+  )
+}
+
+///|
+async test "simultaneous source and target workflow edits use their merged definition and new comparison" {
+  let source_workflow = @test_support.single_job_workflow.replace_all(
+    old="echo fixture",
+    new="echo proposed",
+  )
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      poll_merge_checks(pool, root)
+      let previous = list_runs(pool, actor, protocol_repo)[0]
+      let coordinator = merge_check_provider(pool)
+      finish_merge_check(coordinator)
+      let target = merge_check_commit(
+        dir,
+        "master",
+        @gitops.branch_sha(dir, "master"),
+        "MR source\n",
+        workflows=[
+          (
+            "build.yml",
+            @test_support.single_job_workflow.replace_all(
+              old="name: Protocol fixture",
+              new="name: Target updated",
+            ),
+          ),
+        ],
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_eq(latest.version, mr.version + 1L)
+      let run = list_runs(pool, actor, protocol_repo)[0]
+      let merged_workflow = source_workflow.replace_all(
+        old="name: Protocol fixture",
+        new="name: Target updated",
+      )
+      assert_eq(run.workflow_source, merged_workflow)
+      assert_true(run.commit_sha != previous.commit_sha)
+      assert_eq(
+        read_workflow_source(dir, run.commit_sha, run.workflow_path),
+        merged_workflow,
+      )
+      assert_eq(@collaboration.merge_revision(pool, latest).target_sha, target)
+      assert_eq(@collaboration.merge_checks(pool, latest)[0].state, "queued")
+      assert_false(
+        @collaboration.merge_blocker(
+          pool,
+          scope,
+          latest,
+          @collaboration.merge_revision(pool, latest),
+        ).is_empty(),
+      )
+      assert_eq(
+        get_run(pool, actor, protocol_repo, previous.number).workflow_source,
+        source_workflow,
+      )
+    },
+    source_workflow=Some(source_workflow),
+  )
+}
+
+///|
+async test "conflicting candidate workflow edits cannot publish a run" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      ignore(
+        merge_check_commit(
+          dir,
+          "master",
+          @gitops.branch_sha(dir, "master"),
+          "MR source\n",
+          workflows=[
+            (
+              "build.yml",
+              @test_support.single_job_workflow.replace_all(
+                old="echo fixture",
+                new="echo target",
+              ),
+            ),
+          ],
+        ),
+      )
+      poll_merge_checks(pool, root)
+      let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+      assert_false(
+        @collaboration.merge_revision(pool, latest).block_reason.is_empty(),
+      )
+      let check = @collaboration.merge_checks(pool, latest)[0]
+      assert_eq(check.state, "error")
+      assert_true(check.error.contains("conflicts"))
+      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+    },
+    source_workflow=Some(
+      @test_support.single_job_workflow.replace_all(
+        old="echo fixture",
+        new="echo source",
+      ),
+    ),
+  )
+}
+
+///|
+async test "required and source-added automatic workflows share the same pinned candidate across polling" {
+  with_merge_check_fixture((pool, root, scope, actor, mr) => {
+    let dir = protocol_repo.git_dir(root)
+    ignore(
+      merge_check_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "feature"),
+        "additional workflow\n",
+        workflows=[
+          ("build.yml", @test_support.single_job_workflow),
+          ("extra.yml", pull_request_workflow),
+          (
+            "invalid.yml",
+            pull_request_workflow.replace_all(
+              old="run: test -f README.md",
+              new="uses: unsupported/action@v1",
+            ),
+          ),
+        ],
+      ),
+    )
+    poll_merge_checks(pool, root)
+    let latest = @collaboration.require_merge_request(pool, scope, mr.number)
+    @collaboration.approve_merge_checks(
+      pool,
+      scope,
+      actor,
+      latest,
+      latest.version,
+    )
+    poll_merge_checks(pool, root)
+    let runs = list_runs(pool, actor, protocol_repo)
+    assert_eq(runs.length(), 2)
+    assert_eq(runs[0].commit_sha, runs[1].commit_sha)
+    for run in runs {
+      assert_eq(
+        read_workflow_source(dir, run.commit_sha, run.workflow_path),
+        run.workflow_source,
+      )
+      assert_eq(run.context.unwrap().sha, run.commit_sha)
+    }
+    let checks = @collaboration.merge_checks(pool, latest)
+    assert_eq(checks.length(), 3)
+    assert_eq(checks[2].state, "error")
+    assert_false(checks[2].required)
+    assert_true(checks[2].error.contains("uses"))
+    poll_merge_checks(pool, root)
+    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+    assert_eq(
+      merge_check_snapshot(
+        dir,
+        latest,
+        @collaboration.merge_revision(pool, latest),
+      ),
+      runs[0].commit_sha,
+    )
+  })
+}
+
+///|
+async test "legacy MR run reruns preserve saved target workflow despite different candidate YAML" {
+  let proposed = @test_support.single_job_workflow.replace_all(
+    old="echo fixture",
+    new="echo proposed",
+  )
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      let dir = protocol_repo.git_dir(root)
+      let sha = merge_check_snapshot(
+        dir,
+        mr,
+        @collaboration.merge_revision(pool, mr),
+      )
+      // Model a pre-upgrade run: target YAML with a candidate checkout.
+      let legacy = pool.with_client(client => {
+        client.with_transaction(tx => {
+          let check_id : Int64 = tx
+            .query_one(
+              "SELECT id FROM merge_check WHERE merge_request_id = ?",
+              params=[mr.id],
+            )
+            .get_name("id")
+          insert_run_snapshot(
+            tx,
+            scope.id,
+            actor.id,
+            ".github/workflows/build.yml",
+            "Legacy",
+            "feature",
+            sha,
+            "refs/moonhub/mr/\{mr.id}/\{mr.version}/candidate",
+            @test_support.single_job_workflow,
+            @workflow.parse(@test_support.single_job_workflow),
+            merge_check_id=check_id,
+          )
+        })
+      })
+      let coordinator = merge_check_provider(pool)
+      finish_merge_check(coordinator)
+      let again = rerun_run(pool, root, actor, protocol_repo, legacy.number)
+      assert_eq(again.commit_sha, sha)
+      assert_eq(again.workflow_source, @test_support.single_job_workflow)
+      assert_eq(
+        ToJson::to_json(again.definition),
+        ToJson::to_json(legacy.definition),
+      )
+      assert_true(again.context is None)
+      assert_eq(read_workflow_source(dir, sha, again.workflow_path), proposed)
+      let (assignment, _) = claim_dag_attempt(coordinator, provider_secret)
+      assert_eq(assignment.commit_sha, sha)
+      assert_eq(assignment.job.steps[0].run, "echo fixture")
+    },
+    source_workflow=Some(proposed),
   )
 }

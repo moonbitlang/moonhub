@@ -59,7 +59,7 @@ using Git's native merge algorithm. The worker recalculates and verifies it
 before merging. Resolve conflicts locally and push again. The initial release
 uses two-parent merge commits and retains source branches. Required Pipeline
 checks are available through opt-in branch protection, with optional automatic
-`pull_request` workflows discovered from the target branch; see
+`pull_request` workflows discovered from the pinned candidate merged commit; see
 [MR checks](merge-checks.md). Forks, squash/rebase and auto-merge are outside this
 release.
 

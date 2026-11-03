@@ -143,7 +143,15 @@ async test "write tokens cannot implicitly approve MR execution and cancelled ru
     ignore(
       @gitops.merge_git(git_dir, ["update-ref", "refs/heads/master", base]),
     )
-    ignore(@test_support.merge_test_commit(git_dir, "api", base, "api\n"))
+    ignore(
+      @test_support.merge_test_commit(
+        git_dir,
+        "api",
+        base,
+        "api\n",
+        preserve_files=true,
+      ),
+    )
     @collaboration.save_branch_rule(
       pool,
       scope,
@@ -257,7 +265,15 @@ async test "optional pull request discovery cannot turn API write permission int
       ),
     )
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
-    ignore(@test_support.merge_test_commit(dir, "api", base, "optional\n"))
+    ignore(
+      @test_support.merge_test_commit(
+        dir,
+        "api",
+        base,
+        "optional\n",
+        preserve_files=true,
+      ),
+    )
     assert_eq(
       api_test_request(
         port,
@@ -330,7 +346,13 @@ async test "API reopen observes closed source updates before a later push synchr
     )
     let base = @test_support.workflow_commit(dir, workflow)
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
-    let source = @test_support.merge_test_commit(dir, "api", base, "initial\n")
+    let source = @test_support.merge_test_commit(
+      dir,
+      "api",
+      base,
+      "initial\n",
+      preserve_files=true,
+    )
     assert_eq(
       api_test_request(
         port,
@@ -354,7 +376,11 @@ async test "API reopen observes closed source updates before a later push synchr
       200,
     )
     let closed_source = @test_support.merge_test_commit(
-      dir, "api", source, "changed while closed\n",
+      dir,
+      "api",
+      source,
+      "changed while closed\n",
+      preserve_files=true,
     )
     assert_eq(
       api_test_request(
@@ -384,7 +410,11 @@ async test "API reopen observes closed source updates before a later push synchr
     })
     // No worker poll has occurred between the reopen request and this push.
     let next = @test_support.merge_test_commit(
-      dir, "api", closed_source, "changed after reopening\n",
+      dir,
+      "api",
+      closed_source,
+      "changed after reopening\n",
+      preserve_files=true,
     )
     assert_true(@pipeline.run_next_merge_check(pool, root))
     let latest = @collaboration.require_merge_request(pool, scope, 1L)

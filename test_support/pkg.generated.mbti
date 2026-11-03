@@ -11,7 +11,7 @@ import {
 // Values
 pub let database_test_slot : @semaphore.Semaphore
 
-pub async fn merge_test_commit(String, String, String, String) -> String
+pub async fn merge_test_commit(String, String, String, String, preserve_files? : Bool) -> String
 
 pub async fn mock_import_config(String, String) -> @repository.RepoImportConfig
 
