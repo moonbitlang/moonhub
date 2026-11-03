@@ -45,6 +45,11 @@ non-page endpoints and forms requiring native encodings keep browser behavior.
 
 Navigation aborts stale requests and serializes DOM commits. A successful POST
 follows the server's redirect, and submitter values and CSRF fields are preserved.
+Successful SPA page responses with a positive numeric `Refresh` header schedule
+a GET of the current page after that many seconds, including redirected POST
+results such as repository creation status. Refreshes replace the current history
+entry, preserve scroll on the same page and stop when its lifetime ends. Invalid
+headers and error responses do not schedule refreshes.
 A lost mutation response is never automatically replayed: entered text remains
 available with an error message. Pending uploads block navigation; drafts retain
 the existing session-storage behavior. Back/forward fetches current authorized
@@ -102,9 +107,10 @@ npm run test:browser
 The suite starts its own loopback server on port 18092, clones the Git fixture
 and creates an isolated temporary database. It tests initial DOM identity and
 pre-hydration input, no-JS pages, SPA/history navigation, POST validation and lost
-responses, login/logout, issue creation, Markdown preview/editor remounting,
-private repository authorization and CSRF. Its server and fixtures are cleaned
-up afterward; it never opens the development database.
+responses, login/logout, issue creation, repository status refresh and completion,
+Markdown preview/editor remounting, private repository authorization and CSRF.
+Its server and fixtures are cleaned up afterward; it never opens the development
+database.
 
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` selects an existing compatible Chromium.
 `MOONHUB_TEST_URL` skips the managed fixture server and targets an explicitly

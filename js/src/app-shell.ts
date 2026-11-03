@@ -84,7 +84,7 @@ function restoreHistory(index: number) {
   history.go(historyIndex - index);
 }
 
-async function navigate(url: URL, options: { body?: URLSearchParams; pop?: number } = {}) {
+async function navigate(url: URL, options: { body?: URLSearchParams; pop?: number; replace?: boolean } = {}) {
   if (submitting || committing) {
     if (options.pop !== undefined) restoreHistory(options.pop);
     return;
@@ -99,7 +99,8 @@ async function navigate(url: URL, options: { body?: URLSearchParams; pop?: numbe
   const sequence = ++serial;
   submitting = mutation;
   document.documentElement.setAttribute('aria-busy', 'true');
-  positions.set(historyIndex, [scrollX, scrollY]);
+  const position: [number, number] = [scrollX, scrollY];
+  positions.set(historyIndex, position);
   try {
     const response = await fetch(url, {
       method: mutation ? 'POST' : 'GET', body: options.body,
@@ -125,6 +126,7 @@ async function navigate(url: URL, options: { body?: URLSearchParams; pop?: numbe
     committing = true;
     lifetime.abort();
     if (options.pop !== undefined) historyIndex = options.pop;
+    else if (options.replace) history.replaceState({ moonhub: historyIndex }, '', destination);
     else {
       // A superseded popstate may have moved the browser without mounting it.
       historyIndex = history.state.moonhub + 1;
@@ -134,7 +136,9 @@ async function navigate(url: URL, options: { body?: URLSearchParams; pop?: numbe
     await render(json);
     lifetime = new AbortController();
     enhance();
-    scrollToPage(destination, options.pop === undefined ? undefined : positions.get(historyIndex));
+    if (options.replace && destination.pathname === url.pathname && destination.search === url.search) scrollTo(...position);
+    else scrollToPage(destination, options.pop === undefined ? undefined : positions.get(historyIndex));
+    scheduleRefresh(response);
     document.dispatchEvent(new Event('moonhub:navigated'));
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -148,6 +152,21 @@ async function navigate(url: URL, options: { body?: URLSearchParams; pop?: numbe
       document.documentElement.removeAttribute('aria-busy'); finishForms();
     }
   }
+}
+
+// Fetch does not apply the browser's document Refresh header. Keep successful
+// page refreshes inside the mounted page lifetime, and never repeat a POST.
+function scheduleRefresh(response: Response) {
+  const value = response.headers.get('refresh')?.trim();
+  if (!response.ok || !value || !/^\d+$/.test(value)) return;
+  const delay = Number(value) * 1000;
+  if (!Number.isSafeInteger(delay) || delay <= 0 || delay > 2147483647) return;
+  const { signal } = lifetime;
+  const timer = setTimeout(() => {
+    if (signal.aborted || request || submitting || committing) return;
+    void navigate(new URL(currentURL), { replace: true });
+  }, delay);
+  signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
 }
 
 function installNavigation() {
