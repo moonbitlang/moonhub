@@ -1,4 +1,5 @@
 ///|
+#derive(Eq, Debug)
 pub enum TScalarStyle {
   /// A YAML plain scalar.
   Plain
@@ -10,4 +11,4 @@ pub enum TScalarStyle {
   Literal
   /// A YAML folded block (`>` block).
   Folded
-} derive(Eq, Debug)
+}

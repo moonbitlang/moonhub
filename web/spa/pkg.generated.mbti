@@ -17,24 +17,26 @@ pub fn parse_page(String) -> Page raise
 // Errors
 
 // Types and methods
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) enum Node {
   Element(String, Array[(String, String)], Array[Node])
   Text(String)
-} derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+}
 pub fn Node::equal(Self, Self) -> Bool
-pub fn Node::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Node::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Node::not_equal(Self, Self) -> Bool
-pub fn Node::to_json(Self) -> Json
+pub fn Node::to_json(Self) -> @json.Json
 pub fn Node::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct Page {
   head : Array[Node]
   body : Array[Node]
-} derive(Eq, ToJson, @debug.Debug, @json.FromJson)
+}
 pub fn Page::equal(Self, Self) -> Bool
-pub fn Page::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Page::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Page::not_equal(Self, Self) -> Bool
-pub fn Page::to_json(Self) -> Json
+pub fn Page::to_json(Self) -> @json.Json
 pub fn Page::to_repr(Self) -> @debug.Repr
 
 // Type aliases

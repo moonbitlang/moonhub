@@ -39,14 +39,16 @@ pub struct EmailOutboxMessage {
 }
 
 ///|
+#derive(Debug)
 suberror MailConfigError {
   Invalid(message~ : String)
-} derive(Debug)
+}
 
 ///|
+#derive(Debug)
 suberror MailDeliveryError {
   Rejected(message~ : String)
-} derive(Debug)
+}
 
 ///|
 fn mail_worker_id() -> String {

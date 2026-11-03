@@ -208,6 +208,117 @@ test('authenticated navigation creates one issue, remounts editors and logs out 
   expect(errors).toEqual([]);
 });
 
+test('repository creation refreshes pending status and replaces it with the ready page', async ({ page }) => {
+  const errors: string[] = [];
+  const documents: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url()); });
+  await signIn(page);
+  await page.evaluate(() => { (window as any).documentIdentity = document; });
+  await page.getByRole('link', { name: 'New repository', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'New repository', exact: true })).toBeVisible();
+  const historyBefore = await page.evaluate(() => history.state.moonhub);
+  const name = 'spa-created';
+  const statusPath = `/alice/-/repositories/${name}/status`;
+  let statusReads = 0;
+  let creations = 0;
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/alice/-/repositories') creations++; });
+  await page.route(`**${statusPath}`, async route => {
+    statusReads++;
+    if (statusReads <= 2) {
+      // Keep a real creation pending long enough to require more than one refresh.
+      await route.fulfill({ status: 200, contentType: 'application/vnd.moonhub.page+json',
+        headers: { Refresh: '2' },
+        body: JSON.stringify({ head: [], body: [
+          ['Element', 'main', [['id', 'main-content'], ['tabindex', '-1']], [
+            ['Element', 'h1', [], [['Text', `alice/${name}`]]],
+            ['Element', 'p', [['role', 'status']], [['Text', 'Preparing repository']]],
+          ]],
+        ] }),
+      });
+    } else await route.continue();
+  });
+  await page.getByLabel('Repository name', { exact: true }).fill(name);
+  await page.getByRole('button', { name: 'Create repository', exact: true }).click();
+  await expect(page).toHaveURL(statusPath);
+  await expect(page.getByRole('status')).toHaveText('Preparing repository');
+  await expect(page).toHaveURL(`/alice/${name}`, { timeout: 10000 });
+  await expect(page.getByText('No files.', { exact: true })).toBeVisible();
+  expect(statusReads).toBeGreaterThanOrEqual(3);
+  expect(creations).toBe(1);
+  expect(await page.evaluate(() => history.state.moonhub)).toBe(historyBefore + 1);
+  expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
+  expect(documents).toHaveLength(1);
+  await page.goBack();
+  await expect(page).toHaveURL('/alice/-/repositories/new');
+  expect(errors).toEqual([]);
+});
+
+test('page refresh preserves scroll and history, then stops without a Refresh header', async ({ page }) => {
+  await page.goto('/-/login'); await hydrated(page);
+  await page.evaluate(() => { (window as any).documentIdentity = document; });
+  let reads = 0;
+  await page.route('**/-/forgot-password', async route => {
+    reads++;
+    await route.fulfill({ status: 200, contentType: 'application/vnd.moonhub.page+json',
+      headers: reads === 1 ? { Refresh: '1' } : {},
+      body: JSON.stringify({ head: [], body: [
+        ['Element', 'main', [['id', 'main-content'], ['tabindex', '-1'], ['style', 'min-height:3000px']], [
+          ['Element', 'h1', [], [['Text', reads === 1 ? 'Pending' : 'Finished']]],
+        ]],
+      ] }),
+    });
+  });
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('heading', { name: 'Pending', exact: true })).toBeVisible();
+  await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
+  await page.evaluate(() => scrollTo(0, 500));
+  const index = await page.evaluate(() => history.state.moonhub);
+  await expect(page.getByRole('heading', { name: 'Finished', exact: true })).toBeAttached();
+  expect(await page.evaluate(() => scrollY)).toBe(500);
+  expect(await page.evaluate(() => history.state.moonhub)).toBe(index);
+  expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
+  await page.waitForTimeout(1200);
+  expect(reads).toBe(2);
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+});
+
+test('leaving a refreshing page cancels its pending refresh', async ({ page }) => {
+  await page.goto('/-/login'); await hydrated(page);
+  let reads = 0;
+  await page.route('**/-/forgot-password', async route => {
+    reads++;
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), Refresh: '1' } });
+  });
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await expect(page.getByRole('heading', { name: 'Forgot password', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
+  let requestsAfterLeaving = 0;
+  page.on('request', request => { if (request.headers()['accept'] === 'application/vnd.moonhub.page+json') requestsAfterLeaving++; });
+  await page.waitForTimeout(1200);
+  expect(reads).toBe(1);
+  expect(requestsAfterLeaving).toBe(0);
+});
+
+for (const [status, refresh] of [[200, '0'], [200, '1; url=https://example.com'], [200, '2147484'], [500, '1']] as const) {
+  test(`page status ${status} with Refresh ${refresh} does not start a refresh`, async ({ page }) => {
+    await page.goto('/-/login'); await hydrated(page);
+    let reads = 0;
+    await page.route('**/-/forgot-password', async route => {
+      reads++;
+      const response = await route.fetch();
+      await route.fulfill({ response, status, headers: { ...response.headers(), Refresh: refresh } });
+    });
+    await page.getByRole('link', { name: 'Forgot password?' }).click();
+    await expect(page.getByRole('heading', { name: 'Forgot password', exact: true })).toBeVisible();
+    await page.waitForTimeout(1200);
+    expect(reads).toBe(1);
+  });
+}
+
 test('SPA page responses retain private repository authorization and CSRF enforcement', async ({ page }) => {
   await signIn(page, 'outsider');
   const privateResponse = await page.request.get('/alice/demo', { headers: { Accept: 'application/vnd.moonhub.page+json' } });

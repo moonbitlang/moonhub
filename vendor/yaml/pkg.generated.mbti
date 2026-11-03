@@ -3,17 +3,20 @@ package "hackwaly/moonhub/vendor/yaml"
 
 import {
   "moonbitlang/core/debug",
+  "moonbitlang/core/json",
 }
 
 // Values
 
 // Errors
+#derive(@debug.Debug)
 pub(all) suberror YamlError {
   YamlError(mark~ : Marker, info~ : String)
-} derive(@debug.Debug)
+}
 pub fn YamlError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
+#derive(Eq, @debug.Debug)
 pub enum Event {
   StreamStart
   StreamEnd
@@ -25,16 +28,17 @@ pub enum Event {
   SequenceEnd
   MappingStart(id~ : Int32, tag~ : Tag?)
   MappingEnd
-} derive(Eq, @debug.Debug)
+}
 pub fn Event::equal(Self, Self) -> Bool
 pub fn Event::not_equal(Self, Self) -> Bool
 pub fn Event::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
 pub struct Marker {
   index : Int32
   line : Int32
   col : Int32
-} derive(Eq, @debug.Debug)
+}
 pub fn Marker::equal(Self, Self) -> Bool
 pub fn Marker::not_equal(Self, Self) -> Bool
 pub fn Marker::to_repr(Self) -> @debug.Repr
@@ -44,25 +48,28 @@ pub fn Parser::keep_tags(Self, Bool) -> Unit
 pub fn[R : MarkedEventReceiver] Parser::load(Self, R, Bool) -> Unit raise YamlError
 pub fn Parser::new(StringView) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum TScalarStyle {
   Plain
   SingleQuoted
   DoubleQuoted
   Literal
   Folded
-} derive(Eq, @debug.Debug)
+}
 pub fn TScalarStyle::equal(Self, Self) -> Bool
 pub fn TScalarStyle::not_equal(Self, Self) -> Bool
 pub fn TScalarStyle::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
 pub struct Tag {
   handle : String
   suffix : String
-} derive(Eq, @debug.Debug)
+}
 pub fn Tag::equal(Self, Self) -> Bool
 pub fn Tag::not_equal(Self, Self) -> Bool
 pub fn Tag::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
 pub(all) enum Yaml {
   Real(Double, repr~ : String)
   Integer(Int64)
@@ -72,15 +79,15 @@ pub(all) enum Yaml {
   Map(Map[String, Yaml])
   Null
   BadValue
-} derive(Eq, @debug.Debug)
+}
 pub fn Yaml::dump(Self) -> String
 pub fn Yaml::equal(Self, Self) -> Bool
 pub fn Yaml::load_from_parser(Parser) -> Array[Self] raise YamlError
 pub fn Yaml::load_from_string(StringView) -> Array[Self] raise YamlError
 pub fn Yaml::not_equal(Self, Self) -> Bool
-pub fn Yaml::to_json(Self) -> Json
+pub fn Yaml::to_json(Self) -> @json.Json
 pub fn Yaml::to_repr(Self) -> @debug.Repr
-pub impl ToJson for Yaml
+pub impl @json.ToJson for Yaml
 
 type YamlEmitter
 pub fn YamlEmitter::compact(Self, Bool) -> Unit

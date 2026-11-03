@@ -137,12 +137,13 @@ pub fn Coordinator::read_logs(
 }
 
 ///|
+#derive(Debug)
 pub struct LogPage {
   chunks : Array[@protocol.LogChunk]
   next_cursor : String
   has_more : Bool
   complete : Bool
-} derive(Debug)
+}
 
 ///|
 pub fn Coordinator::read_log_page(

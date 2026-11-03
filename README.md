@@ -76,6 +76,14 @@ runs in the background, with status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
 before importing private repositories.
 
+## MoonBit toolchain
+
+Use `moonc v0.10.19+8e43a47fb-nightly` (November 3, 2026), the exact
+version pinned in `deploy/base.Dockerfile`, or a compatible newer compiler.
+The source and generated interfaces use `#derive(...)` attributes, which older
+compilers do not support. Local self-checks install the pinned version into a
+project-local directory when necessary; CI uses its workflow-selected toolchain.
+
 ## Browser Assets
 
 The rich code views are built from the JavaScript project under `js/` and

@@ -4,6 +4,7 @@ package "hackwaly/moonhub/runner"
 import {
   "hackwaly/moonhub/pipeline/protocol",
   "moonbitlang/core/debug",
+  "moonbitlang/core/json",
 }
 
 // Values
@@ -28,12 +29,13 @@ pub(all) struct Options {
   heartbeat_ms : Int32
 }
 
+#derive(@debug.Debug, @json.ToJson)
 pub struct Report {
   conclusion : String
   reported : Bool
   steps : Array[@protocol.StepState]
-} derive(ToJson, @debug.Debug)
-pub fn Report::to_json(Self) -> Json
+}
+pub fn Report::to_json(Self) -> @json.Json
 pub fn Report::to_repr(Self) -> @debug.Repr
 
 // Type aliases

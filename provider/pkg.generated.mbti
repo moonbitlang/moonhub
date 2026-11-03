@@ -3,6 +3,7 @@ package "hackwaly/moonhub/provider"
 
 import {
   "hackwaly/moonhub/pipeline/protocol",
+  "moonbitlang/core/json",
 }
 
 // Values
@@ -10,7 +11,7 @@ pub fn config_defaults(ManagedOptions) -> Map[String, String]
 
 pub fn config_schema(ManagedOptions) -> Array[@protocol.ConfigField]
 
-pub async fn control_request(String, String, String, Json, allow_http? : Bool) -> Json
+pub async fn control_request(String, String, String, @json.Json, allow_http? : Bool) -> @json.Json
 
 pub async fn run(Options, String) -> Unit raise ProviderError
 

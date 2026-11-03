@@ -99,7 +99,7 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
       fs.mkdirSync(path.join(root, 'shared/bin'), { recursive: true });
       fs.mkdirSync(path.join(root, 'shared/lib'));
       fs.writeFileSync(path.join(root, 'shared/lib/keep'), 'shared library');
-      fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.17+testpin\n');
+      fs.writeFileSync(path.join(root, 'deploy/base.Dockerfile'), 'ARG MOONBIT_VERSION=0.10.19+testpin-nightly\n');
       const compiler = path.join(root, 'shared/bin/moonc');
       const oldCompiler = '#!/bin/sh\necho "v0.10.15+old (test)"\n';
       fs.writeFileSync(compiler, oldCompiler, { mode: 0o755 });
@@ -108,13 +108,13 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
       const run = async (name, command, args, options) => {
         installs++;
         assert.equal(command, 'sh');
-        assert.deepEqual(args, ['deploy/install-moonbit.sh', '0.10.17+testpin']);
+        assert.deepEqual(args, ['deploy/install-moonbit.sh', '0.10.19+testpin-nightly']);
         assert.equal(options.env.HOME, env.HOME);
-        assert.equal(options.env.MOON_HOME, path.join(root, '.tmp/self-check-moon/0.10.17+testpin'));
+        assert.equal(options.env.MOON_HOME, path.join(root, '.tmp/self-check-moon/0.10.19+testpin-nightly'));
         assert.equal(options.env.PATH.split(path.delimiter)[0], path.join(options.env.MOON_HOME, 'bin'));
         if (mode === 'failure') throw new Error('Download failed');
         fs.mkdirSync(path.join(options.env.MOON_HOME, 'bin'), { recursive: true });
-        const version = mode === 'wrong-version' ? '0.10.15+old' : '0.10.17+testpin';
+        const version = mode === 'wrong-version' ? '0.10.15+old' : '0.10.19+testpin-nightly';
         fs.writeFileSync(path.join(options.env.MOON_HOME, 'bin/moonc'), '#!/bin/sh\necho "v' + version + ' (test)"\n', { mode: 0o755 });
       };
       if (mode === 'install') {
@@ -122,7 +122,7 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
         assert.equal(installs, 1);
         // Child processes (including npm) must inherit the same compiler/home.
         const result = await runStage('Selected toolchain', process.execPath,
-          ['-e', `const {execFileSync}=require('node:child_process'); if (!execFileSync('moonc',['-v'],{encoding:'utf8'}).startsWith('v0.10.17+testpin ')) process.exit(8); if (process.env.MOON_HOME !== ${JSON.stringify(selected.MOON_HOME)}) process.exit(9);`],
+          ['-e', `const {execFileSync}=require('node:child_process'); if (!execFileSync('moonc',['-v'],{encoding:'utf8'}).startsWith('v0.10.19+testpin-nightly ')) process.exit(8); if (process.env.MOON_HOME !== ${JSON.stringify(selected.MOON_HOME)}) process.exit(9);`],
           { cwd: root, env: selected, timeoutMs: 30000, log: () => {} });
         assert.equal(result, undefined);
         assert.deepEqual(await toolchainEnvironment(root, { env, run }), selected);
@@ -132,7 +132,7 @@ for (const mode of ['install', 'failure', 'wrong-version']) {
         assert.equal(installs, 2, 'repair a cached compiler that no longer matches');
       } else {
         await assert.rejects(toolchainEnvironment(root, { env, run }), mode === 'failure' ? /Download failed/ : /does not match/);
-        assert.equal(fs.existsSync(path.join(root, '.tmp/self-check-moon/0.10.17+testpin/.moonhub-installed-version')), false);
+        assert.equal(fs.existsSync(path.join(root, '.tmp/self-check-moon/0.10.19+testpin-nightly/.moonhub-installed-version')), false);
       }
       assert.equal(fs.readFileSync(compiler, 'utf8'), oldCompiler);
       assert.equal(fs.readFileSync(path.join(root, 'shared/lib/keep'), 'utf8'), 'shared library');

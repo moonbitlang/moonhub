@@ -20,12 +20,14 @@ pub fn triggers(String) -> Triggers raise InvalidWorkflow
 pub fn valid_secret_name(String) -> Bool
 
 // Errors
+#derive(@debug.Debug)
 pub suberror InvalidWorkflow {
   InvalidWorkflow(String)
-} derive(@debug.Debug)
+}
 pub fn InvalidWorkflow::to_repr(Self) -> @debug.Repr
 
 // Types and methods
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub struct Job {
   id : String
   name : String
@@ -33,22 +35,24 @@ pub struct Job {
   runs_on : Array[String]
   timeout_minutes : Int32
   steps : Array[Step]
-} derive(ToJson, @debug.Debug, @json.FromJson)
-pub fn Job::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn Job::to_json(Self) -> Json
+}
+pub fn Job::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Job::to_json(Self) -> @json.Json
 pub fn Job::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct RunContext {
   repository : String
   sha : String
   event_name : String
   head_ref : String
   base_ref : String
-} derive(ToJson, @debug.Debug, @json.FromJson)
-pub fn RunContext::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn RunContext::to_json(Self) -> Json
+}
+pub fn RunContext::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn RunContext::to_json(Self) -> @json.Json
 pub fn RunContext::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug, @json.ToJson)
 pub struct Step {
   id : String
   name : String
@@ -60,9 +64,9 @@ pub struct Step {
   env : Map[String, String]
   secret_env : Map[String, String]
   timeout_minutes : Int32?
-} derive(ToJson, @debug.Debug)
-pub fn Step::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn Step::to_json(Self) -> Json
+}
+pub fn Step::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Step::to_json(Self) -> @json.Json
 pub fn Step::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Step
 
@@ -76,12 +80,13 @@ pub struct Triggers {
 pub fn Triggers::matches_pull_request(Self, String) -> Bool
 pub fn Triggers::matches_push(Self, String) -> Bool
 
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub struct Workflow {
   name : String
   jobs : Array[Job]
-} derive(ToJson, @debug.Debug, @json.FromJson)
-pub fn Workflow::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn Workflow::to_json(Self) -> Json
+}
+pub fn Workflow::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Workflow::to_json(Self) -> @json.Json
 pub fn Workflow::to_repr(Self) -> @debug.Repr
 
 // Type aliases

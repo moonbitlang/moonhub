@@ -48,6 +48,7 @@ pub suberror ExecutionError {
 }
 
 // Types and methods
+#derive(Eq, @debug.Debug)
 pub enum Conclusion {
   Success
   Failure
@@ -55,7 +56,7 @@ pub enum Conclusion {
   TimedOut
   Lost
   Skipped
-} derive(Eq, @debug.Debug)
+}
 pub fn Conclusion::equal(Self, Self) -> Bool
 pub fn Conclusion::not_equal(Self, Self) -> Bool
 pub fn Conclusion::to_repr(Self) -> @debug.Repr
@@ -104,6 +105,7 @@ pub(all) struct DispatchChoices {
   workflows : Array[WorkflowChoice]
 }
 
+#derive(@debug.Debug)
 pub struct JobRun {
   id : Int64
   run_id : Int64
@@ -111,26 +113,28 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
-} derive(@debug.Debug)
+}
 pub fn JobRun::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
 pub enum JobState {
   Waiting
   Queued
   Leased
   Running
   Completed
-} derive(Eq, @debug.Debug)
+}
 pub fn JobState::equal(Self, Self) -> Bool
 pub fn JobState::not_equal(Self, Self) -> Bool
 pub fn JobState::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub struct LogPage {
   chunks : Array[@protocol.LogChunk]
   next_cursor : String
   has_more : Bool
   complete : Bool
-} derive(@debug.Debug)
+}
 pub fn LogPage::to_repr(Self) -> @debug.Repr
 
 pub struct MergeCheckContext {
@@ -140,6 +144,7 @@ pub struct MergeCheckContext {
   target_sha : String
 }
 
+#derive(@debug.Debug)
 pub struct Provider {
   id : Int64
   name : String
@@ -151,7 +156,7 @@ pub struct Provider {
   last_seen_ms : Int64?
   online : Bool
   mode : String
-} derive(@debug.Debug)
+}
 pub fn Provider::to_repr(Self) -> @debug.Repr
 
 pub struct ProviderControl {
@@ -161,16 +166,18 @@ pub struct ProviderControl {
   status : String
 }
 
+#derive(Eq, @debug.Debug)
 pub enum ProviderScope {
   SelectedRepositories
   AllRepositories
-} derive(Eq, @debug.Debug)
+}
 pub fn ProviderScope::equal(Self, Self) -> Bool
 pub fn ProviderScope::not_equal(Self, Self) -> Bool
 pub fn ProviderScope::parse(String) -> Self raise
 pub fn ProviderScope::to_repr(Self) -> @debug.Repr
 pub fn ProviderScope::value(Self) -> String
 
+#derive(Eq, @debug.Debug)
 pub enum QueueReason {
   WaitingDependencies
   RequesterUnavailable
@@ -180,11 +187,12 @@ pub enum QueueReason {
   ProvidersBusy
   NoRecentProviderContact
   AwaitingClaim
-} derive(Eq, @debug.Debug)
+}
 pub fn QueueReason::equal(Self, Self) -> Bool
 pub fn QueueReason::not_equal(Self, Self) -> Bool
 pub fn QueueReason::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub struct RepositorySecret {
   name : String
   branch : String
@@ -192,9 +200,10 @@ pub struct RepositorySecret {
   version : Int64
   created_at : String
   updated_at : String
-} derive(@debug.Debug)
+}
 pub fn RepositorySecret::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub struct Run {
   id : Int64
   repository_id : Int64
@@ -212,14 +221,15 @@ pub struct Run {
   state : RunState
   conclusion : Conclusion?
   created_at : String
-} derive(@debug.Debug)
+}
 pub fn Run::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
 pub enum RunState {
   Queued
   Running
   Completed
-} derive(Eq, @debug.Debug)
+}
 pub fn RunState::equal(Self, Self) -> Bool
 pub fn RunState::not_equal(Self, Self) -> Bool
 pub fn RunState::to_repr(Self) -> @debug.Repr

@@ -155,10 +155,11 @@ pub(all) struct RepoImportConfig {
   timeout_ms : Int32
 }
 
+#derive(Eq, @debug.Debug)
 pub(all) enum RepoOperation {
   Read
   Write
-} derive(Eq, @debug.Debug)
+}
 pub fn RepoOperation::equal(Self, Self) -> Bool
 pub fn RepoOperation::not_equal(Self, Self) -> Bool
 pub fn RepoOperation::to_repr(Self) -> @debug.Repr
@@ -194,10 +195,11 @@ pub(all) struct SshAddressConfig {
   internal : SshEndpoint?
 }
 
+#derive(Eq, @debug.Debug)
 pub(all) struct SshEndpoint {
   host : String
   port : UInt16
-} derive(Eq, @debug.Debug)
+}
 pub fn SshEndpoint::authority(Self) -> String
 pub fn SshEndpoint::clone_url(Self, @domain.RepoId) -> String
 pub fn SshEndpoint::equal(Self, Self) -> Bool

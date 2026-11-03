@@ -1,12 +1,13 @@
 ///|
 // Captured once, never rebuilt from current branch/MR state.
+#derive(Debug, ToJson, FromJson)
 pub(all) struct RunContext {
   repository : String
   sha : String
   event_name : String
   head_ref : String
   base_ref : String
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
 priv enum EnvSegment {

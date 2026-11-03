@@ -1,16 +1,18 @@
 ///|
 /// The migration boundary: only already-escaped, server-authorized presentation
 /// enters this tree. Business services and HTTP objects never enter the browser.
+#derive(Eq, Debug, ToJson, FromJson)
 pub(all) enum Node {
   Element(String, Array[(String, String)], Array[Node])
   Text(String)
-} derive(Eq, Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Eq, Debug, ToJson, FromJson)
 pub(all) struct Page {
   head : Array[Node]
   body : Array[Node]
-} derive(Eq, Debug, ToJson, FromJson)
+}
 
 ///|
 fn Node::view(self : Node) -> @html.Html {
