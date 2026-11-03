@@ -26,7 +26,7 @@ async test "MR workflow settings and execution approval require current authoriz
     let csrf = @web_testkit.extract_attr(
       page, "name=\"csrf_token\"", "value=\"",
     )
-    let fields = "branch=master&approvals=0&checks=.github%2Fworkflows%2Fbuild.yml"
+    let fields = "branch=master&approvals=0&allow_self_approval=on&checks=.github%2Fworkflows%2Fbuild.yml"
     assert_eq(
       @web_testkit.http_post_path_with_cookie(port, settings, fields, alice).0.code,
       403,
@@ -43,6 +43,9 @@ async test "MR workflow settings and execution approval require current authoriz
     assert_eq(@collaboration.required_merge_checks(pool, scope, "master"), [
       ".github/workflows/build.yml",
     ])
+    let rules = @collaboration.branch_rules(pool, scope)
+    assert_eq(rules.length(), 1)
+    assert_true(rules[0].allow_self_approval)
     let (_, saved) = @web_testkit.http_get_path_with_cookie(
       port, settings, alice,
     )
@@ -67,6 +70,10 @@ async test "MR workflow settings and execution approval require current authoriz
     )
     assert_true(member_page.contains("Awaiting manager approval"))
     assert_false(member_page.contains(">Approve and run checks</button>"))
+    assert_true(
+      member_page.contains("<option value=\"approved\">Approve</option>"),
+    )
+    assert_false(member_page.contains("Request changes</option>"))
     assert_eq(
       @web_testkit.http_post_path_with_cookie(
         port,

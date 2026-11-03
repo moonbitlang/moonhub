@@ -210,6 +210,7 @@ fn render_merge_detail(
   blocker : String,
   approved : Int64,
   required : Int64,
+  allow_self_approval : Bool,
   contributor : Bool,
   manager : Bool,
   csrf : String,
@@ -555,7 +556,7 @@ fn render_merge_detail(
             "<p class=\"muted\">A team owner or administrator can merge this request.</p>"
         }
       }
-      if user.id == mr.author_id && mr.status == "open" {
+      if user.id == mr.author_id && mr.status == "open" && !allow_self_approval {
         b <+
           "<p class=\"permission-hint\">You authored this merge request and cannot approve it yourself. \{if required > 0L { "Another team member must approve this version." } else { "You can request an independent review." }}</p>"
       }
@@ -650,9 +651,14 @@ fn render_merge_detail(
       if contributor && version == mr.version && version > 0L {
         b <+
           "<details class=\"review-composer\" id=\"mr-review-form\"><summary>Write a comment or review</summary><form class=\"form-stack mr-form mr-review-form\" method=\"post\" action=\"\{base}/review\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><label class=\"field\"><span>Comment</span><textarea aria-label=\"Comment\" name=\"body\" rows=\"4\" maxlength=\"20000\"></textarea></label><div class=\"mr-review-actions\"><label class=\"field\"><span>Review</span><select aria-label=\"Review\" name=\"decision\"><option value=\"comment\">Comment</option>"
-        if user.id != mr.author_id && mr.status == "open" && !mr.draft && !busy {
-          b <+
-            "<option value=\"approved\">Approve</option><option value=\"changes_requested\">Request changes</option><option value=\"withdrawn\">Withdraw review</option>"
+        if mr.status == "open" && !mr.draft && !busy {
+          if user.id != mr.author_id || allow_self_approval {
+            b <+ "<option value=\"approved\">Approve</option>"
+          }
+          if user.id != mr.author_id {
+            b <+
+              "<option value=\"changes_requested\">Request changes</option><option value=\"withdrawn\">Withdraw review</option>"
+          }
         }
         b <+
           "</select></label><button type=\"submit\">Submit review</button></div></form></details>"
@@ -692,7 +698,7 @@ fn render_branch_rules(
         let branch = rule.branch
         let approvals = rule.required_approvals
         b <+
-          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Merge requests only · \{approvals.to_string()} approvals required</p></div>"
+          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Merge requests only · \{approvals.to_string()} approvals required · \{if rule.allow_self_approval { "Author approval allowed" } else { "Author approval disabled" }}</p></div>"
         for path in rule.checks {
           b <+ "<p class=\"path\">\{path}</p>"
         }
@@ -729,11 +735,16 @@ fn render_branch_rule_form(
     if approvals == 1L {
       b <+ " selected"
     }
-    b <+ ">1 approval from another team member</option><option value=\"0\""
+    b <+ ">1 approval</option><option value=\"0\""
     if approvals == 0L {
       b <+ " selected"
     }
     b <+
-      ">No approval required</option></select></label><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
+      ">No approval required</option></select></label><label class=\"mr-checkbox\"><input type=\"checkbox\" name=\"allow_self_approval\""
+    if rule.map(rule => rule.allow_self_approval).unwrap_or(false) {
+      b <+ " checked"
+    }
+    b <+
+      "><span>Allow authors to approve their own merge requests</span></label><p class=\"muted\">Author approval counts toward required approvals for this branch. Disabled by default.</p><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
   })
 }

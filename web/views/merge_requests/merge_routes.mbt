@@ -374,6 +374,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         blocker,
         approved,
         @collaboration.required_merge_approvals(pool, scope, mr.target),
+        @collaboration.merge_self_approval_allowed(pool, mr),
         @repository.can_access_repository(
           pool,
           actor,
@@ -647,6 +648,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         form.get("branch").unwrap_or(""),
         form.get("action") != Some("remove"),
         approvals,
+        allow_self_approval=form.get("allow_self_approval") == Some("on"),
         checks=@domain.split_lines(form.get("checks").unwrap_or(""))
           .map(path => path.trim().to_owned())
           .filter(path => !path.is_empty()),

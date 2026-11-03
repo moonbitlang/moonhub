@@ -8,6 +8,7 @@ pub async fn save_branch_rule(
   protect : Bool,
   approvals : Int64,
   checks~ : Array[String] = [],
+  allow_self_approval~ : Bool = false,
 ) -> Unit {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   guard @identity.can_manage_team(pool, actor, scope.team_id) else {
@@ -65,8 +66,8 @@ pub async fn save_branch_rule(
         previous.iter().any(path => !checks.contains(path))
       if protect {
         let _ = tx.execute(
-          "INSERT INTO branch_rule (repository_id, branch, required_approvals) VALUES (?, ?, ?) ON CONFLICT (repository_id, branch) DO UPDATE SET required_approvals = excluded.required_approvals",
-          params=[scope.id, branch, approvals],
+          "INSERT INTO branch_rule (repository_id, branch, required_approvals, allow_self_approval) VALUES (?, ?, ?, ?) ON CONFLICT (repository_id, branch) DO UPDATE SET required_approvals = excluded.required_approvals, allow_self_approval = excluded.allow_self_approval",
+          params=[scope.id, branch, approvals, allow_self_approval],
         )
       } else {
         let _ = tx.execute(
@@ -106,7 +107,7 @@ pub async fn save_branch_rule(
           } else {
             "branch_unprotected"
           },
-          "\{branch}; required approvals: \{approvals}; checks: " +
+          "\{branch}; required approvals: \{approvals}; allow self approval: \{allow_self_approval}; checks: " +
           checks.join(", "),
         ],
       )
@@ -166,6 +167,7 @@ pub fn check_received_ref_rules(
 pub struct BranchRule {
   branch : String
   required_approvals : Int64
+  allow_self_approval : Bool
   checks : Array[String]
 }
 
@@ -177,12 +179,13 @@ pub fn branch_rules(
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT branch, required_approvals FROM branch_rule WHERE repository_id = ? ORDER BY branch",
+      "SELECT branch, required_approvals, allow_self_approval FROM branch_rule WHERE repository_id = ? ORDER BY branch",
       params=[scope.id],
     )
     .map(row => {
       branch: row.get_name("branch"),
       required_approvals: row.get_name("required_approvals"),
+      allow_self_approval: row.get_name("allow_self_approval"),
       checks: required_merge_checks(pool, scope, row.get_name("branch")),
     })
   })

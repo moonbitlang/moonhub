@@ -3,7 +3,7 @@ async test "repository secret migration upgrades schema 28 without changing repo
   @test_support.with_ssh_test_db(pool => {
     pool.with_client(client => {
       client.batch_execute(
-        "DROP TABLE pipeline_secret_delivery; DROP TABLE repository_secret; PRAGMA user_version = 28;",
+        "ALTER TABLE branch_rule DROP COLUMN allow_self_approval; DROP TABLE pipeline_secret_delivery; DROP TABLE repository_secret; PRAGMA user_version = 28;",
       )
     })
     initialize_db(pool)
@@ -19,7 +19,7 @@ async test "repository secret migration upgrades schema 28 without changing repo
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
           Int64),
-        29L,
+        database_schema_version,
       )
       assert_true(
         client.query_opt("SELECT id FROM repository WHERE id = 1") is Some(_),
