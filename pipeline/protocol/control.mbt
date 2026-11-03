@@ -1,4 +1,5 @@
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct ConfigField {
   name : String
   title : String
@@ -8,7 +9,7 @@ pub(all) struct ConfigField {
   minimum : Int32
   maximum : Int32
   help : String
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
 pub fn validate_config(
@@ -70,6 +71,7 @@ pub fn validate_config(
 }
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct RegisterProviderRequest {
   version : Int32
   name : String
@@ -77,9 +79,10 @@ pub(all) struct RegisterProviderRequest {
   provider_token : String
   schema : Array[ConfigField]
   defaults : Map[String, String]
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct ProviderSyncRequest {
   version : Int32
   controller_id : String
@@ -88,23 +91,26 @@ pub(all) struct ProviderSyncRequest {
   status : String
   schema : Array[ConfigField]?
   defaults : Map[String, String]?
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct WorkerRegistration {
   version : Int32
   key : String
   token : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct WorkerSyncRequest {
   version : Int32
   state : String
   applied_revision : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct WorkerView {
   id : String
   key : String
@@ -114,9 +120,10 @@ pub(all) struct WorkerView {
   last_seen_ms : String
   idle_since_ms : String
   active_attempts : Int32
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct ProviderSnapshot {
   version : Int32
   id : String
@@ -127,9 +134,10 @@ pub(all) struct ProviderSnapshot {
   config : Map[String, String]
   queued_jobs : Int32
   workers : Array[WorkerView]
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct WorkerSnapshot {
   version : Int32
   provider_id : String
@@ -138,7 +146,7 @@ pub(all) struct WorkerSnapshot {
   draining : Bool
   config_revision : String
   config : Map[String, String]
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
 pub extend ConfigField with @debug.Debug::{to_repr}

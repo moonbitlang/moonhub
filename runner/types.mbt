@@ -26,11 +26,12 @@ fn parse_runner_int64(value : String) -> Int64 raise RunnerError {
 }
 
 ///|
+#derive(Debug, ToJson)
 pub struct Report {
   conclusion : String
   reported : Bool
   steps : Array[@protocol.StepState]
-} derive(Debug, ToJson)
+}
 
 ///|
 priv struct Runtime {

@@ -29,10 +29,12 @@ pub fn save_mail_settings(@database.Database, @domain.CurrentUser, Map[String, S
 pub fn start_mail_worker(@database.Database, @async.TaskGroup[Unit]) -> Unit
 
 // Errors
-type MailConfigError derive(@debug.Debug)
+#derive(@debug.Debug)
+type MailConfigError
 pub fn MailConfigError::to_repr(Self) -> @debug.Repr
 
-type MailDeliveryError derive(@debug.Debug)
+#derive(@debug.Debug)
+type MailDeliveryError
 pub fn MailDeliveryError::to_repr(Self) -> @debug.Repr
 
 // Types and methods

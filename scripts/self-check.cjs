@@ -78,7 +78,7 @@ async function toolchainEnvironment(root, { env = process.env, run = runStage } 
   // Local self-checks use the deployment pin. CI uses the toolchain selected by its workflow.
   // Never install through the image's shared library symlinks.
   const dockerfile = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8');
-  const pins = [...dockerfile.matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+)$/gm)];
+  const pins = [...dockerfile.matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)$/gm)];
   assert.equal(pins.length, 1, 'Expected one exact MOONBIT_VERSION pin in deploy/base.Dockerfile');
   const version = pins[0][1];
   if (env.CI === 'true') {

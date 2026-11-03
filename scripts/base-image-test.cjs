@@ -52,6 +52,8 @@ else if (a[0] === 'build') {
   assert.equal(built(result).length, 1);
   assert.ok(built(result)[0].includes('--pull'));
   assert.ok(built(result)[0].includes('linux/arm64'));
+  const pin = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8').match(/^ARG MOONBIT_VERSION=(.+)$/m)[1];
+  assert.ok(built(result)[0].includes('MOONBIT_VERSION=' + pin), 'base build must use the Dockerfile toolchain pin');
   result = run();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.image, original);

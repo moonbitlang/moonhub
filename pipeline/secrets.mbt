@@ -1,4 +1,5 @@
 ///|
+#derive(Debug)
 pub struct RepositorySecret {
   name : String
   branch : String
@@ -6,7 +7,7 @@ pub struct RepositorySecret {
   version : Int64
   created_at : String
   updated_at : String
-} derive(Debug)
+}
 
 ///|
 pub fn list_secrets(

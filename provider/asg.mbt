@@ -1,28 +1,31 @@
 ///|
+#derive(FromJson)
 priv struct CloudInstance {
   id : String
   lifecycle : String
   scale_in_protected : Bool
   instance_type : String
   template_version : String
-} derive(FromJson)
+}
 
 ///|
+#derive(FromJson)
 priv struct CloudGroup {
   name : String
   min : Int32
   max : Int32
   desired : Int32
   instances : Array[CloudInstance]
-} derive(FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 priv struct WorkerBootstrap {
   server : String
   token : String
   allow_http : Bool
   runner_image : String
-} derive(ToJson, FromJson)
+}
 
 ///|
 fn valid_cloud_name(value : String) -> Bool {
@@ -576,11 +579,12 @@ async fn cancel_pending_capacity(
 }
 
 ///|
+#derive(FromJson)
 priv struct InstanceCapacity {
   cpus : Int32
   memory_mib : Int32
   architectures : Array[String]
-} derive(FromJson)
+}
 
 ///|
 async fn validate_cloud_configuration(
@@ -659,8 +663,9 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
 }
 
 ///|
+#derive(FromJson)
 priv struct WorkerTemplate {
   image : String
   tokens : String?
   hop : Int32?
-} derive(FromJson)
+}

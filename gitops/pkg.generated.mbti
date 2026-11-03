@@ -76,6 +76,7 @@ pub struct CommitInfo {
   date : String
 }
 
+#derive(@json.FromJson, @json.ToJson)
 pub struct DiffAnchor {
   commit_sha : String
   base_sha : String
@@ -86,9 +87,9 @@ pub struct DiffAnchor {
   start_line : Int64
   end_line : Int64
   context : String
-} derive(ToJson, @json.FromJson)
-pub fn DiffAnchor::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn DiffAnchor::to_json(Self) -> Json
+}
+pub fn DiffAnchor::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffAnchor::to_json(Self) -> @json.Json
 
 pub(all) struct Revision {
   version : Int64

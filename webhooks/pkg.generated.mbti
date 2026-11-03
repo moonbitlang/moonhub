@@ -6,6 +6,7 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/repository",
   "moonbitlang/async",
+  "moonbitlang/core/json",
 }
 
 // Values
@@ -15,7 +16,7 @@ pub async fn deliver_next(@database.Database, Policy) -> Bool
 
 pub fn deliveries(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, page? : Int64) -> Array[Delivery] raise
 
-pub fn delivery_detail(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Json raise
+pub fn delivery_detail(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> @json.Json raise
 
 pub let event_kinds : Array[String]
 

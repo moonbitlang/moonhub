@@ -1,4 +1,5 @@
 ///|
+#derive(ToJson, FromJson)
 pub struct DiffAnchor {
   commit_sha : String
   base_sha : String
@@ -9,7 +10,7 @@ pub struct DiffAnchor {
   start_line : Int64
   end_line : Int64
   context : String
-} derive(ToJson, FromJson)
+}
 
 ///|
 pub extend DiffAnchor with ToJson::{to_json}
