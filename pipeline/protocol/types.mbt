@@ -10,6 +10,23 @@ pub let action_assignment_version : Int32 = 2
 pub let toolchain_assignment_version : Int32 = 3
 
 ///|
+// V4 keeps secret references separate and obtains values from the attempt API.
+pub let secret_assignment_version : Int32 = 4
+
+///|
+pub(all) struct SecretRequest {
+  version : Int32
+  execution_id : String
+  step_id : String
+} derive(ToJson, FromJson)
+
+///|
+pub(all) struct SecretResponse {
+  version : Int32
+  env : Map[String, String]
+} derive(ToJson, FromJson)
+
+///|
 pub let lease_ms : Int64 = 60000L
 
 ///|
@@ -147,6 +164,7 @@ pub(all) struct StepPlan {
   shell : String
   working_directory : String
   env : Map[String, String]
+  secret_env : Map[String, String]
   timeout_minutes : Int32
 } derive(Debug, ToJson)
 
@@ -195,6 +213,14 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
       path=path.add_key("working_directory"),
     ),
     env: @json.from_json(env, path=path.add_key("env")),
+    secret_env: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("secret_env").unwrap_or(({} : Json)),
+          path=path.add_key("secret_env"),
+        )
+      _ => Map([])
+    },
     timeout_minutes: @json.from_json(
       timeout,
       path=path.add_key("timeout_minutes"),

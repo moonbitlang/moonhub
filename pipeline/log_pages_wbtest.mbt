@@ -59,7 +59,7 @@ async test "log polling stops only after completion and draining the final redac
       after=@protocol.parse_decimal(second.next_cursor).unwrap(),
     )
     assert_eq(last_page.chunks.length(), 1)
-    assert_eq(last_page.chunks[0].text, tail)
+    assert_eq(last_page.chunks[0].text, "***")
     assert_false(last_page.has_more)
     assert_true(last_page.complete)
     let empty = coordinator.read_log_page(

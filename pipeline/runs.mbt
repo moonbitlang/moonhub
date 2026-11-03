@@ -103,6 +103,9 @@ fn insert_run_snapshot(
   event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
 ) -> Run raise {
+  validate_secret_policy(
+    tx, repository_id, branch, workflow_path, context, definition,
+  )
   let number : Int64 = tx
     .query_one(
       "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM pipeline_run WHERE repository_id = ?",

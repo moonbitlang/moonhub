@@ -3,6 +3,63 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.get(
+    "/repos/:owner/:repo/secrets",
+    api_handler(req => {
+      let secrets = @pipeline.list_secrets(
+        pool,
+        api_actor(pool, req, "read"),
+        @web_context.repo_param(req),
+      )
+      { "items": secrets.map(secret_json) }
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/secrets/:secret",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let repo = @web_context.repo_param(req)
+      let name = @web_context.required_param(req, "secret", "secret").to_upper()
+      let body = api_body(req, ["value", "branch", "workflow", "version"])
+      @pipeline.save_secret(
+        pool,
+        root,
+        actor,
+        repo,
+        name,
+        if body.contains("value") {
+          Some(field(body, "value"))
+        } else {
+          None
+        },
+        field(body, "branch"),
+        field(body, "workflow"),
+        number(field(body, "version"), zero=true),
+      )
+      let secret = @pipeline.list_secrets(pool, actor, repo)
+        .iter()
+        .find_first(secret => secret.name == name)
+      guard secret is Some(secret) else {
+        raise @domain.NotFound(message="Secret changed. Reload its metadata.")
+      }
+      secret_json(secret)
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/secrets/:secret/delete",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, ["version"])
+      @pipeline.delete_secret(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+        @web_context.required_param(req, "secret", "secret"),
+        number(field(body, "version")),
+      )
+      { "ok": true }
+    }),
+  )
   ctx.post(
     "/repos/:owner/:repo/attachments",
     api_handler(req => {

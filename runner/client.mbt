@@ -98,6 +98,37 @@ async fn post_retry(
 }
 
 ///|
+async fn fetch_secrets(
+  server : String,
+  id : String,
+  token : String,
+  request : @protocol.SecretRequest,
+) -> @protocol.SecretResponse {
+  let client = @http.Client(server)
+  defer client.close()
+  let response = client.post(
+    "/-/runner-api/v1/attempts/\{id}/secrets",
+    ToJson::to_json(request).stringify(),
+    extra_headers={
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+  )
+  guard response.code == 200 else { raise Rejected(response.code) }
+  let bytes : Array[Byte] = []
+  while client.read_some(max_len=8192) is Some(chunk) {
+    // 256 KiB of raw secrets may expand sixfold when JSON escapes controls.
+    guard bytes.length() + chunk.length() <= 2097152 else {
+      raise InvalidResponse
+    }
+    bytes.push_iter(chunk.iter())
+  }
+  @json.from_json(@json.parse(@utf8.decode(Bytes::from_array(bytes)))) catch {
+    _ => raise InvalidResponse
+  }
+}
+
+///|
 async fn fetch_source(server : String, id : String, token : String) -> Bytes {
   let client = @http.Client(server)
   defer client.close()

@@ -176,6 +176,7 @@ test "wire job plan has no language-specific optional field representation" {
         run: "echo test",
         uses: "",
         moonbit_version: "",
+        secret_env: Map([]),
         shell: "",
         working_directory: ".",
         env: Map([]),

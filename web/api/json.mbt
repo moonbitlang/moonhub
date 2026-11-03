@@ -45,6 +45,18 @@ fn api_actor(
 }
 
 ///|
+fn secret_json(secret : @pipeline.RepositorySecret) -> Json {
+  {
+    "name": secret.name,
+    "branch": secret.branch,
+    "workflow": secret.workflow_path,
+    "version": secret.version.to_string(),
+    "created_at": secret.created_at,
+    "updated_at": secret.updated_at,
+  }
+}
+
+///|
 async fn api_body(
   req : @moonback.Request,
   allowed : Array[String],

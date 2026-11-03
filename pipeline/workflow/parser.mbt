@@ -114,7 +114,9 @@ fn yaml_to_string_map(
     }
     result[key] = match value {
       String(text) => {
-        ignore(env_segments(text, "\{ctx}.\{key}"))
+        if secret_reference(text) is None {
+          ignore(env_segments(text, "\{ctx}.\{key}"))
+        }
         text
       }
       Integer(n) => n.to_string()
@@ -495,6 +497,19 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
+    let step_env = if uses is Some(_) {
+      Map([])
+    } else {
+      merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env"))
+    }
+    let literal_env : Map[String, String] = Map([])
+    let secret_env : Map[String, String] = Map([])
+    for name, value in step_env {
+      match secret_reference(value) {
+        Some(secret) => secret_env[name] = secret
+        None => literal_env[name] = value
+      }
+    }
     steps.push({
       id: step_id,
       name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
@@ -513,11 +528,8 @@ fn parse_job(
       } else {
         step_defaults.working_directory.unwrap_or(".")
       },
-      env: if uses is Some(_) {
-        Map([])
-      } else {
-        merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env"))
-      },
+      env: literal_env,
+      secret_env,
       timeout_minutes: parse_timeout(
         fields.get("timeout-minutes"),
         "\{ctx}.timeout-minutes",

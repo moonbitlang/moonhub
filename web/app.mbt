@@ -42,6 +42,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@issue_views.issues_module)
   ctx.use_(@attachment_views.attachments_module)
   ctx.use_(@pipeline_views.pipeline_pages_module)
+  ctx.use_(@pipeline_views.repository_secrets_module)
   ctx.use_(@repository_views.repo_browser_module)
 })
 

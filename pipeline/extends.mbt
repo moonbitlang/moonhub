@@ -41,3 +41,6 @@ pub extend JobRun with @debug.Debug::{to_repr}
 
 ///|
 pub extend LogPage with @debug.Debug::{to_repr}
+
+///|
+pub extend RepositorySecret with @debug.Debug::{to_repr}

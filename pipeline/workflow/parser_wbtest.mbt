@@ -221,7 +221,7 @@ test "unsupported execution semantics fail closed at every mapping level" {
     "expressions",
   )
   expect_invalid(
-    basic_workflow + "\n    env: {TOKEN: '${{ secrets.TOKEN }}'}",
+    basic_workflow + "\n    env: {TOKEN: 'prefix-${{ secrets.TOKEN }}'}",
     "expressions",
   )
 }

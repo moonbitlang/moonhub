@@ -4,6 +4,7 @@ fn setup_step(id : String, version : String) -> @protocol.StepPlan {
     ..test_step(id, "", shell=""),
     uses: "moonhub/setup-moonbit@v1",
     moonbit_version: version,
+    secret_env: Map([]),
   }
 }
 

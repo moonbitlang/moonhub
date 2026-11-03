@@ -5,6 +5,7 @@ async fn validate_options(
 ) -> Options {
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
+      @protocol.secret_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     assignment.has_valid_numbers() &&
@@ -50,13 +51,17 @@ async fn validate_options(
         step.shell.is_empty() &&
         step.working_directory == "." &&
         step.env.is_empty() &&
+        step.secret_env.is_empty() &&
         (if step.uses == "moonhub/setup-moonbit@v1" {
-          assignment.version == @protocol.toolchain_assignment_version &&
+          [
+            @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
+          ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
           ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) &&
           [
             @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
+            @protocol.secret_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -68,6 +73,30 @@ async fn validate_options(
       raise InvalidConfiguration("invalid step plan")
     }
     ids[step.id] = true
+    guard step.secret_env.is_empty() ||
+      assignment.version == @protocol.secret_assignment_version else {
+      raise InvalidConfiguration("secret steps require assignment version 4")
+    }
+    guard step.env.length() + step.secret_env.length() <= 300 else {
+      raise InvalidConfiguration("too many step environment variables")
+    }
+    for name, secret in step.secret_env {
+      guard !step.env.contains(name) &&
+        valid_secret_env_name(name) &&
+        !secret.is_empty() &&
+        secret.length() <= 100 &&
+        secret.get_char(0) is Some(first) &&
+        (first.is_ascii_alphabetic() || first == '_') &&
+        secret
+        .iter()
+        .all(ch => ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_') &&
+        secret == secret.to_upper() &&
+        !["GITHUB_", "MOONHUB_", "RUNNER_"].any(prefix => {
+          secret.has_prefix(prefix)
+        }) else {
+        raise InvalidConfiguration("invalid secret environment reference")
+      }
+    }
     for name, value in step.env {
       guard !name.is_empty() &&
         name
@@ -134,6 +163,7 @@ async fn Runtime::execute_script(
   step : @protocol.StepPlan,
   script : String,
   timeout_ms : Int32,
+  secrets~ : Map[String, String] = Map([]),
 ) -> Int32 {
   let cwd = step_directory(self.options.workspace, step.working_directory)
   let env : Map[String, String] = {
@@ -145,6 +175,9 @@ async fn Runtime::execute_script(
     "CI": "true",
   }
   for key, value in step.env {
+    env[key] = value
+  }
+  for key, value in secrets {
     env[key] = value
   }
   if !self.moon_home.is_empty() && step.uses.is_empty() {
@@ -243,6 +276,47 @@ async fn Runtime::execute_steps(
         )
         0
       } else {
+        let fetching_started = monotonic_ms()
+        let secrets = if step.secret_env.is_empty() {
+          Map([])
+        } else {
+          let response = @async.with_timeout(
+            Int64::min(timeout, 2147483647L).to_int(),
+            () => {
+              (self.secrets)({
+                version: @protocol.version,
+                execution_id: self.execution_id,
+                step_id: step.id,
+              })
+            },
+            error=Stopped("timed_out"),
+          ) catch {
+            Rejected(code) if [400, 403, 404, 409].contains(code) => {
+              self.upload(
+                step.id,
+                "stderr",
+                "runner: repository secret access denied\n",
+              )
+              raise InvalidConfiguration("repository secret access denied")
+            }
+            err => raise err
+          }
+          guard response.version == @protocol.version &&
+            response.env.length() == step.secret_env.length() &&
+            response.env
+            .iter()
+            .all(entry => {
+              step.secret_env.contains(entry.0) &&
+              !entry.1.contains("\u{0000}") &&
+              @utf8.encode(entry.1).length() <= 16384
+            }) else {
+            raise InvalidResponse
+          }
+          self.check_live()
+          response.env
+        }
+        let script_timeout = timeout - (monotonic_ms() - fetching_started)
+        guard script_timeout > 0L else { raise Stopped("timed_out") }
         @fs.write_file(
           script,
           step.run,
@@ -252,7 +326,8 @@ async fn Runtime::execute_steps(
         self.execute_script(
           step,
           script,
-          Int64::min(timeout, 2147483647L).to_int(),
+          Int64::min(script_timeout, 2147483647L).to_int(),
+          secrets~,
         )
       }
     } catch {
@@ -380,6 +455,9 @@ async fn execute_assignment(
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
   source? : async () -> Bytes,
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
+  secrets~ : async (@protocol.SecretRequest) -> @protocol.SecretResponse = _ => {
+    raise InvalidConfiguration("secret service unavailable")
+  },
 ) -> Report {
   let options = validate_options(assignment, options)
   let scratch = @fs.tmpdir(prefix="moonhub-runner-")
@@ -406,6 +484,7 @@ async fn execute_assignment(
     stopped: "",
     reporting_until: 0L,
     moon_home: "",
+    secrets,
   }
   let completed = @async.handle_cancellation(() => {
     try {
@@ -523,7 +602,26 @@ pub async fn run(
   let post = (operation, body, until) => {
     post_retry(options.server, attempt_id, token, operation, body, until)
   }
-  execute_assignment(assignment, options, post, source=() => {
-    fetch_source(options.server, attempt_id, token)
-  })
+  execute_assignment(
+    assignment,
+    options,
+    post,
+    secrets=request => fetch_secrets(options.server, attempt_id, token, request),
+    source=() => fetch_source(options.server, attempt_id, token),
+  )
+}
+
+///|
+fn valid_secret_env_name(name : String) -> Bool {
+  !name.is_empty() &&
+  name.length() <= 100 &&
+  name.get_char(0) is Some(first) &&
+  (first.is_ascii_alphabetic() || first == '_') &&
+  name
+  .iter()
+  .all(ch => ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_') &&
+  !["MOONHUB_", "GITHUB_", "RUNNER_", "LD_", "DYLD_"].any(prefix => {
+    name.has_prefix(prefix)
+  }) &&
+  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"].contains(name)
 }

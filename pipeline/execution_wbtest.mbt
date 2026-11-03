@@ -1227,7 +1227,7 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
       .read_logs(actor, protocol_repo, run.number, id)
       .map(chunk => chunk.text)
       .join(""),
-      partial,
+      "***",
     )
   })
 }
