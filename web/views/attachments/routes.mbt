@@ -84,7 +84,7 @@ pub let attachments_module : @moonback.Module = Module(ctx => {
           message="Markdown must contain at most 20000 characters",
         )
       }
-      res.send_html(@web_ui.markdown(text), headers={
+      res.send_html(@web_ui.markdown(text, repo=Some(scope.repo)), headers={
         "Cache-Control": "no-store",
       })
     }),

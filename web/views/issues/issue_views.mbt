@@ -159,7 +159,7 @@ fn render_issue_detail(
           "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create merge request</a>"
       }
       b <+
-        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"markdown-body discussion-description\">\{@web_ui.markdown(issue.description)}</div>"
+        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"markdown-body discussion-description\">\{@web_ui.markdown(issue.description, repo=Some(scope.repo))}</div>"
       if !related.is_empty() {
         b <+
           "<section class=\"issue-related\"><h3>Related merge requests</h3><ul class=\"mr-list\">"
@@ -180,7 +180,7 @@ fn render_issue_detail(
             "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind}</span><time>\{created_at}</time></div>"
           if !body.is_empty() {
             b <+
-              "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body)}</div>"
+              "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body, repo=Some(scope.repo))}</div>"
           }
           b <+ "</li>"
         }

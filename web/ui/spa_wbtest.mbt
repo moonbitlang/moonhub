@@ -45,3 +45,47 @@ async test "direct visits SSR and negotiated navigation share authorized page co
     assert_true(!json.contains("<"))
   })
 }
+
+///|
+async test "Markdown preview uses repository context and retains CSRF checks" {
+  @web_testkit.with_repository_test_app((port, _, _, alice, bob) => {
+    let (_, form) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/issues/new", alice,
+    )
+    let csrf = @web_testkit.extract_attr(
+      form, "name=\"csrf_token\"", "value=\"",
+    )
+    let client = @http.Client("http://127.0.0.1:\{port}")
+    defer client.close()
+    let response = client.post(
+      "/alice/demo/markdown-preview",
+      "See #34 and !12; `#56`",
+      extra_headers={
+        "Cookie": "\{alice.name}=\{alice.value}",
+        "X-CSRF-Scope": "issues",
+        "X-CSRF-Token": csrf,
+      },
+    )
+    assert_eq(response.code, 200)
+    assert_eq(response.headers.get("cache-control"), Some("no-store"))
+    let html = client.read_all().text()
+    assert_true(html.contains("href=\"/alice/demo/issues/34\""))
+    assert_true(html.contains("href=\"/alice/demo/merge-requests/12\""))
+    assert_true(html.contains("<code>#56</code>"))
+    assert_false(html.contains("/issues/56"))
+    let (_, form) = @web_testkit.http_get_path_with_cookie(
+      port, "/bob/-/repositories/new", bob,
+    )
+    // A token from another form scope must not authorize preview.
+    let csrf = @web_testkit.extract_attr(
+      form, "name=\"csrf_token\"", "value=\"",
+    )
+    let denied = client.post("/alice/demo/markdown-preview", "#34 !12", extra_headers={
+      "Cookie": "\{bob.name}=\{bob.value}",
+      "X-CSRF-Scope": "issues",
+      "X-CSRF-Token": csrf,
+    })
+    assert_eq(denied.code, 403)
+    ignore(client.read_all())
+  })
+}

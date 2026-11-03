@@ -6,6 +6,19 @@ The first release keeps the Markdown source textarea and adds Write/Preview,
 Attach files, clipboard file paste, file drop, upload status and retry. Plain forms
 continue to work without JavaScript using existing managed attachment URLs.
 
+## Repository references
+
+Issue and MR descriptions, comments, discussion replies and editor previews link
+`#34` to issue 34 and `!12` to merge request 12 in the current repository. Numbers
+must be positive canonical Int64 values; zero, leading zeroes and references
+embedded in identifiers or URLs remain text. Code spans, fenced code, existing
+link labels and image alt text are not linked. Escape a reference with a backslash
+(`\#34` or `\!12`) to keep it literal.
+
+References do not fetch titles or check whether the target exists while rendering.
+Following the link uses the target route's normal repository authorization and
+not-found behavior. Cross-repository references are not supported.
+
 ## Limits and CLI
 
 PNG, JPEG, GIF and WebP are recognized from file signatures and embedded as images

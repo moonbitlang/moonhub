@@ -1,5 +1,6 @@
 ///|
 fn render_discussion_comment(
+  repo : @domain.RepoId,
   base : String,
   csrf : String,
   user : @domain.CurrentUser,
@@ -18,7 +19,7 @@ fn render_discussion_comment(
         b <+ "<p class=\"muted\">\{item.kind.replace_all(old="_", new=" ")}</p>"
       }
       b <+
-        "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(item.body)}</div>"
+        "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(item.body, repo=Some(repo))}</div>"
     }
     if contributor &&
       (manager || item.actor_id == Some(user.id)) &&
@@ -37,6 +38,7 @@ fn render_discussion_comment(
 
 ///|
 fn render_merge_discussion(
+  repo : @domain.RepoId,
   base : String,
   csrf : String,
   user : @domain.CurrentUser,
@@ -84,7 +86,7 @@ fn render_merge_discussion(
         "<p class=\"muted\">\{if discussion.resolved { "Resolved" } else { "Reopened" }} by \{discussion.state_actor} · <time>\{discussion.state_changed_at}</time></p>"
     }
     b <+
-      "\{render_discussion_comment(base, csrf, user, discussion.root, id, contributor, manager)}"
+      "\{render_discussion_comment(repo, base, csrf, user, discussion.root, id, contributor, manager)}"
     if !selected && discussion.reply_count > 3L {
       b <+
         "<a href=\"\{base}?discussion=\{id.to_string()}#discussion-\{id.to_string()}\">View all \{discussion.reply_count.to_string()} replies</a><p class=\"muted\">Showing the latest 3 replies.</p>"
@@ -95,7 +97,7 @@ fn render_merge_discussion(
     b <+ "<ol class=\"discussion-replies\">"
     for reply in discussion.replies {
       b <+
-        "<li>\{render_discussion_comment(base, csrf, user, reply, id, contributor, manager)}</li>"
+        "<li>\{render_discussion_comment(repo, base, csrf, user, reply, id, contributor, manager)}</li>"
     }
     b <+ "</ol><div class=\"mr-actions\">"
     if discussion.can_resolve {
