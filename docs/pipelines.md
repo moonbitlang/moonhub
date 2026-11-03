@@ -193,6 +193,10 @@ must occupy an entire workflow/job/literal-step `env` value. Scope precedence
 is workflow < job < step, including replacement by a public value. Concatenation,
 indexing, functions and secret interpolation into scripts are rejected. Missing
 or disallowed secrets fail the run request instead of becoming empty strings.
+At run creation they are workflow configuration errors (HTTP 400); a push event
+records the affected workflow's diagnostic and still processes other workflows.
+Actual loss of repository execution permission still stops the event. Runtime
+secret delivery rejects missing or disallowed values with HTTP 403.
 
 Creation uses version `0`; updates and deletes require the decimal-string version
 returned by `secret list`. Omitting `--body-file` on an update preserves the value
@@ -229,6 +233,9 @@ trailing prefixes are masked at completion. Masking retains the originally
 issued values through rotation/deletion and removes temporary delivery records
 when the attempt ends. Encoded, transformed or arbitrarily extracted fragments
 are not guaranteed to be masked; workflows must avoid printing credentials.
+Matching uses a multi-pattern failure-link scan and combines overlapping matches.
+Pending cross-chunk context is bounded by mask lengths rather than by an entire
+chain of overlaps, so repeated prefixes cannot cause quadratic rescanning.
 
 Migration 029 upgrades the database to schema 29. Secret values and temporary
 delivery records are stored in SQLite without application-level encryption,

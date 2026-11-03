@@ -204,7 +204,14 @@ fn validate_secret_policy(
       for _, name in step.secret_env {
         require_secret_policy(
           tx, repository_id, name, branch, workflow_path, context,
-        )
+        ) catch {
+          // During planning this is an invalid workflow configuration, not a
+          // revocation of the actor's repository-wide execution permission.
+          // Push/MR workers can report it for this workflow and keep going.
+          // Runtime delivery still returns Forbidden and never issues values.
+          @domain.Forbidden(message~) => raise @domain.BadRequest(message~)
+          err => raise err
+        }
       }
     }
   }

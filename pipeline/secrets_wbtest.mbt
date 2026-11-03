@@ -221,7 +221,7 @@ async test "secret policy rejects different branches workflows and MR contexts b
         ),
       )
     catch {
-      @domain.Forbidden(_) => ()
+      @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("untrusted branch used a secret")
@@ -248,7 +248,7 @@ async test "secret policy rejects different branches workflows and MR contexts b
           })
         })
       catch {
-        @domain.Forbidden(_) => ()
+        @domain.BadRequest(_) => ()
         err => raise err
       } noraise {
         _ => fail("unsupported event gained secret access")
@@ -278,7 +278,7 @@ async test "secret policy rejects different branches workflows and MR contexts b
         ),
       )
     catch {
-      @domain.Forbidden(_) => ()
+      @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("wrong workflow used a secret")
@@ -433,7 +433,7 @@ async test "step secret delivery binds execution and step masks issued values ac
       }
     })
     try ignore(rerun_run(pool, root, actor, protocol_repo, run.number)) catch {
-      @domain.Forbidden(_) => ()
+      @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("rerun bypassed deleted secret policy")
