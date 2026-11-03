@@ -10,13 +10,13 @@ fn render_index(
     asset_path_map,
     Html(b => {
       b <+
-        "<div class=\"page-heading page-heading--actions\"><div class=\"heading-title\"><h1>Repositories</h1><span class=\"count-badge\">\{repos.length().to_string()}</span></div>"
+        "<div class=\"page-heading page-heading--actions\"><div class=\"heading-title\"><h1>Repositories</h1><span class=\"count-badge\">\{repos.length().to_string()}</span></div><div class=\"heading-actions\">"
       if personal_owner is Some(owner) {
         b <+
           "<a class=\"button-link\" href=\"/\{owner}/-/repositories/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New repository</a>"
       }
       b <+
-        "<a class=\"secondary-button button-link\" href=\"/-/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div>"
+        "<a class=\"secondary-button button-link\" href=\"/-/teams\"><span class=\"ui-icon\" data-icon=\"users\" aria-hidden=\"true\"></span>Browse teams</a></div></div>"
       if repos.is_empty() {
         b <+
           "<div class=\"empty-state\"><span class=\"empty-icon ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span><h2>No repositories yet</h2>"
