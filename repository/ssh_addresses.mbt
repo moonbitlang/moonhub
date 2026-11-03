@@ -1,8 +1,9 @@
 ///|
+#derive(Eq, Debug)
 pub(all) struct SshEndpoint {
   host : String
   port : UInt16
-} derive(Eq, Debug)
+}
 
 ///|
 pub(all) struct SshAddressConfig {

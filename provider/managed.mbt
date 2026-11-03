@@ -161,11 +161,12 @@ async fn private_token(path : String) -> String {
 }
 
 ///|
+#derive(ToJson, FromJson)
 priv struct RegistrationBinding {
   server : String
   name : String
   mode : String
-} derive(ToJson, FromJson)
+}
 
 ///|
 pub async fn run_managed(options : ManagedOptions) -> Unit {

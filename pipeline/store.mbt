@@ -1,20 +1,23 @@
 ///|
+#derive(Eq, Debug)
 pub enum RunState {
   Queued
   Running
   Completed
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 pub enum JobState {
   Waiting
   Queued
   Leased
   Running
   Completed
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 pub enum Conclusion {
   Success
   Failure
@@ -22,9 +25,10 @@ pub enum Conclusion {
   TimedOut
   Lost
   Skipped
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Debug)
 pub struct Run {
   id : Int64
   repository_id : Int64
@@ -42,9 +46,10 @@ pub struct Run {
   state : RunState
   conclusion : Conclusion?
   created_at : String
-} derive(Debug)
+}
 
 ///|
+#derive(Debug)
 pub struct JobRun {
   id : Int64
   run_id : Int64
@@ -52,7 +57,7 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
-} derive(Debug)
+}
 
 ///|
 pub struct MergeCheckContext {

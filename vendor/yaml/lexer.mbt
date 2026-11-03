@@ -1,4 +1,5 @@
 ///|
+#derive(Eq, Debug)
 priv enum TokenType {
   /// The start of the stream. Sent first, before even `TokenType::DocumentStart`.
   StreamStart
@@ -46,14 +47,15 @@ priv enum TokenType {
   Tag(handle~ : String, suffix~ : String)
   /// A regular YAML scalar.
   Scalar(TScalarStyle, String)
-} derive(Eq, Debug)
+}
 
 ///|
 #warnings("-unused_value")
+#derive(Debug)
 priv struct Token {
   marker : Marker
   token_type : TokenType
-} derive(Debug)
+}
 
 ///|
 /// A scalar that was parsed and may correspond to a simple key.
@@ -2378,6 +2380,7 @@ fn Lexer::is_within_block(self : Lexer) -> Bool {
 }
 
 ///|
+#derive(Eq)
 priv enum SkipTabs {
   /// Skip all tabs as whitespace.
   Yes
@@ -2387,7 +2390,7 @@ priv enum SkipTabs {
   /// - `encountered_tab`: Whether tabs were encountered.
   /// - `has_onemore_whitespace`: Whether at least 1 valid yaml whitespace has been encountered.
   Result(encountered_tab~ : Bool, has_onemore_whitespace~ : Bool)
-} derive(Eq)
+}
 
 ///|
 /// Whether tabs were found while skipping whitespace.
@@ -2409,6 +2412,7 @@ fn SkipTabs::has_valid_yaml_ws(self : SkipTabs) -> Bool {
 /// Chomping, how final line breaks and trailing empty lines are interpreted.
 ///
 /// See YAML spec 8.1.1.2.
+#derive(Eq)
 priv enum Chomping {
   /// The final line break and any trailing empty lines are excluded.
   Strip
@@ -2416,4 +2420,4 @@ priv enum Chomping {
   Clip
   /// The final line break and trailing empty lines are included.
   Keep
-} derive(Eq)
+}

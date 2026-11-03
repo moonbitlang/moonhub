@@ -1,8 +1,9 @@
 ///|
+#derive(Eq, Debug)
 pub(all) enum RepoOperation {
   Read
   Write
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn can_access_repository(

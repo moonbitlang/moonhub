@@ -19,6 +19,7 @@ pub fn Coordinator::new(
 }
 
 ///|
+#derive(Debug)
 pub struct Provider {
   id : Int64
   name : String
@@ -30,13 +31,14 @@ pub struct Provider {
   last_seen_ms : Int64?
   online : Bool
   mode : String
-} derive(Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 pub enum ProviderScope {
   SelectedRepositories
   AllRepositories
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn ProviderScope::parse(value : String) -> ProviderScope raise {

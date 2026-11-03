@@ -14,17 +14,19 @@ pub let toolchain_assignment_version : Int32 = 3
 pub let secret_assignment_version : Int32 = 4
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct SecretRequest {
   version : Int32
   execution_id : String
   step_id : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct SecretResponse {
   version : Int32
   env : Map[String, String]
-} derive(ToJson, FromJson)
+}
 
 ///|
 pub let lease_ms : Int64 = 60000L
@@ -57,55 +59,63 @@ pub fn parse_decimal(value : String) -> Int64? {
 }
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct ClaimRequest {
   version : Int32
   request_id : String
   attempt_token : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct VersionRequest {
   version : Int32
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct StartRequest {
   version : Int32
   execution_id : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct StepRequest {
   version : Int32
   step_id : String
   state : String
   exit_code : Int32
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct StepState {
   step_id : String
   state : String
   exit_code : Int32
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct LogRequest {
   version : Int32
   sequence : String
   step_id : String
   stream : String
   text : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(ToJson, FromJson)
 pub(all) struct CompleteRequest {
   version : Int32
   conclusion : String
   last_log_sequence : String
-} derive(ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct LeaseState {
   version : Int32
   execution_id : String
@@ -117,9 +127,10 @@ pub(all) struct LeaseState {
   cancel_requested : Bool
   log_sequence : String
   conclusion : String
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct Assignment {
   version : Int32
   attempt_id : String
@@ -131,7 +142,7 @@ pub(all) struct Assignment {
   server_time_ms : String
   state : String
   job : JobPlan
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
 pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
@@ -146,15 +157,17 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 }
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct JobPlan {
   id : String
   name : String
   runs_on : Array[String]
   timeout_minutes : Int32
   steps : Array[StepPlan]
-} derive(Debug, ToJson, FromJson)
+}
 
 ///|
+#derive(Debug, ToJson)
 pub(all) struct StepPlan {
   id : String
   name : String
@@ -166,7 +179,7 @@ pub(all) struct StepPlan {
   env : Map[String, String]
   secret_env : Map[String, String]
   timeout_minutes : Int32
-} derive(Debug, ToJson)
+}
 
 ///|
 // Legacy assignments have no `uses` or `moonbit_version` fields.
@@ -229,9 +242,10 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
 }
 
 ///|
+#derive(Debug, ToJson, FromJson)
 pub(all) struct LogChunk {
   id : String
   step_id : String
   stream : String
   text : String
-} derive(Debug, ToJson, FromJson)
+}

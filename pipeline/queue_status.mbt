@@ -1,4 +1,5 @@
 ///|
+#derive(Eq, Debug)
 pub enum QueueReason {
   WaitingDependencies
   RequesterUnavailable
@@ -8,7 +9,7 @@ pub enum QueueReason {
   ProvidersBusy
   NoRecentProviderContact
   AwaitingClaim
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn Coordinator::queue_reasons(
