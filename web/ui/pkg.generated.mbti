@@ -12,7 +12,7 @@ import {
 // Values
 pub fn layout(String, Map[String, String], @moonback.Html, head_end? : @moonback.Html, body_class? : String, current_user? : @domain.CurrentUser?, navigation? : PageNavigation) -> @moonback.Html
 
-pub fn markdown(String) -> @moonback.Html
+pub fn markdown(String, repo? : @domain.RepoId?) -> @moonback.Html
 
 pub fn merge_status(@collaboration.MergeRequest) -> String
 

@@ -295,7 +295,7 @@ fn render_merge_detail(
         }
         if !mr.description.is_empty() {
           b <+
-            "<section class=\"discussion-description\"><h2>Description</h2><div class=\"markdown-body\">\{@web_ui.markdown(mr.description)}</div></section>"
+            "<section class=\"discussion-description\"><h2>Description</h2><div class=\"markdown-body\">\{@web_ui.markdown(mr.description, repo=Some(scope.repo))}</div></section>"
         }
         if editable {
           b <+
@@ -319,7 +319,7 @@ fn render_merge_detail(
         for i, discussion in discussions {
           if i < 50 {
             b <+
-              "\{render_merge_discussion(base, csrf, user, discussion, contributor, manager, selected_discussion is Some(_), discussion_page)}"
+              "\{render_merge_discussion(scope.repo, base, csrf, user, discussion, contributor, manager, selected_discussion is Some(_), discussion_page)}"
           }
         }
         b <+ "<nav class=\"mr-actions\" aria-label=\"Thread pagination\">"
@@ -377,7 +377,7 @@ fn render_merge_detail(
             b <+ "</div>"
             if !body.is_empty() {
               b <+
-                "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body)}</div>"
+                "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body, repo=Some(scope.repo))}</div>"
             }
             b <+ "</li>"
           }
@@ -502,7 +502,7 @@ fn render_merge_detail(
           for i, discussion in discussions {
             if i < 50 {
               b <+
-                "\{render_merge_discussion(base, csrf, user, discussion, contributor, manager, selected_discussion == Some(discussion.id), discussion_page)}"
+                "\{render_merge_discussion(scope.repo, base, csrf, user, discussion, contributor, manager, selected_discussion == Some(discussion.id), discussion_page)}"
             }
           }
           if selected_discussion is Some(id) {

@@ -319,6 +319,42 @@ for (const [status, refresh] of [[200, '0'], [200, '1; url=https://example.com']
   });
 }
 
+test('Markdown references agree between preview and saved content and navigate without reloading', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await signIn(page);
+  await page.goto('/alice/demo/issues/new');
+  await hydrated(page);
+  await page.locator('[name=title]').fill('Markdown link target');
+  await page.getByRole('button', { name: 'Create issue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Markdown link target/ })).toBeVisible();
+  const targetPath = new URL(page.url()).pathname;
+  const reference = '#' + targetPath.split('/').pop();
+  await page.goto('/alice/demo/issues/new');
+  await hydrated(page);
+  await page.locator('[name=title]').fill('Markdown references');
+  await page.locator('.CodeMirror').evaluate((node: any, ref) => node.CodeMirror.setValue(`See ${ref} and !12; code: \`\`#56 \` !78\`\`.`), reference);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = page.locator('.markdown-editor-preview');
+  await expect(preview.getByRole('link', { name: reference, exact: true })).toHaveAttribute('href', targetPath);
+  await expect(preview.getByRole('link', { name: '!12', exact: true })).toHaveAttribute('href', '/alice/demo/merge-requests/12');
+  await expect(preview.locator('code')).toHaveText('#56 ` !78');
+  await expect(preview.locator('code a')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create issue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Markdown references/ })).toBeVisible();
+  const description = page.locator('.discussion-description');
+  await expect(description.getByRole('link', { name: reference, exact: true })).toHaveAttribute('href', targetPath);
+  await expect(description.getByRole('link', { name: '!12', exact: true })).toHaveAttribute('href', '/alice/demo/merge-requests/12');
+  await expect(description.locator('code')).toHaveText('#56 ` !78');
+  await expect(description.locator('code a')).toHaveCount(0);
+  await page.evaluate(() => { (window as any).documentIdentity = document; });
+  await description.getByRole('link', { name: reference, exact: true }).click();
+  await expect(page).toHaveURL(new URL(targetPath, page.url()).href);
+  await expect(page.getByRole('heading', { name: /Markdown link target/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('SPA page responses retain private repository authorization and CSRF enforcement', async ({ page }) => {
   await signIn(page, 'outsider');
   const privateResponse = await page.request.get('/alice/demo', { headers: { Accept: 'application/vnd.moonhub.page+json' } });

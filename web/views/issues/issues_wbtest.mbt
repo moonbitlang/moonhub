@@ -63,3 +63,39 @@ async test "issue pages enforce repository permissions CSRF and output escaping"
     assert_eq(@collaboration.require_issue(pool, scope, 1L).status, "closed")
   })
 }
+
+///|
+async test "issue descriptions and comments link references in their own repository" {
+  @web_testkit.with_repository_test_app((port, _, _, alice, _) => {
+    let (_, form) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/issues/new", alice,
+    )
+    let csrf = @web_testkit.extract_attr(
+      form, "name=\"csrf_token\"", "value=\"",
+    )
+    let (created, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/alice/demo/issues",
+      "csrf_token=\{csrf}&title=References&description=See+%2334+and+%2112&assignee=0",
+      alice,
+    )
+    assert_eq(created.code, 303)
+    let (commented, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/alice/demo/issues/1/comment",
+      "csrf_token=\{csrf}&body=Related+%2356+and+%2178",
+      alice,
+    )
+    assert_eq(commented.code, 303)
+    let (detail, html) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/issues/1", alice,
+    )
+    assert_eq(detail.code, 200)
+    for
+      path in [
+        "issues/34", "merge-requests/12", "issues/56", "merge-requests/78",
+      ] {
+      assert_true(html.contains("href=\"/alice/demo/\{path}\""), msg=path)
+    }
+  })
+}
