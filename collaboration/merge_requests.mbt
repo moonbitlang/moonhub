@@ -344,9 +344,10 @@ pub fn submit_merge_review(
         message="only open, ready merge requests can be reviewed",
       )
     }
-    guard actor.id != mr.author_id else {
+    guard actor.id != mr.author_id ||
+      (decision == "approved" && merge_self_approval_allowed(pool, mr)) else {
       raise @domain.Forbidden(
-        message="authors cannot approve or review their own merge requests",
+        message="authors may only approve when self approval is enabled for the target branch",
       )
     }
     guard decision == "approved" ||
@@ -376,8 +377,15 @@ pub fn merge_review_counts(
 ) -> (Int64, Int64) raise {
   pool.with_client(client => {
     let rows = client.query_all(
-      "SELECT r.decision FROM merge_review AS r JOIN \"user\" AS u ON u.id = r.user_id LEFT JOIN team_member AS tm ON tm.user_id = u.id AND tm.team_id = ? WHERE r.merge_request_id = ? AND r.version = ? AND u.id <> ? AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin', 'member'))",
-      params=[scope.team_id, mr.id, mr.version, mr.author_id],
+      "SELECT r.decision FROM merge_review AS r JOIN \"user\" AS u ON u.id = r.user_id LEFT JOIN team_member AS tm ON tm.user_id = u.id AND tm.team_id = ? WHERE r.merge_request_id = ? AND r.version = ? AND (u.id <> ? OR (r.decision = 'approved' AND EXISTS (SELECT 1 FROM branch_rule b WHERE b.repository_id = ? AND b.branch = ? AND b.allow_self_approval = 1))) AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin', 'member'))",
+      params=[
+        scope.team_id,
+        mr.id,
+        mr.version,
+        mr.author_id,
+        mr.repository_id,
+        mr.target,
+      ],
     )
     let mut approved = 0L
     let mut blocked = 0L
@@ -391,6 +399,21 @@ pub fn merge_review_counts(
       }
     }
     (approved, blocked)
+  })
+}
+
+///|
+// Only the target branch's current protection policy can permit author approval.
+pub fn merge_self_approval_allowed(
+  pool : @database.Database,
+  mr : MergeRequest,
+) -> Bool raise {
+  pool.with_client(client => {
+    client.query_opt(
+      "SELECT branch FROM branch_rule WHERE repository_id = ? AND branch = ? AND allow_self_approval = 1",
+      params=[mr.repository_id, mr.target],
+    )
+    is Some(_)
   })
 }
 
@@ -434,7 +457,11 @@ pub fn merge_blocker(
   }
   let required = required_merge_approvals(pool, scope, mr.target)
   if approved < required {
-    return "Waiting for \{required} approval from another team member."
+    return if merge_self_approval_allowed(pool, mr) {
+      "Waiting for \{required} approval. Author approval is allowed."
+    } else {
+      "Waiting for \{required} approval from another team member."
+    }
   }
   merge_checks_blocker(pool, scope, mr)
 }

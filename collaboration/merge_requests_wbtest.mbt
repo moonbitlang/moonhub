@@ -79,6 +79,120 @@ async test "merge requests require version-bound approval and publish a two-pare
 }
 
 ///|
+async test "self approval is branch scoped, opt in, and counts only while enabled" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let git_dir = repo.git_dir(root)
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let base = @gitops.branch_sha(git_dir, "master")
+    ignore(
+      @test_support.merge_test_commit(git_dir, "feature", base, "source\n"),
+    )
+    let mr = create_merge_request(
+      pool, scope, git_dir, alice, "Self approval", "", "feature", "master", false,
+    )
+    save_branch_rule(pool, scope, git_dir, alice, "master", true, 1L)
+    assert_false(merge_self_approval_allowed(pool, mr))
+    try submit_merge_review(pool, alice, mr, 1L, "approved", "") catch {
+      @domain.Forbidden(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("author approval worked before the rule was enabled")
+    }
+
+    save_branch_rule(
+      pool,
+      scope,
+      git_dir,
+      alice,
+      "master",
+      true,
+      1L,
+      allow_self_approval=true,
+    )
+    assert_true(merge_self_approval_allowed(pool, mr))
+    for branch in ["release", "unprotected"] {
+      ignore(
+        @gitops.merge_git(git_dir, ["update-ref", "refs/heads/" + branch, base]),
+      )
+      if branch == "release" {
+        save_branch_rule(pool, scope, git_dir, alice, branch, true, 1L)
+      }
+      let other = create_merge_request(
+        pool, scope, git_dir, alice, "Other target", "", "feature", branch, false,
+      )
+      assert_false(merge_self_approval_allowed(pool, other))
+      try submit_merge_review(pool, alice, other, 1L, "approved", "") catch {
+        @domain.Forbidden(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("a different target inherited self approval")
+      }
+    }
+    for decision in ["changes_requested", "withdrawn"] {
+      try submit_merge_review(pool, alice, mr, 1L, decision, "") catch {
+        @domain.Forbidden(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("author submitted a non-approval review decision")
+      }
+    }
+    submit_merge_review(pool, alice, mr, 1L, "approved", "")
+    assert_eq(merge_review_counts(pool, scope, mr).0, 1L)
+    assert_eq(merge_list_metadata(pool, scope, [mr])[mr.id].approvals, 1L)
+    assert_eq(merge_blocker(pool, scope, mr, merge_revision(pool, mr)), "")
+
+    save_branch_rule(pool, scope, git_dir, alice, "master", true, 1L)
+    assert_eq(merge_review_counts(pool, scope, mr).0, 0L)
+    assert_eq(merge_list_metadata(pool, scope, [mr])[mr.id].approvals, 0L)
+    assert_true(
+      merge_blocker(pool, scope, mr, merge_revision(pool, mr)).contains(
+        "another team member",
+      ),
+    )
+    try enqueue_merge(pool, scope, alice, mr, mr.version) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("queued a merge using self approval after it was disabled")
+    }
+
+    save_branch_rule(
+      pool,
+      scope,
+      git_dir,
+      alice,
+      "master",
+      true,
+      1L,
+      allow_self_approval=true,
+    )
+    assert_eq(merge_review_counts(pool, scope, mr).0, 1L)
+    enqueue_merge(pool, scope, alice, mr, mr.version)
+    save_branch_rule(pool, scope, git_dir, alice, "master", true, 1L)
+    assert_true(run_next_merge_job(pool, root))
+    let failed = require_merge_request(pool, scope, mr.number)
+    assert_eq(failed.status, "open")
+    assert_eq(failed.job_status, "failed")
+    assert_eq(@gitops.branch_sha(git_dir, "master"), base)
+    save_branch_rule(
+      pool,
+      scope,
+      git_dir,
+      alice,
+      "master",
+      true,
+      1L,
+      allow_self_approval=true,
+    )
+    enqueue_merge(pool, scope, alice, failed, failed.version)
+    assert_true(run_next_merge_job(pool, root))
+    assert_eq(require_merge_request(pool, scope, mr.number).status, "merged")
+  })
+}
+
+///|
 async test "push invalidates approvals and stale queued merges never overwrite branches" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
@@ -530,5 +644,74 @@ async test "mismatched merge receipts fail closed without blocking other queued 
     assert_true(failed.job_error.contains("operator inspection"))
     assert_eq(@gitops.branch_sha(git_dir, "master"), base)
     assert_true(!run_next_merge_job(pool, root))
+  })
+}
+
+///|
+async test "self approvals retain version, contributor and independent review gates" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let git_dir = repo.git_dir(root)
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let base = @gitops.branch_sha(git_dir, "master")
+    let first = @test_support.merge_test_commit(git_dir, "self", base, "one")
+    let mr = create_merge_request(
+      pool, scope, git_dir, alice, "Versioned self approval", "", "self", "master",
+      false,
+    )
+    save_branch_rule(
+      pool,
+      scope,
+      git_dir,
+      alice,
+      "master",
+      true,
+      1L,
+      allow_self_approval=true,
+    )
+    submit_merge_review(pool, alice, mr, 1L, "approved", "")
+    submit_merge_review(pool, admin, mr, 1L, "changes_requested", "Please fix")
+    assert_eq(merge_review_counts(pool, scope, mr), (1L, 1L))
+    assert_true(
+      merge_blocker(pool, scope, mr, merge_revision(pool, mr)).contains(
+        "Changes have been requested",
+      ),
+    )
+    ignore(@test_support.merge_test_commit(git_dir, "self", first, "two"))
+    let latest = refresh_merge_request(pool, scope, git_dir, mr)
+    assert_eq(latest.version, 2L)
+    assert_eq(merge_review_counts(pool, scope, latest), (0L, 0L))
+    assert_eq(
+      merge_list_metadata(pool, scope, [latest])[latest.id].approvals,
+      0L,
+    )
+    try submit_merge_review(pool, alice, latest, 1L, "approved", "") catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("stale self approval accepted")
+    }
+    submit_merge_review(pool, alice, latest, 2L, "approved", "")
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "DELETE FROM team_member WHERE team_id = ? AND user_id = ?",
+          params=[scope.team_id, alice.id],
+        ),
+      )
+    })
+    assert_eq(merge_review_counts(pool, scope, latest).0, 0L)
+    assert_eq(
+      merge_list_metadata(pool, scope, [latest])[latest.id].approvals,
+      0L,
+    )
+    try submit_merge_review(pool, alice, latest, 2L, "approved", "") catch {
+      @domain.Forbidden(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("author approved after contributor access was revoked")
+    }
   })
 }

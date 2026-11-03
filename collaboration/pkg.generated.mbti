@@ -66,6 +66,8 @@ pub fn merge_review_counts(@database.Database, @repository.RepositoryScope, Merg
 
 pub fn merge_revision(@database.Database, MergeRequest, version? : Int64) -> @gitops.Revision raise
 
+pub fn merge_self_approval_allowed(@database.Database, MergeRequest) -> Bool raise
+
 pub fn mutate_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, Issue, Int64, String, String, String, Int64, String) -> Unit raise
 
 pub fn notification_email_enabled(@database.Database, @domain.CurrentUser) -> Bool raise
@@ -96,7 +98,7 @@ pub fn review_requests(@database.Database, @domain.CurrentUser, @repository.Repo
 
 pub async fn run_next_merge_job(@database.Database, String) -> Bool
 
-pub async fn save_branch_rule(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, Bool, Int64, checks? : Array[String]) -> Unit
+pub async fn save_branch_rule(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, Bool, Int64, checks? : Array[String], allow_self_approval? : Bool) -> Unit
 
 pub fn set_merge_comment_deleted(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, Int64, Bool) -> Unit raise
 
@@ -124,6 +126,7 @@ pub fn unresolved_merge_discussions(@database.Database, @repository.RepositorySc
 pub struct BranchRule {
   branch : String
   required_approvals : Int64
+  allow_self_approval : Bool
   checks : Array[String]
 }
 

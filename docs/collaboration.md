@@ -171,10 +171,18 @@ Participants may unsubscribe from ordinary updates and opt in to email. See
 Use the repository MR list's Branch protection link to protect exact branch
 names. Protected branches reject all direct SSH updates, creation, force-push
 and deletion, including administrator pushes. Seed a branch before protecting
-it. Rules require zero or one approval from someone other than the author.
-Unprotected branches require no approval, but current requests for changes still
-block merging. Existing branches are not protected automatically. Protection
-rule changes are recorded in `repository_audit`.
+it. Rules require zero or one approval. By default, authors cannot approve their
+own MRs. A team owner or administrator can enable **Allow authors to approve
+their own merge requests** for an exact protected target branch. Author approvals
+then count toward that branch's requirement, subject to the same current-version
+and contributor-access checks as other approvals. Disabling the option immediately
+excludes existing author approvals, including from queued merges. Authors can
+still only comment or approve; requests for changes and review withdrawal remain
+available only to other reviewers. This does not grant merge or CI execution
+permission, and has no effect on other branches. Existing rules remain disabled
+when upgrading. Unprotected branches require no approval, but current requests
+for changes still block merging. Existing branches are not protected
+automatically. Protection rule changes are recorded in `repository_audit`.
 
 Rules can also name required workflow paths. Their checks use the pinned target
 configuration and test the merged source/target tree. Every required check must
