@@ -66,6 +66,11 @@ fn command() -> @argparse.Command {
     ],
     subcommand_required=true,
     subcommands=[
+      @argparse.Command("secret", subcommand_required=true, subcommands=[
+        @argparse.Command("list"),
+        @argparse.Command("set", positionals=[@argparse.PositionArg("name")]),
+        @argparse.Command("delete", positionals=[@argparse.PositionArg("name")]),
+      ]),
       @argparse.Command(
         "webhook",
         subcommand_required=true,
@@ -327,6 +332,31 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
   }
   let id = option(options, "number").map(decimal).unwrap_or("")
   let (path, body) : (String, Json?) = match (group, action) {
+    ("secret", "list") => ("\{base}/secrets", None)
+    ("secret", "set") => {
+      let name = required(options, "name")
+      let version = required(matches, "version")
+      let fields : Map[String, Json] = {
+        "branch": Json(required(matches, "branch")),
+        "workflow": Json(required(matches, "workflow")),
+        "version": Json(if version == "0" { "0" } else { decimal(version) }),
+      }
+      if option(matches, "body-file") is Some(file) {
+        guard @fs.kind(file, follow_symlink=false) is Regular &&
+          @fs.file_size(file) <= 16384L else {
+          raise Invalid(
+            "secret file must be a regular UTF-8 file of at most 16 KiB",
+          )
+        }
+        fields["value"] = Json(@fs.read_file(file).text())
+      }
+      ("\{base}/secrets/\{escape(name)}", Some(Json::object(fields)))
+    }
+    ("secret", "delete") =>
+      (
+        "\{base}/secrets/\{escape(required(options, "name"))}/delete",
+        Some({ "version": decimal(required(matches, "version")) }),
+      )
     ("webhook", "list") => ("\{base}/hooks", None)
     ("webhook", "create" | "edit") => {
       let file = required(matches, "body-file")

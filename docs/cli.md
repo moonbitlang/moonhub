@@ -1,7 +1,7 @@
 # Collaboration CLI
 
 The native `moonhub` executable also acts as a remote collaboration client.
-`auth`, `mr`, `issue`, `ci` and `inbox` connect to the Web service through
+`auth`, `mr`, `issue`, `ci`, `secret` and `inbox` connect to the Web service through
 `/-/api/v1`. They do not open the server database. Existing Web startup,
 Runner/provider and administration commands retain their entry points.
 
@@ -107,6 +107,16 @@ moonhub ci view 9 --json
 moonhub ci logs 9 --attempt 14 --after 0 --json
 moonhub ci cancel 9
 moonhub ci rerun 9
+
+moonhub secret list --repo compiler/moonback --json
+moonhub secret set MOONCAKES_MOONBITLANG_TOKEN --repo compiler/moonback \
+  --branch master --workflow .github/workflows/publish.yml \
+  --body-file /private/path/credentials.json --version 0
+moonhub secret set MOONCAKES_MOONBITLANG_TOKEN --repo compiler/moonback \
+  --branch master --workflow .github/workflows/publish.yml \
+  --body-file /private/path/replacement.json --version <current-version>
+moonhub secret delete MOONCAKES_MOONBITLANG_TOKEN --repo compiler/moonback \
+  --version <current-version>
 
 moonhub inbox --filter reviews --json
 moonhub inbox list --filter assigned
@@ -225,6 +235,23 @@ Exit codes: 0 for success/help, 1 for HTTP/transport/response failures, 2 for in
 CLI input. The API returns stable JSON error codes and no-store responses, and
 redacts unexpected server/Git errors. Creating/reviewing/merging through the API
 uses the same business services and per-repository write locks as the browser.
+
+## Repository secrets
+
+Secret operations additionally require repository owner/admin access. A read
+token can list metadata; a write token can save or delete. Values are never
+returned. `secret set` accepts a regular UTF-8 `--body-file` of at most 16 KiB,
+preserving its exact contents. Never pass the value directly as an argument.
+Version `0` creates a secret; update/delete use its current decimal-string
+version from `secret list`. Omitting the body file preserves an existing value.
+Both `--branch` and `--workflow` are required when saving. See
+[repository secrets](pipelines.md#repository-secrets) for execution and masking.
+
+The JSON API uses `GET /repos/:owner/:repo/secrets` for metadata,
+`POST /repos/:owner/:repo/secrets/:name` with string fields `branch`, `workflow`,
+`version` and optional `value`, and
+`POST /repos/:owner/:repo/secrets/:name/delete` with string `version`.
+All paths are relative to `/-/api/v1`; responses have `Cache-Control: no-store`.
 
 ## Webhooks
 

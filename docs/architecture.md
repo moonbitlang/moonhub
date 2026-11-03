@@ -20,7 +20,7 @@ unchanged.
 | `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to migration 024 |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
+| `pipeline` | Authorized run snapshots, repository CI secrets and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, config synchronization, worker lifecycle and ephemeral-container adapter; no database or Web dependency |
 | `runner/cli` | Shared single-assignment CLI for the standalone and legacy executable |

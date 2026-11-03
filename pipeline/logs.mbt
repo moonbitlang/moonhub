@@ -14,13 +14,18 @@ fn flush_log_tails(
     if !text.is_empty() {
       let _ = tx.execute(
         "INSERT INTO pipeline_log_chunk (attempt_id, step_id, stream, content, payload_hash) VALUES (?, ?, ?, ?, '')",
-        params=[attempt_id, step, stream, text],
+        params=[attempt_id, step, stream, "***"],
       )
     }
   }
   let _ = tx.execute("DELETE FROM pipeline_log_tail WHERE attempt_id = ?", params=[
     attempt_id,
   ])
+  ignore(
+    tx.execute("DELETE FROM pipeline_secret_delivery WHERE attempt_id = ?", params=[
+      attempt_id,
+    ]),
+  )
 }
 
 ///|
@@ -84,16 +89,15 @@ pub fn Coordinator::append_log(
           Some(row) => row.get_name("content")
           None => ""
         }
-        // Hold only a suffix that could become this credential across chunk boundaries.
-        let text = (previous + request.text).replace_all(old=token, new="***")
-        let mut hold = 0
-        for length = 1; length < token.length(); length = length + 1 {
-          if text.has_suffix(token[:length]) {
-            hold = length
-          }
+        let masks = [token]
+        for
+          delivery in tx.query_all(
+            "SELECT DISTINCT value FROM pipeline_secret_delivery WHERE attempt_id = ?",
+            params=[id],
+          ) {
+          masks.push_iter(secret_masks(delivery.get_name("value")).iter())
         }
-        let content = text[:text.length() - hold].to_owned()
-        let tail = text[text.length() - hold:].to_owned()
+        let (content, tail) = mask_log(previous + request.text, masks)
         let _ = tx.execute(
           "INSERT INTO pipeline_log_chunk (attempt_id, sequence, step_id, stream, content, payload_hash) VALUES (?, ?, ?, ?, ?, ?)",
           params=[

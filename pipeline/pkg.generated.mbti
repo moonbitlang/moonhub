@@ -13,6 +13,8 @@ import {
 // Values
 pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String) -> Run
 
+pub fn delete_secret(@database.Database, @domain.CurrentUser, @domain.RepoId, String, Int64) -> Unit raise
+
 pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
 
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
@@ -20,6 +22,8 @@ pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 
 pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, page? : Int64, status? : String, branch? : String, workflow? : String) -> Array[Run] raise
+
+pub fn list_secrets(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RepositorySecret] raise
 
 pub fn list_trigger_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[TriggerEvent] raise
 
@@ -30,6 +34,8 @@ pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.
 pub async fn run_next_merge_check(@database.Database, String) -> Bool
 
 pub async fn run_next_push_event(@database.Database, String) -> Bool
+
+pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String?, String, String, Int64) -> Unit
 
 pub fn start_merge_checks_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
@@ -86,6 +92,7 @@ pub fn Coordinator::set_provider_repository(Self, @domain.CurrentUser, Int64, @d
 pub fn Coordinator::set_provider_scope(Self, @domain.CurrentUser, Int64, ProviderScope, Array[@domain.RepoId]) -> Unit raise
 pub fn Coordinator::start(Self, Int64, String, Int32, execution_id? : String) -> @protocol.LeaseState raise
 pub fn Coordinator::start_lease_worker(Self, @async.TaskGroup[Unit]) -> Unit
+pub fn Coordinator::step_secrets(Self, Int64, String, @protocol.SecretRequest) -> @protocol.SecretResponse raise
 pub fn Coordinator::sync_provider(Self, String, @protocol.ProviderSyncRequest) -> @protocol.ProviderSnapshot raise
 pub fn Coordinator::sync_worker(Self, String, @protocol.WorkerSyncRequest) -> @protocol.WorkerSnapshot raise
 pub fn Coordinator::update_step(Self, Int64, String, @protocol.StepRequest) -> @protocol.LeaseState raise
@@ -177,6 +184,16 @@ pub enum QueueReason {
 pub fn QueueReason::equal(Self, Self) -> Bool
 pub fn QueueReason::not_equal(Self, Self) -> Bool
 pub fn QueueReason::to_repr(Self) -> @debug.Repr
+
+pub struct RepositorySecret {
+  name : String
+  branch : String
+  workflow_path : String
+  version : Int64
+  created_at : String
+  updated_at : String
+} derive(@debug.Debug)
+pub fn RepositorySecret::to_repr(Self) -> @debug.Repr
 
 pub struct Run {
   id : Int64

@@ -48,7 +48,7 @@ test "env references resolve once after workflow job step precedence" {
 test "env expressions reject unknown fields operators functions and other contexts" {
   for
     expression in [
-      "${{ github.ref }}", "${{ secrets.TOKEN }}", "${{ env.REPO }}", "${{ steps.test.outputs.value }}",
+      "${{ github.ref }}", "${{ secrets.TOKEN }}suffix", "${{ env.REPO }}", "${{ steps.test.outputs.value }}",
       "${{ github.sha == 'x' }}", "${{ github.sha || 'fallback' }}", "${{ toJSON(github) }}",
       "${{ github['sha'] }}", "${{ }}", "${{ github.sha",
     ] {

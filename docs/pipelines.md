@@ -106,7 +106,7 @@ Workflow, job and literal-step `env` values can read five captured fields:
 Only field references such as `${{ github.sha }}` are accepted. Whitespace
 around the field is optional; literal prefixes/suffixes and multiple references
 are allowed. The usual workflow < job < step precedence applies. Unknown
-fields (including `github.ref`), `secrets`, `env`, outputs, indexing, operators,
+fields (including `github.ref`), `env`, outputs, indexing, operators,
 functions, conditions and unterminated expressions fail validation. Direct
 interpolation into `run`, names, paths, labels or other fields remains rejected.
 
@@ -141,8 +141,113 @@ and reruns continue to work unchanged. No context is fabricated from live state.
 Migration 018 upgrades the database to schema 18 and protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
 together; an older server binary cannot open schema 18. Runner/provider protocols
-are unchanged: they receive ordinary resolved env strings and do not evaluate
-expressions. No secrets or remote actions are added.
+are unchanged for public context references: they receive ordinary resolved env
+strings and do not evaluate expressions. Repository secrets use the separate
+execution-time channel described below. No remote actions are added.
+
+### Repository Secrets
+
+Repository owners and administrators manage secrets under **Secrets** in the
+repository navigation (`/:owner/:repo/settings/secrets`), or with the collaboration
+CLI. Each secret permits exactly one existing branch and one workflow path.
+Only authorized `workflow_dispatch` and `push` runs may use it. MR checks, other
+branches/workflows, and historical runs without captured context cannot receive
+secrets. Adding a secret does not authorize code execution or enable push runs.
+
+```yaml
+on: workflow_dispatch
+jobs:
+  publish:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: moonhub/checkout@v1
+      - uses: moonhub/setup-moonbit@v1
+      - name: Publish
+        working-directory: moonback
+        env:
+          MOONCAKES_CREDENTIALS: ${{ secrets.MOONCAKES_MOONBITLANG_TOKEN }}
+        run: |
+          test -n "$MOONCAKES_CREDENTIALS"
+          install -m 600 /dev/null "$MOON_HOME/credentials.json"
+          trap 'rm -f "$MOON_HOME/credentials.json"' EXIT
+          printf '%s' "$MOONCAKES_CREDENTIALS" > "$MOON_HOME/credentials.json"
+          moon publish
+```
+
+For this example, save the complete Mooncakes credentials JSON as the secret
+value and allow the workflow's actual path and publishing branch. Use a private
+UTF-8 file rather than putting its value on a command line:
+
+```sh
+moonhub secret set MOONCAKES_MOONBITLANG_TOKEN --repo compiler/moonback \
+  --branch master --workflow .github/workflows/publish.yml \
+  --body-file /private/path/mooncakes-credentials.json --version 0
+moonhub secret list --repo compiler/moonback --json
+```
+
+Names are case-insensitive and stored uppercase. They contain at most 100 ASCII
+letters, digits or underscores, cannot begin with a digit, and cannot use the
+reserved `GITHUB_`, `MOONHUB_` or `RUNNER_` prefixes. A repository holds at most
+64 secrets. Values contain 1–16,384 UTF-8 bytes without NUL. Secret references
+must occupy an entire workflow/job/literal-step `env` value. Scope precedence
+is workflow < job < step, including replacement by a public value. Concatenation,
+indexing, functions and secret interpolation into scripts are rejected. Missing
+or disallowed secrets fail the run request instead of becoming empty strings.
+At run creation they are workflow configuration errors (HTTP 400); a push event
+records the affected workflow's diagnostic and still processes other workflows.
+Actual loss of repository execution permission still stops the event. Runtime
+secret delivery rejects missing or disallowed values with HTTP 403.
+
+Creation uses version `0`; updates and deletes require the decimal-string version
+returned by `secret list`. Omitting `--body-file` on an update preserves the value
+while changing its allowed branch/workflow. Versions survive deletion/recreation
+of a name, so a stale form cannot overwrite a replacement secret. Neither list,
+save responses, edit forms nor audit entries include values. Failed browser
+forms preserve metadata and clear the value field.
+
+The parser separates secret references from public env before resolving captured
+context, preventing recursive interpolation of branch or repository names. Run
+snapshots, reruns and provider assignments contain only secret names. Assignment
+version 4 requires updated server, provider/controller and task Runner binaries;
+older executors fail closed. Jobs without secrets retain assignment versions
+1–3, and older snapshots without secret fields remain readable.
+
+After binding its execution instance and starting a step, the Runner calls
+`POST /-/runner-api/v1/attempts/:id/secrets` with its attempt credential,
+`version`, `execution_id` and `step_id`. The server rechecks the live lease,
+requester's current repository permissions, provider grant, cancellation, step
+state, event and secret policy. Only that step's env values are returned with
+`Cache-Control: no-store`. Provider/controller credentials cannot use this API.
+Values are passed as process environment strings, never inserted into scripts
+or assignment files. An attempt may receive at most 256 KiB of secret values.
+
+Delivery is idempotent per attempt, step and env name. A running step retains
+the value it first received; later steps and reruns use current values and
+permissions. Deletion or policy changes prevent subsequent delivery. Values
+already handed to a process cannot be recalled; rotate upstream credentials
+when immediate revocation is required.
+
+Logs mask issued values, their nonempty lines, and nested JSON string values
+(including a credentials JSON token), across upload chunk boundaries. Ambiguous
+trailing prefixes are masked at completion. Masking retains the originally
+issued values through rotation/deletion and removes temporary delivery records
+when the attempt ends. Encoded, transformed or arbitrarily extracted fragments
+are not guaranteed to be masked; workflows must avoid printing credentials.
+Matching uses a multi-pattern failure-link scan and combines overlapping matches.
+Pending cross-chunk context is bounded by mask lengths rather than by an entire
+chain of overlaps, so repeated prefixes cannot cause quadratic rescanning.
+
+Migration 029 upgrades the database to schema 29. Secret values and temporary
+delivery records are stored in SQLite without application-level encryption,
+consistent with other recoverable integration credentials. Protect the database,
+WAL and backups as credentials. Upgrade matching server and Runner components
+before scheduling secret jobs; no production credentials are created by migration.
+
+Validation includes the full MoonBit suite and
+`node scripts/repository-secrets-smoke.cjs` after building the browser assets and
+native executables. The smoke starts a disposable local service, uses synthetic
+credentials, exercises the real CLI and browser forms, and captures desktop/mobile
+screenshots. Set `CHROMIUM_EXECUTABLE` to use an installed Chrome/Chromium binary.
 
 ### MoonBit Toolchain Setup
 
@@ -410,12 +515,12 @@ sequence. Chunk payloads are at most 8 KiB UTF-8, with at most 1 MiB and 4096
 chunks per attempt. Streams are `stdout` or `stderr`; a step ID must match the
 definition, or be empty for job-level setup logs.
 
-The service masks the literal attempt credential, including matches spanning
-chunks of the same step/stream. It temporarily withholds only a matching suffix
-and flushes it on termination if it never becomes a full credential. This is
-not protection against deliberate credential transformation/exfiltration. The
-Runner keeps control credentials out of user scripts, and provider
-credentials never belong in logs. General workflow secrets are not yet supported.
+The service masks the literal attempt credential and issued repository secrets,
+including matches spanning chunks of the same step/stream. It temporarily
+withholds matching suffixes and masks unresolved prefixes on termination. This
+does not protect against deliberate credential transformation/exfiltration. The
+Runner keeps control credentials out of user scripts, and provider credentials
+never belong in logs. See repository secrets above for value delivery and masking.
 
 `Coordinator.read_logs` rechecks repository access and attempt/run scope, returns
 at most 100 records with stable cursor IDs, and never renders log text as HTML.

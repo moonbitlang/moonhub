@@ -92,3 +92,15 @@ pub extend LogChunk with ToJson::{to_json}
 
 ///|
 pub extend LogChunk with @json.FromJson::{from_json}
+
+///|
+pub extend SecretRequest with ToJson::{to_json}
+
+///|
+pub extend SecretRequest with @json.FromJson::{from_json}
+
+///|
+pub extend SecretResponse with ToJson::{to_json}
+
+///|
+pub extend SecretResponse with @json.FromJson::{from_json}

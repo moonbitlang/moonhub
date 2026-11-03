@@ -216,6 +216,21 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       }
     }),
   )
+  ctx.post(
+    "/attempts/:id/secrets",
+    json_handler(req => {
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "attempt"),
+      )
+      let token = bearer_token(req)
+      coordinator.authenticate_attempt(id, token)
+      let payload = request_json(req, ["version", "execution_id", "step_id"])
+      let request : @protocol.SecretRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="Invalid secret request.")
+      }
+      ToJson::to_json(coordinator.step_secrets(id, token, request))
+    }),
+  )
   for operation in ["start", "heartbeat", "logs", "steps", "complete"] {
     ctx.post(
       "/attempts/:id/\{operation}",

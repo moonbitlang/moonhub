@@ -12,6 +12,7 @@ fn test_step(
     run,
     uses: "",
     moonbit_version: "",
+    secret_env: Map([]),
     shell,
     working_directory: directory,
     env,

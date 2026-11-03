@@ -17,6 +17,8 @@ pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 
 pub fn triggers(String) -> Triggers raise InvalidWorkflow
 
+pub fn valid_secret_name(String) -> Bool
+
 // Errors
 pub suberror InvalidWorkflow {
   InvalidWorkflow(String)
@@ -56,11 +58,13 @@ pub struct Step {
   shell : String?
   working_directory : String
   env : Map[String, String]
+  secret_env : Map[String, String]
   timeout_minutes : Int32?
-} derive(ToJson, @debug.Debug, @json.FromJson)
+} derive(ToJson, @debug.Debug)
 pub fn Step::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Step::to_json(Self) -> Json
 pub fn Step::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for Step
 
 pub struct Triggers {
   dispatch : Bool

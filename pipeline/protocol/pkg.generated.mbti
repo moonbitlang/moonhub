@@ -23,6 +23,8 @@ pub let max_source_bytes : Int64
 
 pub fn parse_decimal(String) -> Int64?
 
+pub let secret_assignment_version : Int32
+
 pub let toolchain_assignment_version : Int32
 
 pub fn validate_config(Array[ConfigField], Map[String, String]) -> String?
@@ -164,6 +166,21 @@ pub(all) struct RegisterProviderRequest {
 pub fn RegisterProviderRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn RegisterProviderRequest::to_json(Self) -> Json
 
+pub(all) struct SecretRequest {
+  version : Int32
+  execution_id : String
+  step_id : String
+} derive(ToJson, @json.FromJson)
+pub fn SecretRequest::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn SecretRequest::to_json(Self) -> Json
+
+pub(all) struct SecretResponse {
+  version : Int32
+  env : Map[String, String]
+} derive(ToJson, @json.FromJson)
+pub fn SecretResponse::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn SecretResponse::to_json(Self) -> Json
+
 pub(all) struct StartRequest {
   version : Int32
   execution_id : String
@@ -180,6 +197,7 @@ pub(all) struct StepPlan {
   shell : String
   working_directory : String
   env : Map[String, String]
+  secret_env : Map[String, String]
   timeout_minutes : Int32
 } derive(ToJson, @debug.Debug)
 pub fn StepPlan::from_json(Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
