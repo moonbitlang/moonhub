@@ -945,7 +945,7 @@ needed when local Runner images are loaded into DinD by the deploy script.
 
 `.github/workflows/moonhub.yml` runs this repository's check on pushes to `master`
 and on manual dispatch, using the existing archive checkout. It selects MoonBit
-`nightly` with the built-in setup step and requires `self-hosted`, `linux` and
+`stable` with the built-in setup step and requires `self-hosted`, `linux` and
 `moonhub-build` provider labels. The `runner-selfhost` target remains compatible
 with existing settings; the shared dependency base now includes Node/npm in both
 Runner targets. Docker CLI binaries are also present in the shared base, but jobs
@@ -967,7 +967,7 @@ MOONHUB_RUNNER_CPUS=2
 ```
 
 In CI, `scripts/self-check.cjs` keeps the workflow-selected compiler, so this job
-checks MoonHub against `nightly`. Local self-check runs continue to use the exact
+checks MoonHub against `stable`. Local self-check runs continue to use the exact
 compiler pinned by `deploy/base.Dockerfile`; if the available compiler differs,
 the script installs the pin under `.tmp/self-check-moon/` with
 `deploy/install-moonbit.sh`, verifies it and passes the isolated `MOON_HOME` and
