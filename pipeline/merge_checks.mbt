@@ -56,28 +56,30 @@ fn cancel_obsolete_merge_checks(
 }
 
 ///|
-async fn create_merge_check_run(
-  pool : @database.Database,
-  scope : @repository.RepositoryScope,
+// Discovery and execution share one candidate pinned under the repository lock.
+async fn merge_check_snapshot(
   git_dir : String,
   mr : @collaboration.MergeRequest,
-  check_id : Int64,
-  actor_name : String,
-  workflow_path : String,
-) -> Unit {
-  let actor = @identity.active_user_by_name(pool, actor_name)
-  ignore(require_run_author(pool, actor, scope.repo))
-  let revision = @collaboration.merge_revision(pool, mr)
+  revision : @gitops.Revision,
+) -> String {
   guard revision.block_reason.is_empty() else {
     raise @domain.BadRequest(
       message="Resolve merge conflicts before running checks.",
     )
   }
-  validate_workflow_path(workflow_path)
-  // Configuration is trusted from the pinned target, while the checkout tests
-  // the actual merged tree, not just the source branch in isolation.
-  let source = read_workflow_source(git_dir, revision.target_sha, workflow_path)
-  let definition = @workflow.parse(source)
+  let pin = "refs/moonhub/mr/\{mr.id}/\{mr.version}/candidate"
+  let (code, saved) = @gitops.merge_git_command(git_dir, [
+    "rev-parse", "--verify", "--quiet", pin,
+  ])
+  if code == 0 {
+    let sha = saved.trim().to_owned()
+    guard @gitops.valid_commit_sha(sha) else {
+      raise @domain.BadRequest(
+        message="Could not read the merge check snapshot.",
+      )
+    }
+    return sha
+  }
   let tree = @gitops.merged_tree(git_dir, revision)
   guard tree == revision.merge_tree else {
     raise @domain.BadRequest(
@@ -103,6 +105,32 @@ async fn create_merge_check_run(
       message="Could not create the merge check snapshot.",
     )
   }
+  ignore(
+    @gitops.merge_git(
+      git_dir,
+      ["update-ref", "--no-deref", "--stdin"],
+      input="create \{pin} \{sha}\n",
+    ),
+  )
+  sha
+}
+
+///|
+async fn create_merge_check_run(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  git_dir : String,
+  mr : @collaboration.MergeRequest,
+  sha : String,
+  check_id : Int64,
+  actor_name : String,
+  workflow_path : String,
+) -> Unit {
+  let actor = @identity.active_user_by_name(pool, actor_name)
+  ignore(require_run_author(pool, actor, scope.repo))
+  validate_workflow_path(workflow_path)
+  let source = read_workflow_source(git_dir, sha, workflow_path)
+  let definition = @workflow.parse(source)
   let context : @workflow.RunContext = {
     repository: scope.repo.owner + "/" + scope.repo.name,
     sha,
@@ -212,8 +240,20 @@ pub async fn run_next_merge_check(
   if mr.job_status == "pending" || mr.job_status == "running" {
     return true
   }
+  if mr.status != "open" || mr.draft {
+    return true
+  }
   let workflows : Array[String] = []
-  if mr.status == "open" && !mr.draft {
+  let revision = @collaboration.merge_revision(pool, mr)
+  let (sha, snapshot_error) = try
+    merge_check_snapshot(git_dir, mr, revision)
+  catch {
+    @domain.BadRequest(message~) | @gitops.Failure(message~) => ("", message)
+    err => raise err
+  } noraise {
+    sha => (sha, "")
+  }
+  if snapshot_error.is_empty() {
     let event : String = pool.with_client(client => {
       client
       .query_one("SELECT workflow_event FROM merge_request WHERE id = ?", params=[
@@ -221,16 +261,13 @@ pub async fn run_next_merge_check(
       ])
       .get_name("workflow_event")
     })
-    let revision = @collaboration.merge_revision(pool, mr)
     let output = @gitops.merge_git(git_dir, [
-      "ls-tree",
-      revision.target_sha,
-      ".github/workflows/",
+      "ls-tree", sha, ".github/workflows/",
     ])
     let paths = @domain.split_lines(output)
     guard paths.length() <= 64 else {
       raise @domain.BadRequest(
-        message="target contains more than 64 workflow files",
+        message="candidate contains more than 64 workflow files",
       )
     }
     for line in paths {
@@ -241,7 +278,7 @@ pub async fn run_next_merge_check(
       }
       try {
         validate_workflow_path(path)
-        let source = read_workflow_source(git_dir, revision.target_sha, path)
+        let source = read_workflow_source(git_dir, sha, path)
         if @workflow.triggers(source).matches_pull_request(event) {
           workflows.push(path)
         }
@@ -264,15 +301,21 @@ pub async fn run_next_merge_check(
   })
   for check in checks {
     let check_id : Int64 = check.get_name("id")
-    create_merge_check_run(
-      pool,
-      scope,
-      git_dir,
-      mr,
-      check_id,
-      check.get_name("name_key"),
-      check.get_name("workflow_path"),
-    ) catch {
+    try {
+      guard snapshot_error.is_empty() else {
+        raise @domain.BadRequest(message=snapshot_error)
+      }
+      create_merge_check_run(
+        pool,
+        scope,
+        git_dir,
+        mr,
+        sha,
+        check_id,
+        check.get_name("name_key"),
+        check.get_name("workflow_path"),
+      )
+    } catch {
       err => {
         let message = match err {
           @workflow.InvalidWorkflow(message)

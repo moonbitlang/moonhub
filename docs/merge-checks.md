@@ -1,8 +1,9 @@
 # Merge Request Pipeline Checks
 
-Same-repository merge requests automatically discover target-owned
-`pull_request` workflows for opening, source updates and reopening. Discovery is
-independent of branch protection and **Run push workflows**. These checks are
+Same-repository merge requests automatically discover `pull_request` workflows
+from their pinned candidate merged commit for opening, source updates and
+reopening. Discovery is independent of branch protection and **Run push workflows**.
+These checks are
 optional for merging unless their paths are required by branch protection.
 Existing required `workflow_dispatch` or `push` workflows continue to run
 independently of their trigger filters. No new provider credential is needed.
@@ -24,14 +25,18 @@ independently of their trigger filters. No new provider credential is needed.
    results without periodically replacing a review form.
 
 For optional automatic CI, only steps 1, 2 and 4 are needed: declare
-`on: pull_request` in the target workflow. `types` can select any nonempty subset
-of `opened`, `synchronize`, `reopened`; omitted means all three. Other types and
+`on: pull_request` in the candidate workflow. `types` can select any nonempty
+subset of `opened`, `synchronize`, `reopened`; omitted means all three. Other types
+and
 branch/path filters are rejected. Draft MRs wait until ready. Source changes
 select `synchronize`; reopening selects `reopened`. Advancing only the target
 reruns selected workflows against a new merged tree while retaining the last
-source/lifecycle event. At most 64 target workflow entries are inspected.
-Definitions introduced only in the source branch are not discovered until they
-reach the target. Invalid or oversized definitions appear as per-file
+source/lifecycle event. At most 64 candidate workflow entries are inspected.
+A workflow added by the source is discovered immediately when its candidate
+trigger matches. Deleting an optional workflow, or removing its matching trigger,
+omits it from the new comparison. Target-branch required paths are always
+selected regardless of candidate triggers; deleting a required workflow produces
+a blocking preparation error. Invalid or oversized definitions appear as per-file
 preparation errors without preventing other workflows, including required
 checks, from being scheduled. Reopening observes the source before the browser
 or API request returns; later pushes select `synchronize` even when workflow
@@ -46,12 +51,19 @@ Provider availability and label/scope blockers are explained on the run page.
 ## What Is Checked
 
 Every check belongs to one MR comparison version, whose source and target commit
-IDs are pinned in `merge_revision`. The worker reads the workflow from that
-**target commit**, then creates a pinned two-parent candidate commit with Git's
-merged tree. The existing Runner downloads and tests that candidate. Deleting
-or weakening the workflow in the source branch cannot replace the executed
-workflow definition. Scripts invoked by that workflow remain proposed repository
-code; target-owned YAML does not make untrusted code safe.
+IDs are pinned in `merge_revision`. Under the repository write lock, the worker
+first verifies the merged tree and pins one two-parent candidate commit per
+comparison version. Conflicted comparisons cannot produce a run. Workflow
+discovery, saved YAML, the normalized plan, checkout, context and step logs all
+use that exact candidate. No moving branch tip is reread to select workflow
+content during execution. Source workflow edits, including shell commands and
+setup actions, are therefore tested before merging together with simultaneous
+target changes. Invalid proposed YAML fails preparation on its own MR.
+
+Required paths remain controlled by the target branch's saved protection policy,
+not by candidate YAML. Candidate changes can alter a required workflow's steps;
+a missing or deleted required file remains a blocking error. Review proposed
+workflow changes as executable code before authorizing checks.
 
 MR checks capture `github.event_name = pull_request`, both branch names and
 the candidate commit SHA at creation. Supported `env` references are resolved
@@ -91,8 +103,12 @@ created using a collaboration write token does not create such approval.
 Use an execute token's `approve-checks` operation or an authorized browser action.
 
 Forks and arbitrary external-contributor execution are not enabled. Approving
-a check permits the proposed code to run with the provider's existing isolation
-and network policy; inspect the change before approving it.
+a check permits both proposed YAML and repository code to run with the
+provider's existing isolation and network policy. This includes added commands,
+setup actions and changed trigger definitions; inspect these changes before
+approving. A new source commit needs fresh execution authorization even when
+only its workflow changes. A target-only advance can retain approval for the
+same source, but always creates a fresh candidate and fresh check results.
 
 ## Lifecycle and Recovery
 
@@ -124,6 +140,13 @@ closing/reopening or marking draft/ready starts a new generation.
 
 ## Upgrade and Verification
 
+Candidate-workflow selection needs no database migration and does not rewrite
+saved runs. Previously published target-workflow runs retain their original YAML,
+plan and candidate on snapshot rerun. New comparisons use candidate definitions.
+Use compatible Web/provider/Runner versions when proposing new actions: a newer
+parser or setup action must actually execute on the MR's candidate, rather than
+only compile its implementation under the old workflow.
+
 Migration 017 adds the MR event, distinguishes automatic/required checks and
 preserves existing execution approvals. Existing run definitions without `uses`
 remain readable and runnable. New checkout assignments require matching provider
@@ -146,14 +169,21 @@ node scripts/check-package-boundaries.cjs
 npm run build --prefix js
 moon build --strip -j 1 --deny-warn
 node scripts/merge-checks-smoke.cjs
+MOONHUB_SMOKE_MOONBIT_VERSION=nightly node scripts/merge-checks-smoke.cjs
 ```
 
 The smoke requires Node with `node:sqlite`, Playwright/Chromium, Git, and a C
 compiler. It creates an isolated local database/repository and binds only to
 loopback. A real Runner executes only the script's trusted fixture using
 `--unsafe-local`; this is not a container-isolation acceptance test and must not
-be used with user workloads. It verifies merged-tree execution, target-owned
-configuration, restart deduplication, failed/stale results, reruns, gated merge,
-and desktop/mobile navigation. It cleans up its server and data; screenshots
-and a receipt remain under `_build/merge-checks-smoke/`. No production service
-is touched.
+be used with user workloads. It verifies merged-tree workflow selection,
+proposed shell commands and their persisted step logs, restart deduplication,
+failed/stale results, reruns, gated merge, and desktop/mobile navigation. It
+cleans up its server and data; screenshots, a receipt and per-run plans, context
+and step logs remain under `_build/merge-checks-smoke/`. No production service
+is touched. The optional `MOONHUB_SMOKE_MOONBIT_VERSION` run reproduces the !28
+setup change on a real local Web/Runner pair: the target has no setup action,
+the candidate adds `moonhub/setup-moonbit@v1`, and the run must persist and log
+the requested version, execute setup successfully and select the installed
+job-local toolchain in the next step. It requires outbound HTTPS to the official
+MoonBit installer/toolchain endpoints; allow several minutes for installation.

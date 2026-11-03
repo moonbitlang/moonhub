@@ -9,7 +9,13 @@ async test "MR workflow settings and execution approval require current authoriz
     )
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
     ignore(
-      @test_support.merge_test_commit(dir, "feature", base, "HTTP checks\n"),
+      @test_support.merge_test_commit(
+        dir,
+        "feature",
+        base,
+        "HTTP checks\n",
+        preserve_files=true,
+      ),
     )
     pool.with_client(client => {
       ignore(
@@ -134,6 +140,7 @@ async test "MR workflow settings and execution approval require current authoriz
         "feature",
         @gitops.branch_sha(dir, "feature"),
         "new version\n",
+        preserve_files=true,
       ),
     )
     assert_eq(
@@ -189,7 +196,13 @@ async test "automatically discovered workflows appear as optional in the MR page
     )
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
     ignore(
-      @test_support.merge_test_commit(dir, "feature", base, "optional CI\n"),
+      @test_support.merge_test_commit(
+        dir,
+        "feature",
+        base,
+        "optional CI\n",
+        preserve_files=true,
+      ),
     )
     let mr = @collaboration.create_merge_request(
       pool, scope, dir, actor, "Automatic", "", "feature", "master", false,

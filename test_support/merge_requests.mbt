@@ -4,6 +4,7 @@ pub async fn merge_test_commit(
   branch : String,
   parent : String,
   content : String,
+  preserve_files~ : Bool = false,
 ) -> String {
   let blob = @gitops.merge_git(
       git_dir,
@@ -12,10 +13,25 @@ pub async fn merge_test_commit(
     )
     .trim()
     .to_owned()
+  let entries = if preserve_files {
+    @gitops.merge_git(git_dir, ["ls-tree", parent])
+    .split("\n")
+    .filter_map(line => {
+      if line.is_empty() || line.has_suffix("\tREADME.md") {
+        None
+      } else {
+        Some(line.to_owned())
+      }
+    })
+    .collect()
+  } else {
+    []
+  }
+  entries.push("100644 blob \{blob}\tREADME.md")
   let tree = @gitops.merge_git(
       git_dir,
       ["mktree"],
-      input="100644 blob \{blob}\tREADME.md\n",
+      input=entries.join("\n") + "\n",
     )
     .trim()
     .to_owned()

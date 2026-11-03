@@ -7,7 +7,7 @@ const { randomBytes } = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
 const { once } = require('node:events');
 const { DatabaseSync } = require('node:sqlite');
-const { chromium } = require('playwright');
+const { chromium } = require(require.resolve('playwright', { paths: [path.join(__dirname, '../js')] }));
 
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, '_build/merge-checks-smoke');
@@ -17,6 +17,7 @@ const database = path.join(temp, 'moonhub.db');
 const env = { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: path.join(temp, 'mail') };
 const password = randomBytes(24).toString('hex');
 const provider = randomBytes(32).toString('hex');
+const moonbitVersion = process.env.MOONHUB_SMOKE_MOONBIT_VERSION || '';
 let server, browser, base, cookie, port;
 const pageErrors = [];
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,7 +77,7 @@ async function api(route, token, fields) {
   return body;
 }
 
-async function executeCheck(expected) {
+async function executeCheck(expected, expectedWorkflow, setup = false) {
   const token = randomBytes(32).toString('hex');
   const { assignment } = await api('/claims', provider, { request_id: randomBytes(16).toString('hex'), attempt_token: token });
   assert.ok(assignment, 'no queued check');
@@ -94,14 +95,14 @@ async function executeCheck(expected) {
   runner.stdout.on('data', chunk => { stdout += chunk; });
   runner.stderr.on('data', chunk => { stderr += chunk; });
   runner.stdin.end(token + '\n');
-  const timer = setTimeout(() => runner.kill('SIGKILL'), 30000);
+  const timer = setTimeout(() => runner.kill('SIGKILL'), setup ? 300000 : 30000);
   let code;
   try { [code] = await once(runner, 'close'); } finally { clearTimeout(timer); }
   assert.equal(code, expected === 'success' ? 0 : 1, stdout + stderr);
   const report = JSON.parse(stdout.trim());
   assert.equal(report.reported, true, stdout);
   assert.equal(report.conclusion, expected, stdout);
-  assert.equal(assignment.version, 2);
+  assert.equal(assignment.version, setup ? 3 : 2);
   assert.equal(assignment.job.steps[0].uses, 'actions/checkout@v4');
   assert.equal(report.steps[0].state, 'success');
   const run = query('SELECT * FROM pipeline_run WHERE id = ?', Number(assignment.run_id))[0];
@@ -111,9 +112,29 @@ async function executeCheck(expected) {
   assert.equal(context.event_name, 'pull_request');
   assert.equal(context.head_ref, 'feature');
   assert.equal(context.base_ref, 'main');
-  const step = assignment.job.steps[1];
+  assert.equal(run.workflow_source, expectedWorkflow);
+  assert.equal(assignment.commit_sha, run.commit_sha);
+  const plan = JSON.parse(run.definition_json);
+  assert.deepEqual(assignment.job.steps.map(step => step.uses || step.run),
+    plan.jobs[0].steps.map(step => step.uses || step.run));
+  const step = assignment.job.steps.at(-1);
   assert.equal(step.env.TESTED_SHA, context.sha);
   assert.equal(step.env.SOURCE_BRANCH, context.head_ref);
+  const logs = query('SELECT step_id, content AS text FROM pipeline_log_chunk WHERE attempt_id = ? ORDER BY sequence', Number(assignment.attempt_id));
+  if (setup) {
+    assert.equal(assignment.job.steps[1].uses, 'moonhub/setup-moonbit@v1');
+    assert.equal(assignment.job.steps[1].moonbit_version, moonbitVersion);
+    assert.equal(report.steps[1].state, 'success');
+    assert.ok(logs.some(log => log.step_id === 'setup' && log.text.includes('Installing MoonBit ' + moonbitVersion)));
+    assert.ok(logs.some(log => log.step_id === 'check' && log.text.includes('verified-candidate-toolchain')));
+  }
+  if (expected === 'success') {
+    assert.ok(logs.some(log => log.step_id === 'check' && log.text.includes('verified-candidate-workflow')));
+  }
+  fs.writeFileSync(path.join(output, `run-${run.number}.json`), JSON.stringify({
+    number: run.number, candidate: run.commit_sha, workflow: run.workflow_source,
+    plan, context, steps: report.steps, logs,
+  }, null, 2));
   return run;
 }
 
@@ -153,13 +174,26 @@ async function main() {
   const targetTree = tree([`040000 tree ${githubTree}\t.github`, `100644 blob ${blob('only on target\n')}\ttarget-only.txt`]);
   const target = git(['commit-tree', targetTree, '-p', ancestor, '-m', 'Target advanced']);
   git(['update-ref', 'refs/heads/main', target]);
-  const featureTree = tree([`100644 blob ${blob('PASS\n')}\tREADME.md`]);
-  let source = git(['commit-tree', featureTree, '-p', ancestor, '-m', 'Source removes workflow']);
+  const proposedWorkflow = workflow.replace('echo verified-merged-tree', 'echo verified-candidate-workflow');
+  const setupWorkflow = proposedWorkflow
+    .replace('      - id: check', `      - id: setup\n        uses: moonhub/setup-moonbit@v1\n        with: {version: ${moonbitVersion}}\n      - id: check`)
+    .replace('          echo verified-candidate-workflow', [
+      '          test "$(command -v moon)" = "$MOON_HOME/bin/moon"',
+      '          test -x "$MOON_HOME/bin/moonc"',
+      '          moon version --all',
+      '          moonc -v',
+      '          echo verified-candidate-toolchain',
+      '          echo verified-candidate-workflow',
+    ].join('\n'));
+  const candidateWorkflow = moonbitVersion ? setupWorkflow : proposedWorkflow;
+  const candidateGithub = source => tree([`040000 tree ${tree([`100644 blob ${blob(source)}\tbuild.yml`])}\tworkflows`]);
+  const featureTree = tree([`040000 tree ${candidateGithub(candidateWorkflow)}\t.github`, `100644 blob ${blob('PASS\n')}\tREADME.md`]);
+  let source = git(['commit-tree', featureTree, '-p', ancestor, '-m', 'Source changes workflow']);
   git(['update-ref', 'refs/heads/feature', source]);
   const tokenFile = path.join(temp, 'provider');
   fs.writeFileSync(tokenFile, provider, { mode: 0o600 });
   cli(['pipeline-provider-create', '--name', 'mr-checks', '--token-file', tokenFile, '--repositories', 'root/demo']);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const split = cookie.indexOf('=');
   await context.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: base }]);
@@ -181,21 +215,21 @@ async function main() {
   await until(() => query('SELECT id FROM pipeline_run').length === 1, 'first check was not queued');
   await stopServer();
   await startServer();
-  const first = await executeCheck('success');
-  assert.equal(first.workflow_source, workflow);
+  const first = await executeCheck('success', candidateWorkflow, Boolean(moonbitVersion));
+  assert.equal(git(['show', first.commit_sha + ':.github/workflows/build.yml']), candidateWorkflow.trim());
   assert.equal(git(['show', '-s', '--format=%P', first.commit_sha]), target + ' ' + source);
   assert.equal(query('SELECT COUNT(*) AS n FROM pipeline_run')[0].n, 1, 'restart duplicated a check');
   await page.reload();
   assert.equal(await page.getByRole('button', { name: 'Merge request', exact: true }).count(), 1);
   const old = source;
-  const failingTree = tree([`100644 blob ${blob('FAIL\n')}\tREADME.md`]);
+  const failingTree = tree([`040000 tree ${candidateGithub(proposedWorkflow)}\t.github`, `100644 blob ${blob('FAIL\n')}\tREADME.md`]);
   source = git(['commit-tree', failingTree, '-p', old, '-m', 'Fail required check']);
   git(['update-ref', 'refs/heads/feature', source]);
   await page.reload();
   assert.equal(await page.getByRole('button', { name: 'Merge request', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Approve and run checks', exact: true }).click();
   await until(() => query('SELECT id FROM pipeline_run').length === 2, 'updated check was not queued');
-  const failed = await executeCheck('failure');
+  const failed = await executeCheck('failure', proposedWorkflow);
   await page.reload();
   const mrToken = await page.locator('form input[name=csrf_token]').first().inputValue();
   await form('/root/demo/merge-requests/1/merge', { csrf_token: mrToken, version: '2' }, 400);
@@ -217,23 +251,28 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
   }
   await page.getByRole('link', { name: `Run #${failed.number} and logs`, exact: true }).click();
-  assert.equal(await page.getByRole('link', { name: 'Merge request !1, version 2', exact: true }).count(), 1);
+  await page.waitForURL('**/pipelines/' + failed.number);
+  await page.getByRole('link', { name: 'Merge request !1, version 2', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Rerun snapshot', exact: true }).click();
   await until(() => query('SELECT id FROM pipeline_run').length === 3, 'rerun not created');
-  await executeCheck('failure');
-  const fixed = git(['commit-tree', featureTree, '-p', source, '-m', 'Fix required check']);
+  const rerun = await executeCheck('failure', proposedWorkflow);
+  assert.equal(rerun.commit_sha, failed.commit_sha);
+  assert.equal(rerun.definition_json, failed.definition_json);
+  const fixedTree = tree([`040000 tree ${candidateGithub(proposedWorkflow)}\t.github`, `100644 blob ${blob('PASS\n')}\tREADME.md`]);
+  const fixed = git(['commit-tree', fixedTree, '-p', source, '-m', 'Fix required check']);
   git(['update-ref', 'refs/heads/feature', fixed]);
   await page.goto(base + '/root/demo/merge-requests/1');
   await page.getByRole('button', { name: 'Approve and run checks', exact: true }).click();
   await until(() => query('SELECT id FROM pipeline_run').length === 4, 'fixed check not queued');
-  await executeCheck('success');
+  await executeCheck('success', proposedWorkflow);
   await page.reload();
   await page.getByRole('button', { name: 'Merge request', exact: true }).click();
   await until(() => query('SELECT status FROM merge_request')[0].status === 'merged', 'merge did not finish');
   assert.equal(git(['rev-parse', 'main^{tree}']), git(['rev-parse', query('SELECT commit_sha FROM pipeline_run WHERE number = 4')[0].commit_sha + '^{tree}']));
   assert.deepEqual(pageErrors, []);
-  const receipt = { checks: ['pull_request workflow', 'built-in checkout', 'immutable run context', 'env field references', 'target-owned workflow', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
+  const receipt = { checks: ['pull_request workflow', 'built-in checkout', 'immutable run context', 'env field references', 'candidate workflow and persisted step logs', 'merged-tree execution', 'restart deduplication', 'stale success rejected',
     'failure blocks merge', 'snapshot rerun', 'desktop/mobile layout', 'successful gated merge'], runs: 4 };
+  if (moonbitVersion) receipt.checks.push('candidate MoonBit setup ' + moonbitVersion, 'job-local toolchain verification');
   fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify(receipt));
 }
