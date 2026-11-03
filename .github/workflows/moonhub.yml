@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: moonhub/setup-moonbit@v1
         with:
-          version: nightly
+          version: stable
       - id: check
         name: Build and test MoonHub
         shell: bash
