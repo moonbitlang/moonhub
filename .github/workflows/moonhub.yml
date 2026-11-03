@@ -10,7 +10,13 @@ jobs:
     steps:
       - uses: moonhub/setup-moonbit@v1
         with:
-          version: nightly
+          # Keep this equal to ARG MOONBIT_VERSION in deploy/base.Dockerfile.
+          # `scripts/self-check.cjs` runs the same release locally, so the image
+          # and this check agree on one supported compiler. `nightly` used to
+          # drift under us: the 2026-11-03 nightly rejected the trailing
+          # `derive(...)` form and rewrote generated interfaces, which failed
+          # the check on every branch, `master` included.
+          version: "0.10.17+d971670cd"
       - id: check
         name: Build and test MoonHub
         shell: bash
