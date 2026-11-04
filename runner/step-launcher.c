@@ -38,7 +38,8 @@ int wmain(int argc, wchar_t **argv) {
   wchar_t *command = (wchar_t *)calloc(capacity, sizeof(wchar_t));
   if (!command) return 125;
   wchar_t *cursor = quote(command, executable);
-  wcscpy(cursor, args); cursor += wcslen(args); quote(cursor, argv[2]);
+  if (wcscpy_s(cursor, capacity - (size_t)(cursor - command), args) != 0) { free(command); return 125; }
+  cursor += wcslen(args); quote(cursor, argv[2]);
   HANDLE job = CreateJobObjectW(NULL, NULL);
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {0};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;

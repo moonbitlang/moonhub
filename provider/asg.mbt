@@ -196,13 +196,12 @@ async fn configure_group(
 }
 
 ///|
-async fn provision_worker(
+async fn register_instance_worker(
   options : ManagedOptions,
   token : String,
-  instance : CloudInstance,
-  runner_os : String,
-) -> Unit {
-  let path = options.state_dir + "/" + instance.id + ".token"
+  instance_id : String,
+) -> (@protocol.WorkerView, String) {
+  let path = options.state_dir + "/" + instance_id + ".token"
   let worker_token = if @fs.exists(path) {
     private_token(path)
   } else {
@@ -212,10 +211,10 @@ async fn provision_worker(
   }
   let registration : @protocol.WorkerRegistration = {
     version: 1,
-    key: instance.id,
+    key: instance_id,
     token: worker_token,
   }
-  ignore(
+  let worker : @protocol.WorkerView = @json.from_json(
     control_request(
       options.base.server,
       "/workers/register",
@@ -224,6 +223,17 @@ async fn provision_worker(
       allow_http=options.base.allow_http,
     ),
   )
+  (worker, worker_token)
+}
+
+///|
+async fn provision_worker(
+  options : ManagedOptions,
+  token : String,
+  instance : CloudInstance,
+  runner_os : String,
+) -> Unit {
+  let (_, worker_token) = register_instance_worker(options, token, instance.id)
   let parameter = options.parameter_prefix + "/" + instance.id
   let bootstrap : WorkerBootstrap = {
     server: options.base.server,
@@ -304,14 +314,21 @@ async fn reconcile_group(
           snapshot.config.get("template_version").unwrap_or("") ||
           instance.instance_type !=
           snapshot.config.get("instance_type").unwrap_or("") {
+          // A snapshot may lag a newly registered/busy worker. Recover its
+          // identity and drain it before ordinary cleanup/lease-based retirement.
+          let (worker, _) = register_instance_worker(
+            options,
+            token,
+            instance.id,
+          )
           ignore(
-            aws_request(options, [
-              "autoscaling",
-              "terminate-instance-in-auto-scaling-group",
-              "--instance-id",
-              instance.id,
-              "--should-decrement-desired-capacity",
-            ]),
+            control_request(
+              options.base.server,
+              "/workers/" + worker.id + "/drain",
+              token,
+              { "version": 1 },
+              allow_http=options.base.allow_http,
+            ),
           )
         } else {
           provision_worker(options, token, instance, runner_os)

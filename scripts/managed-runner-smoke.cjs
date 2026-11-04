@@ -8,7 +8,7 @@ const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhu
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const registration = 'a'.repeat(64);
 
-async function scenario(mode, failCleanup = false) {
+async function scenario(mode, failCleanup = false, stale = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
   for (const directory of ['controller', 'workspace']) {
     fs.mkdirSync(path.join(root, directory), {mode:0o700});
@@ -16,6 +16,7 @@ async function scenario(mode, failCleanup = false) {
   }
   const stateFile = path.join(root, 'state.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], volumes: [], groups: {on: {desired:0, instances:[]}, spot: {desired:0, instances:[]}}}));
+  if (stale) { const initial = JSON.parse(fs.readFileSync(stateFile)); initial.groups.on = {desired:1,instances:[{id:'i-test',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'0'}]}; fs.writeFileSync(stateFile, JSON.stringify(initial)); }
   const state = () => JSON.parse(fs.readFileSync(stateFile));
   const tokenFile = path.join(root, 'registration');
   fs.writeFileSync(tokenFile, registration, {mode:0o600});
@@ -100,7 +101,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
         assert.notEqual(body.token, providerToken);
         let worker = workers.find(w => w.key === body.key);
-        if (!worker) {worker = {id:String(workers.length + 1),key:body.key,state:mode === 'asg' ? 'ready' : 'starting',draining:false,applied_revision:'0',last_seen_ms:String(Date.now()),idle_since_ms:String(Date.now()),active_attempts:0}; workers.push(worker);}
+        if (!worker) {worker = {id:String(workers.length + 1),key:body.key,state:stale ? 'busy' : mode === 'asg' ? 'ready' : 'starting',draining:false,applied_revision:'0',last_seen_ms:String(Date.now()),idle_since_ms:String(Date.now()),active_attempts:stale ? 1 : 0}; workers.push(worker);}
         worker.secret = body.token;
         result = worker;
       } else if (route === '/workers/sync') {
@@ -126,7 +127,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       } else if (/^\/workers\/[^/]+\/drain$/.test(route)) {
         const worker = workers.find(w => w.id === route.split('/')[2]);
         assert.equal(req.headers.authorization,'Bearer ' + providerToken);
-        worker.draining = true; worker.state = 'drained'; result = {version:1};
+        worker.draining = true; if (!stale) worker.state = 'drained'; result = {version:1};
       } else throw Error('unexpected route ' + route);
       res.writeHead(200, {'Content-Type':'application/json'}); res.end(JSON.stringify(result));
     } catch (err) {failure = err; res.writeHead(500); res.end('{}');}
@@ -144,6 +145,12 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     for (;;) {
       if (failure) throw failure;
       const st = state();
+      if (stale && workers[0]?.draining) {
+        assert.equal(workers[0].active_attempts, 1);
+        assert.ok(!st.calls.some(c => c[1] === 'terminate-instance-in-auto-scaling-group'), 'unknown busy instance terminated without cleanup');
+        assert.ok(!st.booted, 'obsolete instance bootstrapped using the new template OS');
+        break;
+      }
       if (mode === 'asg' && st.booted && revision === '1') {
         standbySince ??= Date.now();
         assert.equal(st.groups.on.desired, 1, 'idle standby capacity was lost');
@@ -174,11 +181,11 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     for (const directory of ['controller', 'workspace']) {
       assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
     }
-    console.log(`Managed ${mode}${failCleanup ? ' cleanup failure' : ''}: passed enrollment, revision sync and safe lifecycle.`);
+    console.log(`Managed ${mode}${failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(r => child.once('exit',r)),delay(20000).then(() => {if (!exited) child.kill('SIGKILL');})]);}
     server.closeAllConnections(); await new Promise(r => server.close(r));
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {await scenario('docker'); await scenario('docker',true); await scenario('asg');})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);})().catch(e => {console.error(e);process.exitCode=1;});
