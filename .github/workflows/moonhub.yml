@@ -1,6 +1,7 @@
 name: MoonHub self-check
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [master]
 jobs:
