@@ -333,9 +333,11 @@ async fn Runtime::execute_script(
         self.groups.push(process.pid)
         let drain_until = Ref(0L)
         let stdout = group.spawn(() => {
+          defer (if @platform.windows() { windows_trace(3) })
           self.stream_log(out, step.id, "stdout", drain_until)
         })
         let stderr = group.spawn(() => {
+          defer (if @platform.windows() { windows_trace(4) })
           self.stream_log(err, step.id, "stderr", drain_until)
         })
         let code = process.wait()
@@ -754,6 +756,9 @@ async fn execute_assignment(
       _ => "lost"
     }
   })
+  if @platform.windows() {
+    windows_trace(5)
+  }
   let outcome = completed.unwrap_or("cancelled")
   let report = @async.protect_from_cancel(() => {
     let outcome = try {

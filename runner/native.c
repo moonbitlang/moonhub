@@ -7,6 +7,7 @@
 #ifdef _MSC_VER
 #pragma comment(lib, "advapi32.lib")
 #endif
+void moonhub_runner_windows_trace(int32_t phase) { fprintf(stderr, "runner: Windows cleanup phase %d\n", phase); fflush(stderr); }
 int64_t moonhub_runner_monotonic(void) { return (int64_t)GetTickCount64(); }
 int32_t moonhub_runner_prepare(int32_t local) {
   if (local) return 0;
@@ -52,6 +53,7 @@ int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #include <sys/prctl.h>
 #endif
 
+void moonhub_runner_windows_trace(int32_t phase) { (void)phase; }
 int64_t moonhub_runner_monotonic(void) {
   struct timespec t;
 #ifdef CLOCK_BOOTTIME

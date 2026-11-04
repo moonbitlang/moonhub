@@ -209,6 +209,7 @@ fn Runtime::check_live(self : Runtime) -> Unit raise RunnerError {
     // Finish the Windows process before unwinding its pipe/wait tasks. Unlike
     // POSIX, Windows cancellation also needs to settle outstanding pipe I/O.
     if @platform.windows() {
+      windows_trace(1)
       for pid in self.groups {
         kill_group(pid)
       }
