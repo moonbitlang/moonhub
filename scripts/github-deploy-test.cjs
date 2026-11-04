@@ -57,6 +57,7 @@ test('production wrapper deploys only clean, current fast-forward commits and ve
     git('config', 'core.hooksPath', '/dev/null');
     fs.writeFileSync(path.join(source, '.gitignore'), 'deploy/production.env\n');
     fs.writeFileSync(path.join(source, 'deploy/production.sh'), '#!/bin/sh\necho "$1" >> "$TEST_CALLS"\nexit "${TEST_UPGRADE_FAIL:-0}"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(source, 'deploy/active-attempts.cjs'), '// fixture\n');
     git('add', '.'); git('commit', '-qm', 'initial');
     run('git', ['clone', '-q', '--bare', source, remote]);
     git('remote', 'add', 'origin', 'git@github.com:moonbitlang/moonhub.git');
@@ -70,7 +71,8 @@ test('production wrapper deploys only clean, current fast-forward commits and ve
       .replaceAll('git@github.com:moonbitlang/moonhub.git', remote)
       .replaceAll('/srv/moonhub/source', source));
     for (const name of ['flock', 'curl']) fs.writeFileSync(path.join(bin, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    fs.writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\ncase "$*" in *Health*) echo "${TEST_HEALTH:-healthy}" ;; *) echo "$TEST_REVISION" ;; esac\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\ncase "$*" in *node*) if [ "${TEST_ACTIVE:-0}" = 1 ] && [ ! -f "$TEST_CALLS.busy" ]; then touch "$TEST_CALLS.busy"; echo 1; else echo 0; fi ;; *Health*) echo "${TEST_HEALTH:-healthy}" ;; *) echo "$TEST_REVISION" ;; esac\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\necho wait >> "$TEST_CALLS"\n', { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\necho active\n', { mode: 0o755 });
     const calls = path.join(root, 'calls');
     const check = (sha, extra = {}) => spawnSync('bash', [wrapper, sha], { encoding: 'utf8', env: {
@@ -79,7 +81,11 @@ test('production wrapper deploys only clean, current fast-forward commits and ve
     let result = check(first);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /MOONHUB_DEPLOY_OK:/);
-    assert.equal(fs.readFileSync(calls, 'utf8'), 'upgrade\nstatus\n');
+    assert.equal(fs.readFileSync(calls, 'utf8'), 'build\nupgrade\nstatus\n');
+    fs.writeFileSync(calls, '');
+    result = check(first, { TEST_ACTIVE: '1' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(fs.readFileSync(calls, 'utf8'), 'build\nwait\nupgrade\nstatus\n');
     result = check(first, { TEST_HEALTH: 'unhealthy' });
     assert.notEqual(result.status, 0); assert.doesNotMatch(result.stdout, /MOONHUB_DEPLOY_OK:/);
     result = check(first, { TEST_UPGRADE_FAIL: '9' });

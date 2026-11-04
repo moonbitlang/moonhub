@@ -9,8 +9,8 @@ is the application's Git transport. Use AWS Systems Manager Session Manager
 or Run Command with the existing instance role.
 
 Source stays in `/srv/moonhub/source`, with `origin` pointing to
-`git@github.com:moonbitlang/moonhub.git`. MoonHub remains the source of truth and mirrors to GitHub. GitHub Actions
-deploys mirrored `master` updates and invokes
+`git@github.com:moonbitlang/moonhub.git`. MoonHub remains the source of truth
+and mirrors to GitHub. GitHub Actions deploys mirrored `master` updates and invokes
 the restricted SSM deployment document using OIDC. A host-only read-only deploy
 key fetches the source; see [GitHub continuous deployment](github-cd.md).
 The local MoonHub bare repository is retained as the `moonhub` remote.

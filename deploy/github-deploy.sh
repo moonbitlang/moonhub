@@ -26,12 +26,24 @@ fi
 git merge-base --is-ancestor HEAD "$revision" || { printf 'Refusing a non-fast-forward production update.\n' >&2; exit 1; }
 git switch master
 git merge --ff-only "$revision"
-./deploy/production.sh upgrade
-./deploy/production.sh status
-# Verify both application roles use images built from this exact commit.
 set -a
 . deploy/production.env
 set +a
+# Build while MoonHub's post-merge CI runs, then let active tasks finish before
+# the switch. The production script still checks atomically when pausing claims.
+./deploy/production.sh build
+deadline=$((SECONDS + 1200))
+while :; do
+  active=$(docker exec -i --user git "$MOONHUB_COMPOSE_PROJECT_NAME-web-1" node --no-warnings - < deploy/active-attempts.cjs)
+  [[ "$active" =~ ^[0-9]+$ ]] || { printf 'Invalid active attempt count.\n' >&2; exit 1; }
+  [ "$active" -ne 0 ] || break
+  [ "$SECONDS" -lt "$deadline" ] || { printf 'Timed out waiting for active pipeline attempts.\n' >&2; exit 1; }
+  printf 'Waiting for %s active pipeline attempts before switching.\n' "$active"
+  sleep 15
+done
+./deploy/production.sh upgrade
+./deploy/production.sh status
+# Verify both application roles use images built from this exact commit.
 for service in web ssh; do
   container=$MOONHUB_COMPOSE_PROJECT_NAME-$service-1
   [ "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$revision" ]

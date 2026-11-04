@@ -54,9 +54,11 @@ It verifies Web/SSH image revision labels and health, the controller and public
 login endpoint before reporting success. A deployment failure remains
 a failed Actions run; existing upgrade failure recovery still applies.
 
-The existing production script refuses to switch while pipeline attempts are
-active. Let them finish and rerun the failed job; do not stop running tasks to
-force an upgrade. If `master` advanced, its newer workflow handles deployment.
+The wrapper builds while MoonHub's post-merge CI runs, then waits up to 20 minutes
+for active pipeline attempts to finish before invoking the upgrade. The existing
+production script still atomically refuses to switch if another attempt started
+in the meantime. On a timeout or refusal, let tasks finish and rerun the failed
+job. If `master` advanced, its newer workflow handles deployment.
 
 ## Logs, retries and recovery
 
