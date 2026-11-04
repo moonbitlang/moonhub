@@ -57,8 +57,11 @@ a failed Actions run; existing upgrade failure recovery still applies.
 The wrapper builds while MoonHub's post-merge CI runs, then waits up to 20 minutes
 for active pipeline attempts to finish before invoking the upgrade. The existing
 production script still atomically refuses to switch if another attempt started
-in the meantime. On a timeout or refusal, let tasks finish and rerun the failed
-job. If `master` advanced, its newer workflow handles deployment.
+in the meantime. It then pauses every provider, including any Docker/DinD
+provider, waits for cleanup, and restores each original pause state on success
+or failure. Ready workers in unchanged secondary providers can remain paused
+through the Web update; they do not have to be destroyed. On a timeout or refusal,
+let tasks finish and rerun the failed job. If `master` advanced, its newer workflow handles deployment.
 
 ## Logs, retries and recovery
 
