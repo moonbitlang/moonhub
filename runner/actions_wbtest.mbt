@@ -21,6 +21,7 @@ async test "native action execution preserves environment secrets output state a
       (
         #|const fs = require('fs');
         #|if (process.env['INPUT_ACCESS-TOKEN'] !== 'issued-value') process.exit(2);
+        #|if (process.env['INPUT_REF-LABEL'] !== '${{ secrets.NOT_RECURSIVE }}') process.exit(3);
         #|fs.appendFileSync(process.env.GITHUB_ENV, 'EXPORTED=action-value\n');
         #|fs.appendFileSync(process.env.GITHUB_OUTPUT, 'result=ready\n');
         #|fs.appendFileSync(process.env.GITHUB_STATE, 'saved=cleanup-value\n');
@@ -43,7 +44,11 @@ async test "native action execution preserves environment secrets output state a
       ..test_step("action", "", shell=""),
       uses: "./.github/actions/fixture",
       remote: true,
-      inputs: { "access-token": "" },
+      inputs: {
+        "access-token": "",
+        "ref-label": "${{ secrets.NOT_RECURSIVE }}",
+      },
+      env: { "EXPORTED": "workflow" },
       secret_env: { "INPUT_ACCESS-TOKEN": "ACCESS_TOKEN" },
     }
     let assignment = {
@@ -54,6 +59,7 @@ async test "native action execution preserves environment secrets output state a
             "after", "test \"$EXPORTED\" = action-value; test -f executed; test ! -f post; test \"$RESULT\" = ready; test -z \"${INPUT_ACCESS_TOKEN:-}\"",
           ),
           templates: { "env:RESULT": "${{ steps.action.outputs.result }}" },
+          env: { "EXPORTED": "workflow" },
         },
       ]),
       version: @protocol.remote_assignment_version,
@@ -160,5 +166,56 @@ async test "native cancellation stops action runtime child process groups" {
     assert_eq(report.conclusion, "cancelled")
     assert_true(report.reported)
     assert_true(!@fs.exists(workspace + "/repository/survivor"))
+  })
+}
+
+///|
+async test "native action jobs keep MoonBit setup outside the checkout directory" {
+  @test_support.with_runner_workspace((root, launcher, workspace) => {
+    let source_dir = root + "/source"
+    @fs.mkdir(source_dir)
+    @fs.write_file(source_dir + "/README.md", "pinned")
+    let archive = root + "/source.tar"
+    assert_eq(
+      @process.run("tar", ["-cf", archive, "-C", source_dir, "README.md"]),
+      0,
+    )
+    let bytes = @fs.read_file(archive).binary()
+    let assignment = {
+      ..test_assignment([
+        setup_step("setup", "nightly"),
+        { ..test_step("checkout", "", shell=""), uses: "moonhub/checkout@v1", },
+        {
+          ..test_step(
+            "after",
+            (
+              #|test -f README.md
+              #|test "$MOON_HOME" = "$HOME/moonbit-0"
+              #|test "$(moon version --all)" = nightly
+            ),
+          ),
+          templates: { "if": "success()" },
+        },
+      ]),
+      version: @protocol.remote_assignment_version,
+    }
+    let server = fake_server()
+    let (code, node) = @process.collect_output_merged("node", [
+      "-p", "process.execPath",
+    ])
+    assert_eq(code, 0)
+    let report = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (operation, body, until) => server.post(operation, body, until),
+      source=() => bytes,
+      moonbit_installer=() => @utf8.encode(fixture_installer),
+      action_node=node.text().trim().to_owned(),
+      action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+    )
+    assert_eq(report.conclusion, "success")
+    assert_true(report.reported)
+    assert_true(report.steps.all(step => step.state == "success"))
+    assert_true(@fs.exists(workspace + "/.home/moonbit-0/bin/moon"))
   })
 }

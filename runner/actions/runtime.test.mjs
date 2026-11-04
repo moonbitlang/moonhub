@@ -10,7 +10,7 @@ import { parseFileCommands, LogCommands } from './commands.mjs';
 import { reference, extractArchive } from './download.mjs';
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'moonhub-actions-test-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'moonhub-actions-test-')));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const workspace = path.join(root, 'workspace'), temp = path.join(root, 'tmp');
   await fs.mkdir(workspace); await fs.mkdir(temp);
@@ -240,4 +240,59 @@ test('ref resolution handles qualified refs and peeled annotated tags without ex
     assert.equal(actual, sha);
   }
   assert.equal(await resolveCommit('owner/action', 'v1', {}, async () => ({stdout: `${tag}\trefs/tags/v1\n${sha}\trefs/tags/v1^{}\n`})), sha);
+});
+
+test('composite scripts receive action paths and per-step environment contexts', async t => {
+  const { config, runtime } = await fixture(t);
+  const nested = await action(config, 'path-child', [
+    'runs:', '  using: composite', '  steps:', '    - shell: bash',
+    '      run: test "$GITHUB_ACTION_PATH" = "$GITHUB_WORKSPACE/path-child"; test "${{ github.action_path }}" = "$GITHUB_ACTION_PATH"',
+  ].join('\n'));
+  const uses = await action(config, 'path-parent', [
+    'runs:', '  using: composite', '  steps:', `    - uses: ${nested}`,
+    '    - shell: bash', '      env:', '        CHILD_MESSAGE: ready',
+    '      run: test "$GITHUB_ACTION_PATH" = "$GITHUB_WORKSPACE/path-parent"; test "${{ env.CHILD_MESSAGE }}" = ready',
+  ].join('\n'));
+  assert.equal((await runtime.action(uses)).code, 0);
+});
+
+test('composite preparation failures retain step status and run conditional cleanup', async t => {
+  const { config, runtime } = await fixture(t);
+  const uses = await action(config, 'prepare-failure', [
+    'runs:', '  using: composite', '  steps:', '    - id: missing',
+    '      uses: ./does-not-exist',
+    "    - if: failure() && steps.missing.outcome == 'failure'",
+    '      shell: sh', '      run: touch composite-preparation-cleanup',
+  ].join('\n'));
+  assert.equal((await runtime.action(uses)).code, 1);
+  assert.equal(await fs.readFile(path.join(config.workspace, 'composite-preparation-cleanup'), 'utf8'), '');
+});
+
+test('Actions contexts and functions ignore case while Linux environment keys preserve it', () => {
+  const context = { env: { Message: 'ready' }, steps: { build: { outputs: { Result: 'done' } } } };
+  assert.equal(evaluate('ENV.Message', context), 'ready');
+  assert.equal(evaluate('env.message', context), '');
+  assert.equal(evaluate('STEPS.BUILD.OUTPUTS.result', context), 'done');
+  assert.equal(evaluate("STARTSWITH('READY', 'read') && SUCCESS()", context), true);
+});
+
+test('exported environment overrides inherited env but explicit step env wins', async t => {
+  const {config} = await fixture(t);
+  const step = (id, run, overrides = []) => ({...config, step:{id, run, shell:'bash', working_directory:'.', env:{VALUE:'initial'}, env_overrides:overrides}});
+  const first = await execute(step('export', 'echo VALUE=exported >> "$GITHUB_ENV"'));
+  assert.equal(first.code, 0);
+  const inherited = await execute(step('inherit', 'test "$VALUE" = exported'), first.state);
+  assert.equal(inherited.code, 0);
+  const explicit = await execute(step('explicit', 'test "$VALUE" = initial', ['VALUE']), first.state);
+  assert.equal(explicit.code, 0);
+});
+
+test('top-level preparation failures record outcome for subsequent failure cleanup', async t => {
+  const {config} = await fixture(t);
+  const result = await execute({...config, step:{id:'bad',run:'exit 99',env:{},templates:{'env:VALUE':"${{ fromJSON('invalid') }}"}}});
+  assert.equal(result.code, 1);
+  assert.equal(result.state.steps.bad.outcome, 'failure');
+  const cleanup = await execute({...config,step:{id:'clean',run:'touch evaluation-cleanup',shell:'sh',working_directory:'.',templates:{if:"failure() && steps.bad.outcome == 'failure'"}}},result.state);
+  assert.equal(cleanup.code, 0);
+  assert.equal(await fs.readFile(path.join(config.workspace,'evaluation-cleanup'),'utf8'),'');
 });

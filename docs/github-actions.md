@@ -100,7 +100,9 @@ status function. Failed steps skip subsequent ordinary steps; `always()` / `fail
 can run cleanup. A failure still makes the job fail after cleanup. `continue-on-error`
 records `outcome: failure` and `conclusion: success` in the step context and allows
 later steps. Conditional skips are reported as native `skipped` steps and can
-complete successfully. Job-level conditions and outputs are not implemented.
+complete successfully. Values exported through `GITHUB_ENV` override inherited
+workflow/job environment; explicit step environment still takes precedence.
+Job-level conditions and outputs are not implemented.
 
 Use `env` to pass branch names, input or other untrusted text to shell scripts.
 As with GitHub Actions, explicitly interpolating that text into `run` can produce
@@ -128,8 +130,10 @@ cannot overwrite reserved executor or shell/loader-injection variables.
 ## Deployment and validation
 
 Upgrade the server, provider/controller and task runner together. Definition
-version 2 and assignment version 5 prevent old executors from treating new
-workflows as literal steps. Older definition version 1 remains readable and runnable.
+version 2 always uses assignment version 5, including jobs containing only
+`run` steps, so environment/output files work without an explicit expression or
+action. Older definition version 1 remains readable and runnable; reruns preserve
+its saved definition version and legacy assignment selection.
 No database schema migration is required for these JSON additions.
 
 The dependency base installs locked YAML dependencies and pinned Node 20/24

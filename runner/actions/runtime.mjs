@@ -163,6 +163,7 @@ export class ActionRuntime {
       GITHUB_ACTIONS: 'true', GITHUB_ACTION: this.config.step?.id || 'post',
       GITHUB_RUN_ID: this.config.run_id || '0', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: this.config.job_id || '',
       RUNNER_OS: context.runner.os, RUNNER_ARCH: context.runner.arch, RUNNER_TEMP: this.temp, RUNNER_TOOL_CACHE: context.runner.tool_cache });
+    if (context.github.action_path) env.GITHUB_ACTION_PATH = context.github.action_path;
     // Source transport redirects this one repository to an immutable local Git
     // bundle. No runner, provider, application or GitHub credential is exposed.
     if (this.config.source_git) {
@@ -200,26 +201,32 @@ export class ActionRuntime {
       let compositeFailure = false;
       for (const [index, step] of value.runs.steps.entries()) {
         const ctx = { ...inputContext, failure: compositeFailure, cancelled: this.cancelled, steps, env: { ...this.context().env, ...supplied } };
-        const condition = step.if === undefined ? !compositeFailure : truthy(evaluate(string(step.if), ctx, true));
         const id = step.id || `step_${index + 1}`;
         if (own(steps, id)) throw new Error('Duplicate composite step id');
-        if (!condition) { steps[id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' }; continue; }
-        const allowed = ['id', 'name', 'if', 'run', 'shell', 'working-directory', 'env', 'uses', 'with', 'continue-on-error'];
-        for (const field of Object.keys(step)) if (!allowed.includes(field)) throw new Error(`Unsupported composite step.${field}`);
-        const env = { ...supplied };
-        for (const [name, item] of Object.entries(scalarMap(step.env, 'step.env'))) {
-          if (!validEnvName(name)) throw new Error('Invalid composite environment variable');
-          env[name] = interpolate(item, ctx);
+        let result, tolerate = false;
+        try {
+          const condition = step.if === undefined ? !compositeFailure : truthy(evaluate(string(step.if), ctx, true));
+          if (!condition) { steps[id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' }; continue; }
+          const allowed = ['id', 'name', 'if', 'run', 'shell', 'working-directory', 'env', 'uses', 'with', 'continue-on-error'];
+          for (const field of Object.keys(step)) if (!allowed.includes(field)) throw new Error(`Unsupported composite step.${field}`);
+          const env = { ...supplied };
+          for (const [name, item] of Object.entries(scalarMap(step.env, 'step.env'))) {
+            if (!validEnvName(name)) throw new Error('Invalid composite environment variable');
+            env[name] = interpolate(item, ctx);
+          }
+          const stepContext = { ...ctx, env: { ...ctx.env, ...env } };
+          tolerate = step['continue-on-error'] === undefined ? false : truthy(evaluate(string(step['continue-on-error']), stepContext));
+          if (typeof step.uses === 'string' && step.run === undefined) {
+            const with_ = Object.fromEntries(Object.entries(scalarMap(step.with, 'step.with')).map(([key, item]) => [key, interpolate(item, stepContext)]));
+            result = await this.action(step.uses, with_, env, stepContext, depth + 1);
+          } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh'].includes(step.shell)) {
+            result = await this.script(interpolate(step.run, stepContext), step.shell, interpolate(step['working-directory'] || '.', stepContext), env, stepContext);
+          } else throw new Error('Composite steps require run with bash/sh or uses');
+        } catch (error) {
+          this.error(error);
+          result = { code: 1, outputs: {} };
         }
-        let result;
-        if (typeof step.uses === 'string' && step.run === undefined) {
-          const with_ = Object.fromEntries(Object.entries(scalarMap(step.with, 'step.with')).map(([key, item]) => [key, interpolate(item, ctx)]));
-          result = await this.action(step.uses, with_, env, ctx, depth + 1);
-        } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh'].includes(step.shell)) {
-          result = await this.script(interpolate(step.run, ctx), step.shell, interpolate(step['working-directory'] || '.', ctx), env, ctx);
-        } else throw new Error('Composite steps require run with bash/sh or uses');
         const failed = result.code !== 0;
-        const tolerate = step['continue-on-error'] === undefined ? false : truthy(evaluate(string(step['continue-on-error']), ctx));
         steps[id] = { outputs: result.outputs, outcome: failed ? 'failure' : 'success', conclusion: failed && !tolerate ? 'failure' : 'success' };
         if (failed && !tolerate) compositeFailure = true;
       }
@@ -252,6 +259,13 @@ export class ActionRuntime {
     try { const code = await this.files(env, result, () => this.process(program, args, env, cwd, result)); return { ...result, code }; }
     finally { await fs.rm(filename, { force: true }); }
   }
+  error(error) {
+    const raw = error instanceof Error ? error.message : 'Action execution failed';
+    // Mask before sanitizing so multiline secrets cannot become unmasked fragments.
+    const message = Buffer.byteLength(raw) > limit ? 'Action error exceeds limits' :
+      maskText(raw, this.state.masks).replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 4096);
+    process.stderr.write(`runner: ${message}\n`);
+  }
   async posts() {
     let code = 0;
     while (this.state.posts.length) {
@@ -272,38 +286,36 @@ export async function execute(config, state = {}, adapters = {}) {
   if (config.phase === 'post') return { code: await runtime.posts(), state: runtime.state };
   const previousFailure = runtime.failure;
   const step = config.step, templates = step.templates || {};
-  const condition = templates.if ?? 'success()';
-  if (!truthy(evaluate(condition, runtime.context({ env: { ...runtime.context().env, ...step.env } }), true))) {
-    runtime.state.steps[step.id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' };
-    return { code: 0, conclusion: 'skipped', state: runtime.state };
-  }
-  const supplied = { ...step.env };
-  for (const key of Object.keys(step.secret_env || {})) {
-    if (!own(process.env, key)) throw new Error('Action secret was not delivered');
-    supplied[key] = process.env[key];
-    if (process.env[key] && !runtime.state.masks.includes(process.env[key])) runtime.state.masks.push(process.env[key]);
-  }
-  const envContext = runtime.context({ env: { ...runtime.context().env, ...supplied } });
-  for (const [key, template] of Object.entries(templates)) if (key.startsWith('env:')) supplied[key.slice(4)] = interpolate(template, envContext);
-  const context = runtime.context({ env: { ...runtime.context().env, ...supplied } });
-  const inputs = { ...step.inputs };
-  for (const [key, template] of Object.entries(templates)) if (key.startsWith('with:')) inputs[key.slice(5)] = interpolate(template, context);
-  for (const name of Object.keys(inputs)) {
-    const key = `INPUT_${name.toUpperCase()}`;
-    if (own(step.secret_env || {}, key)) inputs[name] = supplied[key];
-  }
-  const tolerate = templates['continue-on-error'] === undefined ? false : truthy(evaluate(templates['continue-on-error'], context));
-  let result;
+  let result, tolerate = false;
   try {
+    const overrides = new Set(step.env_overrides ?? Object.keys(step.env || {}));
+    const inheritedExport = key => own(runtime.state.env, key) && !overrides.has(key);
+    const supplied = Object.fromEntries(Object.entries(step.env || {}).filter(([key]) => !inheritedExport(key)));
+    const condition = templates.if ?? 'success()';
+    if (!truthy(evaluate(condition, runtime.context({ env: { ...runtime.context().env, ...supplied } }), true))) {
+      runtime.state.steps[step.id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' };
+      return { code: 0, conclusion: 'skipped', state: runtime.state };
+    }
+    for (const key of Object.keys(step.secret_env || {})) {
+      if (!own(process.env, key)) throw new Error('Action secret was not delivered');
+      const input = step.remote && Object.keys(step.inputs || {}).some(name => `INPUT_${name.toUpperCase()}` === key);
+      if (input || !inheritedExport(key)) supplied[key] = process.env[key];
+      if (process.env[key] && !runtime.state.masks.includes(process.env[key])) runtime.state.masks.push(process.env[key]);
+    }
+    const envContext = runtime.context({ env: { ...runtime.context().env, ...supplied } });
+    for (const [key, template] of Object.entries(templates)) if (key.startsWith('env:') && !inheritedExport(key.slice(4))) supplied[key.slice(4)] = interpolate(template, envContext);
+    const context = runtime.context({ env: { ...runtime.context().env, ...supplied } });
+    const inputs = { ...step.inputs };
+    for (const [key, template] of Object.entries(templates)) if (key.startsWith('with:')) inputs[key.slice(5)] = interpolate(template, context);
+    for (const name of Object.keys(inputs)) {
+      const key = `INPUT_${name.toUpperCase()}`;
+      if (own(step.secret_env || {}, key)) inputs[name] = supplied[key];
+    }
+    tolerate = templates['continue-on-error'] === undefined ? false : truthy(evaluate(templates['continue-on-error'], context));
     result = step.remote ? await runtime.action(step.uses, inputs, supplied) :
       await runtime.script(templates.run === undefined ? step.run : interpolate(templates.run, context), step.shell, step.working_directory, supplied);
   } catch (error) {
-    const raw = error instanceof Error ? error.message : 'Action execution failed';
-    // Preserve useful diagnostics, masking before sanitizing/truncating so even
-    // multiline secret values cannot be transformed into unmasked fragments.
-    const message = Buffer.byteLength(raw) > limit ? 'Action error exceeds limits' :
-      maskText(raw, runtime.state.masks).replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 4096);
-    process.stderr.write(`runner: ${message}\n`);
+    runtime.error(error);
     result = { code: 1, outputs: {} };
   }
   const outcome = result.code ? 'failure' : 'success', conclusion = result.code && !tolerate ? 'failure' : 'success';

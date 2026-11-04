@@ -33,8 +33,8 @@ export class LogCommands {
     while ((end = this.pending.indexOf('\n')) >= 0) { this.line(this.pending.slice(0, end)); this.pending = this.pending.slice(end + 1); }
     if (Buffer.byteLength(this.pending) > 1048576) throw new Error('Action log line exceeds 1 MiB');
   }
-  end() { this.pending += this.decoder.end(); if (this.pending) this.line(this.pending); this.pending = ''; }
-  line(line) {
+  end() { this.pending += this.decoder.end(); if (this.pending) this.line(this.pending, false); this.pending = ''; }
+  line(line, terminated = true) {
     if (Buffer.byteLength(line) > 1048576) throw new Error('Action log line exceeds 1 MiB');
     const text = line.replace(/\r$/, '');
     if (this.stop) { if (text === `::${this.stop}::`) { this.stop = ''; return; } }
@@ -55,7 +55,7 @@ export class LogCommands {
         if (['set-env', 'add-path'].includes(name)) throw new Error('Deprecated unsafe workflow command; use environment files');
       }
     }
-    this.output(maskText(line, this.state.masks) + '\n');
+    this.output(maskText(line, this.state.masks) + (terminated ? '\n' : ''));
   }
 }
 

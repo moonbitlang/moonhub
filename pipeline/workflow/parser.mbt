@@ -565,10 +565,15 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
+    let explicit_env = if uses is Some(_) && !remote {
+      Map([])
+    } else {
+      yaml_to_string_map(fields.get("env"), "\{ctx}.env")
+    }
     let step_env = if uses is Some(_) && !remote {
       Map([])
     } else {
-      merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env"))
+      merge_env(env, explicit_env)
     }
     let literal_env : Map[String, String] = Map([])
     let secret_env : Map[String, String] = input_secrets
@@ -626,6 +631,7 @@ fn parse_job(
         step_defaults.working_directory.unwrap_or(".")
       },
       env: literal_env,
+      env_overrides: explicit_env.keys().collect(),
       secret_env,
       timeout_minutes: parse_timeout(
         fields.get("timeout-minutes"),

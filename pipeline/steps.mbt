@@ -38,9 +38,8 @@ pub fn Coordinator::update_step(
           return lease_state(row, (self.clock)())
         }
         let ordinal : Int64 = step.get_name("ordinal")
-        let modern = attempt_job(row).steps.any(step => {
-          step.remote || !step.templates.is_empty()
-        })
+        let modern = (row.get_name("definition_version") : Int64) ==
+          @workflow.format_version.to_int64()
         if request.state == "running" {
           guard current == "pending" &&
             (row.get_name("status") : String) == "running" &&

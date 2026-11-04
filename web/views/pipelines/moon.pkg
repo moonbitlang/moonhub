@@ -21,6 +21,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/runner",
   "moonbitlang/async/fs",
+  "moonbitlang/async/process",
   "hackwaly/moonhub/test_support",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async/http",

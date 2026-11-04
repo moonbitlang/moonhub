@@ -218,6 +218,7 @@ pub(all) struct StepPlan {
   shell : String
   working_directory : String
   env : Map[String, String]
+  env_overrides : Array[String]
   secret_env : Map[String, String]
   timeout_minutes : Int32
 }
@@ -291,6 +292,14 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
       path=path.add_key("working_directory"),
     ),
     env: @json.from_json(env, path=path.add_key("env")),
+    env_overrides: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("env_overrides").unwrap_or(Json::array([])),
+          path=path.add_key("env_overrides"),
+        )
+      _ => []
+    },
     secret_env: match json {
       Object(fields) =>
         @json.from_json(

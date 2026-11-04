@@ -78,7 +78,6 @@ async fn validate_options(
         .all(entry => {
           @actions.valid_input_name(entry.0) &&
           !entry.1.contains("\u{0000}") &&
-          !entry.1.contains("${{") &&
           @utf8.encode(entry.1).length() <= 65536
         })
       } else {
@@ -148,7 +147,9 @@ async fn validate_options(
       ) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
-    guard step.env.length() + step.secret_env.length() <= 300 else {
+    guard step.env_overrides.length() <= 100 &&
+      step.env_overrides.all(name => valid_secret_env_name(name)) &&
+      step.env.length() + step.secret_env.length() <= 300 else {
       raise InvalidConfiguration("too many step environment variables")
     }
     for name, secret in step.secret_env {
@@ -764,6 +765,8 @@ pub async fn run(
   assignment : @protocol.Assignment,
   token : String,
   options : Options,
+  action_node~ : String = "/usr/local/bin/node",
+  action_runtime~ : String = "/usr/local/lib/moonhub/actions/runtime.mjs",
 ) -> Report {
   guard token.length() == 64 &&
     token.iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f')) else {
@@ -778,6 +781,8 @@ pub async fn run(
     assignment,
     options,
     post,
+    action_node~,
+    action_runtime~,
     secrets=request => fetch_secrets(options.server, attempt_id, token, request),
     source=() => fetch_source(options.server, attempt_id, token),
     bundle=() => fetch_source(options.server, attempt_id, token, bundle=true),
