@@ -2,8 +2,10 @@
 
 This is the current production deployment path. Web/SSH run in Compose on
 `moonhub-web`; a host systemd service runs the standalone ASG controller. Task
-containers run on disposable worker EC2 instances. No DinD/provider containers
-run on the Web host. The `moonhub-legacy` SSH alias refers to the retired host.
+containers for the ASG provider run on disposable worker EC2 instances. An
+existing Docker/DinD provider can coexist on the Web host; upgrades preserve its
+original pause state as well. The `moonhub-legacy` SSH alias refers to the retired
+host.
 Do not add a management SSH alias or open port 22 on the new host: its port 22
 is the application's Git transport. Use AWS Systems Manager Session Manager
 or Run Command with the existing instance role.
@@ -101,18 +103,20 @@ ID and instance-type allowlist stable for an enrolled provider.
 ```
 
 Upgrade builds and publishes before pausing claims. At the switch boundary it
-checks for active attempts and pauses the production provider in one database
-transaction. Active attempts still refuse the upgrade without interrupting tasks.
-The script records the provider's original pause state and restores it after the
-switch; a provider that was already paused stays paused.
+checks for active attempts and pauses every non-revoked provider in one database
+transaction. This includes a Docker/DinD provider running alongside the ASG
+controller. Active attempts still refuse the upgrade without interrupting tasks.
+The script records each provider's original pause state and restores them together
+after the switch; a provider that was already paused stays paused.
 
 If the installed standalone controller binary and systemd settings match the new
 build, an enrolled provider can keep idle workers and nonzero ASG capacity. The
 script stops the controller before the temporary pause, preventing that pause from
 triggering worker retirement. Saved execution settings must already be applied.
-Workers still cleaning up a task, active attempts and undrained workers belonging
-to another provider continue to block the switch. The controller restarts only
-after the original pause state has been restored. A successful upgrade starts the
+The script waits for task cleanup with claims paused. Other unchanged providers
+can keep ready workers only while paused and with their configuration applied.
+Busy or starting workers in those providers continue to block the switch. The
+controller restarts only after the original pause state has been restored. A successful upgrade starts the
 controller even if it was inactive beforehand, so idle retirement can resume.
 New commit-tagged bootstrap Runner image defaults do not change an enrolled
 provider's saved execution settings.
@@ -126,8 +130,9 @@ pause state and restarts a previously running controller, including one that was
 waiting for systemd's automatic restart delay.
 
 The controller backup contains `provider-state.json`, written before the pause
-transaction commits. If Web is unavailable and automatic restoration fails, the
-script reports this journal's path and exits unsuccessfully. Restore Web health,
+transaction commits. New journals contain the original state of every paused
+provider; recovery also accepts older single-provider journals. If Web is unavailable
+and automatic restoration fails, the script reports this journal's path and exits unsuccessfully. Restore Web health,
 then restore the original pause state using that journal (substitute the real
 Compose project and backup path):
 

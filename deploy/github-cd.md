@@ -63,10 +63,13 @@ a failed Actions run; existing upgrade failure recovery still applies.
 
 After GitHub CI passes, the wrapper builds on EC2, then waits up to 20 minutes
 for active pipeline attempts (including other repositories) to finish before
-invoking the upgrade. The existing production script still atomically refuses
-to switch if another attempt started
-in the meantime. On a timeout or refusal, let tasks finish and rerun the failed
-job. If `master` advanced, its newer workflow handles deployment.
+invoking the upgrade. The production script atomically refuses to switch if
+another attempt started in the meantime. It then pauses every provider,
+including any Docker/DinD provider, waits for cleanup, and restores each original
+pause state on success or failure. Ready workers in unchanged secondary providers
+can remain paused through the Web update; they do not have to be destroyed.
+On a timeout or refusal, let tasks finish and rerun CI on `master` with deployment
+selected. If `master` advanced, its newer workflow handles deployment.
 
 ## Logs, retries and recovery
 

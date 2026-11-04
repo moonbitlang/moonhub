@@ -203,23 +203,28 @@ upgrade() {
     stop_controller
   fi
   RESTORE_PROVIDER=1
-  # The transaction checks active attempts and pauses claims atomically. Builds
-  # and publication have already finished, keeping the pause window short.
-  docker exec -i --user git "$PROJECT-web-1" node --no-warnings - pause "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-provider-state.cjs" > "$PROVIDER_STATE_FILE"
-  printf 'Provider claims paused for production switch.\n'
-  if [ "$unchanged" = 0 ]; then
-    printf 'Controller changed; waiting for paused workers and both ASGs to drain.\n'
-    local deadline=$((SECONDS + drain_timeout))
-    while ! {
-      docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-readiness.cjs" > /dev/null 2> "$backup/readiness.log" && asgs_empty
-    }; do
-      [ "$SECONDS" -lt "$deadline" ] || {
-        cat "$backup/readiness.log" >&2
-        printf 'Timed out draining workers/ASGs; Web remains unchanged.\n' >&2; return 1;
-      }
-      sleep 5
-    done
+  # Pause every provider atomically: a Docker provider may coexist with ASG.
+  # Builds and publication finish first, keeping the pause window short.
+  docker exec -i --user git "$PROJECT-web-1" node --no-warnings - pause-all "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-provider-state.cjs" > "$PROVIDER_STATE_FILE"
+  printf 'All provider claims paused for production switch.\n'
+  local readiness=("${MOONHUB_PROVIDER_NAME:-asg}")
+  if [ "$unchanged" = 1 ]; then
+    readiness+=(--allow-idle-workers)
+    printf 'Waiting for paused workers to finish task cleanup.\n'
+  else
+    printf 'Controller changed; waiting for paused ASG workers and both ASGs to drain.\n'
   fi
+  local deadline=$((SECONDS + drain_timeout))
+  while ! {
+    docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${readiness[@]}" < "$ROOT/deploy/production-readiness.cjs" > /dev/null 2> "$backup/readiness.log" &&
+      { [ "$unchanged" = 1 ] || asgs_empty; }
+  }; do
+    [ "$SECONDS" -lt "$deadline" ] || {
+      cat "$backup/readiness.log" >&2
+      printf 'Timed out waiting for worker cleanup/ASG drain; Web remains unchanged.\n' >&2; return 1;
+    }
+    sleep 5
+  done
   if systemctl cat "$SERVICE" >/dev/null 2>&1; then
     if [ "$unchanged" = 0 ]; then
       stop_controller
@@ -229,8 +234,6 @@ upgrade() {
   if [ -d "$STATE" ]; then cp -a "$STATE" "$backup/state"; fi
   if [ -f /usr/local/bin/moonhub-runner ]; then cp /usr/local/bin/moonhub-runner "$backup/"; fi
   cp "$SETTINGS" "$backup/production.env"
-  local readiness=("${MOONHUB_PROVIDER_NAME:-asg}")
-  if [ "$unchanged" = 1 ]; then readiness+=(--allow-idle-workers); fi
   docker exec -i --user git "$PROJECT-web-1" node --no-warnings - "${readiness[@]}" < "$ROOT/deploy/production-readiness.cjs"
   if [ "$unchanged" = 0 ]; then
     asgs_empty || { printf 'Drain both ASGs to zero before production switch.\n' >&2; return 1; }
