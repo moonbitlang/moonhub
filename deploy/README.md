@@ -70,9 +70,8 @@ to select an archived MoonBit toolchain release;
 its default is `0.10.19+8e43a47fb-nightly`, matching the formatter syntax in this
 repository. Upgrade the dependency base and Runner together with the application;
 older toolchains cannot parse the new `#derive(...)` attributes or inclusive
-range patterns. Dependency
-resolution migrates the downloaded `nexacodes/email@0.1.0` legacy manifest before
-checking, without modifying tracked application inputs.
+range patterns. Dependency resolution checks the downloaded packages without
+modifying their manifests or tracked application inputs.
 
 ### Dependency Base Image
 

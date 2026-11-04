@@ -1,16 +1,23 @@
 name: Deploy production
 
 on:
-  push:
-    branches: [master]
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      deploy:
+        description: Explicit manual deployment request from CI
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    if: github.repository == 'moonbitlang/moonhub' && github.ref == 'refs/heads/master'
+    if: >-
+      ${{ github.repository == 'moonbitlang/moonhub' &&
+          github.ref == 'refs/heads/master' &&
+          (github.event_name == 'push' ||
+           (github.event_name == 'workflow_dispatch' && inputs.deploy)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     environment: production
@@ -33,7 +40,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: moonhub-deploy-${{ github.run_id }}
           role-duration-seconds: 7200
-      - name: Deploy mirrored master through SSM
+      - name: Deploy checked master through SSM
         env:
           MOONHUB_DEPLOY_INSTANCE_ID: ${{ vars.AWS_DEPLOY_INSTANCE_ID }}
           MOONHUB_DEPLOY_DOCUMENT: MoonHub-Deploy

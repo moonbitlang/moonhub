@@ -629,9 +629,9 @@ Public trigger status does not expose internal exception details.
 Upgrade Web and SSH together: both trusted hooks (`pre-receive` and
 `reference-transaction`) must be installed and executable; missing or
 non-executable hooks fail closed. Docker installs both automatically. The hooks
-never come from the pushed repository. `.github/workflows/moonhub.yml` now allows
-pushes to `master` as well as manual dispatch; enabling the repository setting is
-still an explicit operator action.
+never come from the pushed repository. Enabling push workflows for a repository
+is still an explicit operator action. This repository uses GitHub CI; do not
+enable its retired MoonHub push workflows.
 
 `node scripts/pipeline-push-smoke.cjs` runs the native SSH command, actual
 receive-pack and deployment hooks with an isolated database. Its local transport
@@ -941,62 +941,25 @@ retains only its named acceptance project and writes connection settings and
 test results under `_build/moonhub-acceptance-*` for inspection. No registry is
 needed when local Runner images are loaded into DinD by the deploy script.
 
-## MoonHub Self-Hosting Checks
+## Repository self-check
 
-`.github/workflows/moonhub.yml` runs this repository's check on pushes to `master`
-and on manual dispatch, using the existing archive checkout. It selects MoonBit
-`stable` with the built-in setup step and requires `self-hosted`, `linux` and
-`moonhub-build` provider labels. The `runner-selfhost` target remains compatible
-with existing settings; the shared dependency base now includes Node/npm in both
-Runner targets. Docker CLI binaries are also present in the shared base, but jobs
-have no Docker socket or deployment credentials. Web, provider and Runner builds
-use the deployment pin `0.10.17+093cb8f9c`. Preserve the built images for recovery:
-upstream toolchain archives have limited retention.
+This repository's CI runs on GitHub-hosted Ubuntu 24.04 runners; see
+[GitHub CI and migration](github-ci.md). The old self-hosted full-source
+acceptance mode (`MOONHUB_E2E_SELFHOST`) has been removed. Product pipeline,
+runner, provider and ASG functionality remains covered by its existing package
+tests and dedicated acceptance scripts, including `scripts/pipeline-e2e.cjs`.
+Those tests do not read this repository's GitHub CI workflows.
 
-For the provider assigned to MoonHub, use these settings in `deploy/deploy.env`
-(replace the repository path with its registered namespace):
+Run `node scripts/self-check.cjs` locally for the complete source checks.
+The script installs the exact compiler pinned by `deploy/base.Dockerfile`
+under `.tmp/self-check-moon/` when necessary, verifies it, and passes the selected
+`MOON_HOME` and `PATH` to every stage. GitHub installs and verifies the same pin
+before calling the script. Neither path changes the production checkout.
 
-```sh
-MOONHUB_ENABLE_PIPELINES=1
-MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost
-MOONHUB_PROVIDER_LABELS=self-hosted,linux,moonhub-build
-MOONHUB_PROVIDER_SCOPE=selected
-MOONHUB_PROVIDER_REPOSITORIES=moonhub/moonhub
-MOONHUB_RUNNER_MEMORY=4g
-MOONHUB_RUNNER_CPUS=2
-```
-
-In CI, `scripts/self-check.cjs` keeps the workflow-selected compiler, so this job
-checks MoonHub against `stable`. Local self-check runs continue to use the exact
-compiler pinned by `deploy/base.Dockerfile`; if the available compiler differs,
-the script installs the pin under `.tmp/self-check-moon/` with
-`deploy/install-moonbit.sh`, verifies it and passes the isolated `MOON_HOME` and
-`PATH` to every stage, including npm's MoonBit prebuild. It never replaces the
-runner's shared toolchain or follows its library symlinks. A completed local
-installation is reused only when its compiler still matches the pin.
-
-The script initializes the registry in the selected Moon home, then
-prints each stage's start, result and elapsed time, with a progress line every
-30 seconds while a command is running. Dependency installation has a five-minute
-stage deadline; native tests have twenty minutes and compilation has ten minutes.
-The workflow's 40-minute job deadline still bounds the entire run. A stage timeout terminates
-its process group and fails the check without starting later stages. It then
-runs check/fmt/info in order, rejects modified or
-added/deleted MoonBit inputs and interfaces without requiring `.git`, checks
-package boundaries, builds frontend assets, then runs all native tests and builds
-the executable. The source checkout is not a deployment working tree. Production
-upgrades and Docker integration tests remain external to the job.
-
-After building `moonhub:acceptance`, `moonhub-provider:acceptance` and
-`moonhub-runner:selfhost` from a clean checkout, run:
-
-```sh
-MOONHUB_E2E_SELFHOST=1 node scripts/pipeline-e2e.cjs
-```
-
-This imports the committed MoonHub repository into a disposable instance, runs
-the real self-check workflow, and retains its commit/run receipt alongside the
-checkout, cancellation and upgrade acceptance results. Self-hosting mode defaults
-to loopback ports 18083/12225 and subnet 172.30.93.0/24; the E2E port/subnet
-overrides remain available. Run `node --test scripts/self-check-test.cjs` to check
-the archive-formatting guard independently.
+The script initializes the Mooncakes index and dependencies, then runs
+`moon check --deny-warn`, `moon fmt` and `moon info` in order. It rejects modified,
+added or deleted MoonBit inputs and interfaces, checks package boundaries, runs
+script regressions, builds frontend assets, and runs native tests and builds
+with `--strip -j 1`. Each stage reports progress and has a deadline; failure
+stops later stages. The GitHub job has a 40-minute timeout. Production deployment
+and Docker SSH smoke run separately from this script.

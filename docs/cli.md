@@ -5,6 +5,10 @@ The native `moonhub` executable also acts as a remote collaboration client.
 `/-/api/v1`. They do not open the server database. Existing Web startup,
 Runner/provider and administration commands retain their entry points.
 
+These commands document the MoonHub product. Development and CI for this source
+repository use GitHub; see [repository CI and migration](github-ci.md). Workflow
+examples below refer to files in the repository being operated on.
+
 ## Authentication
 
 Create an access token in **Account menu > Access tokens** (`/-/settings/tokens`).
@@ -102,7 +106,7 @@ moonhub issue reopen 2 --edit-version 2
 moonhub issue edit 2 --edit-version 3 --title 'Updated' --body-file issue.md --assignee 12
 
 moonhub ci list
-moonhub ci run --branch master --workflow .github/workflows/moonhub.yml
+moonhub ci run --branch master --workflow .github/workflows/build.yml
 moonhub ci view 9 --json
 moonhub ci logs 9 --attempt 14 --after 0 --json
 moonhub ci cancel 9

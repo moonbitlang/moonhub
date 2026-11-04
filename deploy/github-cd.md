@@ -1,30 +1,37 @@
 # GitHub continuous deployment
 
-MoonHub remains the source of truth for code, MRs, Issues and CI. An outbound
-push mirror copies its branches and tags to `git@github.com:moonbitlang/moonhub.git`.
-Only continuous deployment runs on GitHub; the development workflow is unchanged.
-Do not push independent changes to the GitHub mirror.
+GitHub is this repository's development entry point for code, PRs, Issues,
+merges and CI. See [CI configuration and cutover](../docs/github-ci.md).
 
-`.github/workflows/deploy.yml` deploys mirrored `master` updates through SSM.
-The existing MoonHub self-check remains in `.github/workflows/moonhub.yml`.
-Both that workflow and `docker.yml` are disabled in the GitHub mirror to avoid
-duplicate CI or waiting for nonexistent GitHub self-hosted runners. MoonHub's
-master merge policy and CI remain responsible for checking source changes.
-Deployment jobs share a concurrency group and never cancel an active upgrade.
-A manual dispatch on `master` can retry a failed deployment.
+`.github/workflows/ci.yml` runs `Self-check` and `Docker SSH` on GitHub-hosted
+Ubuntu 24.04 runners. After both succeed, `CI required` passes and a `master`
+push calls `.github/workflows/deploy.yml`. The latter accepts only
+`workflow_call`; it has no independent push or manual trigger. The local
+reusable-workflow reference and default checkout use the same commit as CI.
+PRs cannot deploy. A manual `CI` run defaults to no deployment; select `master`
+and set `deploy` to true to deploy after running the complete checks again.
+Do not add an independent deployment dispatch or `workflow_run` bypass.
 
-## Outbound mirror
+Updated PR runs cancel their obsolete CI. Each non-PR run has its own workflow
+concurrency group, while deployment jobs retain the shared `moonhub-production`
+group with `cancel-in-progress: false`. New CI cannot cancel an active upgrade.
+The production environment remains restricted to `master`, with OIDC permission
+only on the deployment job. Self-check and Docker SSH receive read-only tokens.
 
-In the MoonHub repository's **Settings → Mirrors**, the destination is
-`git@github.com:moonbitlang/moonhub.git`. Its independent SSH public key is
-registered as a write-enabled GitHub deploy key, and the GitHub host fingerprint
-is verified before enabling automatic sync. Force updates and pruning stay off.
-Enabling queues the initial full sync; managed pushes and MR merges queue
-subsequent updates. See [push mirror behavior](../docs/mirrors.md).
+Production images continue to be built on EC2, published to ECR and deployed
+by the existing host script. GitHub runners only run checks and invoke SSM;
+there is no production image build or publication job on GitHub.
 
-The GitHub mirror receives only branches and tags, excluding private merge and
-pipeline retention refs. Check **Sync history** if a MoonHub update has not
-appeared on GitHub. No successful mirror transfer means no GitHub push event.
+## Retired outbound mirror
+
+Disable this repository's MoonHub outbound mirror to
+`git@github.com:moonbitlang/moonhub.git` and remove its `moonhub-outbound-mirror`
+write-enabled GitHub deploy key during cutover. Keep the separate production
+read-only key below. Also disable automatic push CI only for the old
+`compiler/moonhub` repository, migrate active MRs to GitHub PRs before closing
+them, cancel remaining checks and wait for running tasks. Other repositories'
+pipelines, runners, providers and ASGs remain operational. These runtime actions
+require separate verification; editing this documentation does not perform them.
 
 ## Provisioned production integration
 
@@ -54,14 +61,15 @@ It verifies Web/SSH image revision labels and health, the controller and public
 login endpoint before reporting success. A deployment failure remains
 a failed Actions run; existing upgrade failure recovery still applies.
 
-The wrapper builds while MoonHub's post-merge CI runs, then waits up to 20 minutes
-for active pipeline attempts to finish before invoking the upgrade. The existing
-production script still atomically refuses to switch if another attempt started
-in the meantime. It then pauses every provider, including any Docker/DinD
-provider, waits for cleanup, and restores each original pause state on success
-or failure. Ready workers in unchanged secondary providers can remain paused
-through the Web update; they do not have to be destroyed. On a timeout or refusal,
-let tasks finish and rerun the failed job. If `master` advanced, its newer workflow handles deployment.
+After GitHub CI passes, the wrapper builds on EC2, then waits up to 20 minutes
+for active pipeline attempts (including other repositories) to finish before
+invoking the upgrade. The production script atomically refuses to switch if
+another attempt started in the meantime. It then pauses every provider,
+including any Docker/DinD provider, waits for cleanup, and restores each original
+pause state on success or failure. Ready workers in unchanged secondary providers
+can remain paused through the Web update; they do not have to be destroyed.
+On a timeout or refusal, let tasks finish and rerun CI on `master` with deployment
+selected. If `master` advanced, its newer workflow handles deployment.
 
 ## Logs, retries and recovery
 
@@ -75,15 +83,15 @@ for command completion; if Actions is interrupted, inspect the original SSM
 command before retrying. Host locking serializes deployments even if the
 workflow is canceled. GitHub workflow cancellation does not undo a deployment.
 
-To retry, rerun the failed GitHub job or dispatch `Deploy production` on `master`.
-To stop future deployments, disable this workflow in GitHub Actions. Inspect
-the active SSM command before changing a running upgrade. For rollback, use
+To retry, dispatch `CI` on `master` with `deploy: true`; the complete checks run
+before deployment. To stop future deployments, disable `CI` in GitHub Actions.
+Inspect the active SSM command before changing a running upgrade. For rollback, use
 the matching Web/controller backups described in [production.md](production.md).
 Automatic CD refuses non-fast-forward updates, including a rewritten master.
 
-Local clones keep MoonHub as their primary remote. The production checkout
-fetches the GitHub mirror with its host-only read key. The mirror's write key
-and production's read key are separate; neither is an AWS credential.
+Local clones use GitHub as their development remote. The production checkout
+fetches GitHub with its host-only read key. Retiring the outbound mirror must
+not revoke this production key. Neither SSH key is an AWS credential.
 
 Validate changes with `node --test scripts/github-deploy-test.cjs` and
 `node scripts/production-deploy-test.cjs`. A real `master` push must also produce

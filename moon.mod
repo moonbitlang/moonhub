@@ -20,9 +20,9 @@ import {
   "moonbitlang/x@0.5.5",
   "moonbitstack/moondb@0.1.8",
   "moonbitstack/moonsqlite@0.3.0",
-  "nexacodes/email@0.1.0",
   "moonbitlang/moonback@0.8.5",
   "moonbit-community/rabbita@0.17.0",
+  "moonbit-community/email@0.0.1",
 }
 
 preferred_target = "native"

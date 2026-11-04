@@ -4,9 +4,9 @@ package "hackwaly/moonhub/mail"
 import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
+  "moonbit-community/email/transport",
   "moonbitlang/async",
   "moonbitlang/core/debug",
-  "nexacodes/email/transport",
 }
 
 // Values
