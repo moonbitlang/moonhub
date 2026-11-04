@@ -7,6 +7,13 @@ move historical MoonHub MRs and Issues. The old full-source self-host acceptance
 mode has been removed; product functionality uses its existing package tests
 and dedicated acceptance scripts.
 
+As of November 4, 2026, the source migration is in
+[PR #1](https://github.com/moonbitlang/moonhub/pull/1). The old repository's mirror
+and automatic push CI shutdown, plus mirror write-key revocation, are deferred
+to the repository administrators for the subsequent cutover. Keep these items
+pending until their live state is verified. Production acceptance follows the
+protected merge.
+
 ## Checks and deployment
 
 `.github/workflows/ci.yml` replaces `moonhub.yml` and `docker.yml`. It runs on
