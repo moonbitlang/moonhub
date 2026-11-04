@@ -144,7 +144,7 @@ async test "pull request workflows discover without branch rules deduplicate and
       assert_false(@collaboration.merge_checks(pool, mr)[0].required)
       let coordinator = merge_check_provider(pool)
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
-      assert_eq(assignment.version, @protocol.action_assignment_version)
+      assert_eq(assignment.version, @protocol.remote_assignment_version)
       assert_eq(assignment.job.steps[0].uses, "actions/checkout@v4")
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(coordinator.start(id, token, 1))
@@ -1081,7 +1081,7 @@ async test "invalid source workflow fails preparation without executing the targ
     source_workflow=Some(
       @test_support.single_job_workflow.replace_all(
         old="run: echo fixture",
-        new="uses: unsupported/action@v1",
+        new="uses: unsupported/action@../invalid",
       ),
     ),
   )
@@ -1298,7 +1298,7 @@ async test "required and source-added automatic workflows share the same pinned 
             "invalid.yml",
             pull_request_workflow.replace_all(
               old="run: test -f README.md",
-              new="uses: unsupported/action@v1",
+              new="uses: unsupported/action@../invalid",
             ),
           ),
         ],

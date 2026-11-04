@@ -116,6 +116,8 @@ async function main() {
   assertUnchanged(before, snapshotInputs(root));
   await run('Package boundaries', process.execPath, ['scripts/check-package-boundaries.cjs']);
   await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs', 'scripts/resolve-dependencies-test.cjs']);
+  await run('Action runtime dependencies', 'npm', ['ci', '--prefix', 'runner/actions', '--ignore-scripts', '--no-audit', '--no-fund']);
+  await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);

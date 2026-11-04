@@ -19,13 +19,14 @@ unchanged.
 | `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and pending upload cleanup |
 | `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to migration 024 |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
+| `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, repository CI secrets and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, config synchronization, worker lifecycle and ephemeral-container adapter; no database or Web dependency |
 | `runner/cli` | Shared single-assignment CLI for the standalone and legacy executable |
 | `cmd/moonhub-runner` | Independent runner executable; no Web server or database dependencies |
-| `runner` | Single-job process execution, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
+| `runner` | Single-job process execution, downloaded JavaScript/composite actions, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
 | `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
@@ -182,6 +183,8 @@ Each production package owns its tests. Run the entire suite or a single
 package from the module root:
 
 ```sh
+npm ci --prefix runner/actions --ignore-scripts
+node --test runner/actions/runtime.test.mjs
 npm ci --prefix js
 npm run build --prefix js
 moon test --strip -j 1

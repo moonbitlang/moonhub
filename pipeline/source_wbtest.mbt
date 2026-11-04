@@ -12,6 +12,10 @@ async test "checkout requires a live authorized attempt and denies stale source 
         ignore(coordinator.start(id, attempt_secret, 1))
         let archive = coordinator.read_source(root, id, attempt_secret)
         assert_true(archive.length() > 1024)
+        assert_true(
+          coordinator.read_source_bundle(root, id, attempt_secret).length() >
+          100,
+        )
       }
       let admin = @identity.active_user_by_name(pool, "admin")
       match reason {
@@ -42,6 +46,22 @@ async test "checkout requires a live authorized attempt and denies stale source 
         err => raise err
       } noraise {
         _ => fail("stale attempt retrieved source")
+      }
+      try
+        ignore(coordinator.read_source_bundle(root, id, attempt_secret))
+      catch {
+        Conflict(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("stale attempt retrieved git bundle")
+      }
+      try
+        ignore(coordinator.read_source_bundle(root, id, provider_secret))
+      catch {
+        @domain.Unauthorized(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("provider retrieved git bundle")
       }
       try ignore(coordinator.read_source(root, id, provider_secret)) catch {
         @domain.Unauthorized(_) => ()
@@ -77,4 +97,58 @@ test "checkout rejects reserved paths symlinks and submodules" {
       _ => fail("unsafe checkout tree accepted")
     }
   }
+}
+
+///|
+async test "source bundle restores exactly one pinned commit without repository history" {
+  with_protocol_fixture((coordinator, _, root, run, _, _) => {
+    let id = @protocol.parse_decimal(
+      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+    ).unwrap()
+    ignore(coordinator.start(id, attempt_secret, 1))
+    let bundle = coordinator.read_source_bundle(root, id, attempt_secret)
+    let scratch = @fs.tmpdir(prefix="moonhub-bundle-test-")
+    defer @fs.rmdir(scratch, recursive=true)
+    @fs.write_file(scratch + "/source.bundle", bundle)
+    assert_eq(
+      @process.run("git", [
+        "init",
+        "--bare",
+        "--quiet",
+        scratch + "/restored.git",
+      ]),
+      0,
+    )
+    assert_eq(
+      @process.run(
+        "git",
+        [
+          "--git-dir",
+          scratch + "/restored.git",
+          "bundle",
+          "unbundle",
+          scratch + "/source.bundle",
+        ],
+        stdout=@process.redirect_to_file("/dev/null"),
+      ),
+      0,
+    )
+    @fs.write_file(scratch + "/restored.git/shallow", run.commit_sha + "\n")
+    let (code, content) = @process.collect_output_merged("git", [
+      "--git-dir",
+      scratch + "/restored.git",
+      "show",
+      run.commit_sha + ":.github/workflows/build.yml",
+    ])
+    assert_eq(code, 0)
+    assert_eq(content.text(), run.workflow_source)
+    let (code, parents) = @process.collect_output_merged("git", [
+      "--git-dir",
+      scratch + "/restored.git",
+      "rev-list",
+      run.commit_sha,
+    ])
+    assert_eq(code, 0)
+    assert_eq(parents.text().trim(), run.commit_sha)
+  })
 }

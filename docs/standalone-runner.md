@@ -15,7 +15,9 @@ _build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe --help
 
 Install the executable as `/usr/local/bin/moonhub-runner`. Build the Docker
 `runner` target for task execution; its entry point invokes `moonhub-runner execute`
-and includes the toolchain and step launcher. Use matching controller/task versions.
+and includes the toolchain, step launcher and Node 20/24 Action runtime. Use matching
+server/controller/task versions and rebuild the dependency base for assignment v5.
+See [GitHub Action execution](github-actions.md) for supported metadata and source limits.
 
 In **Pipeline providers**, create a provider with the intended labels and repository
 grants. Save its one-time registration token in a 0600 file. The CLI name must

@@ -16,6 +16,8 @@ try {
   for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
   for (const file of ['moon.mod', 'moon.pkg', '.dockerignore']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../js', file), path.join(root, 'js', file));
+  fs.mkdirSync(path.join(root, 'runner/actions'), { recursive: true });
+  for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../runner/actions', file), path.join(root, 'runner/actions', file));
   fs.writeFileSync(path.join(root, '.gitignore'), 'bin/\nbackups/\n*.log\ndeploy/deploy.env\nsecret\n');
   const git = args => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   git(['init', '-q']);

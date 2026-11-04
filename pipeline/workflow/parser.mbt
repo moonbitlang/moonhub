@@ -109,13 +109,15 @@ fn yaml_to_string_map(
       !key.has_prefix("RUNNER_") &&
       !key.has_prefix("LD_") &&
       !key.has_prefix("DYLD_") &&
-      !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"].contains(key) else {
+      !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
+        key,
+      ) else {
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
     result[key] = match value {
       String(text) => {
         if secret_reference(text) is None {
-          ignore(env_segments(text, "\{ctx}.\{key}"))
+          validate_template(text, "\{ctx}.\{key}")
         }
         text
       }
@@ -422,7 +424,7 @@ fn parse_job(
       fields,
       [
         "id", "name", "run", "uses", "with", "env", "shell", "working-directory",
-        "timeout-minutes",
+        "timeout-minutes", "if", "continue-on-error",
       ],
       ctx,
     )
@@ -433,12 +435,75 @@ fn parse_job(
       raise InvalidWorkflow("\{ctx}: invalid or duplicate step id")
     }
     step_ids[step_id] = true
-    let run = yaml_as_optional_string(fields.get("run"), "\{ctx}.run")
+    let templates : Map[String, String] = Map([])
+    let run = template_string(fields.get("run"), "\{ctx}.run")
     let uses = yaml_as_optional_string(fields.get("uses"), "\{ctx}.uses")
     guard (run is Some(_) && uses is None) || (run is None && uses is Some(_)) else {
       raise InvalidWorkflow("\{ctx} requires exactly one of run or uses")
     }
-    let moonbit_version = if uses == Some("moonhub/setup-moonbit@v1") {
+    let remote = uses is Some(action) && !action.has_prefix("moonhub/")
+    if remote &&
+      uses.unwrap().has_prefix("actions/checkout@") &&
+      steps.any(step => step.uses == Some("moonhub/checkout@v1")) {
+      raise InvalidWorkflow(
+        "each job supports only one checkout step when using built-in checkout",
+      )
+    }
+    let inputs : Map[String, String] = Map([])
+    let input_secrets : Map[String, String] = Map([])
+    let moonbit_version = if remote {
+      let action = uses.unwrap()
+      ignore(
+        @actions.parse_reference(action) catch {
+          @actions.InvalidAction(message) =>
+            raise InvalidWorkflow("\{ctx}.uses: \{message}")
+        },
+      )
+      check_fields(
+        fields,
+        [
+          "id", "name", "uses", "with", "env", "timeout-minutes", "if", "continue-on-error",
+        ],
+        ctx,
+      )
+      let values = match fields.get("with") {
+        None => Map([])
+        Some(value) => yaml_as_obj(value, "\{ctx}.with")
+      }
+      guard values.length() <= 100 else {
+        raise InvalidWorkflow("too many action inputs")
+      }
+      let seen : Map[String, Bool] = Map([])
+      for key, value in values {
+        guard @actions.valid_input_name(key) && !seen.contains(key.to_upper()) else {
+          raise InvalidWorkflow("\{ctx}.with: invalid or duplicate input name")
+        }
+        seen[key.to_upper()] = true
+        let value = match value {
+          String(text) => text
+          Integer(n) => n.to_string()
+          Boolean(b) => if b { "true" } else { "false" }
+          Real(_, repr~) => repr
+          _ => raise InvalidWorkflow("\{ctx}.with.\{key} must be a scalar")
+        }
+        match secret_reference(value) {
+          Some(secret) => {
+            inputs[key] = ""
+            input_secrets[@actions.input_env(key)] = secret
+          }
+          None => {
+            validate_template(value, "\{ctx}.with.\{key}")
+            if runtime_template(value) {
+              templates["with:" + key] = value
+              inputs[key] = ""
+            } else {
+              inputs[key] = value
+            }
+          }
+        }
+      }
+      None
+    } else if uses == Some("moonhub/setup-moonbit@v1") {
       check_fields(
         fields,
         ["id", "name", "uses", "with", "timeout-minutes"],
@@ -464,16 +529,13 @@ fn parse_job(
         )
       }
       Some(version)
-    } else if uses is Some(action) {
-      guard action == "actions/checkout@v4" || action == "moonhub/checkout@v1" else {
-        raise InvalidWorkflow(
-          "\{ctx}.uses supports only the built-in checkout and moonhub/setup-moonbit@v1 actions",
-        )
+    } else if uses is Some(_) {
+      guard uses == Some("moonhub/checkout@v1") else {
+        raise InvalidWorkflow("unsupported built-in MoonHub action")
       }
       guard !steps.any(step => {
-        [Some("actions/checkout@v4"), Some("moonhub/checkout@v1")].contains(
-          step.uses,
-        )
+        step.uses == Some("moonhub/checkout@v1") ||
+        (step.uses is Some(action) && action.has_prefix("actions/checkout@"))
       }) else {
         raise InvalidWorkflow("each job supports only one checkout step")
       }
@@ -484,10 +546,16 @@ fn parse_job(
         fields,
         [
           "id", "name", "run", "env", "shell", "working-directory", "timeout-minutes",
+          "if", "continue-on-error",
         ],
         ctx,
       )
-      ignore(required_string(fields.get("run"), "\{ctx}.run"))
+      guard !run.unwrap_or("").trim().is_empty() else {
+        raise InvalidWorkflow("\{ctx}.run requires a nonempty string")
+      }
+      if run.unwrap().contains("${{") {
+        templates["run"] = run.unwrap()
+      }
       None
     }
     let step_defaults = inherit_defaults(job_defaults, {
@@ -497,17 +565,43 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
-    let step_env = if uses is Some(_) {
+    let step_env = if uses is Some(_) && !remote {
       Map([])
     } else {
       merge_env(env, yaml_to_string_map(fields.get("env"), "\{ctx}.env"))
     }
     let literal_env : Map[String, String] = Map([])
-    let secret_env : Map[String, String] = Map([])
+    let secret_env : Map[String, String] = input_secrets
     for name, value in step_env {
       match secret_reference(value) {
         Some(secret) => secret_env[name] = secret
-        None => literal_env[name] = value
+        None =>
+          if runtime_template(value) {
+            templates["env:" + name] = value
+          } else {
+            literal_env[name] = value
+          }
+      }
+    }
+    for field in ["if", "continue-on-error"] {
+      if fields.get(field) is Some(value) {
+        let text = match value {
+          String(text) => text
+          Boolean(value) => value.to_string()
+          _ =>
+            raise InvalidWorkflow(
+              "\{ctx}.\{field} requires a boolean or expression",
+            )
+        }
+        validate_template(
+          if text.contains("${{") {
+            text
+          } else {
+            "${{" + text + "}}"
+          },
+          "\{ctx}.\{field}",
+        )
+        templates[field] = text
       }
     }
     steps.push({
@@ -518,6 +612,9 @@ fn parse_job(
       run: run.unwrap_or(""),
       uses,
       moonbit_version,
+      remote,
+      inputs,
+      templates,
       shell: if uses is Some(_) {
         None
       } else {

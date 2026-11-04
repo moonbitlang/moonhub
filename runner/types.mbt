@@ -49,6 +49,11 @@ priv struct Runtime {
   mut stopped : String
   mut reporting_until : Int64
   mut moon_home : String
+  action_node : String
+  action_runtime : String
+  action_state_key : String
+  action_temp : String
+  job_home : String
   secrets : async (@protocol.SecretRequest) -> @protocol.SecretResponse
 }
 

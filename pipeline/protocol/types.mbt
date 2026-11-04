@@ -14,6 +14,10 @@ pub let toolchain_assignment_version : Int32 = 3
 pub let secret_assignment_version : Int32 = 4
 
 ///|
+// V5 executes downloaded action metadata, inputs and file commands.
+pub let remote_assignment_version : Int32 = 5
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct SecretRequest {
   version : Int32
@@ -157,13 +161,47 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 }
 
 ///|
-#derive(Debug, ToJson, FromJson)
+#derive(Debug, ToJson)
 pub(all) struct JobPlan {
+  context : Map[String, String]
   id : String
   name : String
   runs_on : Array[String]
   timeout_minutes : Int32
   steps : Array[StepPlan]
+}
+
+///|
+pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid job plan"))
+  }
+  {
+    context: @json.from_json(
+      fields.get("context").unwrap_or(({} : Json)),
+      path=path.add_key("context"),
+    ),
+    id: @json.from_json(
+      fields.get("id").unwrap_or(Json::null()),
+      path=path.add_key("id"),
+    ),
+    name: @json.from_json(
+      fields.get("name").unwrap_or(Json::null()),
+      path=path.add_key("name"),
+    ),
+    runs_on: @json.from_json(
+      fields.get("runs_on").unwrap_or(Json::null()),
+      path=path.add_key("runs_on"),
+    ),
+    timeout_minutes: @json.from_json(
+      fields.get("timeout_minutes").unwrap_or(Json::null()),
+      path=path.add_key("timeout_minutes"),
+    ),
+    steps: @json.from_json(
+      fields.get("steps").unwrap_or(Json::null()),
+      path=path.add_key("steps"),
+    ),
+  }
 }
 
 ///|
@@ -174,6 +212,9 @@ pub(all) struct StepPlan {
   run : String
   uses : String
   moonbit_version : String
+  remote : Bool
+  inputs : Map[String, String]
+  templates : Map[String, String]
   shell : String
   working_directory : String
   env : Map[String, String]
@@ -219,6 +260,30 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
     name: @json.from_json(name, path=path.add_key("name")),
     run: @json.from_json(run, path=path.add_key("run")),
     uses,
+    remote: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("remote").unwrap_or(Json::boolean(false)),
+          path=path.add_key("remote"),
+        )
+      _ => false
+    },
+    inputs: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("inputs").unwrap_or(({} : Json)),
+          path=path.add_key("inputs"),
+        )
+      _ => Map([])
+    },
+    templates: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("templates").unwrap_or(({} : Json)),
+          path=path.add_key("templates"),
+        )
+      _ => Map([])
+    },
     moonbit_version,
     shell: @json.from_json(shell, path=path.add_key("shell")),
     working_directory: @json.from_json(
