@@ -326,6 +326,10 @@ async fn Runtime::execute_script(
           cwd~,
           cancel_handler=@process.CancellationHandler(pid => kill_group(pid)),
         )
+        // The body is unwound before the task group joins its children. Stop
+        // the Windows tree here, so cancelled pipe/wait tasks can finish even
+        // when cancellation came from a deadline, log limit or host signal.
+        errdefer (if @platform.windows() { kill_group(process.pid) })
         self.groups.push(process.pid)
         let drain_until = Ref(0L)
         let stdout = group.spawn(() => {
