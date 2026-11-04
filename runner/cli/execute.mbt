@@ -6,10 +6,18 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
       @argparse.OptionArg("server", long="server", required=true),
       @argparse.OptionArg("assignment", long="assignment", required=true),
       @argparse.OptionArg("workspace", long="workspace", default_values=[
-        "/workspace",
+        if @platform.windows() {
+          "C:/workspace"
+        } else {
+          "/workspace"
+        },
       ]),
       @argparse.OptionArg("launcher", long="launcher", default_values=[
-        "/usr/local/bin/moonhub-runner-step",
+        if @platform.windows() {
+          "C:/moonhub/bin/moonhub-runner-step.exe"
+        } else {
+          "/usr/local/bin/moonhub-runner-step"
+        },
       ]),
     ],
     flags=[
@@ -40,6 +48,9 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     while bytes.length() <= 64 {
       let chunk = @stdio.stdin.read_some(max_len=1)
       guard chunk is Some(chunk) else { break }
+      if chunk[0] == b'\r' {
+        continue
+      }
       if chunk[0] == b'\n' {
         break
       }
@@ -47,7 +58,7 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     }
   })
   let token = @utf8.decode(Bytes::from_array(bytes))
-  @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
+  @signal.set_global_cancellation_signals([SIGINT, SIGTERM, SIGHUP, SIGBREAK])
   let report = @runner.run(assignment, token, {
     server: cli_value(options, "server"),
     workspace: cli_value(options, "workspace"),

@@ -8,6 +8,7 @@ import { reference, resolveCommit, downloadArchive, extractArchive } from './dow
 import { evaluate, interpolate, truthy, string } from './expression.mjs';
 import { LogCommands, parseFileCommands, validEnvName, maskText } from './commands.mjs';
 import { encodeState, decodeState } from './state.mjs';
+import { windows, runnerOS, nullDevice, validRelative, isWithin, environment, shellCommand, scriptSource } from './platform.mjs';
 
 const limit = 1048576;
 const own = (object, key) => Object.hasOwn(object, key);
@@ -32,9 +33,9 @@ export async function readBounded(filename, maximum = limit) {
   } finally { await handle.close(); }
 }
 async function contained(root, relative) {
-  if (typeof relative !== 'string' || !relative || path.isAbsolute(relative) || relative.includes('\\') || relative.split('/').includes('..')) throw new Error('Action path escapes its directory');
+  if (!validRelative(relative)) throw new Error('Action path escapes its directory');
   const base = await fs.realpath(root), resolved = await fs.realpath(path.resolve(base, relative));
-  if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('Action path escapes its directory');
+  if (!isWithin(base, resolved)) throw new Error('Action path escapes its directory');
   return resolved;
 }
 export async function metadata(directory) {
@@ -80,7 +81,7 @@ export class ActionRuntime {
     this.config = config;
     this.state = Object.assign(state, { env: {}, path: [], steps: {}, posts: [], actions: {}, masks: [], ...state });
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
-    this.baseEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("MOONHUB_ACTION_")));
+    this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
     this.workspace = path.resolve(config.workspace);
     this.temp = path.resolve(config.temp);
     this.failure = Boolean(config.failure || state.failure);
@@ -93,7 +94,7 @@ export class ActionRuntime {
       workflow: this.config.context?.workflow || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
       event_name: this.config.context?.event_name || 'workflow_dispatch', token: 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
-    return { github, env: { ...this.baseEnv, ...this.state.env }, runner: { os: 'Linux', arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME, '.tool-cache') },
+    return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
       steps: this.state.steps, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
@@ -102,7 +103,7 @@ export class ActionRuntime {
     const key = createHash('sha256').update(requested.repository + '@' + requested.ref).digest('hex');
     let action = this.state.actions[key];
     if (!action) {
-      const gitEnv = { PATH: this.baseEnv.PATH, HOME: this.baseEnv.HOME, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
+      const gitEnv = environment(this.baseEnv, { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: nullDevice });
       const commit = await this.adapters.resolveCommit(requested.repository, requested.ref, gitEnv);
       const directory = path.join(this.temp, '_actions', key);
       await extractArchive(await this.adapters.downloadArchive(requested.repository, commit), directory);
@@ -140,9 +141,9 @@ export class ActionRuntime {
       const code = await execute();
       const changes = parseFileCommands(await readBounded(files.ENV));
       for (const key of Object.keys(changes)) if (!validEnvName(key)) throw new Error(`Reserved or unsafe action environment variable: ${key}`);
-      this.state.env = { ...this.state.env, ...changes };
+      this.state.env = environment(this.state.env, changes);
       const paths = (await readBounded(files.PATH)).replaceAll('\r\n', '\n').split('\n').filter(Boolean);
-      if (paths.some(item => !path.isAbsolute(item) || /[\x00-\x1f\x7f:]/.test(item))) throw new Error('Invalid GITHUB_PATH entry');
+      if (paths.some(item => !path.isAbsolute(item) || (windows ? /[\x00-\x1f\x7f;]/ : /[\x00-\x1f\x7f:]/).test(item))) throw new Error('Invalid GITHUB_PATH entry');
       this.state.path = [...new Set([...paths.reverse(), ...this.state.path])];
       if (this.state.path.length > 300) throw new Error('Too many action PATH entries');
       result.outputs = { ...result.outputs, ...parseFileCommands(await readBounded(files.OUTPUT)) };
@@ -155,8 +156,8 @@ export class ActionRuntime {
     } finally { await fs.rm(directory, { recursive: true, force: true }); }
   }
   environment(extra = {}, context = this.context()) {
-    const env = { ...this.baseEnv, ...this.state.env, ...extra };
-    env.PATH = [...this.state.path, env.PATH].filter(Boolean).join(':');
+    const env = environment(this.baseEnv, this.state.env, extra);
+    env.PATH = [...this.state.path, env.PATH].filter(Boolean).join(path.delimiter);
     Object.assign(env, { GITHUB_WORKSPACE: this.workspace, GITHUB_REPOSITORY: this.config.repository, GITHUB_SHA: this.config.sha,
       GITHUB_SERVER_URL: this.config.server, GITHUB_API_URL: `${this.config.server}/-/api/v1`, GITHUB_EVENT_NAME: context.github.event_name,
       GITHUB_REF: context.github.ref, GITHUB_HEAD_REF: context.github.head_ref, GITHUB_BASE_REF: context.github.base_ref,
@@ -179,7 +180,7 @@ export class ActionRuntime {
     const stateEnv = Object.fromEntries(Object.entries(saved || {}).map(([name, value]) => [`STATE_${name}`, value]));
     const env = this.environment({ ...supplied, ...inputEnv, ...stateEnv, GITHUB_ACTION_PATH: action.directory,
       GITHUB_ACTION_REPOSITORY: action.repository, GITHUB_ACTION_REF: action.ref }, context);
-    const node = value.runs.using === 'node20' ? this.config.node20 || '/opt/actions/node20/bin/node' : this.config.node24 || process.execPath;
+    const node = value.runs.using === 'node20' ? this.config.node20 || (windows ? 'C:/moonhub/bin/node20.exe' : '/opt/actions/node20/bin/node') : this.config.node24 || process.execPath;
     const filename = await contained(action.directory, value.runs[phase]);
     if (!(await fs.stat(filename)).isFile()) throw new Error('Action JavaScript entry is not a file');
     const code = await this.files(env, result, () => this.process(node, [filename], env, this.workspace, result));
@@ -188,7 +189,7 @@ export class ActionRuntime {
   async action(uses, provided = {}, supplied = {}, extra = {}, depth = 0) {
     if (depth > 8 || ++this.count > 256) throw new Error('Action nesting or invocation count exceeds limits');
     const action = await this.resolve(uses), value = await metadata(action.directory);
-    const context = this.context({ ...extra, env: { ...this.context().env, ...extra.env, ...supplied }, github: { ...this.context().github, ...extra.github, action_path: action.directory } });
+    const context = this.context({ ...extra, env: environment(this.context().env, extra.env, supplied), github: { ...this.context().github, ...extra.github, action_path: action.directory } });
     const inputs = Object.create(null);
     for (const [name, definition] of Object.entries(value.inputs || {})) inputs[name.toLowerCase()] = interpolate(definition.default ?? '', context);
     for (const [name, item] of Object.entries(provided)) {
@@ -214,14 +215,14 @@ export class ActionRuntime {
             if (!validEnvName(name)) throw new Error('Invalid composite environment variable');
             env[name] = interpolate(item, ctx);
           }
-          const stepContext = { ...ctx, env: { ...ctx.env, ...env } };
+          const stepContext = { ...ctx, env: environment(ctx.env, env) };
           tolerate = step['continue-on-error'] === undefined ? false : truthy(evaluate(string(step['continue-on-error']), stepContext));
           if (typeof step.uses === 'string' && step.run === undefined) {
             const with_ = Object.fromEntries(Object.entries(scalarMap(step.with, 'step.with')).map(([key, item]) => [key, interpolate(item, stepContext)]));
             result = await this.action(step.uses, with_, env, stepContext, depth + 1);
-          } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh'].includes(step.shell)) {
+          } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh', 'pwsh'].includes(step.shell)) {
             result = await this.script(interpolate(step.run, stepContext), step.shell, interpolate(step['working-directory'] || '.', stepContext), env, stepContext);
-          } else throw new Error('Composite steps require run with bash/sh or uses');
+          } else throw new Error('Composite steps require run with bash/sh/pwsh or uses');
         } catch (error) {
           this.error(error);
           result = { code: 1, outputs: {} };
@@ -251,11 +252,10 @@ export class ActionRuntime {
   }
   async script(run, shell = '', directory = '.', supplied = {}, context = this.context()) {
     const cwd = await contained(this.workspace, directory);
-    const filename = path.join(this.temp, `script-${randomUUID()}.sh`);
-    await fs.writeFile(filename, run, { flag: 'wx', mode: 0o600 });
+    const filename = path.join(this.temp, `script-${randomUUID()}${shell === 'pwsh' || (!shell && windows) ? '.ps1' : '.sh'}`);
+    await fs.writeFile(filename, scriptSource(run, shell), { flag: 'wx', mode: 0o600 });
     const env = this.environment(supplied, context), result = { outputs: {}, state: {}, failed: false };
-    const program = shell === 'sh' ? '/bin/sh' : '/bin/bash';
-    const args = shell === 'sh' ? ['-e', filename] : ['--noprofile', '--norc', '-e', ...(shell === 'bash' ? ['-o', 'pipefail'] : []), filename];
+    const [program, args] = shellCommand(shell, filename);
     try { const code = await this.files(env, result, () => this.process(program, args, env, cwd, result)); return { ...result, code }; }
     finally { await fs.rm(filename, { force: true }); }
   }
@@ -292,7 +292,7 @@ export async function execute(config, state = {}, adapters = {}) {
     const inheritedExport = key => own(runtime.state.env, key) && !overrides.has(key);
     const supplied = Object.fromEntries(Object.entries(step.env || {}).filter(([key]) => !inheritedExport(key)));
     const condition = templates.if ?? 'success()';
-    if (!truthy(evaluate(condition, runtime.context({ env: { ...runtime.context().env, ...supplied } }), true))) {
+    if (!truthy(evaluate(condition, runtime.context({ env: environment(runtime.context().env, supplied) }), true))) {
       runtime.state.steps[step.id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' };
       return { code: 0, conclusion: 'skipped', state: runtime.state };
     }
@@ -302,9 +302,9 @@ export async function execute(config, state = {}, adapters = {}) {
       if (input || !inheritedExport(key)) supplied[key] = process.env[key];
       if (process.env[key] && !runtime.state.masks.includes(process.env[key])) runtime.state.masks.push(process.env[key]);
     }
-    const envContext = runtime.context({ env: { ...runtime.context().env, ...supplied } });
+    const envContext = runtime.context({ env: environment(runtime.context().env, supplied) });
     for (const [key, template] of Object.entries(templates)) if (key.startsWith('env:') && !inheritedExport(key.slice(4))) supplied[key.slice(4)] = interpolate(template, envContext);
-    const context = runtime.context({ env: { ...runtime.context().env, ...supplied } });
+    const context = runtime.context({ env: environment(runtime.context().env, supplied) });
     const inputs = { ...step.inputs };
     for (const [key, template] of Object.entries(templates)) if (key.startsWith('with:')) inputs[key.slice(5)] = interpolate(template, context);
     for (const name of Object.keys(inputs)) {

@@ -1,0 +1,28 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/runner/platform"
+
+// Values
+pub fn environment() -> Map[String, String]
+
+pub fn os() -> String
+
+pub fn path_key(String) -> String
+
+pub async fn private_directory(String, readable? : Bool) -> Unit
+
+pub fn valid_relative(String) -> Bool
+
+pub fn windows() -> Bool
+
+pub fn within(String, String) -> Bool
+
+// Errors
+pub suberror PlatformError {
+  PlatformError(String)
+}
+
+// Types and methods
+
+// Type aliases
+
+// Traits

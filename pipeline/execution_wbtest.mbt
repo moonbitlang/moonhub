@@ -12,7 +12,12 @@ fn claim_request(
   id~ : String = "1",
   secret~ : String = attempt_secret,
 ) -> @protocol.ClaimRequest {
-  { version: 1, request_id: id.repeat(32), attempt_token: secret, }
+  {
+    runner_os: None,
+    version: 1,
+    request_id: id.repeat(32),
+    attempt_token: secret,
+  }
 }
 
 ///|
@@ -96,6 +101,7 @@ fn claim_dag_attempt(
   let assignment = coordinator
     .claim(provider_token, {
       version: 1,
+      runner_os: None,
       request_id: @identity.random_hex(16),
       attempt_token,
     })
@@ -186,6 +192,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
     let build = coordinator
       .claim(provider_token, {
         version: 1,
+        runner_os: None,
         request_id: @identity.random_hex(16),
         attempt_token: build_token,
       })
@@ -207,6 +214,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
     assert_true(
       coordinator.claim(provider_token, {
         version: 1,
+        runner_os: None,
         request_id: @identity.random_hex(16),
         attempt_token: @identity.random_hex(32),
       })
@@ -1408,4 +1416,86 @@ async test "new run-only workflows receive action runtime assignments" {
       new="echo value=ready >> $GITHUB_OUTPUT",
     ),
   )
+}
+
+///|
+async test "Windows providers claim only Windows jobs and reject legacy Linux workers" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let source =
+      #|name: Platforms
+      #|on: workflow_dispatch
+      #|jobs:
+      #|  windows:
+      #|    runs-on: [self-hosted, windows, x64]
+      #|    steps:
+      #|      - run: Write-Output windows
+      #|  legacy:
+      #|    runs-on: self-hosted
+      #|    steps:
+      #|      - run: echo linux
+    ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), source))
+    let c = Coordinator::new(pool)
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let windows = c.create_provider(
+      admin,
+      "windows",
+      provider_secret,
+      ["self-hosted", "windows", "x64"],
+      [protocol_repo],
+    )
+    ignore(
+      c.create_provider(
+        admin,
+        "linux",
+        "c".repeat(64),
+        ["self-hosted", "linux", "x64"],
+        [protocol_repo],
+      ),
+    )
+    ignore(
+      create_run(
+        pool,
+        root,
+        @identity.active_user_by_name(pool, "alice"),
+        protocol_repo,
+        "pipeline",
+        ".github/workflows/build.yml",
+      ),
+    )
+    // Old claim clients omit the OS: retain Linux semantics rather than silently
+    // assigning Windows work to an old Linux worker after a provider relabel.
+    try c.claim(provider_secret, claim_request()) catch {
+      @domain.Forbidden(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("Legacy Linux worker claimed from a Windows provider")
+    }
+    let assignment = c
+      .claim(provider_secret, { ..claim_request(), runner_os: Some("windows"), })
+      .unwrap()
+    assert_eq(assignment.job.id, "windows")
+    assert_eq(assignment.job.runs_on, ["self-hosted", "windows", "x64"])
+    assert_eq(
+      c.claim("c".repeat(64), claim_request(secret="d".repeat(64))).unwrap().job.id,
+      "legacy",
+    )
+    // A Windows worker must never pick up an implicit-Linux job.
+    assert_true(
+      c.claim(provider_secret, {
+        ..claim_request(id="2", secret="e".repeat(64)),
+        runner_os: Some("windows"),
+      })
+      is None,
+    )
+    try
+      c.set_provider_labels(admin, windows.id, [
+        "self-hosted", "linux", "windows",
+      ])
+    catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("Provider accepted conflicting operating systems")
+    }
+  })
 }

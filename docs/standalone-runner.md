@@ -176,3 +176,92 @@ CSRF/CAS failures, escaped input and one page shell after refresh/navigation.
 Set `CHROMIUM_EXECUTABLE` if Chromium is installed outside Playwright's cache.
 These tests create no cloud resources. Actual Docker image execution, IAM, AMI
 boot and Spot availability need separate deployment acceptance.
+
+## Windows x64 workers
+
+Windows uses the same ASG controller and CLI. Keep Linux and Windows in separate
+providers/ASGs; register the Windows provider with `self-hosted,windows,x64` and
+explicitly request those labels in workflows. Jobs without an OS label retain
+Linux semantics. There is no `--worker-os` flag: the controller resolves the
+existing `--launch-template` plus saved numeric `template_version`, reads its
+AMI's `Platform` and `Architecture`, and selects Windows bootstrap automatically.
+The controller itself may remain on Linux. Claims include the worker's actual OS;
+old clients that omit it remain Linux and cannot claim from a Windows provider.
+
+The first supported Windows host/image combination is **Windows Server 2022 x64**
+(build 20348), with Windows process-isolated containers. Host and task image must
+have compatible Windows builds. Linux Docker daemons cannot run these images.
+Prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
+v2 and SSM Agent. Build the worker bundle on Windows with Visual Studio C++ Build
+Tools and the production MoonBit version from `deploy/base.Dockerfile`:
+
+```powershell
+moon update
+node scripts/resolve-dependencies.cjs
+./scripts/build-windows-runner.ps1
+docker build --isolation=process -f deploy/windows/Dockerfile `
+  -t registry.example/moonhub:runner-windows .tmp/windows-runner
+# Publish this image to your registry using its normal authenticated workflow.
+./deploy/windows/install-worker.ps1 -Bundle .tmp/windows-runner `
+  -RunnerImage registry.example/moonhub:runner-windows
+```
+
+The bundle pins and verifies PowerShell 7, Portable Git, Node 20 and Node 24 with
+SHA-256 checksums in `deploy/windows/runtime.json`. It includes the native worker,
+step launcher and Action runtime. It does not include a compiler: install the
+MoonBit toolchain per job with `moonhub/setup-moonbit@v1`, or provide your own
+Windows task image with the tools your jobs require. MSVC or other build tools for
+job workloads are likewise an image choice. The host needs only the worker's
+`bin` directory; never bake credentials or controller state into an AMI.
+
+Create a numeric launch-template version for this AMI, requiring IMDSv2 with hop
+limit 1 as on Linux. Set the Windows provider's existing runner-image and template
+version settings. Controller IAM must permit `AWS-RunPowerShellScript` in addition
+to the EC2/ASG/SSM/KMS operations above. Windows bootstrap downloads the SecureString
+to an ACL-protected `C:\ProgramData\MoonHub\private\bootstrap.json` and starts the
+`MoonHubRunnerWorker` scheduled task as SYSTEM. The task restarts at boot; its
+execution time is unlimited. The bootstrap token never appears in SSM command
+history. Worker state and workspace roots default to `C:\ProgramData\MoonHub`.
+
+Each attempt runs as **ContainerUser**, using a new container and named workspace
+volume. Windows uses native memory/CPU limits and its `nat` network; Linux-only
+read-only-rootfs, capabilities, tmpfs and PID-limit options are not passed to the
+Windows daemon. Only the credential-free assignment directory is mounted read-only;
+no Docker named pipe, AWS credentials or application data is mounted into the task.
+The attempt token is passed through stdin. Steps inherit a small OS environment
+allowlist. Windows environment names and workspace containment are case-insensitive;
+NTFS device names, alternate data streams and escaping junctions are rejected.
+A kill-on-close Windows Job Object owns every step process tree, including detached
+children. Normal completion, timeout and cancellation stop that tree. Containers
+and workspace volumes are removed **before** the worker acknowledges ready and
+claims another job; cleanup failure stops reuse. Instance draining/idle timeout and
+Spot fallback retain their existing lifecycle.
+
+```yaml
+name: Windows
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: [self-hosted, windows, x64]
+    steps:
+      - uses: moonhub/setup-moonbit@v1
+        with:
+          version: latest
+      - run: moon test --target js
+      - shell: bash
+        run: git --version
+```
+
+Windows `run` defaults to `pwsh`; explicit `pwsh`, Git Bash `bash`, and `sh` are
+supported. JavaScript Node20/Node24 and composite actions use the same version-5
+protocol; composites may select `pwsh`. PowerShell errors and native command exit
+codes fail the step. Paths added through `GITHUB_PATH` use Windows separators.
+The existing Action/source/secret/checkout restrictions still apply; macOS workers
+and Hyper-V isolation are not part of this implementation.
+
+`Windows runner` in GitHub CI builds the native Windows worker and task image on
+`windows-2022`. It exercises real shells, JavaScript/composite actions, escaping
+junctions and detached-child cleanup. Its container acceptance runs three attempts
+on one worker, verifies fresh volumes and cleanup before ready, checks cancellation,
+and drains the worker. This is separate from booting an EC2 AMI and validating
+operator-specific IAM/network/registry access, which require deployment acceptance.

@@ -24,6 +24,7 @@ unchanged.
 | `pipeline` | Authorized run snapshots, repository CI secrets and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, config synchronization, worker lifecycle and ephemeral-container adapter; no database or Web dependency |
+| `runner/platform` | OS detection, safe paths, minimal OS environment and private Windows directory ACLs; no database or Web dependency |
 | `runner/cli` | Shared single-assignment CLI for the standalone and legacy executable |
 | `cmd/moonhub-runner` | Independent runner executable; no Web server or database dependencies |
 | `runner` | Single-job process execution, downloaded JavaScript/composite actions, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |

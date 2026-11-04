@@ -8,6 +8,7 @@ async fn validate_options(
       @protocol.secret_assignment_version, @protocol.remote_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
+    assignment.job.runs_on.contains("windows") == @platform.windows() &&
     assignment.has_valid_numbers() &&
     assignment.job.steps.length() > 0 &&
     assignment.job.steps.length() <= 64 else {
@@ -22,7 +23,7 @@ async fn validate_options(
   guard monotonic_ms() >= 0L &&
     prepare_agent(if options.unsafe_local { 1 } else { 0 }) == 0 else {
     raise InvalidConfiguration(
-      "runner must be non-root PID 1 in an isolated Linux container; --unsafe-local is for trusted tests only",
+      "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only",
     )
   }
   let workspace = @fs.realpath(options.workspace)
@@ -55,7 +56,10 @@ async fn validate_options(
     guard step.inputs.length() <= 100 &&
       !step.id.is_empty() &&
       !ids.contains(step.id) &&
-      ["", "sh", "bash"].contains(step.shell) &&
+      (
+        ["", "sh", "bash"].contains(step.shell) ||
+        (@platform.windows() && step.shell == "pwsh")
+      ) &&
       !step.run.contains("\u{0000}") &&
       (
         !step.run.contains("${{") ||
@@ -183,13 +187,13 @@ async fn validate_options(
         .all(ch => ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_') &&
         name.get_char(0) is Some(first) &&
         (first.is_ascii_alphabetic() || first == '_') &&
-        !name.has_prefix("MOONHUB_") &&
-        !name.has_prefix("GITHUB_") &&
-        !name.has_prefix("RUNNER_") &&
-        !name.has_prefix("LD_") &&
-        !name.has_prefix("DYLD_") &&
+        !name.to_upper().has_prefix("MOONHUB_") &&
+        !name.to_upper().has_prefix("GITHUB_") &&
+        !name.to_upper().has_prefix("RUNNER_") &&
+        !name.to_upper().has_prefix("LD_") &&
+        !name.to_upper().has_prefix("DYLD_") &&
         !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
-          name,
+          name.to_upper(),
         ) &&
         !value.contains("\u{0000}") else {
         raise InvalidConfiguration(
@@ -203,18 +207,11 @@ async fn validate_options(
 
 ///|
 async fn step_directory(workspace : String, relative : String) -> String {
-  guard !relative.is_empty() &&
-    relative.length() <= 512 &&
-    relative.iter().all(ch => ch.to_int() >= 32 && ch.to_int() != 127) &&
-    !relative.has_prefix("/") &&
-    !relative.contains("\\") &&
-    !relative.contains(":") &&
-    relative.split("/").all(part => !part.is_empty() && part != "..") else {
+  guard relative.length() <= 512 && @platform.valid_relative(relative) else {
     raise InvalidConfiguration("working directory escapes workspace")
   }
   let cwd = @fs.realpath(workspace + "/" + relative)
-  guard (cwd == workspace || cwd.has_prefix(workspace + "/")) &&
-    @fs.kind(cwd) is Directory else {
+  guard @platform.within(workspace, cwd) && @fs.kind(cwd) is Directory else {
     raise InvalidConfiguration("working directory escapes workspace")
   }
   cwd
@@ -247,29 +244,61 @@ async fn Runtime::execute_script(
   secrets~ : Map[String, String] = Map([]),
 ) -> Int32 {
   let cwd = step_directory(self.options.workspace, step.working_directory)
-  let env : Map[String, String] = {
+  let env = @platform.environment()
+  let job_env : Map[String, String] = {
     "PATH": "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin",
     "HOME": self.job_home,
     "TMPDIR": self.action_temp,
     "MOON_HOME": self.job_home + "/.moon",
     "LANG": "C.UTF-8",
     "CI": "true",
+    "RUNNER_OS": if @platform.windows() {
+      "Windows"
+    } else {
+      "Linux"
+    },
+    "RUNNER_TEMP": self.action_temp,
+  }
+  if @platform.windows() {
+    job_env["PATH"] = "C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/moonhub/git/usr/bin;" +
+      env.get("PATH").unwrap_or("C:/Windows/System32;C:/Windows")
+    job_env["PROCESSOR_ARCHITECTURE"] = "AMD64"
+    job_env["USERPROFILE"] = self.job_home
+    job_env["TEMP"] = self.action_temp
+    job_env["TMP"] = self.action_temp
+  }
+  for key, value in job_env {
+    env[if @platform.windows() { key.to_upper() } else { key }] = value
   }
   for key, value in step.env {
-    env[key] = value
+    env[if @platform.windows() { key.to_upper() } else { key }] = value
   }
   for key, value in secrets {
-    env[key] = value
+    env[if @platform.windows() { key.to_upper() } else { key }] = value
   }
   if !self.moon_home.is_empty() && step.uses.is_empty() {
     env["MOON_HOME"] = self.moon_home
     env["PATH"] = self.moon_home +
-      "/bin:" +
+      (if @platform.windows() { "/bin;" } else { "/bin:" }) +
       env.get("PATH").unwrap_or("/usr/local/bin:/usr/bin:/bin")
   }
   env["GITHUB_WORKSPACE"] = self.options.workspace
   env["GITHUB_SHA"] = self.assignment.commit_sha
   env["GITHUB_REPOSITORY"] = self.assignment.repository
+  let script = if @platform.windows() &&
+    (step.shell.is_empty() || step.shell == "pwsh") {
+    let filename = script + ".ps1"
+    @fs.write_file(
+      filename,
+      "$ErrorActionPreference = 'Stop'\n$ProgressPreference = 'SilentlyContinue'\n" +
+      @fs.read_file(script).text() +
+      "\nif (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }\n",
+      permission=0o600,
+    )
+    filename
+  } else {
+    script
+  }
   @async.with_timeout(
     timeout_ms,
     () => {
@@ -278,7 +307,13 @@ async fn Runtime::execute_script(
         defer out.close()
         let (err, err_writer) = @process.read_from_process()
         defer err.close()
-        let input = @process.redirect_from_file("/dev/null")
+        let input = @process.redirect_from_file(
+          if @platform.windows() {
+            "NUL"
+          } else {
+            "/dev/null"
+          },
+        )
         let process = @process.spawn(
           group,
           self.options.launcher,
@@ -567,10 +602,14 @@ async fn Runtime::cleanup_processes(self : Runtime) -> Unit {
 ///|
 async fn extract_source(workspace : String, archive : String) -> Unit {
   let code = @process.run(
-    "tar",
+    if @platform.windows() {
+      "C:/Windows/System32/tar.exe"
+    } else {
+      "tar"
+    },
     ["-xkf", archive, "-C", workspace, "--no-same-owner"],
     inherit_env=false,
-    extra_env={ "PATH": "/usr/bin:/bin" },
+    extra_env=@platform.environment(),
   ) catch {
     _ => 125
   }
@@ -584,8 +623,8 @@ async fn execute_assignment(
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
   source? : async () -> Bytes,
   bundle? : async () -> Bytes,
-  action_node~ : String = "/usr/local/bin/node",
-  action_runtime~ : String = "/usr/local/lib/moonhub/actions/runtime.mjs",
+  action_node~ : String = default_action_node(),
+  action_runtime~ : String = default_action_runtime(),
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
   secrets~ : async (@protocol.SecretRequest) -> @protocol.SecretResponse = _ => {
     raise InvalidConfiguration("secret service unavailable")
@@ -649,8 +688,13 @@ async fn execute_assignment(
       let moon_home = runtime.job_home + "/.moon"
       @fs.mkdir(moon_home, permission=0o700)
       for entry in ["bin", "lib", "include", "config.json"] {
-        let installed = "/opt/moon/" + entry
-        if @fs.exists(installed) {
+        let installed = (if @platform.windows() {
+            "C:/moonhub/moon/"
+          } else {
+            "/opt/moon/"
+          }) +
+          entry
+        if !@platform.windows() && @fs.exists(installed) {
           @fs.symlink(target=installed, moon_home + "/" + entry)
         }
       }
@@ -765,8 +809,8 @@ pub async fn run(
   assignment : @protocol.Assignment,
   token : String,
   options : Options,
-  action_node~ : String = "/usr/local/bin/node",
-  action_runtime~ : String = "/usr/local/lib/moonhub/actions/runtime.mjs",
+  action_node~ : String = default_action_node(),
+  action_runtime~ : String = default_action_runtime(),
 ) -> Report {
   guard token.length() == 64 &&
     token.iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f')) else {
@@ -799,7 +843,27 @@ fn valid_secret_env_name(name : String) -> Bool {
   .iter()
   .all(ch => ch.is_ascii_alphabetic() || ch.is_ascii_digit() || ch == '_') &&
   !["MOONHUB_", "GITHUB_", "RUNNER_", "LD_", "DYLD_"].any(prefix => {
-    name.has_prefix(prefix)
+    name.to_upper().has_prefix(prefix)
   }) &&
-  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(name)
+  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
+    name.to_upper(),
+  )
+}
+
+///|
+fn default_action_node() -> String {
+  if @platform.windows() {
+    "C:/moonhub/bin/node.exe"
+  } else {
+    "/usr/local/bin/node"
+  }
+}
+
+///|
+fn default_action_runtime() -> String {
+  if @platform.windows() {
+    "C:/moonhub/actions/runtime.mjs"
+  } else {
+    "/usr/local/lib/moonhub/actions/runtime.mjs"
+  }
 }

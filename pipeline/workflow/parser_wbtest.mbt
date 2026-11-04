@@ -292,7 +292,10 @@ test "paths shell identifiers reserved variables and timeout types are validated
       "integer",
     )
   }
-  expect_invalid(basic_workflow + "\n        shell: 'bash {0}'", "bash and sh")
+  expect_invalid(
+    basic_workflow + "\n        shell: 'bash {0}'",
+    "bash, sh and pwsh",
+  )
   expect_invalid(basic_workflow + "\n        id: 12", "string")
   expect_invalid(basic_workflow + "\n        id: invalid.id", "step id")
   expect_invalid(
@@ -315,7 +318,7 @@ test "paths shell identifiers reserved variables and timeout types are validated
   expect_invalid(
     basic_workflow.replace_all(
       old="[self-hosted, linux]",
-      new="[self-hosted, Windows]",
+      new="[self-hosted, linux, windows]",
     ),
     "Linux",
   )

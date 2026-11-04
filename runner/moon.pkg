@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/runner/platform",
   "hackwaly/moonhub/pipeline/actions",
   "moonbitlang/core/debug",
   "hackwaly/moonhub/pipeline/protocol",

@@ -55,11 +55,11 @@ Supported configuration:
   path filters are rejected, not silently approximated.
 - Static `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
-- Job labels must include `self-hosted`; the execution target is Linux. Labels
+- Job labels must include `self-hosted`; the execution target is Linux by default or Windows when `windows` is explicit. Labels
   are normalized to lowercase. There is no emulation of `ubuntu-latest` or other
   GitHub-hosted images. Providers must possess every requested label.
 - Literal steps accept `id`, `name`, `run`, `shell`, `working-directory`, `env`,
-  `if`, `continue-on-error`, and `timeout-minutes`. Only literal `bash` and `sh` shell selections are
+  `if`, `continue-on-error`, and `timeout-minutes`. Literal `bash`, `sh` and Windows `pwsh` shell selections are
   accepted. A job can instead include one built-in checkout step with
   `uses: moonhub/checkout@v1`, plus optional
   `id`, `name` and `timeout-minutes`. It cannot also have `run`, `with`, `env`,
@@ -416,7 +416,7 @@ business APIs requiring a live site-administrator identity. There is no default
 credential, public registration endpoint, or registration UI. Step 4 adds the
 `pipeline-provider-create` deployment command and Compose provider service. Each
 provider starts with an explicit repository allowlist and normalized labels
-including `self-hosted` and `linux`. No grant means no work. Each provider still
+including `self-hosted` and exactly one of `linux` or `windows`. No grant means no work. Each provider still
 has one live attempt at a time; different providers can claim different ready
 jobs. DAG scheduling and explicit reruns are described below.
 
@@ -831,7 +831,7 @@ labels, paused/busy providers and missing recent contact, without exposing
 provider identities or other repositories' grants.
 
 **Edit labels** replaces the provider's label set atomically;
-`self-hosted` and `linux` remain required (up to 8 labels, each 1-64 ASCII letters,
+`self-hosted` and exactly one of `linux` or `windows` are required (up to 8 labels, each 1-64 ASCII letters,
 digits, underscores or hyphens; case is normalized). Token, repository grants,
 name and paused state are unchanged. Revoked providers cannot be edited.
 
@@ -966,3 +966,6 @@ script regressions, builds frontend assets, and runs native tests and builds
 with `--strip -j 1`. Each stage reports progress and has a deadline; failure
 stops later stages. The GitHub job has a 40-minute timeout. Production deployment
 and Docker SSH smoke run separately from this script.
+
+For Windows ASG workers, platform inference, host/image preparation, PowerShell
+and lifecycle verification, see [Windows runner setup](standalone-runner.md#windows-x64-workers).

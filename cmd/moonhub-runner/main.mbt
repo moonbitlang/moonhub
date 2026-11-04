@@ -10,15 +10,33 @@ async fn run(args : ArrayView[String]) -> Int32 {
   }
   let common = [
     @argparse.OptionArg("docker", long="docker", default_values=[
-      "/usr/bin/docker",
+      if @platform.windows() {
+        "docker.exe"
+      } else {
+        "/usr/bin/docker"
+      },
     ]),
     @argparse.OptionArg("docker-host", long="docker-host", env="DOCKER_HOST", default_values=[
-      "unix:///var/run/docker.sock",
+      if @platform.windows() {
+        "npipe:////./pipe/docker_engine"
+      } else {
+        "unix:///var/run/docker.sock"
+      },
     ]),
     @argparse.OptionArg("workspace-root", long="workspace-root", default_values=[
-      "/var/lib/moonhub-runner/workspace",
+      if @platform.windows() {
+        "C:/ProgramData/MoonHub/workspace"
+      } else {
+        "/var/lib/moonhub-runner/workspace"
+      },
     ]),
-    @argparse.OptionArg("network", long="network", default_values=["bridge"]),
+    @argparse.OptionArg("network", long="network", default_values=[
+      if @platform.windows() {
+        "nat"
+      } else {
+        "bridge"
+      },
+    ]),
     @argparse.OptionArg("runner-image", long="runner-image", default_values=[
       "moonhub:runner",
     ]),
@@ -39,7 +57,11 @@ async fn run(args : ArrayView[String]) -> Int32 {
       default_values=[""],
     ),
     @argparse.OptionArg("state-dir", long="state-dir", default_values=[
-      "/var/lib/moonhub-runner/controller",
+      if @platform.windows() {
+        "C:/ProgramData/MoonHub/controller"
+      } else {
+        "/var/lib/moonhub-runner/controller"
+      },
     ]),
     @argparse.OptionArg("aws", long="aws", default_values=["aws"]),
     @argparse.OptionArg("region", long="region", default_values=["us-west-2"]),
@@ -82,7 +104,7 @@ async fn run(args : ArrayView[String]) -> Int32 {
   )
   let matches = command.parse(argv=args, env=@env.get_env_vars())
   guard matches.subcommand is Some((subcommand, options)) else { return 0 }
-  @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
+  @signal.set_global_cancellation_signals([SIGINT, SIGTERM, SIGHUP, SIGBREAK])
   let server = if subcommand == "run" {
     value(options, "server")
   } else {

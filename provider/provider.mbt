@@ -1,10 +1,29 @@
 ///|
 async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
+  if @platform.windows() {
+    let (code, output) = docker_control(options, [
+      "info", "--format", "{{json .}}",
+    ])
+    guard code == 0 else { raise DockerFailure(code) }
+    let info : DockerPlatform = @json.from_json(@json.parse(output)) catch {
+      _ =>
+        raise InvalidConfiguration(
+          "Docker returned invalid platform information.",
+        )
+    }
+    guard info.os_type == "windows" &&
+      ["x86_64", "amd64"].contains(info.architecture) else {
+      raise InvalidConfiguration(
+        "Windows workers require a Windows x64 Docker daemon.",
+      )
+    }
+    return
+  }
   let code = @process.run(
     options.docker,
     ["info", "--format", "{{.ServerVersion}}"],
     inherit_env=false,
-    extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+    extra_env=docker_environment(options),
   ) catch {
     _ => raise TransportFailure
   }
@@ -17,7 +36,7 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
     options.docker,
     ["image", "inspect", "--format", "{{.Id}}", options.runner_image],
     inherit_env=false,
-    extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+    extra_env=docker_environment(options),
   ) catch {
     _ => 1
   }
@@ -26,11 +45,23 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
       options.docker,
       ["pull", options.runner_image],
       inherit_env=false,
-      extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+      extra_env=docker_environment(options),
     ) catch {
       _ => 1
     }
     guard pulled == 0 else { raise DockerFailure(pulled) }
+  }
+  if @platform.windows() {
+    let (code, image) = docker_control(options, [
+      "image",
+      "inspect",
+      "--format",
+      "{{.Os}}/{{.Architecture}}",
+      options.runner_image,
+    ])
+    guard code == 0 && image.trim() == "windows/amd64" else {
+      raise InvalidConfiguration("Runner image must target windows/amd64.")
+    }
   }
 }
 
@@ -42,7 +73,7 @@ async fn cleanup_stale_containers(
     options.docker,
     ["ps", "-aq", "--filter", "name=^moonhub-pipeline-"],
     inherit_env=false,
-    extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+    extra_env=docker_environment(options),
   ) catch {
     _ => raise DockerFailure(125)
   }
@@ -60,10 +91,7 @@ async fn cleanup_stale_containers(
         options.docker,
         ["rm", "-f", id.to_owned()],
         inherit_env=false,
-        extra_env={
-          "PATH": "/usr/bin:/bin",
-          "DOCKER_HOST": options.docker_host,
-        },
+        extra_env=docker_environment(options),
       ) catch {
         _ => 125
       }
@@ -82,6 +110,7 @@ fn validate_assignment(
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
+    assignment.job.runs_on.contains("windows") == @platform.windows() &&
     assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&
     assignment.job.steps.length() > 0 &&
@@ -142,5 +171,28 @@ pub async fn run(
         }
       }
     }
+  }
+}
+
+///|
+priv struct DockerPlatform {
+  os_type : String
+  architecture : String
+}
+
+///|
+impl @json.FromJson for DockerPlatform with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "Docker info must be an object"))
+  }
+  {
+    os_type: @json.from_json(
+      fields.get("OSType").unwrap_or(Json::null()),
+      path=path.add_key("OSType"),
+    ),
+    architecture: @json.from_json(
+      fields.get("Architecture").unwrap_or(Json::null()),
+      path=path.add_key("Architecture"),
+    ),
   }
 }

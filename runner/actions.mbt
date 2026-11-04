@@ -3,13 +3,26 @@ async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
   let script = scratch + "/prepare-source.sh"
   @fs.write_file(
     script,
-    (
-      #|git -c core.hooksPath=/dev/null init --bare --quiet "$MOONHUB_SOURCE_GIT"
-      #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" bundle unbundle "$MOONHUB_SOURCE_BUNDLE" > /dev/null
-      #|printf '%s\n' "$GITHUB_SHA" > "$MOONHUB_SOURCE_GIT/shallow"
-      #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" update-ref refs/heads/moonhub-source "$GITHUB_SHA"
-      #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" symbolic-ref HEAD refs/heads/moonhub-source
-    ),
+    if @platform.windows() {
+      (
+        #|& git -c core.hooksPath=NUL init --bare --quiet $env:MOONHUB_SOURCE_GIT
+        #|if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        #|& git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT bundle unbundle $env:MOONHUB_SOURCE_BUNDLE | Out-Null
+        #|if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        #|[IO.File]::WriteAllText(($env:MOONHUB_SOURCE_GIT + '/shallow'), ($env:GITHUB_SHA + "`n"), [Text.UTF8Encoding]::new($false))
+        #|& git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT update-ref refs/heads/moonhub-source $env:GITHUB_SHA
+        #|if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        #|& git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT symbolic-ref HEAD refs/heads/moonhub-source
+      )
+    } else {
+      (
+        #|git -c core.hooksPath=/dev/null init --bare --quiet "$MOONHUB_SOURCE_GIT"
+        #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" bundle unbundle "$MOONHUB_SOURCE_BUNDLE" > /dev/null
+        #|printf '%s\n' "$GITHUB_SHA" > "$MOONHUB_SOURCE_GIT/shallow"
+        #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" update-ref refs/heads/moonhub-source "$GITHUB_SHA"
+        #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" symbolic-ref HEAD refs/heads/moonhub-source
+      )
+    },
     create_mode=CreateNew,
     permission=0o600,
   )
@@ -18,7 +31,11 @@ async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
     {
       ..base,
       uses: "",
-      shell: "bash",
+      shell: if @platform.windows() {
+        "pwsh"
+      } else {
+        "bash"
+      },
       working_directory: ".",
       env: {
         "MOONHUB_SOURCE_BUNDLE": scratch + "/source.bundle",
@@ -82,9 +99,15 @@ async fn Runtime::execute_action_runtime(
   let script = filename + ".sh"
   @fs.write_file(
     script,
-    (
-      #|exec "$MOONHUB_ACTION_NODE" "$MOONHUB_ACTION_RUNTIME" "$MOONHUB_ACTION_PLAN" "$MOONHUB_ACTION_STATE"
-    ),
+    if @platform.windows() {
+      (
+        #|& $env:MOONHUB_ACTION_NODE $env:MOONHUB_ACTION_RUNTIME $env:MOONHUB_ACTION_PLAN $env:MOONHUB_ACTION_STATE
+      )
+    } else {
+      (
+        #|exec "$MOONHUB_ACTION_NODE" "$MOONHUB_ACTION_RUNTIME" "$MOONHUB_ACTION_PLAN" "$MOONHUB_ACTION_STATE"
+      )
+    },
     create_mode=CreateNew,
     permission=0o600,
   )
@@ -95,7 +118,17 @@ async fn Runtime::execute_action_runtime(
   env["MOONHUB_ACTION_STATE"] = self.action_temp + "/state.json"
   env["MOONHUB_ACTION_STATE_KEY"] = self.action_state_key
   self.execute_script(
-    { ..step, uses: "", shell: "bash", working_directory: ".", env, },
+    {
+      ..step,
+      uses: "",
+      shell: if @platform.windows() {
+        "pwsh"
+      } else {
+        "bash"
+      },
+      working_directory: ".",
+      env,
+    },
     script,
     timeout,
     secrets~,

@@ -66,6 +66,7 @@ async test "production runner mount uses bearer auth never browser sessions and 
     )
     let request : @protocol.ClaimRequest = {
       version: 1,
+      runner_os: None,
       request_id: @identity.random_hex(16),
       attempt_token,
     }
@@ -167,6 +168,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       let port = listener.addr.port()
       let claim : @protocol.ClaimRequest = {
         version: 1,
+        runner_os: None,
         request_id: @identity.random_hex(16),
         attempt_token,
       }

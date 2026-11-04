@@ -136,6 +136,7 @@ async test "saving provider labels unblocks queued work and cancels incompatible
         )
         let claim : @protocol.ClaimRequest = {
           version: 1,
+          runner_os: None,
           request_id: "1".repeat(32),
           attempt_token: "b".repeat(64),
         }

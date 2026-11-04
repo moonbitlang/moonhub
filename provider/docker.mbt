@@ -16,24 +16,50 @@ fn container_args(
     "--rm",
     "--name",
     container_name(attempt_id),
-    "--read-only",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "--pids-limit",
-    options.pids_limit.to_string(),
-    "--memory",
-    options.memory,
-    "--cpus",
-    options.cpus,
-    "--tmpfs",
-    "/tmp:rw,noexec,nosuid,nodev,size=64m",
-    "--mount",
-    "type=volume,src=\{workspace_volume},dst=/workspace",
-    "--mount",
-    "type=bind,src=\{assignment_path},dst=/control/assignment.json,readonly",
   ]
+  if @platform.windows() {
+    args.append([
+      "--isolation",
+      "process",
+      "--user",
+      "ContainerUser",
+      "--memory",
+      options.memory,
+      "--cpu-count",
+      options.cpus,
+      "--mount",
+      "type=volume,src=\{workspace_volume},dst=C:\\workspace",
+      // Windows Docker supports directory bind mounts, not single-file binds.
+      "--mount",
+      "type=bind,src=" +
+      assignment_path
+      .strip_suffix("/assignment.json")
+      .unwrap()
+      .to_owned()
+      .replace_all(old="/", new="\\") +
+      ",dst=C:\\control,readonly",
+    ])
+  } else {
+    args.append([
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--pids-limit",
+      options.pids_limit.to_string(),
+      "--memory",
+      options.memory,
+      "--cpus",
+      options.cpus,
+      "--tmpfs",
+      "/tmp:rw,noexec,nosuid,nodev,size=64m",
+      "--mount",
+      "type=volume,src=\{workspace_volume},dst=/workspace",
+      "--mount",
+      "type=bind,src=\{assignment_path},dst=/control/assignment.json,readonly",
+    ])
+  }
   if !options.network.is_empty() {
     args.push("--network")
     args.push(options.network)
@@ -46,7 +72,13 @@ fn container_args(
   args.push("--server")
   args.push(options.runner_server)
   args.push("--assignment")
-  args.push("/control/assignment.json")
+  args.push(
+    if @platform.windows() {
+      "C:/control/assignment.json"
+    } else {
+      "/control/assignment.json"
+    },
+  )
   if options.allow_http {
     args.push("--allow-http")
   }
@@ -104,10 +136,7 @@ async fn run_container(
           options.docker,
           args,
           inherit_env=false,
-          extra_env={
-            "PATH": "/usr/bin:/bin",
-            "DOCKER_HOST": options.docker_host,
-          },
+          extra_env=docker_environment(options),
           stdin~,
           stdout=stdout_writer,
           stderr=stderr_writer,
@@ -151,7 +180,7 @@ async fn execute_assignment(
 ) -> Unit {
   let attempt_id = assignment.attempt_id
   let root = options.workspace_root + "/" + attempt_id
-  @fs.mkdir(root, permission=0o700) catch {
+  @platform.private_directory(root, readable=@platform.windows()) catch {
     _ => raise DockerFailure(125)
   }
   defer (@async.protect_from_cancel(() => @fs.rmdir(root, recursive=true)) catch {
@@ -175,7 +204,9 @@ async fn execute_assignment(
   // Docker bind mounts retain the host file mode. Keep the parent private,
   // but make this credential-free manifest readable through its read-only mount.
   // Set the mode explicitly because the host service may have a restrictive umask.
-  @fs.chmod(assignment_path, 0o444)
+  if !@platform.windows() {
+    @fs.chmod(assignment_path, 0o444)
+  }
   let result = run_container(
     options, assignment, attempt_token, assignment_path, workspace_volume,
   ) catch {

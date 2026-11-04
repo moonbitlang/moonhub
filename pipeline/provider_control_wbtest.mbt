@@ -189,6 +189,7 @@ async test "worker identities share grants but claim independently and drain ato
     ignore(c.sync_worker("d".repeat(64), ready))
     let claim : @protocol.ClaimRequest = {
       version: 1,
+      runner_os: None,
       request_id: "1".repeat(32),
       attempt_token: "e".repeat(64),
     }
@@ -224,6 +225,7 @@ async test "worker identities share grants but claim independently and drain ato
     let b = c
       .claim("d".repeat(64), {
         ..claim,
+        runner_os: None,
         request_id: "2".repeat(32),
         attempt_token: "f".repeat(64),
       })
@@ -250,6 +252,7 @@ async test "worker identities share grants but claim independently and drain ato
     assert_true(
       c.claim("c".repeat(64), {
         ..claim,
+        runner_os: None,
         request_id: "3".repeat(32),
         attempt_token: "1".repeat(64),
       })

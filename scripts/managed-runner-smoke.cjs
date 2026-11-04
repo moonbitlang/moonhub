@@ -30,7 +30,7 @@ let result = null;
 if (args[0] === 'ec2') {
   if (args[1] === 'describe-instance-types') result = [{cpus:2,memory_mib:8192,architectures:['x86_64']}];
   else if (args[1] === 'describe-launch-template-versions') result = [{image:'ami-test',tokens:'required',hop:1}];
-  else if (args[1] === 'describe-images') result = ['x86_64'];
+  else if (args[1] === 'describe-images') result = [{ architecture: 'x86_64', platform: null }];
   else throw Error('unexpected EC2 command');
 } else if (args[0] === 'autoscaling') {
   const name = args[args.indexOf('--auto-scaling-group-name') + 1];

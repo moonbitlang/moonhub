@@ -1,3 +1,4 @@
+import { windows } from './platform.mjs';
 // A small, parsed Actions expression language; never evaluates JavaScript.
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
 export function evaluate(source, context = {}, implicitSuccess = false) {
@@ -60,7 +61,7 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
       if (root === undefined) throw new Error(`Unsupported Actions context: ${a[0]}`);
       return a.slice(1).reduce((value, key) => {
         if (value == null) return '';
-        const field = root === 'env' ? key : Object.keys(Object(value)).find(name => name.toLowerCase() === key.toLowerCase());
+        const field = root === 'env' && !windows ? key : Object.keys(Object(value)).find(name => name.toLowerCase() === key.toLowerCase());
         return field !== undefined && Object.hasOwn(Object(value), field) ? value[field] : '';
       }, context[root]);
     }

@@ -11,7 +11,7 @@ async fn docker_control(
       options.docker,
       args,
       inherit_env=false,
-      extra_env={ "PATH": "/usr/bin:/bin", "DOCKER_HOST": options.docker_host },
+      extra_env=docker_environment(options),
     )
     (code, output.text())
   }) catch {
@@ -98,4 +98,11 @@ async fn cleanup_stale_workspaces(
     }
     remove_workspace(options, name)
   }
+}
+
+///|
+fn docker_environment(options : Options) -> Map[String, String] {
+  let env = @platform.environment()
+  env["DOCKER_HOST"] = options.docker_host
+  env
 }

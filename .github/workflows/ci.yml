@@ -67,20 +67,73 @@ jobs:
       - name: Build and exercise HTTP and Git SSH
         run: bash scripts/docker-smoke.sh
 
+  windows-runner:
+    name: Windows runner
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install production MoonBit version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = [regex]::Match((Get-Content deploy/base.Dockerfile -Raw), '(?m)^ARG MOONBIT_VERSION=(\S+)$').Groups[1].Value
+          if (-not $pin) { throw 'Missing production MoonBit pin' }
+          $env:MOONBIT_INSTALL_VERSION = $pin
+          Invoke-WebRequest https://cli.moonbitlang.com/install/powershell.ps1 -OutFile "$env:RUNNER_TEMP/install-moonbit.ps1"
+          & "$env:RUNNER_TEMP/install-moonbit.ps1"
+          if (-not $?) { throw 'MoonBit installation failed' }
+          "$env:USERPROFILE/.moon/bin" >> $env:GITHUB_PATH
+      - name: Build Windows worker and task runtime
+        shell: pwsh
+        run: |
+          moon update
+          if ($LASTEXITCODE -ne 0) { throw 'Mooncakes index failed' }
+          node scripts/resolve-dependencies.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency resolution failed' }
+          ./scripts/build-windows-runner.ps1
+      - name: Test Windows paths, shells, actions and process cleanup
+        shell: pwsh
+        run: |
+          $env:PATH = "$pwd/.tmp/windows-runner/bin;$pwd/.tmp/windows-runner/pwsh;$pwd/.tmp/windows-runner/git/cmd;$pwd/.tmp/windows-runner/git/usr/bin;$env:PATH"
+          moon test --target native --strip -j 1 --deny-warn runner/platform
+          if ($LASTEXITCODE -ne 0) { throw 'Platform tests failed' }
+          node --test runner/actions/runtime.windows.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Action runtime tests failed' }
+          node scripts/windows-launcher-test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Process cleanup tests failed' }
+      - name: Build Windows Server 2022 task image
+        shell: pwsh
+        run: |
+          docker build --isolation=process -f deploy/windows/Dockerfile -t moonhub:runner-windows .tmp/windows-runner
+          if ($LASTEXITCODE -ne 0) { throw 'Windows task image build failed' }
+      - name: Exercise reusable Windows worker with real containers
+        shell: pwsh
+        run: |
+          node scripts/windows-runner-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows container smoke failed' }
+
   required:
     name: CI required
     if: ${{ always() }}
-    needs: [self-check, docker-ssh]
+    needs: [self-check, docker-ssh, windows-runner]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require both checks to succeed
+      - name: Require all checks to succeed
         env:
           SELF_CHECK_RESULT: ${{ needs.self-check.result }}
           DOCKER_SSH_RESULT: ${{ needs.docker-ssh.result }}
+          WINDOWS_RUNNER_RESULT: ${{ needs.windows-runner.result }}
         run: |
           test "$SELF_CHECK_RESULT" = success
           test "$DOCKER_SSH_RESULT" = success
+          test "$WINDOWS_RUNNER_RESULT" = success
 
   deploy:
     needs: required
