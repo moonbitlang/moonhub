@@ -107,6 +107,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Action runtime tests failed' }
           node scripts/windows-launcher-test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Process cleanup tests failed' }
+          node scripts/windows-runner-cancellation-test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Runner cancellation tests failed' }
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |

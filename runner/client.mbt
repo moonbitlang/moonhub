@@ -196,14 +196,24 @@ fn Runtime::accept(
 
 ///|
 fn Runtime::check_live(self : Runtime) -> Unit raise RunnerError {
-  if !self.stopped.is_empty() {
-    raise Stopped(self.stopped)
+  let stopped = if !self.stopped.is_empty() {
+    self.stopped
+  } else if monotonic_ms() >= self.deadline {
+    "timed_out"
+  } else if monotonic_ms() >= self.lease_until {
+    "lost"
+  } else {
+    ""
   }
-  if monotonic_ms() >= self.deadline {
-    raise Stopped("timed_out")
-  }
-  if monotonic_ms() >= self.lease_until {
-    raise Stopped("lost")
+  if !stopped.is_empty() {
+    // Finish the Windows process before unwinding its pipe/wait tasks. Unlike
+    // POSIX, Windows cancellation also needs to settle outstanding pipe I/O.
+    if @platform.windows() {
+      for pid in self.groups {
+        kill_group(pid)
+      }
+    }
+    raise Stopped(stopped)
   }
 }
 

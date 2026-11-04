@@ -28,9 +28,10 @@ int32_t moonhub_runner_prepare(int32_t local) {
 }
 void moonhub_runner_kill_group(int32_t pid) {
   if (pid <= 0) return;
-  HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, (DWORD)pid);
+  HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
   if (process) {
     if (!TerminateProcess(process, 1)) fprintf(stderr, "runner: cannot terminate step (%lu)\n", GetLastError());
+    WaitForSingleObject(process, 3000);
     CloseHandle(process);
   } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
     fprintf(stderr, "runner: cannot open step for cancellation (%lu)\n", GetLastError());
