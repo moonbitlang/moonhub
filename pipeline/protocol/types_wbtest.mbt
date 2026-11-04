@@ -97,6 +97,7 @@ test "assignment validates string identifiers and bounded timestamps" {
     server_time_ms: "0",
     state: "leased",
     job: {
+      context: Map([]),
       id: "build",
       name: "Build",
       runs_on: ["self-hosted"],
@@ -165,6 +166,7 @@ test "log and completion requests use explicit string sequence fields" {
 ///|
 test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
+    context: Map([]),
     id: "build",
     name: "Build",
     runs_on: ["self-hosted", "linux"],
@@ -176,6 +178,10 @@ test "wire job plan has no language-specific optional field representation" {
         run: "echo test",
         uses: "",
         moonbit_version: "",
+        remote: false,
+        inputs: Map([]),
+        templates: Map([]),
+        env_overrides: [],
         secret_env: Map([]),
         shell: "",
         working_directory: ".",

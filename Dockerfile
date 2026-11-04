@@ -19,12 +19,21 @@ COPY --from=assets /src/assets/ /src/assets/
 RUN --network=none mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
     && moon build --target native --release --deny-warn -j 1
 
+# Offline Linux runtime checks use the same dependency base as the runner.
+FROM base AS action-runtime-check
+WORKDIR /opt/moonhub-actions
+COPY runner/actions/*.mjs ./
+CMD ["node", "--test", "runtime.test.mjs"]
+
 FROM base AS runner
 RUN groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \
     && mkdir /workspace && chown runner:runner /workspace
 COPY --from=build /src/_build/native/release/build/cmd/moonhub-runner/moonhub-runner.exe /usr/local/bin/moonhub-runner
 COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
+COPY --from=base /opt/moonhub-actions/node_modules /usr/local/lib/moonhub/actions/node_modules
+COPY runner/actions/*.mjs /usr/local/lib/moonhub/actions/
+
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE

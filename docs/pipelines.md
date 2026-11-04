@@ -59,9 +59,9 @@ Supported configuration:
   are normalized to lowercase. There is no emulation of `ubuntu-latest` or other
   GitHub-hosted images. Providers must possess every requested label.
 - Literal steps accept `id`, `name`, `run`, `shell`, `working-directory`, `env`,
-  and `timeout-minutes`. Only literal `bash` and `sh` shell selections are
+  `if`, `continue-on-error`, and `timeout-minutes`. Only literal `bash` and `sh` shell selections are
   accepted. A job can instead include one built-in checkout step with
-  `uses: actions/checkout@v4` or `uses: moonhub/checkout@v1`, plus optional
+  `uses: moonhub/checkout@v1`, plus optional
   `id`, `name` and `timeout-minutes`. It cannot also have `run`, `with`, `env`,
   `shell` or `working-directory`.
 - Built-in MoonBit setup accepts `uses: moonhub/setup-moonbit@v1`, plus
@@ -75,7 +75,7 @@ Supported configuration:
   Names must be POSIX-like identifiers. `MOONHUB_`, `GITHUB_`, and `RUNNER_`
   prefixes are reserved for the executor.
   Shell/loader injection variables (`BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`,
-  `LD_*`, `DYLD_*`) are also rejected by both parser and Runner.
+  `LD_*`, `DYLD_*`, `NODE_OPTIONS`) are also rejected by both parser and Runner.
 - Defaults apply workflow < job < step. An omitted shell stays unspecified,
   because GitHub's implicit shell differs from explicitly selecting `bash`.
 - Job timeouts default to 360 minutes; explicit job/step timeouts are integers
@@ -86,14 +86,14 @@ Supported configuration:
   must additionally enforce symlink containment at runtime.
 
 All unknown fields are rejected before mapping. This includes `permissions`,
-`concurrency`, `if`, `continue-on-error`, `strategy`, `container`, `services`,
-and `outputs`. `with` is accepted only for MoonBit setup, and its only supported
-input is `version`. Other `uses` values and expressions outside the `env` subset
-below are rejected rather than executed literally. No field is silently stripped.
+`concurrency`, job-level `if` / `continue-on-error`, `strategy`, `container`,
+`services`, and job `outputs`. Downloaded actions accept `with`, and downloaded
+action/script steps accept step-level `if` and `continue-on-error`; see
+[GitHub Action execution](github-actions.md). Unknown fields are never silently stripped.
 
 ### Run Context and Environment References
 
-Workflow, job and literal-step `env` values can read five captured fields:
+Workflow, job and step `env` values can read five server-resolved captured fields:
 
 | Reference | Value |
 | --- | --- |
@@ -103,12 +103,14 @@ Workflow, job and literal-step `env` values can read five captured fields:
 | `github.head_ref` | MR source branch; empty for manual/push runs |
 | `github.base_ref` | MR target branch; empty for manual/push runs |
 
-Only field references such as `${{ github.sha }}` are accepted. Whitespace
+Simple field references such as `${{ github.sha }}` are resolved on the server. Whitespace
 around the field is optional; literal prefixes/suffixes and multiple references
-are allowed. The usual workflow < job < step precedence applies. Unknown
-fields (including `github.ref`), `env`, outputs, indexing, operators,
-functions, conditions and unterminated expressions fail validation. Direct
-interpolation into `run`, names, paths, labels or other fields remains rejected.
+are allowed. The usual workflow < job < step precedence applies. Other public
+expressions in step `env`, action `with`, and `run` are retained as distinct
+runtime templates; they are not mixed with resolved metadata. Step outputs,
+operators and the supported functions are evaluated by the isolated Action
+runtime. Names, labels and working directories remain literal. See the exact
+[expression subset](github-actions.md#expressions-and-step-status).
 
 ```yaml
 env:
@@ -119,7 +121,7 @@ jobs:
   test:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v4
+      - uses: moonhub/checkout@v1
       - run: |
           printf 'Testing %s from %s\n' "$TESTED_SHA" "$SOURCE_BRANCH"
           moon test --target native --strip -j 1
@@ -130,8 +132,8 @@ precedence. The original YAML, resolved step plan and context are saved as
 immutable snapshots. Rerun snapshot copies them without reparsing, resolving
 again, or reading current branch/MR fields. Inserted metadata is never evaluated
 recursively, even when a branch name contains `${{...}}`, `$()` or backticks.
-Scripts should quote normal shell variable expansions; the server never inserts
-context into script text. Resolved env values reject NUL and values over 64 KiB;
+Scripts should quote normal shell variable expansions. For new `run` templates,
+prefer passing untrusted context through `env` rather than inserting it into shell code. Resolved env values reject NUL and values over 64 KiB;
 the resolved plan retains the 1 MiB cap.
 
 The collaboration API's run objects expose `context` as an object with
@@ -140,10 +142,9 @@ created before migration 018, `context` is `null`; their existing definitions
 and reruns continue to work unchanged. No context is fabricated from live state.
 Migration 018 upgrades the database to schema 18 and protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
-together; an older server binary cannot open schema 18. Runner/provider protocols
-are unchanged for public context references: they receive ordinary resolved env
-strings and do not evaluate expressions. Repository secrets use the separate
-execution-time channel described below. No remote actions are added.
+together; an older server binary cannot open schema 18. Simple public context references still use ordinary resolved env strings. Jobs
+containing downloaded actions or runtime expressions require assignment version 5.
+Repository secrets retain the separate execution-time channel described below.
 
 ### Repository Secrets
 
@@ -189,7 +190,7 @@ Names are case-insensitive and stored uppercase. They contain at most 100 ASCII
 letters, digits or underscores, cannot begin with a digit, and cannot use the
 reserved `GITHUB_`, `MOONHUB_` or `RUNNER_` prefixes. A repository holds at most
 64 secrets. Values contain 1–16,384 UTF-8 bytes without NUL. Secret references
-must occupy an entire workflow/job/literal-step `env` value. Scope precedence
+must occupy an entire workflow/job/step `env` value or downloaded action `with` value. Scope precedence
 is workflow < job < step, including replacement by a public value. Concatenation,
 indexing, functions and secret interpolation into scripts are rejected. Missing
 or disallowed secrets fail the run request instead of becoming empty strings.
@@ -209,8 +210,8 @@ The parser separates secret references from public env before resolving captured
 context, preventing recursive interpolation of branch or repository names. Run
 snapshots, reruns and provider assignments contain only secret names. Assignment
 version 4 requires updated server, provider/controller and task Runner binaries;
-older executors fail closed. Jobs without secrets retain assignment versions
-1–3, and older snapshots without secret fields remain readable.
+older executors fail closed. Jobs without downloaded actions or runtime templates retain assignment versions
+1–4, and older snapshots without the new fields remain readable.
 
 After binding its execution instance and starting a step, the Runner calls
 `POST /-/runner-api/v1/attempts/:id/secrets` with its attempt credential,
@@ -315,7 +316,7 @@ jobs:
   test:
     runs-on: [self-hosted, linux]
     steps:
-      - uses: actions/checkout@v4
+      - uses: moonhub/checkout@v1
       - run: moon test --target native --strip -j 1
 ```
 
@@ -660,7 +661,9 @@ require the echoed execution ID and fail closed against an older server.
 The additional `/attempts/:id/steps` endpoint accepts `version`, `step_id`,
 `state`, and `exit_code`. It enforces pending -> running -> terminal transitions,
 ordered execution, and idempotent repeats. Fenced executions cannot report job
-success until every step succeeded. Terminalization records interrupted running
+success until every step succeeded (or was conditionally skipped in version 5).
+Version 5 permits sequential cleanup steps after a failure without allowing that
+failure to become a successful job. Terminalization records interrupted running
 steps and skips pending ones. `Coordinator.read_steps` is repository-scoped;
 the step UI remains part of step 6.
 

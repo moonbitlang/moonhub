@@ -12,6 +12,10 @@ fn test_step(
     run,
     uses: "",
     moonbit_version: "",
+    remote: false,
+    inputs: Map([]),
+    templates: Map([]),
+    env_overrides: [],
     secret_env: Map([]),
     shell,
     working_directory: directory,
@@ -33,6 +37,7 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     server_time_ms: "0",
     state: "leased",
     job: {
+      context: Map([]),
       id: "build",
       name: "Build",
       runs_on: ["self-hosted", "linux"],

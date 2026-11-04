@@ -5,7 +5,7 @@ async fn validate_options(
 ) -> Options {
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
-      @protocol.secret_assignment_version,
+      @protocol.secret_assignment_version, @protocol.remote_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     assignment.has_valid_numbers() &&
@@ -36,17 +36,52 @@ async fn validate_options(
   let ids : Map[String, Bool] = Map([])
   let mut checkouts = 0
   for step in assignment.job.steps {
-    if ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) {
+    if !step.remote &&
+      ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) {
       checkouts += 1
     }
-    guard !step.id.is_empty() &&
+    if step.remote {
+      guard assignment.version == @protocol.remote_assignment_version else {
+        raise InvalidConfiguration(
+          "remote actions require assignment version 5",
+        )
+      }
+      ignore(
+        @actions.parse_reference(step.uses) catch {
+          _ => raise InvalidConfiguration("invalid remote action reference")
+        },
+      )
+    }
+    guard step.inputs.length() <= 100 &&
+      !step.id.is_empty() &&
       !ids.contains(step.id) &&
       ["", "sh", "bash"].contains(step.shell) &&
       !step.run.contains("\u{0000}") &&
-      !step.run.contains("${{") &&
+      (
+        !step.run.contains("${{") ||
+        (
+          assignment.version == @protocol.remote_assignment_version &&
+          step.templates.get("run") == Some(step.run)
+        )
+      ) &&
       (if step.uses.is_empty() {
-        !step.run.trim().is_empty() && step.moonbit_version.is_empty()
+        !step.run.trim().is_empty() &&
+        step.moonbit_version.is_empty() &&
+        step.inputs.is_empty()
+      } else if step.remote {
+        step.run.is_empty() &&
+        step.shell.is_empty() &&
+        step.working_directory == "." &&
+        step.moonbit_version.is_empty() &&
+        step.inputs
+        .iter()
+        .all(entry => {
+          @actions.valid_input_name(entry.0) &&
+          !entry.1.contains("\u{0000}") &&
+          @utf8.encode(entry.1).length() <= 65536
+        })
       } else {
+        step.inputs.is_empty() &&
         step.run.is_empty() &&
         step.shell.is_empty() &&
         step.working_directory == "." &&
@@ -55,13 +90,14 @@ async fn validate_options(
         (if step.uses == "moonhub/setup-moonbit@v1" {
           [
             @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
+            @protocol.remote_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
           ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses) &&
           [
             @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
-            @protocol.secret_assignment_version,
+            @protocol.secret_assignment_version, @protocol.remote_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -72,17 +108,60 @@ async fn validate_options(
       @utf8.encode(step.run).length() <= 65536 else {
       raise InvalidConfiguration("invalid step plan")
     }
+    guard step.templates.is_empty() ||
+      assignment.version == @protocol.remote_assignment_version else {
+      raise InvalidConfiguration("step templates require assignment version 5")
+    }
+    guard step.templates.length() <= 202 &&
+      step.templates
+      .iter()
+      .all(entry => {
+        let (key, value) = entry
+        !value.contains("\u{0000}") &&
+        @utf8.encode(value).length() <= 65536 &&
+        (
+          key == "run" ||
+          key == "if" ||
+          key == "continue-on-error" ||
+          (
+            key.strip_prefix("env:") is Some(name) &&
+            valid_secret_env_name(name.to_owned()) &&
+            !step.env.contains(name.to_owned()) &&
+            !step.secret_env.contains(name.to_owned())
+          ) ||
+          (
+            step.remote &&
+            key.strip_prefix("with:") is Some(name) &&
+            @actions.valid_input_name(name.to_owned()) &&
+            step.inputs.contains(name.to_owned()) &&
+            !step.secret_env.contains(@actions.input_env(name.to_owned()))
+          )
+        )
+      }) else {
+      raise InvalidConfiguration("invalid step template")
+    }
     ids[step.id] = true
     guard step.secret_env.is_empty() ||
-      assignment.version == @protocol.secret_assignment_version else {
+      [@protocol.secret_assignment_version, @protocol.remote_assignment_version].contains(
+        assignment.version,
+      ) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
-    guard step.env.length() + step.secret_env.length() <= 300 else {
+    guard step.env_overrides.length() <= 100 &&
+      step.env_overrides.all(name => valid_secret_env_name(name)) &&
+      step.env.length() + step.secret_env.length() <= 300 else {
       raise InvalidConfiguration("too many step environment variables")
     }
     for name, secret in step.secret_env {
       guard !step.env.contains(name) &&
-        valid_secret_env_name(name) &&
+        (
+          valid_secret_env_name(name) ||
+          (
+            step.remote &&
+            name.strip_prefix("INPUT_") is Some(input) &&
+            @actions.valid_input_name(input.to_owned())
+          )
+        ) &&
         !secret.is_empty() &&
         secret.length() <= 100 &&
         secret.get_char(0) is Some(first) &&
@@ -109,7 +188,9 @@ async fn validate_options(
         !name.has_prefix("RUNNER_") &&
         !name.has_prefix("LD_") &&
         !name.has_prefix("DYLD_") &&
-        !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"].contains(name) &&
+        !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
+          name,
+        ) &&
         !value.contains("\u{0000}") else {
         raise InvalidConfiguration(
           "step contains a reserved or unsafe environment variable",
@@ -168,9 +249,9 @@ async fn Runtime::execute_script(
   let cwd = step_directory(self.options.workspace, step.working_directory)
   let env : Map[String, String] = {
     "PATH": "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin",
-    "HOME": self.options.workspace + "/.home",
-    "TMPDIR": self.options.workspace + "/.tmp",
-    "MOON_HOME": self.options.workspace + "/.home/.moon",
+    "HOME": self.job_home,
+    "TMPDIR": self.action_temp,
+    "MOON_HOME": self.job_home + "/.moon",
     "LANG": "C.UTF-8",
     "CI": "true",
   }
@@ -236,11 +317,19 @@ async fn Runtime::execute_steps(
   source : (async () -> Bytes)?,
   moonbit_installer : async () -> Bytes,
 ) -> String {
+  let mut failed = false
   for index, step in self.assignment.job.steps {
     self.check_live()
     self.step_state(index, "running", 0)
     self.check_live()
     let script = "\{scratch}/step-\{index}.sh"
+    if failed &&
+      self.assignment.version == @protocol.remote_assignment_version &&
+      !step.remote &&
+      !step.uses.is_empty() {
+      self.step_state(index, "skipped", 0)
+      continue
+    }
     let code = try {
       let remaining = self.deadline - monotonic_ms()
       guard remaining > 0L else { raise Stopped("timed_out") }
@@ -263,7 +352,7 @@ async fn Runtime::execute_steps(
           },
           error=Stopped("timed_out"),
         )
-      } else if !step.uses.is_empty() {
+      } else if !step.remote && !step.uses.is_empty() {
         @async.with_timeout(
           Int64::min(timeout, 30000L).to_int(),
           () => self.checkout(scratch, source),
@@ -317,18 +406,29 @@ async fn Runtime::execute_steps(
         }
         let script_timeout = timeout - (monotonic_ms() - fetching_started)
         guard script_timeout > 0L else { raise Stopped("timed_out") }
-        @fs.write_file(
-          script,
-          step.run,
-          create_mode=CreateNew,
-          permission=0o600,
-        )
-        self.execute_script(
-          step,
-          script,
-          Int64::min(script_timeout, 2147483647L).to_int(),
-          secrets~,
-        )
+        if self.assignment.version == @protocol.remote_assignment_version {
+          self.execute_action_step(
+            step,
+            index,
+            scratch,
+            Int64::min(script_timeout, 2147483647L).to_int(),
+            secrets,
+            failed,
+          )
+        } else {
+          @fs.write_file(
+            script,
+            step.run,
+            create_mode=CreateNew,
+            permission=0o600,
+          )
+          self.execute_script(
+            step,
+            script,
+            Int64::min(script_timeout, 2147483647L).to_int(),
+            secrets~,
+          )
+        }
       }
     } catch {
       Stopped(reason) => raise Stopped(reason)
@@ -339,6 +439,8 @@ async fn Runtime::execute_steps(
           "stderr",
           if step.uses == "moonhub/setup-moonbit@v1" {
             "runner: MoonBit setup failed\n"
+          } else if step.remote {
+            "runner: GitHub action execution failed\n"
           } else if step.uses.is_empty() {
             "runner: could not prepare or start step\n"
           } else {
@@ -348,12 +450,39 @@ async fn Runtime::execute_steps(
         1
       }
     }
-    self.step_state(index, if code == 0 { "success" } else { "failure" }, code)
+    let state = if code == 0 &&
+      self.assignment.version == @protocol.remote_assignment_version &&
+      @fs.exists(scratch + "/result-\{index}.json") {
+      let bytes = @fs.read_file(scratch + "/result-\{index}.json")
+      guard bytes.binary().length() <= 4096 else { raise InvalidResponse }
+      let result = @json.parse(bytes.text())
+      if result is { "conclusion": "skipped", .. } {
+        "skipped"
+      } else {
+        "success"
+      }
+    } else if code == 0 {
+      "success"
+    } else {
+      "failure"
+    }
+    self.step_state(index, state, code)
     if code != 0 {
-      return "failure"
+      failed = true
+      if self.assignment.version != @protocol.remote_assignment_version {
+        return "failure"
+      }
     }
   }
-  "success"
+  if self.assignment.version == @protocol.remote_assignment_version &&
+    self.execute_action_posts(scratch, failed) != 0 {
+    failed = true
+  }
+  if failed {
+    "failure"
+  } else {
+    "success"
+  }
 }
 
 ///|
@@ -454,6 +583,9 @@ async fn execute_assignment(
   options : Options,
   post : async (String, Json, Int64) -> (@protocol.LeaseState, Int64),
   source? : async () -> Bytes,
+  bundle? : async () -> Bytes,
+  action_node~ : String = "/usr/local/bin/node",
+  action_runtime~ : String = "/usr/local/lib/moonhub/actions/runtime.mjs",
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
   secrets~ : async (@protocol.SecretRequest) -> @protocol.SecretResponse = _ => {
     raise InvalidConfiguration("secret service unavailable")
@@ -464,6 +596,13 @@ async fn execute_assignment(
   defer (@async.protect_from_cancel(() => @fs.rmdir(scratch, recursive=true)) catch {
     _ => ()
   })
+  let root = options.workspace
+  let options = if assignment.version == @protocol.remote_assignment_version {
+    @fs.mkdir(root + "/repository", permission=0o700)
+    { ..options, workspace: root + "/repository", }
+  } else {
+    options
+  }
   let runtime : Runtime = {
     post,
     execution_id: execution_nonce(),
@@ -485,6 +624,11 @@ async fn execute_assignment(
     reporting_until: 0L,
     moon_home: "",
     secrets,
+    action_node,
+    action_runtime,
+    action_state_key: execution_nonce() + execution_nonce(),
+    action_temp: root + "/.tmp",
+    job_home: root + "/.home",
   }
   let completed = @async.handle_cancellation(() => {
     try {
@@ -500,9 +644,9 @@ async fn execute_assignment(
         raise Stopped("lost")
       }
       runtime.check_live()
-      @fs.mkdir(options.workspace + "/.home", permission=0o700)
-      @fs.mkdir(options.workspace + "/.tmp", permission=0o700)
-      let moon_home = options.workspace + "/.home/.moon"
+      @fs.mkdir(runtime.job_home, permission=0o700)
+      @fs.mkdir(runtime.action_temp, permission=0o700)
+      let moon_home = runtime.job_home + "/.moon"
       @fs.mkdir(moon_home, permission=0o700)
       for entry in ["bin", "lib", "include", "config.json"] {
         let installed = "/opt/moon/" + entry
@@ -512,8 +656,37 @@ async fn execute_assignment(
       }
       @async.any([
         () => {
+          if assignment.version == @protocol.remote_assignment_version &&
+            bundle is Some(fetch) {
+            try {
+              let bytes = @async.with_timeout(30000, fetch)
+              @fs.write_file(
+                scratch + "/source.bundle",
+                bytes,
+                create_mode=CreateNew,
+                permission=0o600,
+              )
+              runtime.prepare_source_git(scratch)
+            } catch {
+              Stopped(reason) => raise Stopped(reason)
+              TransportFailure | Rejected(_) | InvalidResponse =>
+                raise Stopped("lost")
+              _ => {
+                runtime.upload(
+                  "", "stderr", "runner: source bundle preparation failed\n",
+                )
+                raise Stopped("failure")
+              }
+            }
+          }
           if !assignment.job.steps.any(step => {
-              ["actions/checkout@v4", "moonhub/checkout@v1"].contains(step.uses)
+              (
+                !step.remote &&
+                ["actions/checkout@v4", "moonhub/checkout@v1"].contains(
+                  step.uses,
+                )
+              ) ||
+              (step.remote && step.uses.has_prefix("actions/checkout@"))
             }) &&
             source is Some(_) {
             runtime.checkout(scratch, source) catch {
@@ -592,6 +765,8 @@ pub async fn run(
   assignment : @protocol.Assignment,
   token : String,
   options : Options,
+  action_node~ : String = "/usr/local/bin/node",
+  action_runtime~ : String = "/usr/local/lib/moonhub/actions/runtime.mjs",
 ) -> Report {
   guard token.length() == 64 &&
     token.iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f')) else {
@@ -606,8 +781,11 @@ pub async fn run(
     assignment,
     options,
     post,
+    action_node~,
+    action_runtime~,
     secrets=request => fetch_secrets(options.server, attempt_id, token, request),
     source=() => fetch_source(options.server, attempt_id, token),
+    bundle=() => fetch_source(options.server, attempt_id, token, bundle=true),
   )
 }
 
@@ -623,5 +801,5 @@ fn valid_secret_env_name(name : String) -> Bool {
   !["MOONHUB_", "GITHUB_", "RUNNER_", "LD_", "DYLD_"].any(prefix => {
     name.has_prefix(prefix)
   }) &&
-  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"].contains(name)
+  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(name)
 }

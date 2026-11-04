@@ -82,6 +82,8 @@ test "workflow job and step env and defaults have explicit precedence" {
   assert_eq(first.working_directory, "other")
   assert_eq(first.timeout_minutes, Some(2))
   assert_eq(first.env.get("LEVEL"), Some("step"))
+  assert_eq(first.env_overrides, ["LEVEL"])
+  assert_true(second.env_overrides.is_empty())
   assert_eq(first.env.get("COUNT"), Some("42"))
   assert_eq(first.env.get("FLAG"), Some("true"))
   assert_eq(first.env.get("EMPTY"), Some(""))
@@ -154,28 +156,13 @@ test "pull request workflows accept the built-in checkout action" {
   assert_true(trigger.matches_pull_request("opened"))
   assert_true(trigger.matches_pull_request("synchronize"))
   assert_false(trigger.matches_pull_request("closed"))
-  expect_invalid(
-    (
-      #|on: pull_request
-      #|jobs:
-      #|  test:
-      #|    runs-on: self-hosted
-      #|    steps:
-      #|      - uses: owner/action@v1
-    ),
-    "built-in checkout",
-  )
-  expect_invalid(
-    (
-      #|on: pull_request
-      #|jobs:
-      #|  test:
-      #|    runs-on: self-hosted
-      #|    steps:
-      #|      - uses: actions/checkout@main
-    ),
-    "built-in checkout",
-  )
+  for action in ["owner/action@v1", "actions/checkout@main"] {
+    let source = basic_workflow.replace_all(
+      old="run: echo hello",
+      new="uses: " + action,
+    )
+    assert_true(parse(source).jobs[0].steps[0].remote)
+  }
 }
 
 ///|
@@ -195,8 +182,7 @@ test "unsupported execution semantics fail closed at every mapping level" {
     ] {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }
-  for
-    field in ["if: false", "continue-on-error: true", "with: {}", "unknown: 1"] {
+  for field in ["with: {}", "unknown: 1"] {
     expect_invalid(basic_workflow + "\n        " + field, "not supported")
   }
   expect_invalid(
@@ -491,11 +477,12 @@ test "MoonBit setup rejects arbitrary inputs expressions unsafe versions and mix
     )
   }
   expect_invalid(source.replace_all(old="@v1", new="@main"), "built-in")
-  expect_invalid(
-    source.replace_all(
-      old="moonhub/setup-moonbit@v1",
-      new="moonbit-community/setup-moonbit@main",
-    ),
-    "built-in",
+  assert_true(
+    parse(
+      source.replace_all(
+        old="moonhub/setup-moonbit@v1",
+        new="moonbit-community/setup-moonbit@main",
+      ),
+    ).jobs[0].steps[0].remote,
   )
 }

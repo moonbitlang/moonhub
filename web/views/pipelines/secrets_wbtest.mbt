@@ -89,6 +89,10 @@ async test "repository secret pages protect forms preserve metadata and never ec
 async test "real runner obtains step secrets through HTTP and stores only masked logs" {
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((_, launcher, workspace) => {
+      let (code, node) = @process.collect_output_merged("node", [
+        "-p", "process.execPath",
+      ])
+      assert_eq(code, 0)
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       let actor = @identity.active_user_by_name(pool, "alice")
       let workflow = @test_support.single_job_workflow.replace_all(
@@ -150,14 +154,20 @@ async test "real runner obtains step secrets through HTTP and stores only masked
         let listener = @moonback.listen(port=0)
         let serving = group.spawn(() => app.serve(listener))
         defer serving.cancel()
-        let result = @runner.run(assignment, token, {
-          server: "http://127.0.0.1:\{listener.addr.port()}",
-          workspace,
-          launcher,
-          allow_http: true,
-          unsafe_local: true,
-          heartbeat_ms: 50,
-        })
+        let result = @runner.run(
+          assignment,
+          token,
+          {
+            server: "http://127.0.0.1:\{listener.addr.port()}",
+            workspace,
+            launcher,
+            allow_http: true,
+            unsafe_local: true,
+            heartbeat_ms: 50,
+          },
+          action_node=node.text().trim().to_owned(),
+          action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+        )
         assert_eq(result.conclusion, "success")
         assert_true(result.reported)
         let logs = coordinator

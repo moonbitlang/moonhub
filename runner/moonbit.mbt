@@ -63,7 +63,7 @@ async fn Runtime::setup_moonbit(
   let installer_path = scratch + "/moonbit-installer-\{index}.sh"
   @fs.write_file(installer_path, bytes, create_mode=CreateNew, permission=0o600)
   // Never install over the default MOON_HOME's symlinks into /opt/moon.
-  let toolchain = self.options.workspace + "/.home/moonbit-\{index}"
+  let toolchain = self.job_home + "/moonbit-\{index}"
   @fs.mkdir(toolchain, permission=0o700)
   let script = scratch + "/setup-moonbit-\{index}.sh"
   @fs.write_file(

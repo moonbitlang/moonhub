@@ -45,25 +45,23 @@ test "env references resolve once after workflow job step precedence" {
 }
 
 ///|
-test "env expressions reject unknown fields operators functions and other contexts" {
-  for
-    expression in [
-      "${{ github.ref }}", "${{ secrets.TOKEN }}suffix", "${{ env.REPO }}", "${{ steps.test.outputs.value }}",
-      "${{ github.sha == 'x' }}", "${{ github.sha || 'fallback' }}", "${{ toJSON(github) }}",
-      "${{ github['sha'] }}", "${{ }}", "${{ github.sha",
-    ] {
+test "runtime expressions retain templates while invalid interpolation is rejected" {
+  for expression in ["${{ secrets.TOKEN }}suffix", "${{ }}", "${{ github.sha"] {
     expect_invalid(
       basic_workflow +
       "\n        env: {VALUE: \"" +
       expression.replace_all(old="\"", new="\\\"") +
       "\"}",
-      "env expression",
+      "expression",
     )
   }
-  expect_invalid(
-    basic_workflow.replace_all(old="echo hello", new="echo '${{ github.sha }}'"),
-    "expressions",
+  let dynamic = parse(
+    basic_workflow.replace_all(
+      old="echo hello",
+      new="echo '${{ steps.first.outputs.value }}'",
+    ),
   )
+  assert_true(dynamic.jobs[0].steps[0].templates.contains("run"))
   expect_invalid(
     basic_workflow.replace_all(
       old="name: Build",

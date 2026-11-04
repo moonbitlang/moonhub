@@ -38,26 +38,35 @@ pub fn Coordinator::update_step(
           return lease_state(row, (self.clock)())
         }
         let ordinal : Int64 = step.get_name("ordinal")
+        let modern = (row.get_name("definition_version") : Int64) ==
+          @workflow.format_version.to_int64()
         if request.state == "running" {
           guard current == "pending" &&
             (row.get_name("status") : String) == "running" &&
             (row.get_name("cancel_at_ms") : Int64?) is None &&
             tx.query_opt(
-              "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND ordinal < ? AND state <> 'success' LIMIT 1",
+              if modern {
+                "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND ordinal < ? AND state NOT IN ('success', 'failure', 'skipped') LIMIT 1"
+              } else {
+                "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND ordinal < ? AND state <> 'success' LIMIT 1"
+              },
               params=[id, ordinal],
             )
             is None else {
             raise Conflict("step cannot start")
           }
         } else if request.state == "skipped" {
-          guard current == "pending" &&
+          guard (modern && current == "running" && request.exit_code == 0) ||
             (
-              (row.get_name("cancel_at_ms") : Int64?) is Some(_) ||
-              tx.query_opt(
-                "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND ordinal < ? AND state IN ('failure', 'timed_out', 'cancelled', 'lost') LIMIT 1",
-                params=[id, ordinal],
+              current == "pending" &&
+              (
+                (row.get_name("cancel_at_ms") : Int64?) is Some(_) ||
+                tx.query_opt(
+                  "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND ordinal < ? AND state IN ('failure', 'timed_out', 'cancelled', 'lost') LIMIT 1",
+                  params=[id, ordinal],
+                )
+                is Some(_)
               )
-              is Some(_)
             ) else {
             raise Conflict("step cannot be skipped")
           }
