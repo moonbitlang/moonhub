@@ -59,6 +59,9 @@ pub struct Step {
   run : String
   uses : String?
   moonbit_version : String?
+  remote : Bool
+  inputs : Map[String, String]
+  templates : Map[String, String]
   shell : String?
   working_directory : String
   env : Map[String, String]

@@ -12,7 +12,8 @@ The upstream code is Apache-2.0, reproduced in this repository's root `LICENSE`.
 These are modified portions, not an unchanged upstream module. Moonhub replaces
 the handwritten YAML parser with `moonbit-community/yaml`, rejects unsupported
 fields before mapping, bounds input complexity, rejects YAML aliases/tags and
-expressions, and supports only the documented manual-run subset. The executor,
+unsupported fields, and supports the documented workflow subset. Public runtime
+templates and generic downloaded-action execution are MoonHub additions. The upstream executor,
 lowering IR, action resolvers, and transitive actrun dependencies are not imported.
 
 `moonbit-community/yaml` is MIT-licensed and retained under `vendor/yaml`;

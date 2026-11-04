@@ -129,10 +129,16 @@ async fn fetch_secrets(
 }
 
 ///|
-async fn fetch_source(server : String, id : String, token : String) -> Bytes {
+async fn fetch_source(
+  server : String,
+  id : String,
+  token : String,
+  bundle~ : Bool = false,
+) -> Bytes {
   let client = @http.Client(server)
   defer client.close()
-  let response = client.get("/-/runner-api/v1/attempts/\{id}/source", extra_headers={
+  let suffix = if bundle { "source-bundle" } else { "source" }
+  let response = client.get("/-/runner-api/v1/attempts/\{id}/\{suffix}", extra_headers={
     "Authorization": "Bearer " + token,
   })
   guard response.code == 200 else { raise Rejected(response.code) }

@@ -24,7 +24,7 @@ async test "pull request automatically runs built-in checkout against its merged
         )
         .replace_all(
           old="steps:\n",
-          new="steps:\n      - uses: actions/checkout@v4\n",
+          new="steps:\n      - uses: moonhub/checkout@v1\n",
         )
         .replace_all(
           old="echo fixture",

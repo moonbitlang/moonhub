@@ -242,6 +242,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
 ///|
 async fn with_protocol_fixture(
   f : async (Coordinator, @database.Database, String, Run, Provider, Ref[Int64]) -> Unit,
+  workflow~ : String = @test_support.single_job_workflow,
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let clock = Ref(1700000000000L)
@@ -254,12 +255,7 @@ async fn with_protocol_fixture(
       ["self-hosted", "linux"],
       [protocol_repo],
     )
-    ignore(
-      @test_support.workflow_commit(
-        protocol_repo.git_dir(root),
-        @test_support.single_job_workflow,
-      ),
-    )
+    ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), workflow))
     let run = create_run(
       pool,
       root,
@@ -1288,4 +1284,107 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
     assert_eq(again.version, @protocol.toolchain_assignment_version)
     assert_eq(again.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
   })
+}
+
+///|
+async test "action assignments preserve templates and allow cleanup after failure without allowing false success" {
+  let source = @test_support.single_job_workflow +
+    (
+      #|
+      #|      - id: clean
+      #|        if: always()
+      #|        run: echo cleanup
+    )
+  with_protocol_fixture(
+    (coordinator, pool, _, run, _, _) => {
+      let assignment = coordinator
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      assert_eq(assignment.version, @protocol.remote_assignment_version)
+      assert_eq(assignment.job.steps[1].templates.get("if"), Some("always()"))
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(
+        coordinator.start(id, attempt_secret, 1, execution_id="e".repeat(32)),
+      )
+      let running : @protocol.StepRequest = {
+        version: 1,
+        step_id: "check",
+        state: "running",
+        exit_code: 0,
+      }
+      ignore(coordinator.update_step(id, attempt_secret, running))
+      ignore(
+        coordinator.update_step(id, attempt_secret, {
+          ..running,
+          state: "failure",
+          exit_code: 3,
+        }),
+      )
+      let cleanup = { ..running, step_id: "clean", }
+      ignore(coordinator.update_step(id, attempt_secret, cleanup))
+      ignore(
+        coordinator.update_step(id, attempt_secret, {
+          ..cleanup,
+          state: "success",
+        }),
+      )
+      try ignore(coordinator.complete(id, attempt_secret, completion())) catch {
+        Conflict(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("failed action job reported success")
+      }
+      ignore(
+        coordinator.complete(
+          id,
+          attempt_secret,
+          completion(conclusion="failure"),
+        ),
+      )
+      assert_true(
+        get_run(
+          pool,
+          @identity.active_user_by_name(pool, "alice"),
+          protocol_repo,
+          run.number,
+        ).conclusion
+        is Some(Failure),
+      )
+    },
+    workflow=source,
+  )
+}
+
+///|
+async test "condition skips complete successfully but pending or failed steps cannot" {
+  let source = @test_support.single_job_workflow + "\n        if: false"
+  with_protocol_fixture(
+    (coordinator, _, _, _, _, _) => {
+      let assignment = coordinator
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(
+        coordinator.start(id, attempt_secret, 1, execution_id="e".repeat(32)),
+      )
+      let running : @protocol.StepRequest = {
+        version: 1,
+        step_id: "check",
+        state: "running",
+        exit_code: 0,
+      }
+      ignore(coordinator.update_step(id, attempt_secret, running))
+      ignore(
+        coordinator.update_step(id, attempt_secret, {
+          ..running,
+          state: "skipped",
+        }),
+      )
+      assert_eq(
+        coordinator.complete(id, attempt_secret, completion()).conclusion,
+        "success",
+      )
+    },
+    workflow=source,
+  )
 }

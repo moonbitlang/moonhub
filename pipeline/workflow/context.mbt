@@ -51,7 +51,12 @@ pub fn resolve_context(
   let jobs = workflow.jobs.map(job => {
     let steps = job.steps.map(step => {
       let env : Map[String, String] = Map([])
-      for name, value in step.env {
+      let values = step.env.copy()
+      for name, value in step.inputs {
+        values["input:" + name] = value
+      }
+      let inputs : Map[String, String] = Map([])
+      for name, value in values {
         let output = StringBuilder()
         for
           segment in env_segments(
@@ -77,9 +82,13 @@ pub fn resolve_context(
             "resolved env value exceeds 64 KiB or contains NUL",
           )
         }
-        env[name] = resolved
+        if name.strip_prefix("input:") is Some(key) {
+          inputs[key.to_owned()] = resolved
+        } else {
+          env[name] = resolved
+        }
       }
-      { ..step, env, }
+      { ..step, env, inputs, }
     })
     { ..job, steps, }
   })
