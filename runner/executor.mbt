@@ -334,11 +334,23 @@ async fn Runtime::execute_script(
         let drain_until = Ref(0L)
         let stdout = group.spawn(() => {
           defer (if @platform.windows() { windows_trace(3) })
-          self.stream_log(out, step.id, "stdout", drain_until)
+          if @platform.windows() {
+            @async.protect_from_cancel(() => {
+              self.stream_log(out, step.id, "stdout", drain_until)
+            })
+          } else {
+            self.stream_log(out, step.id, "stdout", drain_until)
+          }
         })
         let stderr = group.spawn(() => {
           defer (if @platform.windows() { windows_trace(4) })
-          self.stream_log(err, step.id, "stderr", drain_until)
+          if @platform.windows() {
+            @async.protect_from_cancel(() => {
+              self.stream_log(err, step.id, "stderr", drain_until)
+            })
+          } else {
+            self.stream_log(err, step.id, "stderr", drain_until)
+          }
         })
         let code = process.wait()
         drain_until.val = monotonic_ms() + 250L

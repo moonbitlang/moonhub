@@ -72,9 +72,14 @@ async fn Runtime::stream_log(
     if drain_until.val > 0L && monotonic_ms() >= drain_until.val {
       break
     }
-    let chunk = @async.with_timeout_opt(100, () => {
-      reader.read_some(max_len=1024)
-    })
+    let chunk = if @platform.windows() {
+      // The launcher Job Object closes every descendant's output handle when
+      // the step stops. Avoid repeatedly cancelling overlapped pipe reads on
+      // Windows; settle EOF after killing the process tree instead.
+      Some(reader.read_some(max_len=1024))
+    } else {
+      @async.with_timeout_opt(100, () => reader.read_some(max_len=1024))
+    }
     let chunk = match chunk {
       None => continue
       Some(None) => break
