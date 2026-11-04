@@ -8,10 +8,13 @@ Do not add a management SSH alias or open port 22 on the new host: its port 22
 is the application's Git transport. Use AWS Systems Manager Session Manager
 or Run Command with the existing instance role.
 
-Source stays in `/srv/moonhub/source`. Fetch the deployment branch directly from
-Git and fast-forward a clean checkout. For the self-hosted repository, an origin
-pointing to the existing local bare repository is sufficient; no source archive
-upload, S3 bucket or new source transport is required. ECR distributes the built
+Source stays in `/srv/moonhub/source`, with `origin` pointing to
+`git@github.com:moonbitlang/moonhub.git`. MoonHub remains the source of truth
+and mirrors to GitHub. GitHub Actions deploys mirrored `master` updates and invokes
+the restricted SSM deployment document using OIDC. A host-only read-only deploy
+key fetches the source; see [GitHub continuous deployment](github-cd.md).
+The local MoonHub bare repository is retained as the `moonhub` remote.
+ECR distributes the built
 Runner image to EC2 workers; it does not transport the source checkout.
 
 ## Existing-host setup

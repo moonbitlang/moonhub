@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "2.2",
+  "description": "Deploy a mirrored MoonHub master commit from GitHub",
+  "parameters": {
+    "Revision": {
+      "type": "String",
+      "description": "Full commit SHA mirrored to GitHub",
+      "allowedPattern": "^[0-9a-f]{40}$",
+      "interpolationType": "ENV_VAR"
+    }
+  },
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "deploy",
+      "inputs": {
+        "timeoutSeconds": "3600",
+        "runCommand": [
+          "set -eu",
+          "/usr/local/sbin/moonhub-github-deploy \"$SSM_Revision\""
+        ]
+      }
+    }
+  ]
+}

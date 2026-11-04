@@ -76,6 +76,12 @@ runs in the background, with status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
 before importing private repositories.
 
+## Continuous deployment
+
+Development and CI stay on MoonHub. An outbound push mirror syncs this repository
+to `moonbitlang/moonhub` on GitHub, where updates to `master` trigger production
+deployment through AWS SSM. See [CD setup and operations](deploy/github-cd.md).
+
 ## MoonBit toolchain
 
 Use `moonc v0.10.19+8e43a47fb-nightly` (November 3, 2026), the exact

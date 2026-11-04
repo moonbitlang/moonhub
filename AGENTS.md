@@ -204,3 +204,12 @@ moonhub ci logs <run> --attempt <attempt> --after <cursor> --repo compiler/moonh
 moonhub issue list --repo compiler/moonhub --status open --json
 moonhub inbox --filter reviews --json
 ```
+
+## Continuous Deployment
+
+Development, MRs and CI stay on MoonHub. Its outbound push mirror syncs branches
+and tags to `git@github.com:moonbitlang/moonhub.git`. GitHub runs only the
+`Deploy production` workflow on mirrored `master` updates; the MoonHub self-check
+and Docker SSH workflows are disabled in the GitHub mirror. Do not push directly
+to GitHub or migrate collaboration there. See `deploy/github-cd.md` for the
+OIDC/SSM deployment path, logs, retry and rollback.
