@@ -24,7 +24,7 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
     if (take('(')) { const value = binary(0, depth + 1); expect(')'); return value; }
     const literal = take('value');
     if (literal) return ['value', literal[1]];
-    const name = take('name')?.[1];
+    const name = take('name')?.[1]?.toLowerCase();
     if (!name) throw new Error('Expected Actions expression value');
     if (['true', 'false', 'null'].includes(name)) return ['value', { true: true, false: false, null: null }[name]];
     if (take('(')) {
@@ -38,7 +38,7 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
       else if (take('[')) { const part = take('value')?.[1]; if (typeof part !== 'string') throw new Error('Only literal field indexes are supported'); path.push(part); expect(']'); }
       else break;
     }
-    if (path.some(part => forbidden.has(part))) throw new Error('Invalid context field');
+    if (path.some(part => forbidden.has(part.toLowerCase()))) throw new Error('Invalid context field');
     return ['path', path];
   };
   const precedence = { '||': 1, '&&': 2, '==': 3, '!=': 3 };
@@ -56,8 +56,13 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
     const [type, a, b] = node;
     if (type === 'value') return a;
     if (type === 'path') {
-      if (!Object.hasOwn(context, a[0])) throw new Error(`Unsupported Actions context: ${a[0]}`);
-      return a.reduce((value, key) => value != null && Object.hasOwn(Object(value), key) ? value[key] : '', context);
+      const root = Object.keys(context).find(key => key.toLowerCase() === a[0]);
+      if (root === undefined) throw new Error(`Unsupported Actions context: ${a[0]}`);
+      return a.slice(1).reduce((value, key) => {
+        if (value == null) return '';
+        const field = root === 'env' ? key : Object.keys(Object(value)).find(name => name.toLowerCase() === key.toLowerCase());
+        return field !== undefined && Object.hasOwn(Object(value), field) ? value[field] : '';
+      }, context[root]);
     }
     if (type === 'not') return !truthy(visit(a));
     if (type === '&&') { const value = visit(a); return truthy(value) ? visit(b) : value; }
@@ -68,11 +73,11 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
       if (['success', 'failure', 'cancelled', 'always'].includes(a) && args.length === 0) {
         return a === 'always' || (a === 'success' ? !context.failure && !context.cancelled : Boolean(context[a]));
       }
-      if (a === 'toJSON' && args.length === 1) return JSON.stringify(args[0]);
-      if (a === 'fromJSON' && args.length === 1) return JSON.parse(args[0]);
+      if (a === 'tojson' && args.length === 1) return JSON.stringify(args[0]);
+      if (a === 'fromjson' && args.length === 1) return JSON.parse(args[0]);
       if (a === 'contains' && args.length === 2) return Array.isArray(args[0]) ? args[0].some(x => equal(x, args[1])) : String(args[0]).toLowerCase().includes(String(args[1]).toLowerCase());
-      if (a === 'startsWith' && args.length === 2) return String(args[0]).toLowerCase().startsWith(String(args[1]).toLowerCase());
-      if (a === 'endsWith' && args.length === 2) return String(args[0]).toLowerCase().endsWith(String(args[1]).toLowerCase());
+      if (a === 'startswith' && args.length === 2) return String(args[0]).toLowerCase().startsWith(String(args[1]).toLowerCase());
+      if (a === 'endswith' && args.length === 2) return String(args[0]).toLowerCase().endsWith(String(args[1]).toLowerCase());
       if (a === 'format' && args.length) return String(args[0]).replace(/\{(\d+)\}/g, (_, i) => string(args[Number(i) + 1]));
       throw new Error(`Unsupported Actions function: ${a}`);
     }

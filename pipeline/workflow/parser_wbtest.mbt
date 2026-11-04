@@ -82,6 +82,8 @@ test "workflow job and step env and defaults have explicit precedence" {
   assert_eq(first.working_directory, "other")
   assert_eq(first.timeout_minutes, Some(2))
   assert_eq(first.env.get("LEVEL"), Some("step"))
+  assert_eq(first.env_overrides, ["LEVEL"])
+  assert_true(second.env_overrides.is_empty())
   assert_eq(first.env.get("COUNT"), Some("42"))
   assert_eq(first.env.get("FLAG"), Some("true"))
   assert_eq(first.env.get("EMPTY"), Some(""))

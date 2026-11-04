@@ -15,6 +15,10 @@ async fn source_status(port : Int32, id : Int64, token : String) -> Int32 {
 async test "pull request automatically runs built-in checkout against its merged snapshot" {
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((_, launcher, workspace) => {
+      let (code, node) = @process.collect_output_merged("node", [
+        "-p", "process.execPath",
+      ])
+      assert_eq(code, 0)
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       let branch = "feature/$(touch${IFS}injected);`touch${IFS}backtick`-${{github.sha}}"
       let workflow = @test_support.single_job_workflow
@@ -113,14 +117,20 @@ async test "pull request automatically runs built-in checkout against its merged
           409,
         )
         let running = group.spawn(() => {
-          @runner.run(assignment, attempt_token, {
-            server: "http://127.0.0.1:\{listener.addr.port()}",
-            workspace,
-            launcher,
-            allow_http: true,
-            unsafe_local: true,
-            heartbeat_ms: 50,
-          })
+          @runner.run(
+            assignment,
+            attempt_token,
+            {
+              server: "http://127.0.0.1:\{listener.addr.port()}",
+              workspace,
+              launcher,
+              allow_http: true,
+              unsafe_local: true,
+              heartbeat_ms: 50,
+            },
+            action_node=node.text().trim().to_owned(),
+            action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+          )
         })
         @async.with_timeout(6000, () => {
           while coordinator
@@ -149,13 +159,16 @@ async test "pull request automatically runs built-in checkout against its merged
           409,
         )
         assert_true(result.reported)
-        assert_eq(@fs.read_file(workspace + "/head.txt").text(), branch)
         assert_eq(
-          @fs.read_file(workspace + "/README.md").text(),
+          @fs.read_file(workspace + "/repository/head.txt").text(),
+          branch,
+        )
+        assert_eq(
+          @fs.read_file(workspace + "/repository/README.md").text(),
           "live-output\n",
         )
         assert_eq(
-          @fs.read_file(workspace + "/.github/workflows/build.yml").text(),
+          @fs.read_file(workspace + "/repository/.github/workflows/build.yml").text(),
           workflow,
         )
         assert_eq(
@@ -198,6 +211,10 @@ async test "pull request automatically runs built-in checkout against its merged
 async test "duplicate runner is fenced while original receives remote cancellation" {
   @test_support.with_repository_test_data((pool, root) => {
     @test_support.with_runner_workspace((local_root, launcher, workspace) => {
+      let (code, node) = @process.collect_output_merged("node", [
+        "-p", "process.execPath",
+      ])
+      assert_eq(code, 0)
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       let source = @test_support.single_job_workflow.replace_all(
         old="echo fixture",
@@ -257,27 +274,36 @@ async test "duplicate runner is fenced while original receives remote cancellati
           heartbeat_ms: 50,
         }
         let original = group.spawn(() => {
-          @runner.run(assignment, attempt_token, options)
+          @runner.run(
+            assignment,
+            attempt_token,
+            options,
+            action_node=node.text().trim().to_owned(),
+            action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+          )
         })
         @async.with_timeout(6000, () => {
-          while !@fs.exists(workspace + "/ready") {
+          while !@fs.exists(workspace + "/repository/ready") {
             @async.sleep(10)
           }
         })
         let other = local_root + "/other"
         @fs.mkdir(other)
-        let duplicate = @runner.run(assignment, attempt_token, {
-          ..options,
-          workspace: other,
-        })
+        let duplicate = @runner.run(
+          assignment,
+          attempt_token,
+          { ..options, workspace: other, },
+          action_node=node.text().trim().to_owned(),
+          action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+        )
         assert_eq(duplicate.conclusion, "lost")
         assert_true(!duplicate.reported)
-        assert_true(!@fs.exists(other + "/ready"))
+        assert_true(!@fs.exists(other + "/repository/ready"))
         coordinator.cancel_run(actor, repo, run.number)
         let report = @async.with_timeout(6000, () => original.wait())
         assert_eq(report.conclusion, "cancelled")
         assert_true(report.reported)
-        assert_true(!@fs.exists(workspace + "/survivor"))
+        assert_true(!@fs.exists(workspace + "/repository/survivor"))
         assert_eq(
           coordinator.read_steps(
             actor,

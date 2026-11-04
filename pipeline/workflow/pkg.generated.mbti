@@ -65,6 +65,7 @@ pub struct Step {
   shell : String?
   working_directory : String
   env : Map[String, String]
+  env_overrides : Array[String]
   secret_env : Map[String, String]
   timeout_minutes : Int32?
 }

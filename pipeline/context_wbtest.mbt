@@ -196,6 +196,7 @@ async test "legacy contextless snapshot can still be read claimed and rerun" {
           pin,
           @test_support.single_job_workflow,
           @workflow.parse(@test_support.single_job_workflow),
+          definition_version=1,
         )
       })
     })
@@ -204,6 +205,7 @@ async test "legacy contextless snapshot can still be read claimed and rerun" {
     finish_merge_check(coordinator)
     let again = rerun_run(pool, root, actor, repo, run.number)
     assert_true(again.context is None)
+    assert_eq(again.definition_version, 1)
     let (assignment, _) = claim_dag_attempt(coordinator, provider_secret)
     assert_eq(assignment.version, 1)
     assert_eq(assignment.commit_sha, sha)

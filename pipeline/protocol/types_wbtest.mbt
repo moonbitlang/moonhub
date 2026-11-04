@@ -181,6 +181,7 @@ test "wire job plan has no language-specific optional field representation" {
         remote: false,
         inputs: Map([]),
         templates: Map([]),
+        env_overrides: [],
         secret_env: Map([]),
         shell: "",
         working_directory: ".",

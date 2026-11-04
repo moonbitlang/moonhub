@@ -463,9 +463,8 @@ pub fn Coordinator::claim(
           context["base_ref"] = saved.base_ref
         }
         Some({
-          version: if job.steps.any(step => {
-              step.remote || !step.templates.is_empty()
-            }) {
+          version: if (row.get_name("definition_version") : Int64) ==
+            @workflow.format_version.to_int64() {
             @protocol.remote_assignment_version
           } else if job.steps.any(step => !step.secret_env.is_empty()) {
             @protocol.secret_assignment_version
@@ -504,6 +503,7 @@ pub fn Coordinator::claim(
               shell: step.shell.unwrap_or(""),
               working_directory: step.working_directory,
               env: step.env,
+              env_overrides: step.env_overrides,
               secret_env: step.secret_env,
               timeout_minutes: step.timeout_minutes.unwrap_or(0),
             }),
@@ -647,9 +647,8 @@ pub fn Coordinator::complete(
         if request.conclusion == "success" &&
           (row.get_name("execution_id") : String?) is Some(_) {
           guard tx.query_opt(
-              if attempt_job(row).steps.any(step => {
-                  step.remote || !step.templates.is_empty()
-                }) {
+              if (row.get_name("definition_version") : Int64) ==
+                @workflow.format_version.to_int64() {
                 "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND state NOT IN ('success', 'skipped') LIMIT 1"
               } else {
                 "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND state <> 'success' LIMIT 1"

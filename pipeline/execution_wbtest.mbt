@@ -1259,7 +1259,7 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
     )
     let coordinator = merge_check_provider(pool)
     let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(assignment.version, @protocol.toolchain_assignment_version)
+    assert_eq(assignment.version, @protocol.remote_assignment_version)
     assert_eq(assignment.commit_sha, sha)
     assert_eq(assignment.job.steps[0].uses, "moonhub/checkout@v1")
     assert_eq(assignment.job.steps[0].moonbit_version, "")
@@ -1281,7 +1281,7 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
       ToJson::to_json(run.definition),
     )
     let (again, _) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(again.version, @protocol.toolchain_assignment_version)
+    assert_eq(again.version, @protocol.remote_assignment_version)
     assert_eq(again.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
   })
 }
@@ -1386,5 +1386,26 @@ async test "condition skips complete successfully but pending or failed steps ca
       )
     },
     workflow=source,
+  )
+}
+
+///|
+async test "new run-only workflows receive action runtime assignments" {
+  with_protocol_fixture(
+    (coordinator, _, _, _, _, _) => {
+      let assignment = coordinator
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      assert_eq(assignment.version, @protocol.remote_assignment_version)
+      assert_true(
+        assignment.job.steps.all(step => {
+          !step.remote && step.templates.is_empty()
+        }),
+      )
+    },
+    workflow=@test_support.single_job_workflow.replace_all(
+      old="echo fixture",
+      new="echo value=ready >> $GITHUB_OUTPUT",
+    ),
   )
 }

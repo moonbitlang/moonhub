@@ -1003,7 +1003,7 @@ async test "proposed workflow shell and setup changes are pinned before approval
       assert_eq(run.definition.jobs[0].steps[1].env.get("SHA"), Some(candidate))
       let coordinator = merge_check_provider(pool)
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
-      assert_eq(assignment.version, @protocol.toolchain_assignment_version)
+      assert_eq(assignment.version, @protocol.remote_assignment_version)
       assert_eq(assignment.commit_sha, candidate)
       assert_eq(assignment.job.steps[0].uses, "moonhub/setup-moonbit@v1")
       assert_eq(assignment.job.steps[0].moonbit_version, "nightly")

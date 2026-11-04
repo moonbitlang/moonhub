@@ -45,6 +45,7 @@ pub struct Step {
   shell : String?
   working_directory : String
   env : Map[String, String]
+  env_overrides : Array[String]
   secret_env : Map[String, String]
   timeout_minutes : Int32?
 }
@@ -111,6 +112,10 @@ pub impl @json.FromJson for Step with fn from_json(json, path) {
     env: @json.from_json(
       fields.get("env").unwrap_or(Json::null()),
       path=path.add_key("env"),
+    ),
+    env_overrides: @json.from_json(
+      fields.get("env_overrides").unwrap_or(Json::array([])),
+      path=path.add_key("env_overrides"),
     ),
     secret_env: @json.from_json(
       fields.get("secret_env").unwrap_or(({} : Json)),
