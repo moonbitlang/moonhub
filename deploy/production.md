@@ -9,9 +9,10 @@ is the application's Git transport. Use AWS Systems Manager Session Manager
 or Run Command with the existing instance role.
 
 Source stays in `/srv/moonhub/source`, with `origin` pointing to
-`git@github.com:moonbitlang/moonhub.git`. MoonHub remains the source of truth
-and mirrors to GitHub. GitHub Actions deploys mirrored `master` updates and invokes
-the restricted SSM deployment document using OIDC. A host-only read-only deploy
+`git@github.com:moonbitlang/moonhub.git`. GitHub owns this repository's code,
+PRs, merge gate and CI. After full CI passes on `master`, GitHub Actions invokes
+the restricted SSM deployment document using OIDC. Production images still build
+on the Web EC2 host and publish to ECR through the existing upgrade path. A host-only read-only deploy
 key fetches the source; see [GitHub continuous deployment](github-cd.md).
 The local MoonHub bare repository is retained as the `moonhub` remote.
 ECR distributes the built

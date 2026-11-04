@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy production after full CI (master only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Only superseded PR runs are canceled. Never cancel a production upgrade.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  self-check:
+    name: Self-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Read production MoonBit version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const pins = [...fs.readFileSync('deploy/base.Dockerfile', 'utf8').matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)$/gm)];
+          assert.equal(pins.length, 1, 'Expected one exact production MoonBit pin');
+          fs.appendFileSync(process.env.GITHUB_ENV, `MOONBIT_VERSION=${pins[0][1]}\n`);
+          NODE
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$MOONBIT_VERSION"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Verify MoonBit version
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const actual = execFileSync('moonc', ['-v'], { encoding: 'utf8' }).trim();
+          assert.equal(actual.split(/\s/)[0], `v${process.env.MOONBIT_VERSION}`, actual);
+          NODE
+      - name: Build and test MoonHub
+        run: node scripts/self-check.cjs
+
+  docker-ssh:
+    name: Docker SSH
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Build and exercise HTTP and Git SSH
+        run: bash scripts/docker-smoke.sh
+
+  required:
+    name: CI required
+    if: ${{ always() }}
+    needs: [self-check, docker-ssh]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both checks to succeed
+        env:
+          SELF_CHECK_RESULT: ${{ needs.self-check.result }}
+          DOCKER_SSH_RESULT: ${{ needs.docker-ssh.result }}
+        run: |
+          test "$SELF_CHECK_RESULT" = success
+          test "$DOCKER_SSH_RESULT" = success
+
+  deploy:
+    needs: required
+    if: >-
+      ${{ needs.required.result == 'success' &&
+          github.repository == 'moonbitlang/moonhub' &&
+          github.ref == 'refs/heads/master' &&
+          (github.event_name == 'push' ||
+           (github.event_name == 'workflow_dispatch' && inputs.deploy)) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      deploy: ${{ inputs.deploy || false }}

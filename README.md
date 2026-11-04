@@ -78,9 +78,12 @@ before importing private repositories.
 
 ## Continuous deployment
 
-Development and CI stay on MoonHub. An outbound push mirror syncs this repository
-to `moonbitlang/moonhub` on GitHub, where updates to `master` trigger production
-deployment through AWS SSM. See [CD setup and operations](deploy/github-cd.md).
+Development, PRs, merge checks and CI for this repository use
+[GitHub](https://github.com/moonbitlang/moonhub). `Self-check` and `Docker SSH`
+run on GitHub-hosted Ubuntu 24.04 runners; both must pass `CI required` before
+merging. See [CI and migration operations](docs/github-ci.md). Checked `master`
+updates deploy through OIDC/SSM, with production images built and published on
+EC2. See [CD setup and operations](deploy/github-cd.md).
 
 ## MoonBit toolchain
 
@@ -88,7 +91,8 @@ Use `moonc v0.10.19+8e43a47fb-nightly` (November 3, 2026), the exact
 version pinned in `deploy/base.Dockerfile`, or a compatible newer compiler.
 The source and generated interfaces use `#derive(...)` attributes, which older
 compilers do not support. Local self-checks install the pinned version into a
-project-local directory when necessary; CI uses its workflow-selected toolchain.
+project-local directory when necessary; GitHub CI installs and verifies the same
+production pin.
 
 ## Browser Assets
 
