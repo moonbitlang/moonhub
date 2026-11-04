@@ -112,3 +112,92 @@ pub async fn Coordinator::read_source(
   ignore(self.source_snapshot(id, token))
   bytes
 }
+
+///|
+// Export only the pinned run commit through a disposable shallow repository.
+pub async fn Coordinator::read_source_bundle(
+  self : Coordinator,
+  root : String,
+  id : Int64,
+  token : String,
+) -> Bytes {
+  let (repo, sha) = self.source_snapshot(id, token)
+  let bytes = @async.with_timeout(30000, () => {
+    let git_dir = @repository.resolve_repository_dir(root, repo)
+    let (code, tree) = @gitops.merge_git_command(
+      git_dir,
+      ["ls-tree", "-rz", "--full-tree", sha],
+      limit=2097152,
+      strict_utf8=true,
+    )
+    guard code == 0 else {
+      raise @domain.BadRequest(message="source checkout failed")
+    }
+    validate_source_tree(tree)
+    let temporary = @fs.tmpdir(prefix="moonhub-source-bundle-")
+    defer @fs.rmdir(temporary, recursive=true)
+    let repository = temporary + "/source.git"
+    let env : Map[String, String] = {
+      "PATH": "/usr/bin:/bin",
+      "HOME": "/nonexistent",
+      "GIT_CONFIG_NOSYSTEM": "1",
+      "GIT_CONFIG_GLOBAL": "/dev/null",
+      "GIT_TERMINAL_PROMPT": "0",
+    }
+    for
+      args in [
+        ["init", "--bare", "--quiet", repository],
+        [
+          "--git-dir", repository, "fetch", "--quiet", "--no-tags", "--depth=1",
+          "--", git_dir, sha,
+        ],
+        [
+          "--git-dir", repository, "update-ref", "refs/heads/moonhub-source", sha,
+        ],
+      ] {
+      let code = @process.run(
+        "git",
+        ["-c", "core.hooksPath=/dev/null", ..args],
+        inherit_env=false,
+        extra_env=env,
+        stdin=@process.redirect_from_file("/dev/null"),
+        stdout=@process.redirect_to_file("/dev/null"),
+        stderr=@process.redirect_to_file("/dev/null"),
+      )
+      guard code == 0 else {
+        raise @domain.BadRequest(message="source bundle preparation failed")
+      }
+    }
+    @async.with_task_group(group => {
+      let (reader, output) = @process.read_from_process()
+      defer reader.close()
+      let process = @process.spawn(
+        group,
+        "git",
+        [
+          "-c", "core.hooksPath=/dev/null", "--git-dir", repository, "bundle", "create",
+          "-", "refs/heads/moonhub-source",
+        ],
+        inherit_env=false,
+        extra_env=env,
+        stdin=@process.redirect_from_file("/dev/null"),
+        stdout=output,
+        stderr=@process.redirect_to_file("/dev/null"),
+      )
+      let data : Array[Byte] = []
+      while reader.read_some(max_len=8192) is Some(chunk) {
+        guard data.length().to_int64() + chunk.length().to_int64() <=
+          @protocol.max_source_bytes else {
+          raise @domain.BadRequest(message="source bundle exceeds 64 MiB")
+        }
+        data.push_iter(chunk.iter())
+      }
+      guard process.wait() == 0 else {
+        raise @domain.BadRequest(message="source bundle creation failed")
+      }
+      Bytes::from_array(data)
+    })
+  })
+  ignore(self.source_snapshot(id, token))
+  bytes
+}

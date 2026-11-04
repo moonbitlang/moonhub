@@ -112,7 +112,7 @@ fn decode_conclusion(value : String?) -> Conclusion? raise {
 ///|
 fn Run::from_row(row : @database.DbRow) -> Run raise {
   let version : Int64 = row.get_name("definition_version")
-  guard version == @workflow.format_version.to_int64() else {
+  guard version == 1L || version == @workflow.format_version.to_int64() else {
     raise InvalidRecord
   }
   let text : String = row.get_name("definition_json")

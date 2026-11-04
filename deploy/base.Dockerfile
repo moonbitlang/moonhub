@@ -1,4 +1,8 @@
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS action-node20
+
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+
+COPY --from=action-node20 /usr/local/bin/node /opt/actions/node20/bin/node
 
 ARG MOONHUB_USE_CN_MIRRORS=0
 ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
@@ -28,6 +32,9 @@ RUN moon update && node scripts/resolve-dependencies.cjs
 WORKDIR /src/js
 COPY js/package.json js/package-lock.json ./
 RUN npm ci --no-audit --no-fund
+WORKDIR /opt/moonhub-actions
+COPY runner/actions/package.json runner/actions/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 WORKDIR /src
 # Final stages supply their own entrypoint; do not inherit Node's wrapper.
 ENTRYPOINT []

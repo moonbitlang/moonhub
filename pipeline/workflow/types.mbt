@@ -11,7 +11,7 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 1
+pub let format_version : Int32 = 2
 
 ///|
 #derive(Debug, ToJson, FromJson)
@@ -39,9 +39,13 @@ pub struct Step {
   run : String
   uses : String?
   moonbit_version : String?
+  remote : Bool
+  inputs : Map[String, String]
+  templates : Map[String, String]
   shell : String?
   working_directory : String
   env : Map[String, String]
+  env_overrides : Array[String]
   secret_env : Map[String, String]
   timeout_minutes : Int32?
 }
@@ -68,6 +72,30 @@ pub impl @json.FromJson for Step with fn from_json(json, path) {
       None | Some(Null) => None
       Some(value) => Some(@json.from_json(value, path=path.add_key("uses")))
     },
+    remote: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("remote").unwrap_or(Json::boolean(false)),
+          path=path.add_key("remote"),
+        )
+      _ => false
+    },
+    inputs: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("inputs").unwrap_or(({} : Json)),
+          path=path.add_key("inputs"),
+        )
+      _ => Map([])
+    },
+    templates: match json {
+      Object(fields) =>
+        @json.from_json(
+          fields.get("templates").unwrap_or(({} : Json)),
+          path=path.add_key("templates"),
+        )
+      _ => Map([])
+    },
     moonbit_version: match fields.get("moonbit_version") {
       None | Some(Null) => None
       Some(value) =>
@@ -84,6 +112,10 @@ pub impl @json.FromJson for Step with fn from_json(json, path) {
     env: @json.from_json(
       fields.get("env").unwrap_or(Json::null()),
       path=path.add_key("env"),
+    ),
+    env_overrides: @json.from_json(
+      fields.get("env_overrides").unwrap_or(Json::array([])),
+      path=path.add_key("env_overrides"),
     ),
     secret_env: @json.from_json(
       fields.get("secret_env").unwrap_or(({} : Json)),

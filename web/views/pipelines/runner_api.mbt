@@ -198,6 +198,38 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     })
     writer.write(archive)
   })
+  ctx.get("/attempts/:id/source-bundle", async fn(req, res) {
+    let archive = try {
+      guard @protocol.parse_decimal(
+          req.params.get("id").unwrap_or("").to_owned(),
+        )
+        is Some(id) &&
+        id > 0L else {
+        raise @domain.BadRequest(message="invalid attempt id")
+      }
+      let token = bearer_token(req)
+      coordinator.authenticate_attempt(id, token)
+      guard root is Some(root) else {
+        raise @domain.NotFound(message="source checkout is unavailable")
+      }
+      coordinator.read_source_bundle(root, id, token)
+    } catch {
+      err => {
+        let (status, json) = runner_error(err)
+        res.send_json(json, status~, headers={
+          "Cache-Control": "no-store",
+          "Connection": "close",
+        })
+        return
+      }
+    }
+    let writer = res.respond(status=200, headers={
+      "Cache-Control": "no-store",
+      "Content-Type": "application/x-git-bundle",
+      "Content-Length": archive.length().to_string(),
+    })
+    writer.write(archive)
+  })
   ctx.post(
     "/claims",
     json_handler(req => {

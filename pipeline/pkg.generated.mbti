@@ -82,6 +82,7 @@ pub fn Coordinator::queue_reasons(Self, @domain.CurrentUser, @domain.RepoId, Int
 pub fn Coordinator::read_log_page(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> LogPage raise
 pub fn Coordinator::read_logs(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> Array[@protocol.LogChunk] raise
 pub async fn Coordinator::read_source(Self, String, Int64, String) -> Bytes
+pub async fn Coordinator::read_source_bundle(Self, String, Int64, String) -> Bytes
 pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
 pub fn Coordinator::register_runner(Self, String, @protocol.RegisterProviderRequest) -> @protocol.ProviderSnapshot raise
 pub fn Coordinator::register_worker(Self, String, @protocol.WorkerRegistration) -> @protocol.WorkerView raise

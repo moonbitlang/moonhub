@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-base-test-'));
 try {
   const inputs = ['deploy/base.Dockerfile', 'deploy/configure-apt.sh', 'deploy/install-moonbit.sh',
-    '.dockerignore', 'moon.mod', 'js/package.json', 'js/package-lock.json', 'scripts/resolve-dependencies.cjs'];
+    '.dockerignore', 'moon.mod', 'js/package.json', 'js/package-lock.json', 'runner/actions/package.json', 'runner/actions/package-lock.json', 'scripts/resolve-dependencies.cjs'];
   for (const file of [...inputs, 'deploy/base-image.sh']) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));

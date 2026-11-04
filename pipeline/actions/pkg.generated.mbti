@@ -1,0 +1,25 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline/actions"
+
+// Values
+pub fn input_env(String) -> String
+
+pub fn parse_reference(String) -> Reference raise InvalidAction
+
+pub fn valid_input_name(String) -> Bool
+
+// Errors
+pub suberror InvalidAction {
+  InvalidAction(String)
+}
+
+// Types and methods
+pub struct Reference {
+  repository : String
+  path : String
+  ref_ : String
+}
+
+// Type aliases
+
+// Traits
