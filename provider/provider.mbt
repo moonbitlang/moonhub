@@ -12,9 +12,13 @@ async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
         )
     }
     guard info.os_type == "windows" &&
-      ["x86_64", "amd64"].contains(info.architecture) else {
+      ["x86_64", "amd64"].contains(info.architecture) &&
+      (
+        info.kernel_version.has_prefix("10.0 20348 ") ||
+        info.kernel_version.has_prefix("10.0.20348.")
+      ) else {
       raise InvalidConfiguration(
-        "Windows workers require a Windows x64 Docker daemon.",
+        "Windows workers require a Windows Server 2022 x64 Docker daemon (build 20348).",
       )
     }
     return
@@ -56,11 +60,13 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
       "image",
       "inspect",
       "--format",
-      "{{.Os}}/{{.Architecture}}",
+      "{{.Os}}/{{.Architecture}}/{{.OsVersion}}",
       options.runner_image,
     ])
-    guard code == 0 && image.trim() == "windows/amd64" else {
-      raise InvalidConfiguration("Runner image must target windows/amd64.")
+    guard code == 0 && image.trim().has_prefix("windows/amd64/10.0.20348.") else {
+      raise InvalidConfiguration(
+        "Runner image must target Windows Server 2022 x64 (build 20348).",
+      )
     }
   }
 }
@@ -178,6 +184,7 @@ pub async fn run(
 priv struct DockerPlatform {
   os_type : String
   architecture : String
+  kernel_version : String
 }
 
 ///|
@@ -189,6 +196,10 @@ impl @json.FromJson for DockerPlatform with fn from_json(json, path) {
     os_type: @json.from_json(
       fields.get("OSType").unwrap_or(Json::null()),
       path=path.add_key("OSType"),
+    ),
+    kernel_version: @json.from_json(
+      fields.get("KernelVersion").unwrap_or(Json::null()),
+      path=path.add_key("KernelVersion"),
     ),
     architecture: @json.from_json(
       fields.get("Architecture").unwrap_or(Json::null()),

@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <stdint.h>
 #include <sddl.h>
+#include <stdio.h>
 #ifdef _MSC_VER
 #pragma comment(lib, "advapi32.lib")
 #endif
@@ -28,7 +29,12 @@ int32_t moonhub_runner_prepare(int32_t local) {
 void moonhub_runner_kill_group(int32_t pid) {
   if (pid <= 0) return;
   HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, (DWORD)pid);
-  if (process) { TerminateProcess(process, 1); CloseHandle(process); }
+  if (process) {
+    if (!TerminateProcess(process, 1)) fprintf(stderr, "runner: cannot terminate step (%lu)\n", GetLastError());
+    CloseHandle(process);
+  } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
+    fprintf(stderr, "runner: cannot open step for cancellation (%lu)\n", GetLastError());
+  }
 }
 // Each launcher owns a kill-on-close Job Object containing the whole step tree.
 void moonhub_runner_kill_namespace(void) {}

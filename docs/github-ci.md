@@ -25,7 +25,9 @@ verifies `moonc -v` before running `node scripts/self-check.cjs`.
 
 The script preserves the index/dependency initialization, check/fmt/info order,
 input/interface guard, package boundaries, script tests, frontend build, native
-tests and build with `--strip -j 1`. Docker SSH keeps
+tests and build with `--strip -j 1`, then the managed Docker/ASG lifecycle
+acceptance with local adapters (including cleanup failure and stale-worker drain).
+Docker SSH keeps
 `bash scripts/docker-smoke.sh`. No TypeScript or browser check is added.
 
 `Windows runner` runs on Windows Server 2022, builds the Windows worker and task

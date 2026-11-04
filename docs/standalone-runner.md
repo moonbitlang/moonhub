@@ -190,7 +190,8 @@ old clients that omit it remain Linux and cannot claim from a Windows provider.
 
 The first supported Windows host/image combination is **Windows Server 2022 x64**
 (build 20348), with Windows process-isolated containers. Host and task image must
-have compatible Windows builds. Linux Docker daemons cannot run these images.
+have compatible Windows builds; the worker checks both build 20348 and x64 before
+acknowledging readiness. Linux Docker daemons cannot run these images.
 Prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
 v2 and SSM Agent. Build the worker bundle on Windows with Visual Studio C++ Build
 Tools and the production MoonBit version from `deploy/base.Dockerfile`:

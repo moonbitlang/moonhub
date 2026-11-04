@@ -84,24 +84,25 @@ async function main() {
           // Attempt 2 exercises the complete v5 bundle + local JavaScript action path.
           if (claims===2) steps.push(step('action','', '',{uses:'./action',remote:true}));
           const record={token:body.attempt_token,execution:'',sequence:0n,logs:'',conclusion:'',cancel,started:now};
-          attempts.set(id,record);
+          attempts.set(id,record); console.log('Claimed Windows attempt '+id);
           reply={version:1,assignment:{version:claims===2?5:3,attempt_id:id,run_id:id,job_id:id,repository:'test/probe',commit_sha:sha,state:'leased',lease_until_ms:String(now+60000),server_time_ms:String(now),job:{id:'build',name:'Build',runs_on:['self-hosted','windows'],timeout_minutes:8,steps}}};
         }
       } else {
         assert.ok(attempt,'unknown attempt');
-        if(route==='start') attempt.execution=body.execution_id;
+        if(route==='start') {attempt.execution=body.execution_id;console.log('Started Windows attempt '+id);}
         if(route==='secrets') { res.writeHead(200,{'Content-Type':'application/json',Connection:'close'});res.end(JSON.stringify({version:1,env:{SMOKE_SECRET:secret}}));return; }
+        attempt.lastOperation=route;
         if(route==='logs') {
           assert.equal(BigInt(body.sequence),attempt.sequence+1n); attempt.sequence++;
           assert.ok(!body.text.includes(attempt.token)); assert.ok(!body.text.includes('controller-only-sentinel')); assert.ok(!body.text.includes(secret));
-          attempt.logs+=body.text;
+          attempt.logs+=body.text; if(body.text.includes('container-ready-')) console.log('Probe ready for Windows attempt '+id);
         }
         if(route==='complete') {
           assert.equal(BigInt(body.last_log_sequence),attempt.sequence);
           assert.equal(body.conclusion,attempt.cancel?'cancelled':'success',attempt.logs);
           assert.ok(attempt.logs.includes('container-ready-'+id),attempt.logs);
           if(id==='2') {assert.ok(attempt.logs.includes('windows-action-main')); assert.ok(attempt.logs.includes('windows-action-post'));}
-          attempt.conclusion=body.conclusion; completed++;
+          attempt.conclusion=body.conclusion; completed++;console.log('Completed Windows attempt '+id+': '+body.conclusion);
         }
         reply={version:1,execution_id:attempt.execution,attempt_id:id,state:attempt.conclusion?'completed':'running',lease_until_ms:String(now+60000),server_time_ms:String(now),deadline_ms:String(attempt.started+480000),cancel_requested:attempt.cancel && attempt.logs.includes('container-ready-3'),log_sequence:String(attempt.sequence),conclusion:attempt.conclusion};
       }
@@ -116,9 +117,15 @@ async function main() {
     const bootstrap=path.join(root,'bootstrap.json');
     fs.writeFileSync(bootstrap,JSON.stringify({server:`http://${gateway}:${port}`,token:workerToken,allow_http:true,runner_image:image,runner_os:'windows'}));
     worker=spawn(binary,['worker','--bootstrap-file',bootstrap,'--workspace-root',path.join(root,'workspace')],{env:{...process.env,MOONHUB_PROVIDER_TOKEN:'controller-only-sentinel',AWS_SECRET_ACCESS_KEY:'controller-only-sentinel'},stdio:['ignore','pipe','pipe']});
-    worker.stdout.on('data',chunk=>{output+=chunk;}); worker.stderr.on('data',chunk=>{output+=chunk;});
+    worker.stdout.on('data',chunk=>{output+=chunk;process.stdout.write(chunk);}); worker.stderr.on('data',chunk=>{output+=chunk;process.stderr.write(chunk);});
     let exited=false, exitCode; const closed=new Promise((resolve,reject)=>{worker.once('error',reject);worker.once('close',code=>{exited=true;exitCode=code;resolve();});});
-    for(let i=0;i<1800 && !drained && !exited && !failure;i++) await delay(500);
+    for(let i=0;i<1800 && !drained && !exited && !failure;i++) {
+      await delay(500);
+      const cancelled=attempts.get('3');
+      if(cancelled && !cancelled.conclusion && Date.now()-cancelled.started>90000) {
+        throw Error('Cancellation stalled: '+JSON.stringify({lastOperation:cancelled.lastOperation,logs:cancelled.logs.slice(-8000),execution:cancelled.execution})+'\n'+output);
+      }
+    }
     if(failure) throw failure;
     assert.ok(drained,`Worker did not drain; claims=${claims}, completed=${completed}\n${output}`);
     await Promise.race([closed,delay(10000).then(()=>{throw Error('Drained worker did not exit');})]);
@@ -128,6 +135,10 @@ async function main() {
     assert.equal(docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']), '');
     console.log('Windows container smoke passed: same worker, fresh volumes, PowerShell, Bash, Node20 action + post, cancellation, cleanup before ready, drain.');
   } finally {
+    const owned=docker(['ps','-aq','--filter','name=^moonhub-pipeline-']).split(/\s+/).filter(Boolean);
+    for(const container of owned) {
+      try {console.log('Remaining container '+container+'\n'+docker(['top',container]));console.log(docker(['logs',container]));} catch {}
+    }
     if(worker) worker.kill('SIGKILL');
     const containers=docker(['ps','-aq','--filter','name=^moonhub-pipeline-']).split(/\s+/).filter(Boolean);
     if(containers.length) docker(['rm','-f',...containers]);
