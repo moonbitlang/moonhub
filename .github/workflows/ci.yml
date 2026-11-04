@@ -82,7 +82,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pin = [regex]::Match((Get-Content deploy/base.Dockerfile -Raw), '(?m)^ARG MOONBIT_VERSION=(\S+)$').Groups[1].Value
+          $pin = [regex]::Match((Get-Content deploy/base.Dockerfile -Raw), '(?m)^ARG MOONBIT_VERSION=(\S+)\r?$').Groups[1].Value
           if (-not $pin) { throw 'Missing production MoonBit pin' }
           $env:MOONBIT_INSTALL_VERSION = $pin
           Invoke-WebRequest https://cli.moonbitlang.com/install/powershell.ps1 -OutFile "$env:RUNNER_TEMP/install-moonbit.ps1"

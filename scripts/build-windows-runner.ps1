@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 if (-not [Environment]::Is64BitProcess -or $env:OS -ne 'Windows_NT') { throw 'Build on Windows x64' }
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
-$pin = [regex]::Match((Get-Content deploy/base.Dockerfile -Raw), '(?m)^ARG MOONBIT_VERSION=(\S+)$').Groups[1].Value
+$pin = [regex]::Match((Get-Content deploy/base.Dockerfile -Raw), '(?m)^ARG MOONBIT_VERSION=(\S+)\r?$').Groups[1].Value
 $actual = & moonc -v
 if ($LASTEXITCODE -ne 0 -or ($actual -split '\s+')[0] -ne "v$pin") { throw "Expected MoonBit $pin; got $actual" }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"

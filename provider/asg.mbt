@@ -717,7 +717,6 @@ priv struct WorkerTemplate {
 }
 
 ///|
-#derive(FromJson)
 priv struct WorkerImage {
   architecture : String
   platform : String?
@@ -757,5 +756,22 @@ fn worker_bootstrap_command(
       parameter +
       " --with-decryption --query Parameter.Value --output text > /run/moonhub-runner/bootstrap.json; systemctl is-active --quiet moonhub-runner-worker || systemd-run --unit=moonhub-runner-worker --collect /usr/local/bin/moonhub-runner worker --bootstrap-file /run/moonhub-runner/bootstrap.json",
     )
+  }
+}
+
+///|
+impl @json.FromJson for WorkerImage with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "AMI must be an object"))
+  }
+  {
+    architecture: @json.from_json(
+      fields.get("architecture").unwrap_or(Json::null()),
+      path=path.add_key("architecture"),
+    ),
+    platform: match fields.get("platform") {
+      None | Some(Null) => None
+      Some(value) => Some(@json.from_json(value, path=path.add_key("platform")))
+    },
   }
 }

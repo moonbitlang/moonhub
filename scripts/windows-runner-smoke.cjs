@@ -80,7 +80,7 @@ async function main() {
             `Write-Output 'container-ready-${id}'`,
             ...(cancel ? ['Start-Sleep -Seconds 40'] : []),
           ].join('\n');
-          const steps=[...(claims===1?[step('moonbit','', '',{uses:'moonhub/setup-moonbit@v1',moonbit_version:fs.readFileSync('deploy/base.Dockerfile','utf8').match(/^ARG MOONBIT_VERSION=(.+)$/m)[1]})]:[]),step('probe',probe,'',claims===2?{secret_env:{SMOKE_SECRET:'SMOKE_SECRET'}}:{}),...(cancel?[]:[step('bash','test -f source.txt; test "$RUNNER_OS" = Windows','bash')])];
+          const steps=[...(claims===1?[step('moonbit','', '',{uses:'moonhub/setup-moonbit@v1',moonbit_version:fs.readFileSync('deploy/base.Dockerfile','utf8').match(/^ARG MOONBIT_VERSION=([^\r\n]+)/m)[1]})]:[]),step('probe',probe,'',claims===2?{secret_env:{SMOKE_SECRET:'SMOKE_SECRET'}}:{}),...(cancel?[]:[step('bash','test -f source.txt; test "$RUNNER_OS" = Windows','bash')])];
           // Attempt 2 exercises the complete v5 bundle + local JavaScript action path.
           if (claims===2) steps.push(step('action','', '',{uses:'./action',remote:true}));
           const record={token:body.attempt_token,execution:'',sequence:0n,logs:'',conclusion:'',cancel,started:now};

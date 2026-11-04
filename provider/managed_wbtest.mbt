@@ -110,3 +110,16 @@ test "Windows ASG bootstrap uses PowerShell and keeps credentials out of history
   assert_eq(document, "AWS-RunShellScript")
   assert_true(command.contains("systemd-run"))
 }
+
+///|
+test "AMI platform is optional for Linux and explicit for Windows" {
+  let linux : Array[WorkerImage] = @json.from_json(
+    @json.parse("[{\"architecture\":\"x86_64\",\"platform\":null}]"),
+  )
+  assert_eq(linux[0].architecture, "x86_64")
+  assert_eq(linux[0].platform, None)
+  let windows : Array[WorkerImage] = @json.from_json(
+    @json.parse("[{\"architecture\":\"x86_64\",\"platform\":\"windows\"}]"),
+  )
+  assert_eq(windows[0].platform, Some("windows"))
+}
