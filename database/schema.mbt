@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 30L
+pub let database_schema_version : Int64 = 31L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -95,6 +95,9 @@ pub async fn initialize_db(pool : Database) -> Unit {
   ).text()
   let self_approval_migration = @fs.read_file(
     "db/migrations/030_self_approval.sql",
+  ).text()
+  let scheduling_migration = @fs.read_file(
+    "db/migrations/031_workflow_scheduling.sql",
   ).text()
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -195,7 +198,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 30L {
         tx.driver.exec_script(self_approval_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 30")
+      if version < 31L {
+        tx.driver.exec_script(scheduling_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 31")
     })
   })
 }

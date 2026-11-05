@@ -15,6 +15,10 @@ pub fn parse(String) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 
+pub fn scheduling_expression(String, Map[String, @json.Json]) -> @json.Json raise InvalidWorkflow
+
+pub fn scheduling_template(String, Map[String, @json.Json]) -> String raise InvalidWorkflow
+
 pub fn triggers(String) -> Triggers raise InvalidWorkflow
 
 pub fn valid_secret_name(String) -> Bool
@@ -27,6 +31,16 @@ pub suberror InvalidWorkflow {
 pub fn InvalidWorkflow::to_repr(Self) -> @debug.Repr
 
 // Types and methods
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub struct Concurrency {
+  group : String
+  cancel_in_progress : String
+}
+pub fn Concurrency::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Concurrency::resolve(Self, Map[String, @json.Json]) -> (String, Bool) raise InvalidWorkflow
+pub fn Concurrency::to_json(Self) -> @json.Json
+pub fn Concurrency::to_repr(Self) -> @debug.Repr
+
 pub struct EventFilters {
   branches : Array[String]
   branches_ignore : Array[String]
@@ -41,6 +55,11 @@ pub struct Job {
   needs : Array[String]
   runs_on : Array[String]
   contents_read : Bool
+  matrix : Map[String, @json.Json]
+  strategy : Map[String, @json.Json]
+  matrix_group : String
+  fail_fast : Bool
+  max_parallel : Int32
   timeout_minutes : Int32
   steps : Array[Step]
 }
@@ -94,14 +113,16 @@ pub struct Triggers {
 pub fn Triggers::matches_pull_request(Self, String, branch? : String, paths? : Array[String]?) -> Bool
 pub fn Triggers::matches_push(Self, String, paths? : Array[String]?) -> Bool
 
-#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+#derive(@debug.Debug, @json.ToJson)
 pub struct Workflow {
   name : String
+  concurrency : Concurrency?
   jobs : Array[Job]
 }
 pub fn Workflow::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn Workflow::to_json(Self) -> @json.Json
 pub fn Workflow::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for Workflow
 
 // Type aliases
 

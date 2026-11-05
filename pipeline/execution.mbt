@@ -5,7 +5,9 @@ let eligible_provider_jobs : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
-  #|AND r.definition_version IN (1, ?)
+  #|AND r.definition_version IN (1, 2, ?)
+  #|AND NOT EXISTS (SELECT 1 FROM pipeline_run_schedule s WHERE s.run_id=r.id AND s.admitted=0)
+  #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
   #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
   #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
@@ -76,7 +78,7 @@ pub fn Coordinator::authenticate_attempt(
 
 ///|
 fn attempt_job(row : @database.DbRow) -> @workflow.Job raise {
-  guard [1L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, @workflow.format_version.to_int64()].contains(
     row.get_name("definition_version"),
   ) else {
     raise InvalidRecord
@@ -215,12 +217,14 @@ fn finalize_run(tx : @database.DbTransaction, run_id : Int64) -> Unit raise {
     .map(row => row.get_name("conclusion"))
   let conclusion = if conclusions.contains("lost") {
     "lost"
-  } else if cancelled || conclusions.contains("cancelled") {
+  } else if cancelled {
     "cancelled"
   } else if conclusions.contains("timed_out") {
     "timed_out"
   } else if conclusions.contains("failure") {
     "failure"
+  } else if conclusions.contains("cancelled") {
+    "cancelled"
   } else {
     "success"
   }
@@ -235,6 +239,7 @@ fn finish_attempt(
   tx : @database.DbTransaction,
   row : @database.DbRow,
   conclusion : String,
+  now : Int64,
 ) -> Unit raise {
   let id : Int64 = row.get_name("id")
   let job_id : Int64 = row.get_name("job_id")
@@ -256,6 +261,7 @@ fn finish_attempt(
     "UPDATE pipeline_job SET status = 'completed', conclusion = ? WHERE id = ? AND status <> 'completed'",
     params=[conclusion, job_id],
   )
+  cancel_matrix_siblings(tx, job_id, conclusion, now)
   advance_run_jobs(tx, run_id)
   finalize_run(tx, run_id)
 }
@@ -280,7 +286,16 @@ pub fn Coordinator::expire_attempts(self : Coordinator) -> Int32 raise {
             deadline <= now &&
             deadline <= lease &&
             cancel_at is None
-          finish_attempt(tx, row, if timed_out { "timed_out" } else { "lost" })
+          finish_attempt(
+            tx,
+            row,
+            if timed_out {
+              "timed_out"
+            } else {
+              "lost"
+            },
+            now,
+          )
         }
         rows.length()
       },
@@ -467,11 +482,15 @@ pub fn Coordinator::claim(
         let name : String = row.get_name("repo_name")
         let job = attempt_job(row)
         let captured = tx.query_one(
-          "SELECT source_branch, workflow_name, context_json FROM pipeline_run WHERE id = ?",
+          "SELECT r.source_branch,r.workflow_name,r.context_json,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
           params=[(row.get_name("run_id") : Int64)],
         )
         let context : Map[String, String] = {
-          "ref": "refs/heads/" + (captured.get_name("source_branch") : String),
+          "ref": if (captured.get_name("mr_number") : Int64?) is Some(number) {
+            "refs/pull/" + number.to_string() + "/merge"
+          } else {
+            "refs/heads/" + (captured.get_name("source_branch") : String)
+          },
           "workflow": captured.get_name("workflow_name"),
         }
         if (captured.get_name("context_json") : String?) is Some(text) {
@@ -481,8 +500,9 @@ pub fn Coordinator::claim(
           context["base_ref"] = saved.base_ref
         }
         Some({
-          version: if (row.get_name("definition_version") : Int64) ==
-            @workflow.format_version.to_int64() {
+          version: if (row.get_name("definition_version") : Int64) >= 3L {
+            @protocol.scheduling_assignment_version
+          } else if (row.get_name("definition_version") : Int64) >= 2L {
             @protocol.remote_assignment_version
           } else if job.steps.any(step => !step.secret_env.is_empty()) {
             @protocol.secret_assignment_version
@@ -506,7 +526,13 @@ pub fn Coordinator::claim(
           job: {
             context,
             contents_read: job.contents_read,
-            id: job.id,
+            matrix: job.matrix,
+            strategy: job.strategy,
+            id: if job.matrix_group.is_empty() {
+              job.id
+            } else {
+              job.matrix_group
+            },
             name: job.name,
             runs_on: job.runs_on,
             timeout_minutes: job.timeout_minutes,
@@ -666,8 +692,7 @@ pub fn Coordinator::complete(
         if request.conclusion == "success" &&
           (row.get_name("execution_id") : String?) is Some(_) {
           guard tx.query_opt(
-              if (row.get_name("definition_version") : Int64) ==
-                @workflow.format_version.to_int64() {
+              if (row.get_name("definition_version") : Int64) >= 2L {
                 "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND state NOT IN ('success', 'skipped') LIMIT 1"
               } else {
                 "SELECT step_id FROM pipeline_step WHERE attempt_id = ? AND state <> 'success' LIMIT 1"
@@ -687,7 +712,7 @@ pub fn Coordinator::complete(
         } else {
           request.conclusion
         }
-        finish_attempt(tx, row, conclusion)
+        finish_attempt(tx, row, conclusion, (self.clock)())
         lease_state(attempt_row(tx, id, token), (self.clock)())
       },
       immediate=true,

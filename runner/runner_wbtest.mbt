@@ -39,6 +39,8 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     job: {
       context: Map([]),
       contents_read: true,
+      matrix: Map([]),
+      strategy: Map([]),
       id: "build",
       name: "Build",
       runs_on: ["self-hosted", "linux"],

@@ -181,6 +181,8 @@ pub fn ProviderScope::value(Self) -> String
 #derive(Eq, @debug.Debug)
 pub enum QueueReason {
   WaitingDependencies
+  WaitingConcurrency
+  WaitingMatrixCapacity
   RequesterUnavailable
   NoAuthorizedProvider
   NoMatchingLabels

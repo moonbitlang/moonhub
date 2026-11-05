@@ -22,6 +22,9 @@ fn runner_labels(
   let labels = yaml_as_string_list(value, ctx).map(label => label.to_lower())
   if !labels.contains("self-hosted") && labels.length() == 1 {
     let label = labels[0]
+    if ["macos-latest", "macos-14", "macos-15"].contains(label) {
+      return ["self-hosted", "macos", "arm64", label]
+    }
     let os = match label {
       "ubuntu-22.04" | "ubuntu-24.04" | "ubuntu-latest" => "linux"
       "windows-2022" => "windows"

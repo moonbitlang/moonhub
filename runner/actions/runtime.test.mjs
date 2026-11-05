@@ -296,3 +296,11 @@ test('top-level preparation failures record outcome for subsequent failure clean
   assert.equal(cleanup.code, 0);
   assert.equal(await fs.readFile(path.join(config.workspace,'evaluation-cleanup'),'utf8'),'');
 });
+
+test('typed matrix values reach scripts inputs and conditions without recursive interpolation', async t => {
+  const {config}=await fixture(t);
+  const matrix={target:'native', enabled:true, literal:'${{ secrets.NEVER }}'};
+  const result=await execute({...config,matrix,step:{id:'matrix',run:'test "$TARGET" = native; test "$LITERAL" = \'${{ secrets.NEVER }}\'',shell:'sh',working_directory:'.',templates:{'env:TARGET':'${{ matrix.target }}','env:LITERAL':'${{ matrix.literal }}',if:'matrix.enabled == true'},env:{}}});
+  assert.equal(result.code,0);
+  assert.equal(result.state.steps.matrix.conclusion,'success');
+});

@@ -544,6 +544,11 @@ fn parse_job(
     ),
     needs: yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
     runs_on,
+    matrix: Map([]),
+    strategy: Map([]),
+    matrix_group: "",
+    fail_fast: false,
+    max_parallel: 256,
     contents_read: read_permissions(
       fields.get("permissions"),
       contents_read,
@@ -562,7 +567,7 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   let fields = yaml_as_obj(read_yaml(source), "workflow")
   check_fields(
     fields,
-    ["name", "on", "env", "defaults", "jobs", "permissions"],
+    ["name", "on", "env", "defaults", "jobs", "permissions", "concurrency"],
     "workflow",
   )
   ignore(parse_trigger(fields.get("on")))
@@ -582,23 +587,55 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   }
   let jobs : Array[Job] = []
   let mut step_count = 0
+  let mut plan_bytes = 0
   for id, value in fields_jobs {
-    let job = parse_job(id, value, env, defaults, contents_read)
-    step_count += job.steps.length()
-    jobs.push(job)
-  }
-  guard step_count <= 256 else {
-    raise InvalidWorkflow("workflow exceeds 256 steps")
-  }
-  for job in jobs {
-    for need in job.needs {
-      guard need != job.id && fields_jobs.contains(need) else {
-        raise InvalidWorkflow(
-          "jobs.\{job.id}.needs references an unknown job or itself: \{need}",
-        )
+    for
+      job in expand_job(
+        id,
+        value,
+        env,
+        defaults,
+        contents_read,
+        remaining_jobs=256 - jobs.length(),
+        remaining_steps=4096 - step_count,
+        remaining_bytes=1048576 - plan_bytes,
+      ) {
+      plan_bytes += @utf8.encode(ToJson::to_json(job).stringify()).length()
+      guard plan_bytes <= 1048576 else {
+        raise InvalidWorkflow("normalized workflow exceeds 1 MiB")
       }
+      step_count += job.steps.length()
+      jobs.push(job)
     }
   }
+  guard step_count <= 4096 && jobs.length() <= 256 else {
+    raise InvalidWorkflow("expanded workflow exceeds 256 jobs or 4096 steps")
+  }
+  let expanded = jobs.map(job => {
+    let needs : Array[String] = []
+    let logical_id = if job.matrix_group.is_empty() {
+      job.id
+    } else {
+      job.matrix_group
+    }
+    for need in job.needs {
+      guard need != logical_id && fields_jobs.contains(need) else {
+        raise InvalidWorkflow(
+          "jobs." +
+          logical_id +
+          ".needs references an unknown job or itself: " +
+          need,
+        )
+      }
+      for candidate in jobs {
+        if candidate.id == need || candidate.matrix_group == need {
+          needs.push(candidate.id)
+        }
+      }
+    }
+    { ..job, needs, }
+  })
+  let jobs = expanded
   let visited : Map[String, Bool] = Map([])
   while visited.length() < jobs.length() {
     let before = visited.length()
@@ -613,6 +650,7 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   }
   let workflow : Workflow = {
     name: yaml_as_optional_string(fields.get("name"), "name").unwrap_or(""),
+    concurrency: parse_concurrency(fields.get("concurrency")),
     jobs,
   }
   guard @utf8.encode(ToJson::to_json(workflow).stringify()).length() <= 1048576 else {

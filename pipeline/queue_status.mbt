@@ -2,6 +2,8 @@
 #derive(Eq, Debug)
 pub enum QueueReason {
   WaitingDependencies
+  WaitingConcurrency
+  WaitingMatrixCapacity
   RequesterUnavailable
   NoAuthorizedProvider
   NoMatchingLabels
@@ -33,6 +35,22 @@ pub fn Coordinator::queue_reasons(
         params=[run.id],
       ) {
       let key : String = job.get_name("job_key")
+      if client.query_opt(
+          "SELECT run_id FROM pipeline_run_schedule WHERE run_id=? AND admitted=0",
+          params=[run.id],
+        )
+        is Some(_) {
+        result[key] = WaitingConcurrency
+        continue
+      }
+      if client.query_opt(
+          "SELECT j.id FROM pipeline_job j WHERE j.id=? AND j.matrix_group <> '' AND (SELECT COUNT(*) FROM pipeline_job s WHERE s.run_id=j.run_id AND s.matrix_group=j.matrix_group AND s.status IN ('leased','running')) >= j.max_parallel",
+          params=[(job.get_name("id") : Int64)],
+        )
+        is Some(_) {
+        result[key] = WaitingMatrixCapacity
+        continue
+      }
       if (job.get_name("status") : String) == "waiting" {
         result[key] = WaitingDependencies
         continue

@@ -279,3 +279,65 @@ test "runner environment checks prevent mislabeled distro versions and architect
     }
   }
 }
+
+///|
+async test "version six passes typed matrix and strategy through the native runtime" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let base = test_assignment([
+      {
+        ..test_step(
+          "matrix", "test \"$TARGET\" = native; test \"$INDEX\" = 0; test \"$JOB\" = build",
+        ),
+        templates: {
+          "env:TARGET": "${{ matrix.target }}",
+          "env:INDEX": "${{ strategy.job-index }}",
+          "env:JOB": "${{ github.job }}",
+        },
+      },
+    ])
+    let assignment = {
+      ..base,
+      version: @protocol.scheduling_assignment_version,
+      job: {
+        ..base.job,
+        id: "build",
+        matrix: { "target": Json::string("native") },
+        strategy: { "job-index": ToJson::to_json(0) },
+      },
+    }
+    let server = fake_server()
+    let (code, node) = @process.collect_output_merged("node", [
+      "-p", "process.execPath",
+    ])
+    assert_eq(code, 0)
+    let report = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (op, body, until) => server.post(op, body, until),
+      action_node=node.text().trim().to_owned(),
+      action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+    )
+    assert_eq(report.conclusion, "success")
+    assert_true(report.reported)
+  })
+}
+
+///|
+async test "typed scheduling plans cannot be smuggled through assignment version five" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let base = test_assignment([test_step("check", "echo must-not-run")])
+    let assignment = {
+      ..base,
+      version: @protocol.remote_assignment_version,
+      job: { ..base.job, matrix: { "os": Json::string("linux") }, },
+    }
+    try
+      ignore(validate_options(assignment, test_options(launcher, workspace)))
+    catch {
+      InvalidConfiguration(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("legacy assignment accepted scheduling context")
+    }
+  })
+}

@@ -11,13 +11,43 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 2
+pub let format_version : Int32 = 3
+
+///|
+#derive(Debug, ToJson)
+pub struct Workflow {
+  name : String
+  concurrency : Concurrency?
+  jobs : Array[Job]
+}
 
 ///|
 #derive(Debug, ToJson, FromJson)
-pub struct Workflow {
-  name : String
-  jobs : Array[Job]
+pub struct Concurrency {
+  group : String
+  cancel_in_progress : String
+}
+
+///|
+pub impl @json.FromJson for Workflow with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid workflow"))
+  }
+  {
+    name: @json.from_json(
+      fields.get("name").unwrap_or(Json::null()),
+      path=path.add_key("name"),
+    ),
+    jobs: @json.from_json(
+      fields.get("jobs").unwrap_or(Json::null()),
+      path=path.add_key("jobs"),
+    ),
+    concurrency: match fields.get("concurrency") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("concurrency")))
+    },
+  }
 }
 
 ///|
@@ -28,6 +58,11 @@ pub struct Job {
   needs : Array[String]
   runs_on : Array[String]
   contents_read : Bool
+  matrix : Map[String, Json]
+  strategy : Map[String, Json]
+  matrix_group : String
+  fail_fast : Bool
+  max_parallel : Int32
   timeout_minutes : Int32
   steps : Array[Step]
 }
@@ -61,6 +96,26 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     steps: @json.from_json(
       fields.get("steps").unwrap_or(Json::null()),
       path=path.add_key("steps"),
+    ),
+    matrix: @json.from_json(
+      fields.get("matrix").unwrap_or(({} : Json)),
+      path=path.add_key("matrix"),
+    ),
+    strategy: @json.from_json(
+      fields.get("strategy").unwrap_or(({} : Json)),
+      path=path.add_key("strategy"),
+    ),
+    matrix_group: @json.from_json(
+      fields.get("matrix_group").unwrap_or(Json::string("")),
+      path=path.add_key("matrix_group"),
+    ),
+    fail_fast: @json.from_json(
+      fields.get("fail_fast").unwrap_or(Json::boolean(false)),
+      path=path.add_key("fail_fast"),
+    ),
+    max_parallel: @json.from_json(
+      fields.get("max_parallel").unwrap_or(ToJson::to_json(256)),
+      path=path.add_key("max_parallel"),
     ),
     contents_read: @json.from_json(
       fields.get("contents_read").unwrap_or(Json::boolean(true)),

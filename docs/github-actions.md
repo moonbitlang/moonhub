@@ -79,7 +79,7 @@ source placeholder required by upstream checkout's input contract; it cannot
 access either host's authenticated APIs. Actions needing authenticated GitHub APIs
 must be treated as migration gaps, not assumed to work from this placeholder.
 
-In version 5, checkout is under `/workspace/repository`; the job HOME and temporary
+In versions 5 and 6, checkout is under `/workspace/repository`; the job HOME and temporary
 state are sibling directories, so checkout cleaning cannot delete action runtime
 state. Existing versions keep their old directory layout. Actions with no checkout
 step retain the previous automatic source extraction behavior.
@@ -94,7 +94,10 @@ The current expression interpreter supports string, number, boolean and null
 literals, field / string-key indexing, parentheses, `!`, `==`, `!=`, `&&`, `||`,
 and `success`, `failure`, `cancelled`, `always`, `fromJSON`, `toJSON`, `contains`,
 `startsWith`, `endsWith`, `format`. Boolean operators short circuit. Contexts are
-`github`, `runner`, `env`, `steps`, plus `inputs` inside a composite action.
+`github`, `runner`, `env`, `steps`, `matrix`, `strategy`, plus `inputs` inside a
+composite action.
+See [workflow scheduling](workflow-scheduling.md) for static matrix expansion and
+persisted workflow concurrency.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
 Unsupported public syntax is not passed literally to the shell.
 
@@ -137,7 +140,9 @@ version 2 always uses assignment version 5, including jobs containing only
 `run` steps, so environment/output files work without an explicit expression or
 action. Older definition version 1 remains readable and runnable; reruns preserve
 its saved definition version and legacy assignment selection.
-No database schema migration is required for these JSON additions.
+New definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
+Migration 031 adds durable scheduling state; upgrade coordinator, provider and
+runner together. See [workflow scheduling](workflow-scheduling.md).
 
 The dependency base installs locked YAML dependencies and pinned Node 20/24
 binaries. Its fingerprint includes `runner/actions/package*.json`. Application

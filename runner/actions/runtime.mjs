@@ -95,7 +95,7 @@ export class ActionRuntime {
       event_name: this.config.context?.event_name || 'workflow_dispatch', token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
-      steps: this.state.steps, failure: this.failure, cancelled: this.cancelled, ...extra };
+      steps: this.state.steps, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
     if (uses.startsWith('./')) return { directory: await contained(this.workspace, uses), repository: this.config.repository, ref: this.config.sha };
