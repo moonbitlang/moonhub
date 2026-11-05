@@ -121,7 +121,14 @@ async fn run_backend_worker(
           )
           latest.val = Some(response)
         } catch {
-          Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
+          // A retired worker cannot recover with the same identity (for example
+          // after a sleeping PC missed its heartbeat window). Let the host
+          // supervisor restart and enroll a fresh worker instead of retrying forever.
+          Rejected(code) if permanent_worker_rejection(
+              code,
+              request.state,
+              state.val,
+            ) => raise Rejected(code)
           _ => ()
         }
         @async.sleep(5000)
@@ -173,7 +180,8 @@ async fn run_backend_worker(
           allow_http=base.allow_http,
         ),
       ) catch {
-        Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
+        Rejected(code) if code == 401 || code == 403 || code == 409 =>
+          raise Rejected(code)
         _ => {
           @async.sleep(base.poll_ms)
           continue
@@ -241,4 +249,17 @@ async fn run_backend_worker(
     )
     group.return_immediately(())
   })
+}
+
+///|
+fn permanent_worker_rejection(
+  code : Int32,
+  sent_state : String,
+  current_state : String,
+) -> Bool {
+  code == 401 ||
+  code == 403 ||
+  // A delayed ready/starting heartbeat may race a successful claim. A 409 then
+  // describes an active task, not a retired worker; do not interrupt that job.
+  (code == 409 && current_state != "busy" && sent_state == current_state)
 }

@@ -47,7 +47,7 @@ async function main() {
   const archive = fs.readFileSync(path.join(root,'source.tar'));
   const bundle = fs.readFileSync(path.join(root,'source.bundle'));
   const attempts = new Map();
-  let claims=0, readyAfterCleanup=0, completed=0, drained=false, failure, worker, output='';
+  let claims=0, readyAfterCleanup=0, completed=0, drained=false, drainCount=0, failure, worker, output='';
   const server = http.createServer(async(req,res)=>{
     try {
       const route = req.url.split('/').pop();
@@ -79,7 +79,7 @@ async function main() {
           assert.deepEqual(fs.readdirSync(standalone?path.join(install,'workspace'):path.join(root,'workspace')),[], 'assignment directory survived readiness');
           readyAfterCleanup=completed;
         }
-        if (body.state==='drained') drained=true;
+        if (body.state==='drained') {drained=true;drainCount++;}
         if (body.state==='failed') throw Error('worker failed before draining');
         // Request drain only after the cancelled attempt has cleaned up and
         // acknowledged ready, so this test proves reuse after cancellation too.
@@ -135,10 +135,15 @@ async function main() {
   });
   await new Promise(resolve=>server.listen(0,'0.0.0.0',resolve));
   const port=server.address().port, rule='MoonHubRunnerSmoke-'+crypto.randomBytes(6).toString('hex');
-  const ps = command=>execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',command],{stdio:'inherit',timeout:30000});
+  // A PS7 parent exports its own module directories. Windows PowerShell 5.1
+  // must load the matching inbox modules rather than PS7's Security/Utility DLLs.
+  const powerShellEnv={...process.env};
+  for(const key of Object.keys(powerShellEnv))if(key.toLowerCase()==='psmodulepath')delete powerShellEnv[key];
+  powerShellEnv.PSModulePath=path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/Modules');
+  const ps = command=>execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',command],{stdio:'inherit',timeout:30000,env:powerShellEnv});
   const taskName='MoonHubStandaloneSmoke'+crypto.randomBytes(6).toString('hex');
   const install=path.join(process.env.ProgramData || 'C:/ProgramData',taskName+' install');
-  const runPowerShell = args => execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',...args],{encoding:'utf8',timeout:240000});
+  const runPowerShell = args => execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',...args],{encoding:'utf8',timeout:240000,env:powerShellEnv});
   const quote = value => "'"+value.replaceAll("'","''")+"'";
   let taskInstalled=false;
   try {
@@ -183,6 +188,14 @@ async function main() {
       runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
       assert.equal(fs.readFileSync(path.join(controller,'registered.json'),'utf8'),binding);
       assert.equal(fs.readFileSync(path.join(controller,'provider-token'),'utf8'),savedToken);
+      const firstWorker=workerKey,previousDrains=drainCount;
+      runPowerShell(['-Command',`Start-ScheduledTask -TaskName ${quote(taskName)}`]);
+      for(let i=0;i<180 && !(workerKey!==firstWorker && drainCount>previousDrains) && !failure;i++)await delay(500);
+      if(failure)throw failure;
+      assert.notEqual(workerKey,firstWorker,'reinstalled provider did not enroll a fresh worker');
+      assert.ok(drainCount>previousDrains,'restarted worker did not complete its drain');
+      assert.equal(fs.readFileSync(path.join(controller,'provider-token'),'utf8'),savedToken);
+      runPowerShell(['-Command',`Stop-ScheduledTask -TaskName ${quote(taskName)}`]);
     } else {
     await Promise.race([closed,delay(10000).then(()=>{throw Error('Drained worker did not exit');})]);
     assert.equal(exitCode,0,output);

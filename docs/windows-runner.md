@@ -120,7 +120,10 @@ Logs remain in the private installation root. A log larger than 10 MiB is rotate
 to `provider.log.1` at the next task start. Startup retries wait for provider lease
 handoff and old-worker reconciliation before new claims. A restart does not
 create a new provider identity. A sleeping/offline PC cannot supply ready capacity;
-check heartbeats and power settings when selecting a dedicated host.
+check heartbeats and power settings when selecting a dedicated host. If a long
+sleep/offline interval caused the server to retire the worker, sync rejection
+ends that process and the scheduled task restarts it with a fresh worker identity;
+the provider identity stays the same.
 
 To upgrade, pause/drain through MoonHub, wait for the active job and its cleanup,
 then stop the scheduled task. Run the same installer with the new bundle, same

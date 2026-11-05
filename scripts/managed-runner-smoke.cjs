@@ -8,7 +8,7 @@ const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhu
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const registration = 'a'.repeat(64);
 
-async function scenario(mode, failCleanup = false, stale = false) {
+async function scenario(mode, failCleanup = false, stale = false, terminal = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
   for (const directory of ['controller', 'workspace']) {
     fs.mkdirSync(path.join(root, directory), {mode:0o700});
@@ -106,6 +106,9 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         result = worker;
       } else if (route === '/workers/sync') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
+        if (terminal && body.state === 'ready') {
+          worker.state='failed';res.writeHead(409);res.end('{}');return;
+        }
         if (mode === 'docker' && !failCleanup && body.state === 'ready') {
           recoverReadyAt ||= Date.now() + 1200;
           if (Date.now() < recoverReadyAt) {
@@ -140,7 +143,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     child = spawn(binary,args,{stdio:['ignore','pipe','pipe']});
     child.stdout.on('data',b => {output += b;}); child.stderr.on('data',b => {output += b;});
     child.on('exit',() => {exited = true;});
-    const deadline = Date.now() + (mode === 'asg' ? 140000 : 30000);
+    const deadline = Date.now() + (terminal ? 6000 : mode === 'asg' ? 140000 : 30000);
     let standbySince;
     for (;;) {
       if (failure) throw failure;
@@ -170,22 +173,23 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         assert.ok(Date.now() - Number(workers[0].idle_since_ms) >= 30000, 'worker retired before its idle timeout');
         assert.ok(workers[0].draining); break;
       }
+      if (terminal && exited) {assert.equal(claims,0,'claim after worker retirement');assert.equal(workers[0].state,'failed');break;}
       if (mode === 'docker' && failCleanup && exited) {assert.equal(claims,1,'claim after cleanup failure'); assert.equal(st.volumes.length,1); break;}
       if (mode === 'docker' && !failCleanup && st.runs >= 2 && st.volumes.length === 0 && applied === '2') {assert.ok(st.containerArgs.includes('1')); break;}
       if (exited || Date.now() > deadline) throw Error(`${mode} timed out/stopped: ${output}; revisions=${observed}/${applied}/${revision}; claims=${claims}; workers=${JSON.stringify(workers.map(({secret,...w}) => w))}; calls=${JSON.stringify(st.calls.map(c => c.slice(0,3)))}`);
       await delay(100);
     }
-    if (mode === 'docker' && !failCleanup) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
+    if (mode === 'docker' && !failCleanup && !terminal) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
     for (const directory of ['controller', 'workspace']) {
       assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
     }
-    console.log(`Managed ${mode}${failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
+    console.log(`Managed ${mode}${terminal ? ' retired worker' : failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(r => child.once('exit',r)),delay(20000).then(() => {if (!exited) child.kill('SIGKILL');})]);}
     server.closeAllConnections(); await new Promise(r => server.close(r));
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});
