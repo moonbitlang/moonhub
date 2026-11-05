@@ -151,3 +151,26 @@ test "scheduling format and comparisons do not recursively substitute arguments"
     "unavailable",
   )
 }
+
+///|
+test "matrix and scheduling expansion charge UTF8 budgets before allocating oversized results" {
+  let context : Map[String, Json] = {
+    "matrix": { "label": "字".repeat(15000) },
+  }
+  try
+    ignore(
+      scheduling_template("${{ matrix.label }}${{ matrix.label }}", context),
+    )
+  catch {
+    InvalidWorkflow(_) => ()
+  } noraise {
+    _ => fail("scheduling template accepted more than 64 KiB UTF8")
+  }
+  let rows = Array::makei(256, i => i.to_string()).join(", ")
+  let step = "      - run: echo hello\n"
+  let source = "on: workflow_dispatch\njobs:\n  build:\n    runs-on: ubuntu-24.04\n    strategy: {matrix: {item: [" +
+    rows +
+    "]}}\n    steps:\n" +
+    step.repeat(64)
+  expect_invalid(source, "expanded workflow")
+}

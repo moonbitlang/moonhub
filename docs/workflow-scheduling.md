@@ -71,7 +71,9 @@ if/continue-on-error, needs outputs and experimental matrix policy are separate
 features and are not silently accepted.
 
 Limits are 16 logical jobs, 16 axes, 256 combinations per matrix, 256 expanded
-jobs per workflow, 4096 expanded steps and a 1-MiB normalized snapshot. The queue
+jobs per workflow, 4096 expanded steps and a 1-MiB normalized snapshot.
+Template/format results are charged in UTF-8 bytes before appending, and matrix
+instances consume remaining job/step/plan budgets while they are constructed. The queue
 page distinguishes dependency, concurrency-group and matrix-capacity waits.
 
 ## Upgrade and acceptance boundary

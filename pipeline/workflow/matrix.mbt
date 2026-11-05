@@ -129,6 +129,9 @@ fn expand_job(
   env : Map[String, String],
   defaults : RunDefaults,
   contents_read : Bool,
+  remaining_jobs~ : Int32 = 256,
+  remaining_steps~ : Int32 = 4096,
+  remaining_bytes~ : Int32 = 1048576,
 ) -> Array[Job] raise InvalidWorkflow {
   let fields = yaml_as_obj(value, "jobs." + id)
   guard fields.get("strategy") is Some(strategy) else {
@@ -150,6 +153,15 @@ fn expand_job(
     raise InvalidWorkflow("strategy requires a static matrix")
   }
   let rows = expand_matrix(matrix)
+  let step_count = match fields.get("steps") {
+    Some(Array(steps)) => steps.length()
+    _ => 0
+  }
+  guard rows.length() <= remaining_jobs &&
+    rows.length() * step_count <= remaining_steps else {
+    raise InvalidWorkflow("expanded workflow exceeds 256 jobs or 4096 steps")
+  }
+  let mut expanded_bytes = 0
   rows.mapi((index, matrix) => {
     let fields = fields.copy()
     ignore(fields.remove("strategy"))
@@ -194,7 +206,7 @@ fn expand_job(
       )
     }
     let job = parse_job(id, @yaml.Map(fields), env, defaults, contents_read)
-    {
+    let instance = {
       ..job,
       id: id + "[" + (index + 1).to_string() + "]",
       name: if fields.contains("name") {
@@ -220,5 +232,10 @@ fn expand_job(
       fail_fast,
       max_parallel,
     }
+    expanded_bytes += @utf8.encode(ToJson::to_json(instance).stringify()).length()
+    guard expanded_bytes <= remaining_bytes else {
+      raise InvalidWorkflow("normalized workflow exceeds 1 MiB")
+    }
+    instance
   })
 }

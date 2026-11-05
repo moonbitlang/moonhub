@@ -355,10 +355,22 @@ pub fn scheduling_template(
   source : String,
   context : Map[String, Json],
 ) -> String raise InvalidWorkflow {
+  guard @utf8.encode(source).length() <= max_source_bytes &&
+    !source.contains("\u{0000}") else {
+    raise InvalidWorkflow("scheduling template exceeds limits")
+  }
   let output = StringBuilder()
+  let mut size = 0
+  let append = (text : String) => {
+    size += @utf8.encode(text).length()
+    guard size <= max_source_bytes && !text.contains("\u{0000}") else {
+      raise InvalidWorkflow("scheduling template exceeds limits")
+    }
+    output.write_string(text)
+  }
   let mut rest = source
   while rest.split_once("${{") is Some((before, code)) {
-    output.write_string(before.to_owned())
+    append(before.to_owned())
     // Find the closing delimiter outside quoted strings.
     let chars = code.to_owned().to_array()
     let mut quoted = false
@@ -381,7 +393,7 @@ pub fn scheduling_template(
     guard end >= 0 else {
       raise InvalidWorkflow("unterminated scheduling template")
     }
-    output.write_string(
+    append(
       schedule_string(
         scheduling_expression(
           String::from_array(chars[:end].to_owned()),
@@ -391,7 +403,7 @@ pub fn scheduling_template(
     )
     rest = String::from_array(chars[end + 2:].to_owned())
   }
-  output.write_string(rest)
+  append(rest)
   let result = output.to_string()
   guard result.length() <= max_source_bytes && !result.contains("\u{0000}") else {
     raise InvalidWorkflow("scheduling template exceeds limits")
@@ -444,8 +456,11 @@ fn schedule_format(args : Array[Json]) -> String raise InvalidWorkflow {
         (chars[i] == '{' && chars[i + 1] == '{') ||
         (chars[i] == '}' && chars[i + 1] == '}')
       ) {
+      size += @utf8.encode(chars[i].to_string()).length()
+      guard size <= max_source_bytes else {
+        raise InvalidWorkflow("formatted expression exceeds limits")
+      }
       out.write_char(chars[i])
-      size += 1
       i += 2
     } else if chars[i] == '{' {
       i += 1
@@ -465,15 +480,21 @@ fn schedule_format(args : Array[Json]) -> String raise InvalidWorkflow {
         raise InvalidWorkflow("invalid format placeholder")
       }
       let text = schedule_string(args[index + 1])
+      size += @utf8.encode(text).length()
+      guard size <= max_source_bytes else {
+        raise InvalidWorkflow("formatted expression exceeds limits")
+      }
       out.write_string(text)
-      size += text.length()
       i += 1
     } else {
       guard chars[i] != '}' else {
         raise InvalidWorkflow("unescaped format brace")
       }
+      size += @utf8.encode(chars[i].to_string()).length()
+      guard size <= max_source_bytes else {
+        raise InvalidWorkflow("formatted expression exceeds limits")
+      }
       out.write_char(chars[i])
-      size += 1
       i += 1
     }
     guard size <= max_source_bytes else {

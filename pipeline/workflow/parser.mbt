@@ -587,8 +587,23 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   }
   let jobs : Array[Job] = []
   let mut step_count = 0
+  let mut plan_bytes = 0
   for id, value in fields_jobs {
-    for job in expand_job(id, value, env, defaults, contents_read) {
+    for
+      job in expand_job(
+        id,
+        value,
+        env,
+        defaults,
+        contents_read,
+        remaining_jobs=256 - jobs.length(),
+        remaining_steps=4096 - step_count,
+        remaining_bytes=1048576 - plan_bytes,
+      ) {
+      plan_bytes += @utf8.encode(ToJson::to_json(job).stringify()).length()
+      guard plan_bytes <= 1048576 else {
+        raise InvalidWorkflow("normalized workflow exceeds 1 MiB")
+      }
       step_count += job.steps.length()
       jobs.push(job)
     }
