@@ -120,10 +120,41 @@ jobs:
           node scripts/windows-runner-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows container smoke failed' }
 
+  macos-runner:
+    name: macOS runner
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Build native macOS guest bundle
+        run: |
+          test "$(uname -m)" = arm64
+          pin=$(sed -n 's/^ARG MOONBIT_VERSION=//p' deploy/base.Dockerfile)
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh -o "$RUNNER_TEMP/install-moonbit.sh"
+          bash "$RUNNER_TEMP/install-moonbit.sh" "$pin"
+          export PATH="$HOME/.moon/bin:$PATH"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          moon update
+          node scripts/resolve-dependencies.cjs
+          python3 scripts/build-macos-runner.py
+      - name: Test native runtime and prepared-slot lifecycle
+        run: |
+          moon build --strip -j 1 --deny-warn cmd/moonhub-runner
+          moon test --strip -j 1 --deny-warn runner/platform provider pipeline/protocol
+          node --test runner/actions/runtime.test.mjs scripts/macos-guest-test.mjs
+          node --test scripts/macos-runner-lifecycle-test.cjs
+          bash -n deploy/macos/install-guest.sh
+          plutil -lint deploy/macos/launchd.plist
+
   required:
     name: CI required
     if: ${{ always() }}
-    needs: [self-check, docker-ssh, windows-runner]
+    needs: [self-check, docker-ssh, windows-runner, macos-runner]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -132,10 +163,12 @@ jobs:
           SELF_CHECK_RESULT: ${{ needs.self-check.result }}
           DOCKER_SSH_RESULT: ${{ needs.docker-ssh.result }}
           WINDOWS_RUNNER_RESULT: ${{ needs.windows-runner.result }}
+          MACOS_RUNNER_RESULT: ${{ needs.macos-runner.result }}
         run: |
           test "$SELF_CHECK_RESULT" = success
           test "$DOCKER_SSH_RESULT" = success
           test "$WINDOWS_RUNNER_RESULT" = success
+          test "$MACOS_RUNNER_RESULT" = success
 
   deploy:
     needs: required

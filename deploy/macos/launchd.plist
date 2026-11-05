@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Operator example: replace paths, server/name and image; install for the dedicated host account. -->
+<plist version="1.0"><dict>
+<key>Label</key><string>io.moonhub.macos-worker</string>
+<key>ProgramArguments</key><array>
+<string>/usr/local/bin/moonhub-runner</string><string>run</string>
+<string>--mode</string><string>tart</string>
+<string>--name</string><string>macos-ci</string>
+<string>--server</string><string>https://moonhub.example</string>
+<string>--state-dir</string><string>/var/lib/moonhub-runner/controller</string>
+<string>--registration-token-file</string><string>/var/lib/moonhub-runner/registration</string>
+<string>--tart-home</string><string>/var/lib/moonhub-runner/tart</string>
+<string>--runner-image</string><string>local:moonhub-macos-v1</string>
+</array><key>UserName</key><string>moonhub-runner</string>
+<key>WorkingDirectory</key><string>/var/empty</string>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+<key>ThrottleInterval</key><integer>30</integer>
+<key>StandardOutPath</key><string>/var/log/moonhub-macos-worker.log</string>
+<key>StandardErrorPath</key><string>/var/log/moonhub-macos-worker.log</string>
+</dict></plist>

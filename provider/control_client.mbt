@@ -51,6 +51,33 @@ fn configured_options(
 
 ///|
 pub async fn run_worker(base : Options, token : String) -> Unit {
+  run_backend_worker(base, token, {
+    os: if @platform.windows() {
+      "windows"
+    } else {
+      "linux"
+    },
+    fresh_each_job: false,
+    initialize: () => {
+      wait_for_docker(base)
+      cleanup_stale_containers(base)
+      cleanup_stale_workspaces(base)
+    },
+    prepare: current => ensure_runner_image(current),
+    health: () => (),
+    execute: (current, assignment, credential) => {
+      execute_assignment(current, assignment, credential)
+    },
+    cleanup: () => (),
+  })
+}
+
+///|
+async fn run_backend_worker(
+  base : Options,
+  token : String,
+  backend : WorkerBackend,
+) -> Unit {
   validate_origin(base.server, base.allow_http)
   let state = Ref("starting")
   let applied = Ref("0")
@@ -100,25 +127,36 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
         @async.sleep(5000)
       }
     })
-    wait_for_docker(base)
-    cleanup_stale_containers(base)
-    cleanup_stale_workspaces(base)
+    defer @async.protect_from_cancel(backend.cleanup)
+    (backend.initialize)()
     let current = Ref(base)
+    let prepared = Ref(false)
     for ;; {
       guard latest.val is Some(snapshot) else {
         @async.sleep(500)
         continue
       }
       if snapshot.draining {
-        state.val = "drained"
+        state.val = "starting"
         break
       }
-      if applied.val != snapshot.config_revision {
+      if snapshot.paused {
+        state.val = "starting"
+        if prepared.val {
+          (backend.cleanup)()
+          prepared.val = false
+        }
+        @async.sleep(base.poll_ms)
+        continue
+      }
+      if !prepared.val || applied.val != snapshot.config_revision {
         state.val = "starting"
         current.val = configured_options(base, snapshot.config)
-        ensure_runner_image(current.val)
+        (backend.prepare)(current.val)
         applied.val = snapshot.config_revision
+        prepared.val = true
       }
+      (backend.health)()
       state.val = "ready"
       // Acknowledge readiness only after both cleanup and configuration finish.
       let request : @protocol.WorkerSyncRequest = {
@@ -143,14 +181,14 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
       }
       latest.val = Some(ready)
       if ready.draining {
-        state.val = "drained"
+        state.val = "starting"
         break
       }
       if ready.paused || ready.config_revision != applied.val {
         @async.sleep(base.poll_ms)
         continue
       }
-      let assignment = claim(current.val, token) catch {
+      let assignment = claim(current.val, token, runner_os=backend.os) catch {
         Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
         _ => {
           @async.sleep(base.poll_ms)
@@ -160,22 +198,33 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
       match assignment {
         None => @async.sleep(base.poll_ms)
         Some(claimed) => {
-          validate_assignment(claimed.assignment)
+          validate_assignment(claimed.assignment, runner_os=backend.os)
           state.val = "busy"
-          execute_assignment(
+          (backend.execute)(
             current.val,
             claimed.assignment,
             claimed.attempt_token,
           ) catch {
+            InvalidConfiguration(message) => {
+              state.val = "failed"
+              raise InvalidConfiguration(message)
+            }
             _ => {
               state.val = "failed"
               raise CleanupFailure
             }
           }
-          state.val = "ready"
+          if backend.fresh_each_job {
+            state.val = "starting"
+            prepared.val = false
+          } else {
+            state.val = "ready"
+          }
         }
       }
     }
+    (backend.cleanup)()
+    state.val = "drained"
     let request : @protocol.WorkerSyncRequest = {
       version: 1,
       state: state.val,

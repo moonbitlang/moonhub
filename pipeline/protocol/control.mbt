@@ -207,3 +207,28 @@ pub extend WorkerSnapshot with ToJson::{to_json}
 
 ///|
 pub extend WorkerSnapshot with @json.FromJson::{from_json}
+
+///|
+pub fn standby_counts(
+  workers : Array[WorkerView],
+  revision : String,
+  now_ms : Int64,
+) -> (Int32, Int32) {
+  let mut ready = 0
+  let mut preparing = 0
+  for worker in workers {
+    let seen = parse_decimal(worker.last_seen_ms).unwrap_or(0L)
+    if worker.draining ||
+      worker.active_attempts > 0 ||
+      seen <= 0L ||
+      now_ms - seen >= 180000L {
+      continue
+    }
+    if worker.state == "ready" && worker.applied_revision == revision {
+      ready += 1
+    } else if worker.state == "starting" || worker.state == "ready" {
+      preparing += 1
+    }
+  }
+  (ready, preparing)
+}

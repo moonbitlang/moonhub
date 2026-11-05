@@ -277,10 +277,10 @@ fn parse_job(
         ch == '.'
       })
     }) &&
-    !(runs_on.contains("windows") && runs_on.contains("linux")) &&
-    !runs_on.contains("macos") else {
+    ["linux", "windows", "macos"].filter(os => runs_on.contains(os)).length() <=
+    1 else {
     raise InvalidWorkflow(
-      "\{ctx}.runs-on requires self-hosted Linux or Windows runner labels",
+      "\{ctx}.runs-on requires self-hosted Linux, Windows or macOS runner labels",
     )
   }
   let unique_labels : Map[String, Bool] = Map([])

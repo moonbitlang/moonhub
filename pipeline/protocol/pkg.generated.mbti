@@ -27,6 +27,8 @@ pub let remote_assignment_version : Int32
 
 pub let secret_assignment_version : Int32
 
+pub fn standby_counts(Array[WorkerView], String, Int64) -> (Int32, Int32)
+
 pub let toolchain_assignment_version : Int32
 
 pub fn validate_config(Array[ConfigField], Map[String, String]) -> String?

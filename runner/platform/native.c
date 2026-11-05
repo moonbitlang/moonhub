@@ -43,3 +43,11 @@ int32_t moonhub_platform_protect_directory(const uint16_t *path, int32_t length,
   (void)path; (void)length; (void)readable; return 0;
 }
 #endif
+
+int32_t moonhub_platform_macos(void) {
+#ifdef __APPLE__
+  return 1;
+#else
+  return 0;
+#endif
+}

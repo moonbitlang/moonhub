@@ -47,6 +47,9 @@ void moonhub_runner_kill_group(int32_t pid) { (void)pid; }
 void moonhub_runner_kill_namespace(void) {}
 int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #else
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include <stdint.h>
 #include <signal.h>
@@ -56,6 +59,13 @@ int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #include <errno.h>
 #ifdef __linux__
 #include <sys/prctl.h>
+#endif
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <sys/stat.h>
+#include <sys/ptrace.h>
+#include <sys/resource.h>
+#include <stdlib.h>
 #endif
 
 int64_t moonhub_runner_monotonic(void) {
@@ -75,6 +85,14 @@ int32_t moonhub_runner_prepare(int32_t local) {
   if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) return -1;
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) return -1;
   return 0;
+#elif defined(__APPLE__)
+  int guest = 0; size_t length = sizeof(guest); struct stat marker;
+  if (geteuid() == 0 || sysctlbyname("kern.hv_vmm_present", &guest, &length, NULL, 0) != 0 || !guest ||
+      lstat("/Library/Application Support/MoonHub/guest.json", &marker) != 0 ||
+      !S_ISREG(marker.st_mode) || marker.st_uid != 0 || (marker.st_mode & 022)) return -1;
+  struct rlimit core = {0, 0};
+  if (setrlimit(RLIMIT_CORE, &core) != 0 || ptrace(PT_DENY_ATTACH, 0, 0, 0) != 0) return -1;
+  return 0;
 #else
   return -1;
 #endif
@@ -93,6 +111,9 @@ void moonhub_runner_release_step(int64_t retained) { (void)retained; }
 void moonhub_runner_kill_namespace(void) {
 #ifdef __linux__
   if (getpid() == 1 && geteuid() != 0) kill(-1, SIGKILL);
+#elif defined(__APPLE__)
+  // The host stops the complete disposable VM before acknowledging readiness.
+  // Darwin kill(-1) can also terminate the reporting executor itself.
 #endif
 }
 

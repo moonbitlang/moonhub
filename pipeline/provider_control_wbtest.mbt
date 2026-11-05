@@ -462,3 +462,51 @@ async test "controller schema extension preserves configuration and requires the
     )
   })
 }
+
+///|
+async test "prepared VM workers acknowledge drain only after explicit cleanup" {
+  @test_support.with_repository_test_data((pool, _) => {
+    let c = Coordinator::new(pool)
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let provider = c.create_provider(
+      admin,
+      "managed",
+      "a".repeat(64),
+      ["self-hosted", "macos", "arm64"],
+      [],
+    )
+    ignore(
+      c.register_runner("a".repeat(64), {
+        ..control_registration(),
+        mode: "tart",
+      }),
+    )
+    let worker = c.register_worker("b".repeat(64), {
+      version: 1,
+      key: "mac",
+      token: "c".repeat(64),
+    })
+    let ready : @protocol.WorkerSyncRequest = {
+      version: 1,
+      state: "ready",
+      applied_revision: "1",
+    }
+    ignore(c.sync_worker("c".repeat(64), ready))
+    c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
+    assert_true(c.sync_worker("c".repeat(64), ready).draining)
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "ready",
+    )
+    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "starting", }))
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "starting",
+    )
+    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "drained", }))
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "drained",
+    )
+  })
+}

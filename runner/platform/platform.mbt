@@ -11,9 +11,25 @@ pub fn windows() -> Bool {
 }
 
 ///|
+pub extern "C" fn macos() -> Bool = "moonhub_platform_macos"
+
+///|
 pub fn os() -> String {
   if windows() {
     "windows"
+  } else if macos() {
+    "macos"
+  } else {
+    "linux"
+  }
+}
+
+///|
+pub fn job_os(labels : Array[String]) -> String {
+  if labels.contains("windows") {
+    "windows"
+  } else if labels.contains("macos") {
+    "macos"
   } else {
     "linux"
   }

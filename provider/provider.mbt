@@ -109,6 +109,7 @@ async fn cleanup_stale_containers(
 ///|
 fn validate_assignment(
   assignment : @protocol.Assignment,
+  runner_os~ : String = if @platform.windows() { "windows" } else { "linux" },
 ) -> Unit raise ProviderError {
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
@@ -116,7 +117,7 @@ fn validate_assignment(
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
-    assignment.job.runs_on.contains("windows") == @platform.windows() &&
+    @platform.job_os(assignment.job.runs_on) == runner_os &&
     assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&
     assignment.job.steps.length() > 0 &&

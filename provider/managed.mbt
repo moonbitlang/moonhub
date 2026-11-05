@@ -45,11 +45,27 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
       "memory_mib",
       "Memory limit per task (MiB)",
       "integer",
-      "Leave memory for the operating system and Docker.",
+      if options.mode == "tart" {
+        "Leave memory for the host and execution backend."
+      } else {
+        "Leave memory for the operating system and Docker."
+      },
       minimum=256,
       maximum=1048576,
     ),
   ]
+  if options.mode == "tart" {
+    schema.push(
+      config_field(
+        "standby_workers",
+        "Standby workers",
+        "integer",
+        "One clean, booted macOS VM with a healthy guest is maintained on this host.",
+        minimum=1,
+        maximum=1,
+      ),
+    )
+  }
   if options.mode == "asg" {
     schema.push(
       config_field(
@@ -134,6 +150,9 @@ pub fn config_defaults(options : ManagedOptions) -> Map[String, String] {
     "cpus": "2",
     "memory_mib": "4096",
   }
+  if options.mode == "tart" {
+    defaults["standby_workers"] = "1"
+  }
   if options.mode == "asg" {
     defaults["instance_type"] = options.instance_types[0]
     defaults["max_workers"] = "1"
@@ -169,9 +188,17 @@ priv struct RegistrationBinding {
 }
 
 ///|
-pub async fn run_managed(options : ManagedOptions) -> Unit {
-  guard ["docker", "asg"].contains(options.mode) && !options.name.is_empty() else {
-    raise InvalidConfiguration("Choose docker or asg and a provider name.")
+pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit {
+  guard ["docker", "asg", "tart"].contains(options.mode) &&
+    !options.name.is_empty() else {
+    raise InvalidConfiguration(
+      "Choose docker, asg or tart and a provider name.",
+    )
+  }
+  guard options.mode != "tart" || (@platform.macos() && macos is Some(_)) else {
+    raise InvalidConfiguration(
+      "Tart mode requires macOS and local VM settings.",
+    )
   }
   validate_origin(options.base.server, options.base.allow_http)
   guard !options.instance_types.is_empty() else {
@@ -243,7 +270,7 @@ pub async fn run_managed(options : ManagedOptions) -> Unit {
     return
   }
   let worker_token = random_hex(32)
-  let key = "docker-" + controller_id
+  let key = options.mode + "-" + controller_id
   let observed = Ref("0")
   let applied = Ref("0")
   let started = Ref(false)
@@ -326,7 +353,13 @@ pub async fn run_managed(options : ManagedOptions) -> Unit {
             allow_http=options.base.allow_http,
           ),
         )
-        group.spawn_bg(() => run_worker(options.base, worker_token))
+        group.spawn_bg(() => {
+          if options.mode == "tart" && macos is Some(macos) {
+            run_tart_worker(options.base, worker_token, macos)
+          } else {
+            run_worker(options.base, worker_token)
+          }
+        })
         started.val = true
       }
       if snapshot.workers.iter().find_first(w => w.key == key) is Some(worker) {
