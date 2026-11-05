@@ -109,11 +109,12 @@ e['MOONHUB_SPOT_ASG']='spot'; assert '--spot-asg' in m.render(e)
   fs.writeFileSync(path.join(fixture,'deploy/production.sh'), fs.readFileSync('deploy/production.sh','utf8')
     .replaceAll('/etc/systemd/system/',installed+'/')
     .replaceAll('/usr/local/bin/moonhub-runner',installedBinary));
-  for (const name of ['production-provider-state.cjs','production-readiness.cjs','controller-unit.py']) {
-    fs.copyFileSync('deploy/'+name,path.join(fixture,'deploy',name));
+  for (const name of ['production-provider-state.cjs','production-readiness.cjs','controller-unit.py','production-dind-state.cjs','production-dind.sh']) {
+    fs.writeFileSync(path.join(fixture,'deploy',name),fs.readFileSync('deploy/'+name,'utf8').replaceAll('/etc/systemd/system/',installed+'/'));
   }
   fs.writeFileSync(path.join(fixture,'deploy/deploy.sh'),`#!${process.execPath}
 const fs=require('node:fs'),{DatabaseSync}=require('node:sqlite');
+if(process.argv[2]==='status')process.exit(0);
 fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(['web-upgrade'])+String.fromCharCode(10));
 const db=new DatabaseSync(process.env.TEST_DB);
 require('node:assert/strict').equal(db.prepare('SELECT COUNT(*) AS count FROM pipeline_provider WHERE paused=0').get().count,0);
@@ -134,7 +135,14 @@ MOONHUB_ECR_REPOSITORY=123456789012.dkr.ecr.us-west-2.amazonaws.com/runner
   const log=path.join(root,'commands.jsonl'), marker=path.join(root,'built');
   fs.writeFileSync(path.join(root,'bin/docker'),`#!${process.execPath}
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');
-const a=process.argv.slice(2);fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(a)+String.fromCharCode(10));
+let a=process.argv.slice(2);fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(a)+String.fromCharCode(10));
+if(a[0]==='-H'){
+ a=a.slice(2);
+ if(a[0]==='load')fs.readFileSync(0);
+ else if(a[0]==='image')console.log(process.env.TEST_DIND_IMAGE_MISMATCH==='1'?'old-release':process.env.TEST_REVISION);
+ else if(a[0]==='ps' && process.env.TEST_DIND_BUSY==='1')console.log('task-container');
+ process.exit(0);
+}
 if(a[0]==='image'){if(fs.existsSync(process.env.TEST_BUILT))console.log(process.env.TEST_REVISION);else process.exit(1);}
 else if(a[0]==='info')console.log('linux/x86_64');
 else if(a[0]==='inspect')process.exit(1);
@@ -191,8 +199,23 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted\nfixture 90000000
   const rendered=spawnSync('python3',['deploy/controller-unit.py'],{env:upgradeEnv,encoding:'utf8'});
   assert.equal(rendered.status,0,rendered.stderr);fs.writeFileSync(installedUnit,rendered.stdout);
   fs.writeFileSync(path.join(root,'bin/systemctl'),`#!${process.execPath}
-const fs=require('node:fs'),a=process.argv.slice(2);
+const fs=require('node:fs'),{DatabaseSync}=require('node:sqlite'),a=process.argv.slice(2);
 fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(['systemctl',...a])+String.fromCharCode(10));
+if(a[0]==='cat' && a[1]==='moonhub-dind-controller.service')process.exit(fs.existsSync(process.env.TEST_DIND_UNIT||'/absent-unit')?0:1);
+if(a.includes('DropInPaths'))process.exit(0);
+if(a.includes('moonhub-dind-controller.service')){
+ if(a[0]==='start'){
+  const db=new DatabaseSync(process.env.TEST_DB);
+  if(process.env.TEST_DIND_NOT_READY!=='1'){
+   const p=db.prepare("SELECT * FROM pipeline_provider WHERE name='dind'").get();
+   const owner='controller-'+process.pid;
+   db.prepare("UPDATE pipeline_provider SET observed_revision=config_revision,applied_revision=CASE WHEN paused=0 THEN config_revision ELSE applied_revision END,control_status=CASE WHEN paused=0 THEN 'applied' ELSE 'pending' END,controller_id=?,controller_until_ms=? WHERE id=?").run(owner,Date.now()+60000,p.id);
+   db.prepare("INSERT INTO pipeline_worker(state,provider_id,worker_key,applied_revision,draining,last_seen_ms) VALUES(?,?,?,?,0,?)").run(p.paused?'starting':'ready',p.id,'docker-'+owner,p.config_revision,Date.now());
+  }
+  db.close();
+ }
+ process.exit(0);
+}
 if(a[0]==='show')console.log(fs.existsSync(process.env.TEST_SERVICE_STATE)?fs.readFileSync(process.env.TEST_SERVICE_STATE,'utf8'):'inactive');
 if(a[0]==='stop')fs.rmSync(process.env.TEST_SERVICE_STATE,{force:true});
 if(a[0]==='start'||a[0]==='restart')fs.writeFileSync(process.env.TEST_SERVICE_STATE,'active');
@@ -266,6 +289,67 @@ const db=new DatabaseSync(process.env.TEST_DB);db.exec("UPDATE pipeline_worker S
   assert.match(upgraded.stderr,/recovery journal:/);assert.equal(paused(),1);
   const journals=fs.readdirSync(upgradeEnv.MOONHUB_BACKUP_DIR).filter(n=>n.startsWith('controller-'));
   assert.ok(journals.some(n=>fs.existsSync(path.join(upgradeEnv.MOONHUB_BACKUP_DIR,n,'provider-state.json'))));
+  // Reproduce the production layout: an independently installed Docker controller
+  // and an enrolled provider whose saved image overrides startup defaults.
+  upgradeDb.exec(`ALTER TABLE pipeline_job_attempt ADD COLUMN provider_id INTEGER;
+    ALTER TABLE pipeline_provider ADD COLUMN config_json TEXT;
+    ALTER TABLE pipeline_provider ADD COLUMN observed_revision INTEGER DEFAULT 1;
+    ALTER TABLE pipeline_provider ADD COLUMN controller_id TEXT DEFAULT 'previous-controller';
+    ALTER TABLE pipeline_provider ADD COLUMN controller_until_ms INTEGER DEFAULT 0;
+    ALTER TABLE pipeline_provider ADD COLUMN control_status TEXT DEFAULT 'applied';
+    ALTER TABLE pipeline_worker ADD COLUMN worker_key TEXT;
+    ALTER TABLE pipeline_worker ADD COLUMN applied_revision INTEGER DEFAULT 1;
+    ALTER TABLE pipeline_worker ADD COLUMN draining INTEGER DEFAULT 0;
+    ALTER TABLE pipeline_worker ADD COLUMN last_seen_ms INTEGER DEFAULT 0;
+    UPDATE pipeline_provider SET config_json='{"runner_image":"moonhub-runner:old","cpus":"2","memory_mib":"3584"}',paused=0;
+    UPDATE pipeline_worker SET state='ready' WHERE provider_id=2;`);
+  const dindDirectory=path.join(root,'dind');fs.mkdirSync(dindDirectory);
+  const dindBinary=path.join(dindDirectory,'moonhub-runner');
+  const dindState=path.join(dindDirectory,'state');fs.mkdirSync(dindState);
+  fs.writeFileSync(path.join(dindState,'provider-token'),'preserved-private-state');
+  const dindUnit=path.join(installed,'moonhub-dind-controller.service');
+  const originalDindUnit=`[Service]\nExecStart=${dindBinary} run --server https://example.invalid --name dind --mode docker --state-dir ${dindState} --workspace-root ${dindDirectory}/workspace --docker-host unix:///dedicated/docker.sock --runner-image moonhub-runner:old\nMemoryMax=256M\nCPUQuota=25%\n`;
+  fs.writeFileSync(dindUnit,originalDindUnit);fs.writeFileSync(dindBinary,'stale-controller');
+  const dindEnv={TEST_DIND_UNIT:dindUnit,MOONHUB_DIND_START_TIMEOUT:'0',TEST_CONTROLLER:'changed'};
+  const dindPaused=()=>upgradeDb.prepare('SELECT paused FROM pipeline_provider WHERE id=2').get().paused;
+  upgraded=runUpgrade({...dindEnv,TEST_DIND_IMAGE_MISMATCH:'1'});
+  assert.notEqual(upgraded.status,0,'loaded an image from another release');
+  assert.ok(!upgraded.calls.some(a=>a.includes('pause-all')),'bad image paused production');
+  assert.equal(dindPaused(),0);
+  upgraded=runUpgrade({...dindEnv,TEST_DIND_BUSY:'1'});
+  assert.notEqual(upgraded.status,0,'retired a worker with a remaining task container');
+  assert.ok(!upgraded.calls.some(a=>a[0]==='web-upgrade'));
+  assert.equal(dindPaused(),1,'failed replacement left the old controller able to claim');
+  assert.equal(paused(),0,'Docker failure changed ASG pause state');
+  upgradeDb.exec('UPDATE pipeline_provider SET paused=0 WHERE id=2');
+  upgraded=runUpgrade(dindEnv);
+  assert.equal(upgraded.status,0,upgraded.stderr);
+  assert.equal(fs.readFileSync(dindBinary,'utf8'),'changed','independent controller was skipped');
+  assert.match(fs.readFileSync(dindUnit,'utf8'),new RegExp('moonhub-runner:'+revision.slice(0,12)));
+  assert.ok(fs.readFileSync(dindUnit,'utf8').includes('MemoryMax=256M\nCPUQuota=25%'));
+  assert.equal(fs.readFileSync(path.join(dindState,'provider-token'),'utf8'),'preserved-private-state');
+  const dindConfig=JSON.parse(upgradeDb.prepare('SELECT config_json FROM pipeline_provider WHERE id=2').get().config_json);
+  assert.deepEqual(dindConfig,{runner_image:'moonhub-runner:'+revision.slice(0,12),cpus:'2',memory_mib:'3584'});
+  assert.equal(dindPaused(),0);
+  assert.ok(upgraded.calls.findIndex(a=>a.includes('load'))<upgraded.calls.findIndex(a=>a.includes('pause-all')));
+  assert.ok(upgraded.calls.findIndex(a=>a[0]==='systemctl'&&a[1]==='stop'&&a[2]==='moonhub-dind-controller.service')<upgraded.calls.findIndex(a=>a.includes('retire')));
+  assert.ok(upgraded.calls.findIndex(a=>a.includes('restore'))<upgraded.calls.findIndex(a=>a[0]==='systemctl'&&a[1]==='start'&&a[2]==='moonhub-dind-controller.service'));
+  const dindJournals=fs.readdirSync(upgradeEnv.MOONHUB_BACKUP_DIR).map(n=>path.join(upgradeEnv.MOONHUB_BACKUP_DIR,n,'dind','image.json')).filter(p=>fs.existsSync(p));
+  assert.equal(JSON.parse(fs.readFileSync(dindJournals[0],'utf8')).previous_image,'moonhub-runner:old');
+  upgraded=runUpgrade({...dindEnv,TEST_DIND_NOT_READY:'1'});
+  assert.notEqual(upgraded.status,0,'reported success before the replacement controller acknowledged its release');
+  assert.equal(dindPaused(),1);
+  assert.match(upgraded.stderr,/recovery backup:/);
+  upgraded=runUpgrade(dindEnv);
+  assert.equal(upgraded.status,0,upgraded.stderr);
+  assert.equal(dindPaused(),1,'resumed an operator-paused Docker provider');
+  const status=()=>spawnSync('bash',['deploy/production.sh','status'],{cwd:fixture,env:{...upgradeEnv,...dindEnv},encoding:'utf8'});
+  assert.equal(status().status,0,'matching paused controller failed status verification');
+  fs.writeFileSync(dindBinary,'stale-controller');
+  assert.notEqual(status().status,0,'status missed an independent controller left on the old release');
+  fs.writeFileSync(dindBinary,'changed');
+  upgradeDb.prepare("UPDATE pipeline_provider SET config_json=json_set(config_json,'$.runner_image','runner:obsolete') WHERE id=2").run();
+  assert.notEqual(status().status,0,'status missed an obsolete saved provider image');
   upgradeDb.close();
   console.log('Production deployment: atomic pause/restore, idle-worker switch, strict controller drain, failure recovery, safe unit and builds passed.');
 } finally { fs.rmSync(root,{recursive:true,force:true}); }

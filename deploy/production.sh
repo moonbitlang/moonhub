@@ -42,6 +42,11 @@ cleanup() {
     printf 'Provider pause state could not be restored; recovery journal: %s\n' "$PROVIDER_STATE_FILE" >&2
     result=1
   fi
+  if [ "$DIND_KEEP_PAUSED" = 1 ]; then
+    docker exec -i --user git "$PROJECT-web-1" node --no-warnings - pause "$DIND_NAME" < "$ROOT/deploy/production-dind-state.cjs" || result=1
+    printf 'Local Docker provider kept paused after an incomplete switch; recovery backup: %s\n' "$DIND_BACKUP" >&2
+    result=1
+  fi
   if [ "$RESTART_CONTROLLER" = 1 ]; then systemctl start "$SERVICE" || result=1; fi
   rmdir "$LOCK" 2>/dev/null || true
   return "$result"
@@ -191,6 +196,8 @@ upgrade() {
   build
   publish
   prepare_controller
+  discover_dind
+  prepare_dind
   local backup unchanged=0
   local drain_timeout=${MOONHUB_PRODUCTION_DRAIN_TIMEOUT:-600}
   [[ "$drain_timeout" =~ ^[0-9]+$ ]] && [ "$drain_timeout" -le 3600 ] || { printf 'Drain timeout must be 0 through 3600 seconds.\n' >&2; return 1; }
@@ -207,6 +214,7 @@ upgrade() {
   # Builds and publication finish first, keeping the pause window short.
   docker exec -i --user git "$PROJECT-web-1" node --no-warnings - pause-all "${MOONHUB_PROVIDER_NAME:-asg}" < "$ROOT/deploy/production-provider-state.cjs" > "$PROVIDER_STATE_FILE"
   printf 'All provider claims paused for production switch.\n'
+  stop_dind
   local readiness=("${MOONHUB_PROVIDER_NAME:-asg}")
   if [ "$unchanged" = 1 ]; then
     readiness+=(--allow-idle-workers)
@@ -240,13 +248,17 @@ upgrade() {
   fi
   web_deploy upgrade
   if [ "$unchanged" = 0 ]; then install_controller; fi
+  install_dind
   # Restore claims before starting an unchanged controller so its first sync
   # does not retire the workers just because of the temporary deployment pause.
   restore_provider
   if [ "$unchanged" = 1 ]; then systemctl start "$SERVICE"; fi
+  start_dind
   RESTART_CONTROLLER=0
   printf 'Production checkout %s; task image %s; controller backup %s\n' "$REVISION" "$TASK_IMAGE" "$backup"
 }
+# shellcheck source=deploy/production-dind.sh
+. "$ROOT/deploy/production-dind.sh"
 case "${1:-help}" in
   checkout)
     [ "$#" = 2 ] || exit 2
@@ -266,6 +278,11 @@ case "${1:-help}" in
   publish) publish ;;
   controller) install_controller ;;
   upgrade) upgrade ;;
-  status) web_deploy status; systemctl show "$SERVICE" -p ActiveState -p SubState ;;
+  status)
+    web_deploy status
+    systemctl show "$SERVICE" -p ActiveState -p SubState
+    discover_dind
+    if [ "$DIND_ENABLED" = 1 ]; then prepare_controller; verify_dind; fi
+    ;;
   *) printf 'Usage: deploy/production.sh checkout BRANCH | build | publish | controller | upgrade | status\n';;
 esac
