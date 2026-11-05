@@ -52,6 +52,50 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   ctx.use_(pipeline_updates_module)
   ctx.use_(provider_config_module)
+  ctx.get("/:owner/:repo/actions/runs/:run/artifacts/:artifact", async fn(
+    req,
+    res,
+  ) {
+    let actor = @web_context.require_current_user(req)
+    let blob = coordinator.user_artifact(
+      root,
+      actor,
+      @web_context.repo_param(req),
+      @web_context.positive_resource_number(
+        @web_context.required_param(req, "run", "run"),
+      ),
+      @web_context.positive_resource_number(
+        @web_context.required_param(req, "artifact", "artifact"),
+      ),
+    )
+    let file = @fs.open(blob.path, mode=ReadOnly)
+    defer file.close()
+    guard file.size() == blob.size else {
+      raise @domain.NotFound(message="artifact data missing")
+    }
+    let writer = @async.with_timeout(30000, () => {
+      res.respond(headers={
+        "Content-Type": "application/zip",
+        "Content-Length": blob.size.to_string(),
+        "Content-Disposition": "attachment; filename=artifact.zip",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      })
+    })
+    stream_artifact(file, writer, () => {
+      ignore(
+        coordinator.user_artifact(
+          root,
+          actor,
+          @web_context.repo_param(req),
+          @web_context.positive_resource_number(
+            @web_context.required_param(req, "run", "run"),
+          ),
+          blob.id,
+        ),
+      )
+    })
+  })
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     guard actor.is_site_admin else {

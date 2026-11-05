@@ -81,6 +81,8 @@ export class ActionRuntime {
     this.config = config;
     this.state = Object.assign(state, { env: {}, path: [], steps: {}, posts: [], actions: {}, masks: [], ...state });
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
+    this.artifact = process.env.MOONHUB_ACTION_ARTIFACT_TOKEN ? { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL } : undefined;
+    if (this.artifact && !this.state.masks.includes(this.artifact.token)) this.state.masks.push(this.artifact.token);
     this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
     this.workspace = path.resolve(config.workspace);
     this.temp = path.resolve(config.temp);
@@ -114,8 +116,15 @@ export class ActionRuntime {
     return { ...action, directory: requested.path ? await contained(action.directory, requested.path) : action.directory };
   }
   async process(program, args, env, cwd, result) {
-    const stdout = new LogCommands(this.state, text => process.stdout.write(text), result);
-    const stderr = new LogCommands(this.state, text => process.stderr.write(text), result);
+    const publish = (stream, text) => {
+      if (this.artifact && ['actions/upload-artifact', 'actions/download-artifact'].includes(env.GITHUB_ACTION_REPOSITORY?.toLowerCase()) && env.GITHUB_SERVER_URL === 'http://moonhub.localhost') {
+        const suffix = `/${this.config.repository}/actions/runs/${this.config.run_id}/artifacts/`;
+        text = text.replaceAll('http://moonhub.localhost' + suffix, this.config.server + suffix);
+      }
+      stream.write(text);
+    };
+    const stdout = new LogCommands(this.state, text => publish(process.stdout, text), result);
+    const stderr = new LogCommands(this.state, text => publish(process.stderr, text), result);
     const child = spawn(program, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
     const closed = new Promise(resolve => child.once('close', resolve));
     let streamError;
@@ -180,10 +189,22 @@ export class ActionRuntime {
     const stateEnv = Object.fromEntries(Object.entries(saved || {}).map(([name, value]) => [`STATE_${name}`, value]));
     const env = this.environment({ ...supplied, ...inputEnv, ...stateEnv, GITHUB_ACTION_PATH: action.directory,
       GITHUB_ACTION_REPOSITORY: action.repository, GITHUB_ACTION_REF: action.ref }, context);
+    const artifactAction = ['actions/upload-artifact', 'actions/download-artifact'].includes(action.repository.toLowerCase());
+    if (artifactAction && this.artifact && inputs['github-token']) throw new Error('Cross-run GitHub API artifact downloads are not supported by the MoonHub artifact runtime');
+    if (this.artifact) {
+      env.ACTIONS_RUNTIME_TOKEN = this.artifact.token;
+      env.ACTIONS_RESULTS_URL = this.artifact.url;
+      env.GITHUB_RETENTION_DAYS = '90';
+    }
+    // Upstream v4 deliberately rejects non-GitHub server hosts. Its supported
+    // localhost compatibility identity avoids modifying downloaded executable
+    // code; the actual Results service and authorization remain MoonHub scoped.
+    if (artifactAction && this.artifact) env.GITHUB_SERVER_URL = 'http://moonhub.localhost';
     const node = value.runs.using === 'node20' ? this.config.node20 || (windows ? 'C:/moonhub/bin/node20.exe' : '/opt/actions/node20/bin/node') : this.config.node24 || process.execPath;
     const filename = await contained(action.directory, value.runs[phase]);
     if (!(await fs.stat(filename)).isFile()) throw new Error('Action JavaScript entry is not a file');
     const code = await this.files(env, result, () => this.process(node, [filename], env, this.workspace, result));
+    if (artifactAction && result.outputs['artifact-id']) result.outputs['artifact-url'] = `${this.config.server}/${this.config.repository}/actions/runs/${this.config.run_id}/artifacts/${result.outputs['artifact-id']}`;
     return { ...result, code };
   }
   async action(uses, provided = {}, supplied = {}, extra = {}, depth = 0) {

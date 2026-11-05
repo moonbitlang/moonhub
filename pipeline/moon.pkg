@@ -1,5 +1,7 @@
 import {
   "moonbitlang/core/debug",
+  "moonbitlang/x/codec/base64",
+  "moonbitlang/x/crypto",
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",

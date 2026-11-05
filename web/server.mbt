@@ -24,6 +24,14 @@ pub async fn serve(config : Config) -> Unit {
     @collaboration.start_review_requests_worker(pool, config.root, group)
     let coordinator = @pipeline.Coordinator::new(pool)
     coordinator.start_lease_worker(group)
+    group.spawn_bg(no_wait=true, () => {
+      for ;; {
+        coordinator.cleanup_artifacts(config.root) catch {
+          _ => println("artifact cleanup failed; will retry")
+        }
+        @async.sleep(60000)
+      }
+    })
     @pipeline.start_push_worker(pool, config.root, group)
     @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [

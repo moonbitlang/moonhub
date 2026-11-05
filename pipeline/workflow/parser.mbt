@@ -109,9 +109,10 @@ fn yaml_to_string_map(
       !key.to_upper().has_prefix("RUNNER_") &&
       !key.to_upper().has_prefix("LD_") &&
       !key.to_upper().has_prefix("DYLD_") &&
-      !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
-        key.to_upper(),
-      ) else {
+      ![
+        "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
+        "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL",
+      ].contains(key.to_upper()) else {
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
     result[key] = match value {

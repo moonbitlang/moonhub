@@ -304,3 +304,45 @@ test('typed matrix values reach scripts inputs and conditions without recursive 
   assert.equal(result.code,0);
   assert.equal(result.state.steps.matrix.conclusion,'success');
 });
+
+test('Artifact bridge keeps runtime credentials private and canonicalizes upstream output URLs', async t => {
+  const { config } = await fixture(t);
+  config.run_id = '73';
+  const token = 'opaque-artifact-runtime';
+  const previous = { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL };
+  process.env.MOONHUB_ACTION_ARTIFACT_TOKEN = token;
+  process.env.MOONHUB_ACTION_ARTIFACT_URL = config.server;
+  const runtime = new ActionRuntime(config);
+  if (previous.token === undefined) delete process.env.MOONHUB_ACTION_ARTIFACT_TOKEN;
+  else process.env.MOONHUB_ACTION_ARTIFACT_TOKEN = previous.token;
+  if (previous.url === undefined) delete process.env.MOONHUB_ACTION_ARTIFACT_URL;
+  else process.env.MOONHUB_ACTION_ARTIFACT_URL = previous.url;
+  const uses = await action(config, 'artifact-fixture', 'runs: {using: node20, main: main.cjs}', {
+    'main.cjs': `const assert=require('node:assert/strict'),fs=require('node:fs');
+      assert.equal(process.env.ACTIONS_RUNTIME_TOKEN,${JSON.stringify(token)});
+      assert.equal(process.env.ACTIONS_RESULTS_URL,${JSON.stringify(config.server)});
+      assert.equal(process.env.GITHUB_SERVER_URL,'http://moonhub.localhost');
+      assert.equal(process.env.MOONHUB_ACTION_ARTIFACT_TOKEN,undefined);
+      assert.equal(process.env.MOONHUB_ACTION_ARTIFACT_URL,undefined);
+      fs.appendFileSync(process.env.GITHUB_OUTPUT,'artifact-id=42\\nartifact-url=http://moonhub.localhost/fake\\n');`,
+  });
+  const directory = path.join(config.workspace, uses.slice(2));
+  runtime.resolve = async () => ({ directory, repository: 'actions/upload-artifact', ref: 'v4' });
+  const result = await runtime.action('actions/upload-artifact@v4');
+  assert.equal(result.code, 0);
+  assert.equal(result.outputs['artifact-url'], 'https://moonhub.example/alice/demo/actions/runs/73/artifacts/42');
+  assert.equal(runtime.context().github.server_url, config.server);
+  assert.equal(runtime.baseEnv.MOONHUB_ACTION_ARTIFACT_TOKEN, undefined);
+  assert.ok(runtime.state.masks.includes(token));
+  await assert.rejects(runtime.action('actions/download-artifact@v4', { 'github-token': 'external-token' }), /Cross-run/);
+});
+
+test('Actions file commands cannot replace service credentials', async t => {
+  const { config, runtime } = await fixture(t);
+  for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_RUNTIME_URL']) {
+    const uses = await action(config, name, 'runs: {using: node24, main: main.cjs}', {
+      'main.cjs': `require('fs').appendFileSync(process.env.GITHUB_ENV,${JSON.stringify(name + '=attacker\n')});`,
+    });
+    await assert.rejects(runtime.action(uses), /Reserved or unsafe/);
+  }
+});

@@ -349,3 +349,19 @@ pub(all) struct LogChunk {
   stream : String
   text : String
 }
+
+///|
+#derive(ToJson, FromJson)
+pub(all) struct ArtifactRuntimeRequest {
+  version : Int32
+  execution_id : String
+  origin : String
+}
+
+///|
+#derive(ToJson, FromJson)
+pub(all) struct ArtifactRuntime {
+  token : String
+  results_url : String
+  expires_ms : String
+}
