@@ -1,0 +1,85 @@
+name: Frontend checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  types:
+    name: TypeScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - run: npm ci --prefix js --no-audit --no-fund
+      - run: npm run check --prefix js
+
+  browser:
+    name: Playwright
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - name: Read production MoonBit version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const pins = [...fs.readFileSync('deploy/base.Dockerfile', 'utf8').matchAll(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)$/gm)];
+          assert.equal(pins.length, 1, 'Expected one exact production MoonBit pin');
+          fs.appendFileSync(process.env.GITHUB_ENV, `MOONBIT_VERSION=${pins[0][1]}\n`);
+          NODE
+      - name: Install MoonBit
+        run: |
+          sh deploy/install-moonbit.sh "$MOONBIT_VERSION"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Verify MoonBit version
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const actual = execFileSync('moonc', ['-v'], { encoding: 'utf8' }).trim();
+          assert.equal(actual.split(/\s/)[0], `v${process.env.MOONBIT_VERSION}`, actual);
+          NODE
+      - name: Resolve MoonBit dependencies
+        run: |
+          moon update
+          node scripts/resolve-dependencies.cjs
+      - run: npm ci --prefix js --no-audit --no-fund
+      - name: Install Chromium and system dependencies
+        working-directory: js
+        run: npx playwright install --with-deps chromium
+      - name: Build frontend assets
+        run: npm run build --prefix js
+      - name: Build browser fixture server
+        run: moon build --target native --strip -j 1 --deny-warn .
+      - name: Test browser interactions
+        run: npm run test:browser --prefix js -- --reporter=line,html --trace=retain-on-failure
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+      - name: Upload browser failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-failure-evidence
+          path: |
+            js/playwright-report/
+            js/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
