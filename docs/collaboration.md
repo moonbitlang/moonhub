@@ -45,8 +45,9 @@ Contributors create MRs between existing local branches with a single common
 ancestor. There is at most one open MR per source/target pair. MRs support draft,
 ready, closed, reopened and merged states, versioned comparison, discussion
 threads, replies, resolve/reopen state, approval, requests for changes and review
-withdrawal. Authors cannot approve their own work. Only team owners/admins or
-site administrators can merge.
+withdrawal. Authors cannot approve their own work unless the target branch
+explicitly permits self-approval; see [branch protection](#protection-and-concurrency).
+Only team owners/admins or site administrators can merge.
 
 Source and target commit IDs identify each comparison version. Refreshing an
 open MR reads actual refs; changes on either side create a new version. Reviews
@@ -184,8 +185,9 @@ when upgrading. Unprotected branches require no approval, but current requests
 for changes still block merging. Existing branches are not protected
 automatically. Protection rule changes are recorded in `repository_audit`.
 
-Rules can also name required workflow paths. Their checks use the pinned target
-configuration and test the merged source/target tree. Every required check must
+Rules can also name required workflow paths. The target branch's protection
+policy selects required paths; workflow content and execution use the pinned
+merged source/target candidate. Every required check must
 succeed for the current MR version and policy generation before merging.
 Execution authorization is separate from code-review approval; ordinary
 contributors cannot automatically execute new source revisions.

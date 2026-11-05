@@ -111,8 +111,8 @@ interface quiet and task-focused.
 Hierarchy comes from position, type weight, separators and selective disclosure.
 Collaboration screens place resource identity and current state near each other,
 while historical events, hashes and preferences use secondary treatments.
-PRODUCT.md remains product authority; docs/collaboration-ui-plan.md carries the
-surface brief. This document records the implemented visual system.
+PRODUCT.md remains product authority. This document records the implemented
+visual system.
 
 **Key Characteristics:**
 - Restrained, task-focused workspace.
@@ -293,8 +293,10 @@ Discussion / Commits / Changes are URL-backed. A labeled native version select
 lists real revisions newest first and marks Latest. Enhanced change navigation
 retains a View submit fallback. Historical selections keep their warning and
 version-bound action restrictions. Revision commits and preferences use secondary
-disclosure. Readiness keeps permission reasons beside actions, including why an
-author cannot self-approve.
+disclosure. Readiness keeps permission reasons beside actions. Explain the
+author's approval restriction when the target branch disables self-approval;
+when that branch explicitly enables it, offer approval under the existing
+version and contributor-access checks.
 
 Changes has file navigation, Split/Unified selection and Wrap lines. Desktop
 defaults to split; (900px) and below to unified unless manually chosen. Wrap starts

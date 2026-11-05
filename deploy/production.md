@@ -42,7 +42,7 @@ From an SSM session (or the same commands in `AWS-RunShellScript`):
 
 ```sh
 cd /srv/moonhub/source
-./deploy/production.sh checkout codex/standalone-runner
+./deploy/production.sh checkout master
 ./deploy/production.sh build
 ./deploy/production.sh publish
 ```
@@ -154,7 +154,9 @@ After upgrade, verify the provider has its original pause state, Web/SSH health,
 controller active status, all-repository grants and observed/applied configuration
 revisions. Trigger a real production pipeline through the MoonHub CLI; verify an
 ASG launches a worker, the worker executes and reports the task, cleanup succeeds,
-and idle capacity returns to zero. Keep the MR open until this acceptance passes.
+and idle capacity returns to zero. Use a dedicated product acceptance repository
+with a supported MoonHub workflow, rather than this source repository's GitHub
+CI workflow. Record the result with the GitHub deployment run or change PR.
 
 ## Rollback
 
@@ -222,14 +224,20 @@ Use the authenticated MoonHub CLI from the operator machine for task acceptance:
 
 ```sh
 moonhub auth status --json
-moonhub mr checks 23 --repo compiler/moonhub --json
-moonhub ci list --repo compiler/moonhub --json
-moonhub ci view RUN --repo compiler/moonhub --json
-moonhub ci logs RUN --attempt ATTEMPT --after 0 --repo compiler/moonhub --json
+moonhub ci run --repo OWNER/ACCEPTANCE_REPO --branch master \
+  --workflow .github/workflows/acceptance.yml --json
+moonhub ci list --repo OWNER/ACCEPTANCE_REPO --json
+moonhub ci view RUN --repo OWNER/ACCEPTANCE_REPO --json
+moonhub ci logs RUN --attempt ATTEMPT --after 0 --repo OWNER/ACCEPTANCE_REPO --json
 ```
 
+Substitute an existing acceptance repository, branch and eligible
+`workflow_dispatch` path. Product CI acceptance uses the MoonHub CLI; source
+development, PRs and deployment status use GitHub.
+
 Record the deployed source SHA, ECR image digest, numeric template version, backup
-locations, successful run/attempt and final zero-capacity observation in the MR.
+locations, successful run/attempt and final zero-capacity observation with the
+GitHub deployment run or change PR.
 A queued check or a registered worker alone does not establish task execution.
 Keep **Standby workers** at `0` when validating scale-to-zero. A positive value
 intentionally retains idle capacity, subject to Maximum workers. Keep the
@@ -260,8 +268,9 @@ unused experimental images. Preserve the operational ASGs, worker role/profile,
 networking and active launch template so future queued jobs can start normally.
 
 Record deleted resource IDs and the final capacity/disk/parameter checks in the
-MR. Verify Web health and controller status again after cleanup. Remove temporary
-root-private administration sessions/scripts used during rollout.
+GitHub deployment run or change PR. Verify Web health and controller status again
+after cleanup. Remove temporary root-private administration sessions/scripts used
+during rollout.
 
 ## Troubleshooting observed during production rollout
 
@@ -279,6 +288,6 @@ root-private administration sessions/scripts used during rollout.
 | Restart temporarily cannot acquire the controller lease | Wait for the previous 60-second lease to expire; the systemd restart delay is 65 seconds. Do not create another provider or replace credentials. |
 | Runtime image/template changes do not take effect after changing CLI flags | Saved server configuration wins after enrollment. Update the matching Runner image and numeric template version in Execution settings, then wait for acknowledgement. |
 
-Deployment changes and this runbook belong in the same MR. Update both whenever
-an operational decision changes, and distinguish completed acceptance from pending
-checks in the MR; do not treat provisioning success as end-to-end verification.
+Deployment changes and this runbook belong in the same GitHub PR. Update both
+whenever an operational decision changes, and distinguish completed acceptance from pending
+checks in the PR; do not treat provisioning success as end-to-end verification.
