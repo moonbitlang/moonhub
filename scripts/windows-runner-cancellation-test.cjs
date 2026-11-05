@@ -30,8 +30,19 @@ async function scenario(cancelOn) {
     } catch(error) {failure=error;res.writeHead(500);res.end('{}');}
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const aclProbe = `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class LauncherProbe { [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle); }'
+$launchers = @(Get-Process -Name moonhub-runner-step)
+if ($launchers.Count -eq 0) { throw 'No protected launcher found' }
+foreach ($launcher in $launchers) {
+  foreach ($access in @(0x1, 0x40, 0x40000)) {
+    $handle = [LauncherProbe]::OpenProcess($access, $false, $launcher.Id)
+    if ($handle -ne [IntPtr]::Zero) { [void][LauncherProbe]::CloseHandle($handle); throw 'Task can terminate, duplicate handles or change the launcher ACL' }
+  }
+}
+`;
   const now=Date.now();
-  const assignment={version:1,attempt_id:'1',run_id:'1',job_id:'1',repository:'test/probe',commit_sha:'a'.repeat(40),server_time_ms:String(now),lease_until_ms:String(now+60000),state:'leased',job:{id:'build',name:'Build',runs_on:['self-hosted','windows'],timeout_minutes:1,steps:[{id:'probe',name:'Probe',run:`$child=Start-Process -FilePath $env:SMOKE_NODE -ArgumentList '-e','setInterval(()=>{},1000)' -PassThru -NoNewWindow\n[IO.File]::WriteAllText($env:SMOKE_PID, [string]$child.Id)\nWrite-Output 'cancel-ready'\nStart-Sleep -Seconds 60`,shell:'',working_directory:'.',env:{SMOKE_NODE:process.execPath,SMOKE_PID:pidFile},timeout_minutes:0}]}};
+  const assignment={version:1,attempt_id:'1',run_id:'1',job_id:'1',repository:'test/probe',commit_sha:'a'.repeat(40),server_time_ms:String(now),lease_until_ms:String(now+60000),state:'leased',job:{id:'build',name:'Build',runs_on:['self-hosted','windows'],timeout_minutes:1,steps:[{id:'probe',name:'Probe',run:`${aclProbe}\n$child=Start-Process -FilePath $env:SMOKE_NODE -ArgumentList '-e','setInterval(()=>{},1000)' -PassThru -NoNewWindow\n[IO.File]::WriteAllText($env:SMOKE_PID, [string]$child.Id)\nWrite-Output 'cancel-ready'\nStart-Sleep -Seconds 60`,shell:'',working_directory:'.',env:{SMOKE_NODE:process.execPath,SMOKE_PID:pidFile},timeout_minutes:0}]}};
   const manifest=path.join(root,'assignment.json');fs.writeFileSync(manifest,JSON.stringify(assignment));
   const child=spawn(path.resolve('.tmp/windows-runner/bin/moonhub-runner.exe'),['execute','--server',`http://127.0.0.1:${server.address().port}`,'--assignment',manifest,'--workspace',workspace,'--launcher',path.resolve('.tmp/windows-runner/bin/moonhub-runner-step.exe'),'--allow-http','--unsafe-local'],{stdio:['pipe','pipe','pipe']});
   child.stdout.on('data',chunk=>{output+=chunk;});child.stderr.on('data',chunk=>{diagnostic+=chunk;});child.stdin.end(token+'\r\n');
@@ -45,7 +56,7 @@ async function scenario(cancelOn) {
     const pid=Number(fs.readFileSync(pidFile,'utf8'));let alive=true;
     for(let i=0;i<50;i++) {try{process.kill(pid,0);}catch{alive=false;break;}await delay(100);}
     assert.equal(alive,false,'step descendant survived runner cancellation');
-    console.log(`Windows runner cancellation via ${cancelOn}: completion reported, process tree stopped.`);
+    console.log(`Windows runner cancellation via ${cancelOn}: completion reported through retained handle despite denied launcher access, process tree stopped.`);
   } finally {
     child.kill('SIGKILL');await closed;
     if(fs.existsSync(pidFile)) {try{process.kill(Number(fs.readFileSync(pidFile,'utf8')),'SIGKILL');}catch{}}

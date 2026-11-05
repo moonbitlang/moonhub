@@ -71,6 +71,33 @@ async test "production runner mount uses bearer auth never browser sessions and 
       attempt_token,
     }
     let body = ToJson::to_json(request).stringify()
+    // Exercise the real wire shape used by current workers, not just legacy
+    // clients that omit runner_os. Unknown fields must remain rejected below.
+    for os in ["linux", "windows"] {
+      let credential = if os == "linux" {
+        token
+      } else {
+        let credential = @identity.random_hex(32)
+        ignore(
+          coordinator.create_provider(
+            @identity.active_user_by_name(pool, "admin"),
+            "http-windows",
+            credential,
+            ["self-hosted", "windows"],
+            [],
+          ),
+        )
+        credential
+      }
+      let (status, result) = post_json(
+        port,
+        "/claims",
+        ToJson::to_json({ ..request, runner_os: Some(os), }).stringify(),
+        token=credential,
+      )
+      assert_eq(status, 200)
+      assert_eq(result, { "version": 1, "assignment": Json::null() })
+    }
     assert_eq(post_json(port, "/claims", body).0, 401)
     assert_eq(
       post_json(port, "/claims", body, cookie="\{alice.name}=\{alice.value}").0,

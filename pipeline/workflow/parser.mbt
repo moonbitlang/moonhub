@@ -580,6 +580,11 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
+    guard uses is Some(_) ||
+      step_defaults.shell != Some("pwsh") ||
+      runs_on.contains("windows") else {
+      raise InvalidWorkflow("\{ctx}.shell: pwsh requires Windows runner labels")
+    }
     let explicit_env = if uses is Some(_) && !remote {
       Map([])
     } else {

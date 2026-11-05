@@ -100,3 +100,43 @@ test "Windows environment precedence ignores case and Linux retains it" {
     "reserved",
   )
 }
+
+///|
+test "PowerShell requires Windows after workflow job and step defaults resolve" {
+  let source =
+    #|on: workflow_dispatch
+    #|jobs:
+    #|  build:
+    #|    runs-on: [self-hosted, linux]
+    #|    steps:
+    #|      - run: echo hello
+  for
+    workflow in [
+      source + "\n        shell: pwsh",
+      source.replace_all(
+        old="jobs:",
+        new="defaults:\n  run: {shell: pwsh}\njobs:",
+      ),
+      source.replace_all(
+        old="    steps:",
+        new="    defaults:\n      run: {shell: pwsh}\n    steps:",
+      ),
+      source.replace_all(old="[self-hosted, linux]", new="self-hosted") +
+      "\n        shell: pwsh",
+    ] {
+    expect_invalid(workflow, "pwsh requires Windows")
+    let windows = workflow
+      .replace_all(old="[self-hosted, linux]", new="[self-hosted, windows]")
+      .replace_all(
+        old="runs-on: self-hosted",
+        new="runs-on: [self-hosted, windows]",
+      )
+    assert_eq(parse(windows).jobs[0].steps[0].shell, Some("pwsh"))
+  }
+  let overridden = source.replace_all(
+      old="jobs:",
+      new="defaults:\n  run: {shell: pwsh}\njobs:",
+    ) +
+    "\n        shell: bash"
+  assert_eq(parse(overridden).jobs[0].steps[0].shell, Some("bash"))
+}

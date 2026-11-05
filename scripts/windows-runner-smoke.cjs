@@ -76,6 +76,7 @@ async function main() {
             "if ($env:MOONHUB_PROVIDER_TOKEN -or $env:AWS_SECRET_ACCESS_KEY) { throw 'Host environment leaked' }",
             `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class ProcessProbe { [DllImport("kernel32.dll")] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid); }'`,
             "foreach ($agent in (Get-Process -Name moonhub-runner)) { if ([ProcessProbe]::OpenProcess(0x10, $false, $agent.Id) -ne [IntPtr]::Zero -or [ProcessProbe]::OpenProcess(0x40000, $false, $agent.Id) -ne [IntPtr]::Zero) { throw 'Agent memory or DACL is accessible to task code' } }",
+            "foreach ($launcher in (Get-Process -Name moonhub-runner-step)) { foreach ($access in @(0x1,0x40,0x40000)) { if ([ProcessProbe]::OpenProcess($access, $false, $launcher.Id) -ne [IntPtr]::Zero) { throw 'Launcher termination, handles or DACL are accessible to task code' } } }",
             ...(claims===2 ? ["if (-not $env:SMOKE_SECRET) { throw 'Secret delivery failed' }; Write-Output $env:SMOKE_SECRET"] : []),
             "if ($env:RUNNER_OS -ne 'Windows') { throw 'Runner OS missing' }",
             "[IO.File]::WriteAllText((Join-Path $pwd 'stale.txt'), 'attempt')",

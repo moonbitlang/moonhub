@@ -234,7 +234,9 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     "/claims",
     json_handler(req => {
       let token = bearer_token(req)
-      let json = request_json(req, ["version", "request_id", "attempt_token"])
+      let json = request_json(req, [
+        "version", "request_id", "attempt_token", "runner_os",
+      ])
       let request : @protocol.ClaimRequest = @json.from_json(json) catch {
         _ => raise @domain.BadRequest(message="invalid claim request")
       }

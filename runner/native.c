@@ -26,18 +26,23 @@ int32_t moonhub_runner_prepare(int32_t local) {
   LocalFree(descriptor);
   return protected_process ? 0 : -1;
 }
-void moonhub_runner_kill_group(int32_t pid) {
-  if (pid <= 0) return;
-  HANDLE process = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, (DWORD)pid);
-  if (process) {
-    DWORD code = STILL_ACTIVE;
-    if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) TerminateProcess(process, 1);
+// Retained before the launcher's startup gate opens. Later ACL changes cannot
+// revoke this handle, and its lifetime also prevents PID reuse during cleanup.
+int64_t moonhub_runner_retain_step(int32_t pid) {
+  return (int64_t)(intptr_t)OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
+}
+void moonhub_runner_stop_step(int64_t retained) {
+  HANDLE process = (HANDLE)(intptr_t)retained;
+  if (process && WaitForSingleObject(process, 0) != WAIT_OBJECT_0) {
+    TerminateProcess(process, 1);
     WaitForSingleObject(process, 3000);
-    CloseHandle(process);
-  } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
-    fprintf(stderr, "runner: cannot open step for cancellation (%lu)\n", GetLastError());
   }
 }
+void moonhub_runner_release_step(int64_t retained) {
+  if (retained) CloseHandle((HANDLE)(intptr_t)retained);
+}
+// POSIX process-group cleanup is not used for Windows steps.
+void moonhub_runner_kill_group(int32_t pid) { (void)pid; }
 // Each launcher owns a kill-on-close Job Object containing the whole step tree.
 void moonhub_runner_kill_namespace(void) {}
 int32_t moonhub_runner_reap_namespace(void) { return 0; }
@@ -80,6 +85,10 @@ void moonhub_runner_kill_group(int32_t pid) {
   kill(-pid, SIGKILL);
   kill(pid, SIGKILL);
 }
+
+int64_t moonhub_runner_retain_step(int32_t pid) { (void)pid; return 0; }
+void moonhub_runner_stop_step(int64_t retained) { (void)retained; }
+void moonhub_runner_release_step(int64_t retained) { (void)retained; }
 
 void moonhub_runner_kill_namespace(void) {
 #ifdef __linux__

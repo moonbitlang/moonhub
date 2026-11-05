@@ -309,31 +309,64 @@ async fn Runtime::execute_script(
       defer out.close()
       let (err, err_writer) = @process.read_from_process()
       defer err.close()
+      let (input, gate) = if @platform.windows() {
+        let (reader, writer) = @process.write_to_process()
+        (reader, Some(writer))
+      } else {
+        (@process.redirect_from_file("/dev/null"), None)
+      }
+      defer (if gate is Some(writer) { writer.close() })
+      let retained = Ref(0L)
+      defer release_step(retained.val)
       @async.with_task_group(group => {
-        let input = @process.redirect_from_file(
-          if @platform.windows() {
-            "NUL"
-          } else {
-            "/dev/null"
-          },
-        )
+        // EOF also releases a launcher if spawn/retention fails before startup.
+        errdefer (if gate is Some(writer) { writer.close() })
         let process = @process.spawn(
           group,
           self.options.launcher,
-          [step.shell, script],
+          if @platform.windows() {
+            [step.shell, script, "--wait-for-agent"]
+          } else {
+            [step.shell, script]
+          },
           inherit_env=false,
           extra_env=env,
           stdin=input,
           stdout=out_writer,
           stderr=err_writer,
           cwd~,
-          cancel_handler=@process.CancellationHandler(pid => kill_group(pid)),
+          cancel_handler=@process.CancellationHandler(pid => {
+            if @platform.windows() {
+              if retained.val == 0L {
+                retained.val = retain_step(pid)
+              }
+              stop_step(retained.val)
+              if gate is Some(writer) {
+                writer.close()
+              }
+            } else {
+              kill_group(pid)
+            }
+          }),
         )
         // The body is unwound before the task group joins its children. Stop
         // the Windows tree here, so cancelled pipe/wait tasks can finish even
         // when cancellation came from a deadline, log limit or host signal.
-        errdefer (if @platform.windows() { kill_group(process.pid) })
-        self.groups.push(process.pid)
+        errdefer (if @platform.windows() { stop_step(retained.val) })
+        if @platform.windows() {
+          if retained.val == 0L {
+            retained.val = retain_step(process.pid)
+          }
+          guard retained.val != 0L else {
+            raise InvalidConfiguration("cannot retain step cancellation handle")
+          }
+          if gate is Some(writer) {
+            writer.write(b"\x01")
+            writer.close()
+          }
+        } else {
+          self.groups.push(process.pid)
+        }
         let drain_until = Ref(0L)
         let stdout = group.spawn(() => {
           if @platform.windows() {

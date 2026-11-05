@@ -30,4 +30,20 @@ async function scenario(cancel) {
     console.log(`${cancel ? 'Cancellation' : 'Success'}: Windows process tree cleaned`);
   } finally {child.kill('SIGKILL'); await closed; fs.rmSync(root,{recursive:true,force:true});}
 }
-(async()=>{assert.equal(process.platform,'win32'); await scenario(false); await scenario(true);})().catch(error=>{console.error(error);process.exitCode=1;});
+async function startupGate() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub startup gate '));
+  const marker = path.join(root, 'executed');
+  const script = path.join(root, 'step.ps1');
+  fs.writeFileSync(script, "[IO.File]::WriteAllText($env:PROBE_MARKER, 'bad')");
+  const child = spawn(launcher, ['pwsh', script, '--wait-for-agent'], {env:{...process.env,PROBE_MARKER:marker},stdio:['pipe','inherit','inherit']});
+  const closed = new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});
+  try {
+    await delay(300);
+    assert.equal(fs.existsSync(marker),false,'untrusted shell started before the agent retained a handle');
+    child.stdin.end();
+    assert.equal(await Promise.race([closed,delay(10000).then(()=>{throw Error('launcher ignored startup gate EOF');})]),125);
+    assert.equal(fs.existsSync(marker),false,'gate EOF executed a shell');
+    console.log('Startup: no shell before agent acknowledgement; EOF fails closed');
+  } finally { child.kill('SIGKILL'); await closed; fs.rmSync(root,{recursive:true,force:true}); }
+}
+(async()=>{assert.equal(process.platform,'win32'); await startupGate(); await scenario(false); await scenario(true);})().catch(error=>{console.error(error);process.exitCode=1;});

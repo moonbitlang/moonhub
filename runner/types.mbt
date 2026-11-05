@@ -85,3 +85,12 @@ fn execution_nonce() -> String {
   }
   result.to_string()
 }
+
+///|
+extern "C" fn retain_step(pid : Int32) -> Int64 = "moonhub_runner_retain_step"
+
+///|
+extern "C" fn stop_step(retained : Int64) -> Unit = "moonhub_runner_stop_step"
+
+///|
+extern "C" fn release_step(retained : Int64) -> Unit = "moonhub_runner_release_step"

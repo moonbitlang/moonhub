@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sddl.h>
+#ifdef _MSC_VER
+#pragma comment(lib, "advapi32.lib")
+#endif
 
 // Quote a single CreateProcess argument (including trailing backslashes).
 static wchar_t *quote(wchar_t *out, const wchar_t *arg) {
@@ -20,7 +24,21 @@ static wchar_t *quote(wchar_t *out, const wchar_t *arg) {
   *out++ = L'"'; *out = 0; return out;
 }
 int wmain(int argc, wchar_t **argv) {
-  if (argc != 3 || wcslen(argv[2]) < 3 || argv[2][1] != L':') return 125;
+  if ((argc != 3 && argc != 4) || wcslen(argv[2]) < 3 || argv[2][1] != L':') return 125;
+  if (argc == 4) {
+    if (wcscmp(argv[3], L"--wait-for-agent") != 0) return 125;
+    BYTE ready = 0; DWORD read = 0;
+    if (!ReadFile(GetStdHandle(STD_INPUT_HANDLE), &ready, 1, &read, NULL) || read != 1 || ready != 1) return 125;
+    // The agent already retained termination rights. Prevent task code from
+    // duplicating our Job Object handle or rewriting the launcher's process ACL.
+    PSECURITY_DESCRIPTOR descriptor = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+          L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;RC;;;OW)", SDDL_REVISION_1, &descriptor, NULL)) return 125;
+    BOOL protected_process = SetKernelObjectSecurity(GetCurrentProcess(),
+        DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, descriptor);
+    LocalFree(descriptor);
+    if (!protected_process) return 125;
+  }
   const wchar_t *program;
   const wchar_t *args;
   if (!*argv[1] || wcscmp(argv[1], L"pwsh") == 0) {
