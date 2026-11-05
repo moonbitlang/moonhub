@@ -60,7 +60,9 @@ async function main() {
         }
         if (body.state==='drained') drained=true;
         if (body.state==='failed') throw Error('worker failed before draining');
-        reply={version:1,provider_id:'1',worker_id:'1',paused:false,draining:completed===3,config_revision:'1',config:{runner_image:image,cpus:'1',memory_mib:'2048'}};
+        // Request drain only after the cancelled attempt has cleaned up and
+        // acknowledged ready, so this test proves reuse after cancellation too.
+        reply={version:1,provider_id:'1',worker_id:'1',paused:false,draining:readyAfterCleanup===3,config_revision:'1',config:{runner_image:image,cpus:'1',memory_mib:'2048'}};
       } else if (route==='claims') {
         assert.equal(body.runner_os,'windows');
         assert.equal(readyAfterCleanup,completed,'worker claimed before cleanup');
