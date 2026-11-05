@@ -184,12 +184,16 @@ test "Windows container isolation follows the actual daemon host" {
 
 ///|
 test "worker retirement recovers while delayed heartbeat conflicts preserve active work" {
-  assert_true(permanent_worker_rejection(409, "ready", "ready"))
-  assert_true(permanent_worker_rejection(409, "starting", "starting"))
-  assert_true(!permanent_worker_rejection(409, "ready", "busy"))
-  assert_true(!permanent_worker_rejection(409, "busy", "busy"))
-  assert_true(!permanent_worker_rejection(409, "ready", "starting"))
-  assert_true(!permanent_worker_rejection(503, "ready", "ready"))
-  assert_true(permanent_worker_rejection(401, "busy", "busy"))
-  assert_true(permanent_worker_rejection(403, "starting", "busy"))
+  assert_true(permanent_worker_rejection(409, "ready", "ready", false))
+  assert_true(permanent_worker_rejection(409, "starting", "starting", false))
+  assert_true(!permanent_worker_rejection(409, "ready", "busy", false))
+  assert_true(!permanent_worker_rejection(409, "busy", "busy", false))
+  assert_true(!permanent_worker_rejection(409, "ready", "starting", false))
+  assert_true(!permanent_worker_rejection(503, "ready", "ready", false))
+  assert_true(permanent_worker_rejection(401, "busy", "busy", false))
+  assert_true(permanent_worker_rejection(403, "starting", "busy", false))
+  assert_true(!permanent_worker_rejection(409, "ready", "ready", true))
+  assert_true(!permanent_worker_rejection(409, "starting", "ready", true))
+  assert_true(permanent_worker_rejection(401, "ready", "ready", true))
+  assert_true(permanent_worker_rejection(403, "ready", "ready", true))
 }

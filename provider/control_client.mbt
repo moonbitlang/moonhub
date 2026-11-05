@@ -80,6 +80,7 @@ async fn run_backend_worker(
 ) -> Unit {
   validate_origin(base.server, base.allow_http)
   let state = Ref("starting")
+  let claiming = Ref(false)
   let applied = Ref("0")
   let latest : Ref[@protocol.WorkerSnapshot?] = Ref(None)
   @platform.private_directory(base.workspace_root)
@@ -128,6 +129,7 @@ async fn run_backend_worker(
               code,
               request.state,
               state.val,
+              claiming.val,
             ) => raise Rejected(code)
           _ => ()
         }
@@ -196,13 +198,19 @@ async fn run_backend_worker(
         @async.sleep(base.poll_ms)
         continue
       }
+      // A claim can already be committed on the server while its response is
+      // still in flight. Preserve that pending claim when a ready heartbeat
+      // conflicts with the newly busy server-side worker.
+      claiming.val = true
       let assignment = claim(current.val, token, runner_os=backend.os) catch {
         Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
         _ => {
+          claiming.val = false
           @async.sleep(base.poll_ms)
           continue
         }
       }
+      claiming.val = false
       match assignment {
         None => @async.sleep(base.poll_ms)
         Some(claimed) => {
@@ -256,10 +264,16 @@ fn permanent_worker_rejection(
   code : Int32,
   sent_state : String,
   current_state : String,
+  claiming : Bool,
 ) -> Bool {
   code == 401 ||
   code == 403 ||
-  // A delayed ready/starting heartbeat may race a successful claim. A 409 then
-  // describes an active task, not a retired worker; do not interrupt that job.
-  (code == 409 && current_state != "busy" && sent_state == current_state)
+  // The server may have accepted a claim before the client receives it. A
+  // heartbeat conflict during that request or its job must not interrupt work.
+  (
+    code == 409 &&
+    !claiming &&
+    current_state != "busy" &&
+    sent_state == current_state
+  )
 }
