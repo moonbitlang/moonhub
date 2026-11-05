@@ -1,4 +1,64 @@
 ///|
+async test "structured commit view pins the current file while pagination clears it" {
+  let executor = @gitops.DiffExecutor::new(
+    worker="_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe",
+  )
+  @web_testkit.with_repository_test_app(
+    (port, _, root, cookie, _) => {
+      let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let dir = repo.git_dir(root)
+      let (base, head) = @test_support.structured_diff_fixture(dir)
+      let manifest = executor.manifest(dir, base, head, page=2)
+      let file = manifest.files
+        .iter()
+        .find_first(f => f.new_path == "z-add.txt")
+        .unwrap()
+      let view_url = "/alice/demo/commit/\{head}?fixed=1&page=2&file_id=\{file.id}"
+      for mode in ["lexical", "ast", "line"] {
+        let (response, html) = @web_testkit.http_get_path_with_cookie(
+          port,
+          view_url + "&mode=\{mode}&ignore_comments=false&ignore_tests=true",
+          cookie,
+        )
+        assert_eq(response.code, 200)
+        assert_eq(
+          @web_testkit.extract_attr(
+            html, "moonhub-structured-diff", "data-view-url=\"",
+          ).replace_all(old="&amp;", new="&"),
+          view_url,
+        )
+        assert_eq(
+          @web_testkit.extract_attr(
+            html, "moonhub-structured-diff", "data-page-url=\"",
+          ).replace_all(old="&amp;", new="&"),
+          "/alice/demo/commit/\{head}?fixed=1",
+        )
+        for next in ["lexical", "ast", "line"] {
+          let link = view_url +
+            "&mode=\{next}&ignore_comments=false&ignore_tests=true#diff-code"
+          assert_true(
+            html.contains("href=\"\{link.replace_all(old="&", new="&amp;")}\""),
+          )
+        }
+        assert_true(
+          html.contains(
+            "&quot;mode&quot;:&quot;\{mode}&quot;,&quot;ignore_comments&quot;:false,&quot;ignore_tests&quot;:true",
+          ),
+        )
+        assert_true(
+          html.contains(
+            "&amp;page=1&amp;mode=\{mode}&amp;ignore_comments=false&amp;ignore_tests=true\">Previous files</a>",
+          ),
+        )
+        assert_true(html.contains("</nav></div></moonhub-structured-diff>"))
+      }
+    },
+    moondiff=true,
+    diff_executor=executor,
+  )
+}
+
+///|
 test "streamed patch markup is escaped without corrupting UTF-8 boundaries" {
   assert_eq(
     escape_html_text_chunk(b"</pre><script>&lt; & text</script>"),
