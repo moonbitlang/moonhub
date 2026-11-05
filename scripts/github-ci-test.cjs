@@ -11,18 +11,37 @@ const deploy = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 
 const results = ['success', 'failure', 'cancelled', 'skipped'];
 
 test('the actual aggregate gate rejects every non-success combination', () => {
-  assert.match(ci, /name: CI required\n    if: \$\{\{ always\(\) \}\}\n    needs: \[self-check, docker-ssh, windows-runner\]/);
-  assert.match(ci, /SELF_CHECK_RESULT: \$\{\{ needs.self-check.result \}\}/);
-  assert.match(ci, /DOCKER_SSH_RESULT: \$\{\{ needs.docker-ssh.result \}\}/);
+  const jobs = ['self-check', 'docker-ssh', 'windows-runner', 'frontend', 'build-deploy-regressions'];
+  const variables = ['SELF_CHECK_RESULT', 'DOCKER_SSH_RESULT', 'WINDOWS_RUNNER_RESULT', 'FRONTEND_RESULT', 'BUILD_DEPLOY_RESULT'];
+  const dependencies = ci.match(/name: CI required\n    if: \$\{\{ always\(\) \}\}\n    needs: \[([^\]]+)\]/)?.[1];
+  assert.deepEqual(dependencies?.split(', '), jobs);
+  for (const [index, job] of jobs.entries()) {
+    assert.ok(ci.includes(`${variables[index]}: \${{ needs.${job}.result }}`), `missing result for ${job}`);
+  }
   const gate = ci.match(/      - name: Require all checks to succeed[\s\S]*?        run: \|\n((?:          .+\n)+)/)?.[1];
   assert.ok(gate, 'missing aggregate shell gate');
-  for (const self of results) for (const docker of results) for (const windows of results) {
+  const combinations = jobs.reduce(values => values.flatMap(value => results.map(result => [...value, result])), [[]]);
+  for (const combination of combinations) {
     const result = spawnSync('bash', ['-e', '-c', gate], {
-      env: { ...process.env, SELF_CHECK_RESULT: self, DOCKER_SSH_RESULT: docker, WINDOWS_RUNNER_RESULT: windows },
+      env: { ...process.env, ...Object.fromEntries(variables.map((variable, index) => [variable, combination[index]])) },
       encoding: 'utf8',
     });
-    assert.equal(result.status === 0, self === 'success' && docker === 'success' && windows === 'success', `${self}/${docker}/${windows}`);
+    assert.equal(result.status === 0, combination.every(value => value === 'success'), combination.join('/'));
   }
+});
+
+test('additional checks run alongside the standard jobs on the calling commit', () => {
+  for (const job of ['frontend', 'build-deploy-regressions']) {
+    const caller = ci.match(new RegExp(`^  ${job}:\\n([\\s\\S]*?)(?=^  [a-z-]+:)`, 'm'))?.[1];
+    assert.ok(caller, `missing ${job} job`);
+    assert.doesNotMatch(caller, /\b(needs|if|continue-on-error|ref):/, `${job} must run independently on the calling commit and block on failures`);
+  }
+  assert.match(ci, /uses: \.\/\.github\/workflows\/frontend-checks.yml/);
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/frontend-checks.yml'), 'utf8');
+  assert.match(workflow, /on:\n  workflow_call:/);
+  assert.doesNotMatch(workflow, /^  (push|pull_request|workflow_dispatch):/m);
+  assert.doesNotMatch(workflow, /^\s+(ref|continue-on-error):/m);
+  assert.doesNotMatch(workflow, /secrets: inherit|id-token: write/);
 });
 
 test('deployment conditions restrict event, repository, branch and completed CI', () => {
@@ -52,16 +71,18 @@ test('deployment conditions restrict event, repository, branch and completed CI'
 });
 
 test('compiler verification rejects a successful install of the wrong version', () => {
-  const verify = ci.match(/      - name: Verify MoonBit version[\s\S]*?node <<'NODE'\n([\s\S]*?)          NODE/)?.[1];
-  assert.ok(verify);
   const pin = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8').match(/^ARG MOONBIT_VERSION=(.+)$/m)[1];
-  for (const actual of [`v${pin} (date)\n`, 'v0.0.0+wrong (date)\n', 'stable\n', '']) {
-    const run = () => vm.runInNewContext(verify, {
-      process: { env: { MOONBIT_VERSION: pin } },
-      require: name => name === 'node:child_process' ? { execFileSync: () => actual } : require(name),
-    });
-    if (actual.startsWith(`v${pin} `)) run();
-    else assert.throws(run);
+  for (const workflow of [ci, fs.readFileSync(path.join(root, '.github/workflows/frontend-checks.yml'), 'utf8')]) {
+    const verify = workflow.match(/      - name: Verify MoonBit version[\s\S]*?node <<'NODE'\n([\s\S]*?)          NODE/)?.[1];
+    assert.ok(verify);
+    for (const actual of [`v${pin} (date)\n`, 'v0.0.0+wrong (date)\n', 'stable\n', '']) {
+      const run = () => vm.runInNewContext(verify, {
+        process: { env: { MOONBIT_VERSION: pin } },
+        require: name => name === 'node:child_process' ? { execFileSync: () => actual } : require(name),
+      });
+      if (actual.startsWith(`v${pin} `)) run();
+      else assert.throws(run);
+    }
   }
 });
 

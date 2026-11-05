@@ -120,10 +120,41 @@ jobs:
           node scripts/windows-runner-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows container smoke failed' }
 
+  frontend:
+    name: Frontend checks
+    uses: ./.github/workflows/frontend-checks.yml
+
+  build-deploy-regressions:
+    name: Build and deployment regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Test build, deployment and Compose scripts
+        run: |
+          node --test \
+            scripts/apt-config-test.cjs \
+            scripts/base-image-test.cjs \
+            scripts/deploy-script-test.cjs \
+            scripts/github-deploy-test.cjs \
+            scripts/moonbit-install-test.cjs \
+            scripts/production-deploy-test.cjs \
+            scripts/shared-build-test.cjs \
+            scripts/shared-host-test.cjs
+      - name: Test pipeline Compose configuration
+        run: node scripts/pipeline-deployment-smoke.cjs
+      - name: Test identity transfer
+        run: python3 scripts/identity-transfer-test.py
+
   required:
     name: CI required
     if: ${{ always() }}
-    needs: [self-check, docker-ssh, windows-runner]
+    needs: [self-check, docker-ssh, windows-runner, frontend, build-deploy-regressions]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -132,10 +163,14 @@ jobs:
           SELF_CHECK_RESULT: ${{ needs.self-check.result }}
           DOCKER_SSH_RESULT: ${{ needs.docker-ssh.result }}
           WINDOWS_RUNNER_RESULT: ${{ needs.windows-runner.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          BUILD_DEPLOY_RESULT: ${{ needs.build-deploy-regressions.result }}
         run: |
           test "$SELF_CHECK_RESULT" = success
           test "$DOCKER_SSH_RESULT" = success
           test "$WINDOWS_RUNNER_RESULT" = success
+          test "$FRONTEND_RESULT" = success
+          test "$BUILD_DEPLOY_RESULT" = success
 
   deploy:
     needs: required
