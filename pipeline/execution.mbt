@@ -505,6 +505,7 @@ pub fn Coordinator::claim(
           state: row.get_name("status"),
           job: {
             context,
+            contents_read: job.contents_read,
             id: job.id,
             name: job.name,
             runs_on: job.runs_on,

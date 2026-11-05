@@ -98,6 +98,7 @@ test "assignment validates string identifiers and bounded timestamps" {
     state: "leased",
     job: {
       context: Map([]),
+      contents_read: true,
       id: "build",
       name: "Build",
       runs_on: ["self-hosted"],
@@ -167,6 +168,7 @@ test "log and completion requests use explicit string sequence fields" {
 test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
     context: Map([]),
+    contents_read: true,
     id: "build",
     name: "Build",
     runs_on: ["self-hosted", "linux"],

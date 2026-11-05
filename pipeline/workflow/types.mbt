@@ -21,14 +21,52 @@ pub struct Workflow {
 }
 
 ///|
-#derive(Debug, ToJson, FromJson)
+#derive(Debug, ToJson)
 pub struct Job {
   id : String
   name : String
   needs : Array[String]
   runs_on : Array[String]
+  contents_read : Bool
   timeout_minutes : Int32
   steps : Array[Step]
+}
+
+///|
+pub impl @json.FromJson for Job with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid job"))
+  }
+  {
+    id: @json.from_json(
+      fields.get("id").unwrap_or(Json::null()),
+      path=path.add_key("id"),
+    ),
+    name: @json.from_json(
+      fields.get("name").unwrap_or(Json::null()),
+      path=path.add_key("name"),
+    ),
+    needs: @json.from_json(
+      fields.get("needs").unwrap_or(Json::null()),
+      path=path.add_key("needs"),
+    ),
+    runs_on: @json.from_json(
+      fields.get("runs_on").unwrap_or(Json::null()),
+      path=path.add_key("runs_on"),
+    ),
+    timeout_minutes: @json.from_json(
+      fields.get("timeout_minutes").unwrap_or(Json::null()),
+      path=path.add_key("timeout_minutes"),
+    ),
+    steps: @json.from_json(
+      fields.get("steps").unwrap_or(Json::null()),
+      path=path.add_key("steps"),
+    ),
+    contents_read: @json.from_json(
+      fields.get("contents_read").unwrap_or(Json::boolean(true)),
+      path=path.add_key("contents_read"),
+    ),
+  }
 }
 
 ///|

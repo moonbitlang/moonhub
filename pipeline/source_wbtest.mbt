@@ -152,3 +152,32 @@ async test "source bundle restores exactly one pinned commit without repository 
     assert_eq(parents.text().trim(), run.commit_sha)
   })
 }
+
+///|
+async test "contents none is enforced on both source formats even with a live token" {
+  with_protocol_fixture(
+    (coordinator, _, root, _, _, _) => {
+      let assignment = coordinator
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      assert_false(assignment.job.contents_read)
+      let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+      ignore(coordinator.start(id, attempt_secret, 1))
+      try ignore(coordinator.read_source(root, id, attempt_secret)) catch {
+        @domain.Forbidden(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("permissions-none job received archive")
+      }
+      try
+        ignore(coordinator.read_source_bundle(root, id, attempt_secret))
+      catch {
+        @domain.Forbidden(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("permissions-none job received bundle")
+      }
+    },
+    workflow="permissions: {}\n" + @test_support.single_job_workflow,
+  )
+}

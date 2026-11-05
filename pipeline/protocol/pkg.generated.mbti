@@ -93,6 +93,7 @@ pub fn ConfigField::to_repr(Self) -> @debug.Repr
 #derive(@debug.Debug, @json.ToJson)
 pub(all) struct JobPlan {
   context : Map[String, String]
+  contents_read : Bool
   id : String
   name : String
   runs_on : Array[String]

@@ -169,7 +169,7 @@ test "pull request workflows accept the built-in checkout action" {
 test "unsupported execution semantics fail closed at every mapping level" {
   for
     (field, fragment) in [
-      ("permissions: read-all\n", "workflow.permissions"),
+      ("permissions: read-all\n", "permissions"),
       ("concurrency: deploy\n", "workflow.concurrency"),
       ("unknown: true\n", "workflow.unknown"),
     ] {
@@ -312,8 +312,8 @@ test "paths shell identifiers reserved variables and timeout types are validated
     )
   }
   expect_invalid(
-    basic_workflow.replace_all(old="[self-hosted, linux]", new="ubuntu-latest"),
-    "self-hosted",
+    basic_workflow.replace_all(old="[self-hosted, linux]", new="ubuntu-unknown"),
+    "unsupported runner",
   )
   expect_invalid(
     basic_workflow.replace_all(

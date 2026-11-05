@@ -29,6 +29,7 @@ async fn validate_options(
       "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only",
     )
   }
+  check_runner_environment(assignment.job.runs_on)
   let workspace = @fs.realpath(options.workspace)
   guard @fs.kind(workspace) is Directory && @fs.readdir(workspace).is_empty() else {
     raise InvalidConfiguration("workspace must be an empty directory")
@@ -448,6 +449,9 @@ async fn Runtime::execute_steps(
           error=Stopped("timed_out"),
         )
       } else if !step.remote && !step.uses.is_empty() {
+        guard self.assignment.job.contents_read else {
+          raise InvalidConfiguration("job permissions deny contents access")
+        }
         @async.with_timeout(
           Int64::min(timeout, 30000L).to_int(),
           () => self.checkout(scratch, source),
@@ -761,6 +765,7 @@ async fn execute_assignment(
       @async.any([
         () => {
           if assignment.version == @protocol.remote_assignment_version &&
+            assignment.job.contents_read &&
             bundle is Some(fetch) {
             try {
               let bytes = @async.with_timeout(30000, fetch)
@@ -783,7 +788,8 @@ async fn execute_assignment(
               }
             }
           }
-          if !assignment.job.steps.any(step => {
+          if assignment.job.contents_read &&
+            !assignment.job.steps.any(step => {
               (
                 !step.remote &&
                 ["actions/checkout@v4", "moonhub/checkout@v1"].contains(

@@ -165,6 +165,7 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 #derive(Debug, ToJson)
 pub(all) struct JobPlan {
   context : Map[String, String]
+  contents_read : Bool
   id : String
   name : String
   runs_on : Array[String]
@@ -178,6 +179,10 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job plan"))
   }
   {
+    contents_read: @json.from_json(
+      fields.get("contents_read").unwrap_or(Json::boolean(true)),
+      path=path.add_key("contents_read"),
+    ),
     context: @json.from_json(
       fields.get("context").unwrap_or(({} : Json)),
       path=path.add_key("context"),

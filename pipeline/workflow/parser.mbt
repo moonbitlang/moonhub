@@ -241,139 +241,12 @@ fn parse_run_defaults(
 }
 
 ///|
-fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
-  let fields : Map[String, @yaml.Yaml] = match value {
-    Some(String(name)) => Map([(name, @yaml.Null)])
-    Some(Array(items)) => {
-      let fields : Map[String, @yaml.Yaml] = Map([])
-      for item in items {
-        guard item is String(name) && !fields.contains(name) else {
-          raise InvalidWorkflow("on requires unique trigger names")
-        }
-        fields[name] = @yaml.Null
-      }
-      fields
-    }
-    Some(Map(fields)) => fields
-    _ =>
-      raise InvalidWorkflow(
-        "on requires push, pull_request or workflow_dispatch",
-      )
-  }
-  guard !fields.is_empty() else {
-    raise InvalidWorkflow("on requires a trigger")
-  }
-  check_fields(fields, ["push", "pull_request", "workflow_dispatch"], "on")
-  if fields.get("workflow_dispatch") is Some(options) {
-    guard options is Null || (options is Map(options) && options.is_empty()) else {
-      raise InvalidWorkflow("workflow_dispatch inputs are not supported")
-    }
-  }
-  let mut pull_request_types : Array[String] = []
-  if fields.get("pull_request") is Some(options) && !(options is Null) {
-    let options = yaml_as_obj(options, "on.pull_request")
-    check_fields(options, ["types"], "on.pull_request")
-    if options.get("types") is Some(value) {
-      pull_request_types = yaml_as_string_list(
-        Some(value),
-        "on.pull_request.types",
-      )
-      guard value is Array(_) && !pull_request_types.is_empty() else {
-        raise InvalidWorkflow("on.pull_request.types requires a nonempty list")
-      }
-      for event in pull_request_types {
-        guard ["opened", "reopened", "synchronize"].contains(event) else {
-          raise InvalidWorkflow(
-            "on.pull_request.types contains an unsupported event",
-          )
-        }
-      }
-    }
-  }
-  let branches : Array[String] = []
-  if fields.get("push") is Some(value) && !(value is Null) {
-    let options = yaml_as_obj(value, "on.push")
-    check_fields(options, ["branches"], "on.push")
-    if options.get("branches") is Some(value) {
-      guard value is Array(_) else {
-        raise InvalidWorkflow("on.push.branches requires a list")
-      }
-      let names = yaml_as_string_list(Some(value), "on.push.branches")
-      guard !names.is_empty() && names.length() <= 64 else {
-        raise InvalidWorkflow("on.push.branches requires 1 to 64 exact names")
-      }
-      for name in names {
-        guard name.length() <= 200 &&
-          !name.contains("..") &&
-          !name.contains("@{") &&
-          !name.contains("//") &&
-          !name.has_prefix("/") &&
-          !name.has_suffix("/") &&
-          !name.has_suffix(".") &&
-          name
-          .split("/")
-          .all(part => !part.has_prefix(".") && !part.has_suffix(".lock")) &&
-          name
-          .iter()
-          .all(ch => {
-            ch.to_int() > 32 &&
-            ch.to_int() != 127 &&
-            !['*', '?', '[', ']', '!', '+', '\\', '~', '^', ':', '$'].contains(
-              ch,
-            )
-          }) else {
-          raise InvalidWorkflow(
-            "on.push.branches supports exact branch names only; glob patterns are not yet supported",
-          )
-        }
-        branches.push(name)
-      }
-    }
-  }
-  {
-    dispatch: fields.contains("workflow_dispatch"),
-    push: fields.contains("push"),
-    pull_request: fields.contains("pull_request"),
-    pull_request_types,
-    branches,
-  }
-}
-
-///|
-pub struct Triggers {
-  dispatch : Bool
-  push : Bool
-  pull_request : Bool
-  pull_request_types : Array[String]
-  branches : Array[String]
-}
-
-///|
-pub fn triggers(source : String) -> Triggers raise InvalidWorkflow {
-  parse_trigger(yaml_as_obj(read_yaml(source), "workflow").get("on"))
-}
-
-///|
-pub fn Triggers::matches_push(self : Triggers, branch : String) -> Bool {
-  self.push && (self.branches.is_empty() || self.branches.contains(branch))
-}
-
-///|
-pub fn Triggers::matches_pull_request(self : Triggers, event : String) -> Bool {
-  self.pull_request &&
-  ["opened", "reopened", "synchronize"].contains(event) &&
-  (
-    self.pull_request_types.is_empty() ||
-    self.pull_request_types.contains(event)
-  )
-}
-
-///|
 fn parse_job(
   id : String,
   value : @yaml.Yaml,
   workflow_env : Map[String, String],
   defaults : RunDefaults,
+  contents_read : Bool,
 ) -> Job raise InvalidWorkflow {
   guard valid_identifier(id) else {
     raise InvalidWorkflow("invalid job id: \{id}")
@@ -382,13 +255,13 @@ fn parse_job(
   let fields = yaml_as_obj(value, ctx)
   check_fields(
     fields,
-    ["name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps"],
+    [
+      "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
+      "permissions",
+    ],
     ctx,
   )
-  let runs_on = yaml_as_string_list(fields.get("runs-on"), "\{ctx}.runs-on").map(label => {
-      label.to_lower()
-    },
-  )
+  let runs_on = runner_labels(fields.get("runs-on"), "\{ctx}.runs-on")
   guard runs_on.contains("self-hosted") &&
     runs_on.length() <= 8 &&
     runs_on.all(label => {
@@ -400,7 +273,8 @@ fn parse_job(
         ch.is_ascii_alphabetic() ||
         ch.is_ascii_digit() ||
         ch == '-' ||
-        ch == '_'
+        ch == '_' ||
+        ch == '.'
       })
     }) &&
     ["linux", "windows", "macos"].filter(os => runs_on.contains(os)).length() <=
@@ -670,6 +544,11 @@ fn parse_job(
     ),
     needs: yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
     runs_on,
+    contents_read: read_permissions(
+      fields.get("permissions"),
+      contents_read,
+      "\{ctx}.permissions",
+    ),
     timeout_minutes: parse_timeout(
       fields.get("timeout-minutes"),
       "\{ctx}.timeout-minutes",
@@ -681,10 +560,19 @@ fn parse_job(
 ///|
 pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   let fields = yaml_as_obj(read_yaml(source), "workflow")
-  check_fields(fields, ["name", "on", "env", "defaults", "jobs"], "workflow")
+  check_fields(
+    fields,
+    ["name", "on", "env", "defaults", "jobs", "permissions"],
+    "workflow",
+  )
   ignore(parse_trigger(fields.get("on")))
   let env = yaml_to_string_map(fields.get("env"), "env")
   let defaults = parse_run_defaults(fields.get("defaults"), "defaults")
+  let contents_read = read_permissions(
+    fields.get("permissions"),
+    true,
+    "permissions",
+  )
   guard fields.get("jobs") is Some(value) else {
     raise InvalidWorkflow("jobs is required")
   }
@@ -695,7 +583,7 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   let jobs : Array[Job] = []
   let mut step_count = 0
   for id, value in fields_jobs {
-    let job = parse_job(id, value, env, defaults)
+    let job = parse_job(id, value, env, defaults, contents_read)
     step_count += job.steps.length()
     jobs.push(job)
   }

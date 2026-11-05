@@ -212,11 +212,12 @@ fn normalize_provider_labels(labels : Array[String]) -> Array[String] raise {
         ch.is_ascii_alphabetic() ||
         ch.is_ascii_digit() ||
         ch == '_' ||
-        ch == '-'
+        ch == '-' ||
+        ch == '.'
       })
     }) else {
     raise @domain.BadRequest(
-      message="Use up to 8 labels (1-64 letters, digits, underscores or hyphens each), including self-hosted and exactly one of linux, windows or macos.",
+      message="Use up to 8 labels (1-64 letters, digits, underscores, dots or hyphens each), including self-hosted and exactly one of linux, windows or macos.",
     )
   }
   labels

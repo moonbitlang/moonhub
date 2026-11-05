@@ -36,15 +36,17 @@ Supported configuration:
   these triggers, or a mapping containing them. Dispatch inputs are not yet
   supported. Pull request triggers default to `opened`, `reopened` and
   `synchronize`. An optional nonempty `types` list selects a subset of those
-  three events. Other event types and PR branch/path filters are rejected.
-  Push triggers handle branch creation/updates only. `push.branches` accepts
-  1-64 exact branch names; omitted means all branches. Globs, negation, tag and
-  path filters are rejected, not silently approximated.
+  three events. Push and PR triggers support bounded branch/path pattern filters,
+  ordered exclusions and ignore lists. PR branch filters match the target branch.
+  Tag events remain unsupported; see [workflow entry compatibility](workflow-entry.md)
+  for diff semantics, conservative fallback and repository-required checks.
 - Static `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
-- Job labels must include `self-hosted`; the execution target is Linux by default or Windows when `windows` is explicit. Labels
-  are normalized to lowercase. There is no emulation of `ubuntu-latest` or other
-  GitHub-hosted images. Providers must possess every requested label.
+- Explicit job labels include `self-hosted`; the execution target is Linux by
+  default or Windows when `windows` is explicit. Selected standard environment
+  names normalize to OS, x64 and an exact image capability label. Providers must
+  possess every requested label; Ubuntu image/architecture checks run before
+  execution. See [runner environment contracts](workflow-entry.md#runner-selectors).
 - Literal steps accept `id`, `name`, `run`, `shell`, `working-directory`, `env`,
   `if`, `continue-on-error`, and `timeout-minutes`. Literal `bash`, `sh` and Windows `pwsh` shell selections are
   accepted. A job can instead include one built-in checkout step with
@@ -72,8 +74,10 @@ Supported configuration:
   control characters, empty path components, or drive prefixes. The executor
   must additionally enforce symlink containment at runtime.
 
-All unknown fields are rejected before mapping. This includes `permissions`,
-`concurrency`, job-level `if` / `continue-on-error`, `strategy`, `container`,
+Workflow/job `permissions` supports enforced read-only contents scope and explicit
+no-source access; unsupported scopes fail validation. All unknown fields are
+rejected before mapping. This includes `concurrency`, job-level `if` /
+`continue-on-error`, `strategy`, `container`,
 `services`, and job `outputs`. Downloaded actions accept `with`, and downloaded
 action/script steps accept step-level `if` and `continue-on-error`; see
 [GitHub Action execution](github-actions.md). Unknown fields are never silently stripped.

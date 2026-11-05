@@ -19,13 +19,13 @@ inspect, openseek, openseek-tools, openseek-protocol and openseek-tui.
 | Source checkout | Pinned source, release history/refs | Real upstream checkout supported with a pinned single-commit Git source. Full history, tags, alternate repositories, LFS and submodules need a fuller authenticated Git transport. |
 | Step chaining | `GITHUB_ENV`, `GITHUB_PATH`, outputs and conditional steps | Implemented runtime file commands, public templates, step conditions and continue-on-error. |
 | Scheduling | Static DAG, matrix include/exclude, fail-fast, concurrency/cancellation | Static DAG already exists. Matrix expansion, strategy policy and workflow concurrency semantics remain. |
-| Runners | Ubuntu, macOS and Windows; bash/pwsh | Existing provider is isolated self-hosted Linux with bash/sh. Hosted image labels, macOS/Windows executors, pwsh and their filesystem/process semantics remain. |
-| Triggering | Branch/path filters, pull-request events, dispatch inputs, schedule | Existing exact push-branch filters and basic push/PR/dispatch remain. Glob/path filters, dispatch input contracts and cron scheduling remain. |
+| Runners | Ubuntu, macOS and Windows; bash/pwsh | Linux and Windows executors exist. Selected Ubuntu/Windows environment labels now require explicit matching provider capabilities; Ubuntu version/architecture are verified. See workflow-entry.md for the real Ubuntu 24.04 image. macOS and other hosted-image contracts remain separate work. |
+| Triggering | Branch/path filters, pull-request events, dispatch inputs, schedule | Push/PR branch/path globs, ordered exclusions and ignore lists are supported with snapshot-based diffs. Dispatch inputs and cron scheduling remain. |
 | Cache | cache v4, cache/restore, cache/save; setup-tool caching | Downloaded JS can be loaded, but the GitHub-compatible cache runtime service, tokens, scoped keys, archive storage and retention remain. |
 | Artifacts | upload-artifact v4 and cross-job download-artifact v4 | Requires the artifact runtime service, scoped short-lived credentials, upload/download, named artifacts and lifecycle. Downloading the action alone does not provide this service. |
 | Release identities | `permissions`, `github.token`, gh CLI/API, AWS configure-credentials v5 with OIDC | Repository secret delivery exists. GitHub API compatibility, scoped workflow tokens and OIDC issuer/audience/subject policy remain. Do not forward provider credentials. |
 | Data contexts | `matrix`, `needs` outputs, `vars`, dispatch/event payloads | Current runtime supports public github/runner/env/steps and composite inputs. Server snapshots and contracts for these additional contexts remain. |
-| Permissions/container capabilities | Permissions declarations, OS/toolchain/container requirements | Must map to real MoonHub policy/capability checks; unsupported declarations still fail validation. |
+| Permissions/container capabilities | Permissions declarations, OS/toolchain/container requirements | contents read/none is enforced on both source transports; Ubuntu selectors use exact provider/image capabilities. Other scopes and container features still fail validation. |
 
 ## Acceptance boundary
 
@@ -38,3 +38,7 @@ Further service work should retain upstream cache/artifact/OIDC action code and
 provide the protocols and authorization those actions need. Changing openseek's
 release workflows to use shell workarounds or hard-coded replacement actions would
 not meet the compatibility target.
+
+The first unchanged workflow acceptance target is Tools SDK; its fixture, trigger
+contract, Ubuntu image and native-runner smoke are documented in
+[workflow entry compatibility](workflow-entry.md).
