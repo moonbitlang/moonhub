@@ -8,6 +8,9 @@ registry of hard-coded implementations for `actions/*`. Newly parsed
 `remote` field keep their previous built-in semantics; the explicit existing
 `moonhub/checkout@v1` and `moonhub/setup-moonbit@v1` remain available for old workflows.
 
+See [workflow entry compatibility](workflow-entry.md) for runner selectors,
+branch/path filters and enforced read-only contents permissions.
+
 This implements the execution foundation for the openseek migration, not full
 GitHub Actions service compatibility. See [the migration inventory](openseek-migration.md).
 

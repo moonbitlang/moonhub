@@ -43,8 +43,8 @@ test "push and manual triggers accept exact branch filters and preserve serializ
   )
   for
     trigger in [
-      "{push: {branches: ['release/**']}}", "{push: {branches: []}}", "{push: {branches: master}}",
-      "{push: {tags: [v1]}}", "{push: {paths: [src]}}", "[push, push]", "{}",
+      "{push: {branches: []}}", "{push: {branches: master}}", "{push: {tags: [v1]}}",
+      "[push, push]", "{}",
     ] {
     try
       parse(
@@ -73,7 +73,7 @@ test "pull request types default correctly and unsupported filters fail closed" 
   for
     config in [
       "{types: []}", "{types: opened}", "{types: [opened, opened]}", "{types: [closed]}",
-      "{types: [edited]}", "{branches: [master]}", "{paths: [src]}",
+      "{types: [edited]}",
     ] {
     expect_invalid(
       basic_workflow.replace_all(

@@ -64,6 +64,24 @@ pub async fn run_next_push_event(
           message="push contains more than 64 workflow files",
         )
       }
+      let old : String = row.get_name("old_sha")
+      let old = if old.is_empty() {
+        let (code, value) = @gitops.merge_git_command(git_dir, [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          sha + "^1",
+        ])
+        if code == 0 {
+          value.trim().to_owned()
+        } else {
+          ""
+        }
+      } else {
+        old
+      }
+      let mut changes : Array[String]? = None
+      let mut changes_loaded = false
       for path in paths {
         let exists = pool.with_client(client => {
           client.query_opt(
@@ -78,7 +96,19 @@ pub async fn run_next_push_event(
         try {
           validate_workflow_path(path)
           let source = read_workflow_source(git_dir, sha, path)
-          if !@workflow.triggers(source).matches_push(branch) {
+          let trigger = @workflow.triggers(source)
+          if !trigger.matches_push(branch) {
+            continue
+          }
+          if !changes_loaded &&
+            (
+              !trigger.push_filters.paths.is_empty() ||
+              !trigger.push_filters.paths_ignore.is_empty()
+            ) {
+            changes = changed_paths(git_dir, old, sha)
+            changes_loaded = true
+          }
+          if !trigger.matches_push(branch, paths=changes) {
             continue
           }
           let context : @workflow.RunContext = {

@@ -270,6 +270,8 @@ pub async fn run_next_merge_check(
         message="candidate contains more than 64 workflow files",
       )
     }
+    let mut changes : Array[String]? = None
+    let mut changes_loaded = false
     for line in paths {
       guard line.split_once("\t") is Some((_, entry)) else { continue }
       let path = entry.to_owned()
@@ -279,7 +281,23 @@ pub async fn run_next_merge_check(
       try {
         validate_workflow_path(path)
         let source = read_workflow_source(git_dir, sha, path)
-        if @workflow.triggers(source).matches_pull_request(event) {
+        let trigger = @workflow.triggers(source)
+        if !trigger.matches_pull_request(event, branch=mr.target) {
+          continue
+        }
+        if !changes_loaded &&
+          (
+            !trigger.pull_request_filters.paths.is_empty() ||
+            !trigger.pull_request_filters.paths_ignore.is_empty()
+          ) {
+          changes = changed_paths(
+            git_dir,
+            revision.base_sha,
+            revision.source_sha,
+          )
+          changes_loaded = true
+        }
+        if trigger.matches_pull_request(event, branch=mr.target, paths=changes) {
           workflows.push(path)
         }
       } catch {

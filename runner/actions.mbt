@@ -64,6 +64,7 @@ async fn Runtime::execute_action_step(
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
+    "contents_read": self.assignment.job.contents_read,
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "run_id": self.assignment.run_id,
@@ -152,6 +153,7 @@ async fn Runtime::execute_action_posts(
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
+    "contents_read": self.assignment.job.contents_read,
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "source_git": if @fs.exists(scratch + "/source.git") {
