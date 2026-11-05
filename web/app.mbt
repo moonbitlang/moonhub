@@ -5,6 +5,11 @@ pub let app_module : @moonback.Module = Module(ctx => {
   ctx.mount("/-/api/v1", App(user_api_module, config~))
   ctx.mount("/-/mcp", App(mcp_app_module, config~))
   ctx.mount("/-/runner-api/v1", App(runner_app_module, config~))
+  ctx.mount(
+    "/twirp/github.actions.results.api.v1.ArtifactService",
+    App(artifact_rpc_app_module, config~),
+  )
+  ctx.mount("/-/artifact-blobs", App(artifact_blob_app_module, config~))
   ctx.mount("/", App(app_main_module, config~))
 })
 
@@ -12,6 +17,18 @@ pub let app_module : @moonback.Module = Module(ctx => {
 let runner_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
   ctx.use_(@pipeline_views.runner_api_module)
+})
+
+///|
+let artifact_rpc_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(pipeline_dependencies_module)
+  ctx.use_(@pipeline_views.artifact_rpc_module)
+})
+
+///|
+let artifact_blob_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(pipeline_dependencies_module)
+  ctx.use_(@pipeline_views.artifact_blob_module)
 })
 
 ///|

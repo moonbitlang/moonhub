@@ -104,3 +104,15 @@ pub extend SecretResponse with ToJson::{to_json}
 
 ///|
 pub extend SecretResponse with @json.FromJson::{from_json}
+
+///|
+pub extend ArtifactRuntimeRequest with ToJson::{to_json}
+
+///|
+pub extend ArtifactRuntimeRequest with @json.FromJson::{from_json}
+
+///|
+pub extend ArtifactRuntime with ToJson::{to_json}
+
+///|
+pub extend ArtifactRuntime with @json.FromJson::{from_json}

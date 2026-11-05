@@ -9,7 +9,7 @@ async test "workflow scheduling schema upgrades preserve old runs and migrate id
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
           Int64),
-        31L,
+        database_schema_version,
       )
       assert_true(
         client.query_all("SELECT run_id FROM pipeline_run_schedule").is_empty(),
@@ -17,7 +17,7 @@ async test "workflow scheduling schema upgrades preserve old runs and migrate id
       // Recreate schema 30's job columns without touching related tables; the
       // migration is applied on a genuinely old schema, not a fresh DB shortcut.
       client.batch_execute(
-        "DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; PRAGMA user_version=30;",
+        "DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; PRAGMA user_version=30;",
       )
     })
     pool.with_client(client => {
@@ -38,7 +38,7 @@ async test "workflow scheduling schema upgrades preserve old runs and migrate id
         (
           client.query_one("PRAGMA user_version").get_name("user_version") :
           Int64),
-        31L,
+        database_schema_version,
       )
       let row = client.query_one(
         "SELECT matrix_group,max_parallel,matrix_fail_fast FROM pipeline_job WHERE id=1",

@@ -42,6 +42,24 @@ pub let version : Int32
 // Errors
 
 // Types and methods
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct ArtifactRuntime {
+  token : String
+  results_url : String
+  expires_ms : String
+}
+pub fn ArtifactRuntime::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ArtifactRuntime::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct ArtifactRuntimeRequest {
+  version : Int32
+  execution_id : String
+  origin : String
+}
+pub fn ArtifactRuntimeRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ArtifactRuntimeRequest::to_json(Self) -> @json.Json
+
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct Assignment {
   version : Int32

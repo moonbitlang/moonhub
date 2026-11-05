@@ -231,6 +231,21 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     writer.write(archive)
   })
   ctx.post(
+    "/attempts/:id/artifact-runtime",
+    json_handler(req => {
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "attempt"),
+      )
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version", "execution_id", "origin"])
+      let request : @protocol.ArtifactRuntimeRequest = @json.from_json(payload) catch {
+        _ =>
+          raise @domain.BadRequest(message="invalid artifact runtime request")
+      }
+      ToJson::to_json(coordinator.artifact_runtime(id, token, request))
+    }),
+  )
+  ctx.post(
     "/claims",
     json_handler(req => {
       let token = bearer_token(req)

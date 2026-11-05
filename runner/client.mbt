@@ -228,3 +228,33 @@ async fn Runtime::request(
   }
   state
 }
+
+///|
+async fn fetch_artifact_runtime(
+  server : String,
+  id : String,
+  token : String,
+  request : @protocol.ArtifactRuntimeRequest,
+) -> @protocol.ArtifactRuntime {
+  let client = @http.Client(server)
+  defer client.close()
+  let response = client.post(
+    "/-/runner-api/v1/attempts/" + id + "/artifact-runtime",
+    ToJson::to_json(request).stringify(),
+    extra_headers={
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+    },
+  )
+  guard response.code == 200 else { raise Rejected(response.code) }
+  let bytes : Array[Byte] = []
+  while client.read_some(max_len=4096) is Some(chunk) {
+    guard bytes.length() + chunk.length() <= 16384 else {
+      raise InvalidResponse
+    }
+    bytes.push_iter(chunk.iter())
+  }
+  @json.from_json(@json.parse(@utf8.decode(Bytes::from_array(bytes)))) catch {
+    _ => raise InvalidResponse
+  }
+}
