@@ -157,7 +157,7 @@ The server creates the SQLite database and schema automatically on first start.
 Use the tracked test fixture under `testdata/repos`:
 
 ```sh
-moon run --strip -j 1 . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
+MOONHUB_DIFF_WORKER="$PWD/_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe" moon run --strip -j 1 . -- testdata/repos --assets ./assets --host 127.0.0.1 --port 8080 --root-password change-me
 ```
 
 After activating the root account, create an `alice` team and register the fixture:
