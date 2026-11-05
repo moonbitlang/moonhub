@@ -6,7 +6,7 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { test } = require('node:test');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function scenario(failCleanup = false) {
+async function scenario(failCleanup = false, remoteImage = false) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-tart-state-')),
       file = path.join(root, 'state.json');
     fs.writeFileSync(file, JSON.stringify({ vms: {}, prepared: 0, executions: 0, deleted: 0 }));
@@ -17,6 +17,8 @@ async function scenario(failCleanup = false) {
 const fs=require('node:fs');const state=JSON.parse(fs.readFileSync(${JSON.stringify(file)}));const args=process.argv.slice(2);const save=()=>fs.writeFileSync(${JSON.stringify(file)},JSON.stringify(state));
 if(args[0]==='--version')console.log('2.41.1');
 else if(args[0]==='list')console.log(JSON.stringify(Object.keys(state.vms).map(Name=>({Name}))));
+else if(args[0]==='pull'){}
+else if(args[0]==='get'&&args[1].includes('/'))process.exit(2);
 else if(args[0]==='get')console.log(JSON.stringify({OS:'darwin',State:state.vms[args[1]]?.running?'running':'stopped',Running:!!state.vms[args[1]]?.running}));
 else if(args[0]==='clone'){state.vms[args[2]]={running:false};save();}
 else if(args[0]==='set'){}
@@ -191,7 +193,7 @@ else process.exit(2);
           '--tart-home',
           path.join(root, 'vms'),
           '--runner-image',
-          'local:template',
+          remoteImage ? 'ghcr.io/example/macos@sha256:'+'a'.repeat(64) : 'local:template',
         ],
         { stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -237,3 +239,5 @@ else process.exit(2);
 
 test('macOS worker claims only after guest readiness and replaces each consumed slot', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario());
 test('macOS cleanup failure prevents readiness and further claims', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(true));
+
+test('immutable OCI VM sources are inspected through their local clone', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,true));

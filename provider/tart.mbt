@@ -116,6 +116,18 @@ async fn remove_vm(macos : MacOptions, name : String) -> Unit {
 }
 
 ///|
+fn validate_vm_template(text : String) -> Unit raise {
+  let template = @json.parse(text)
+  guard template is Object(fields) &&
+    fields.get("OS") is Some(String("darwin")) &&
+    fields.get("State") is Some(String("stopped")) else {
+    raise InvalidConfiguration(
+      "Use a stopped macOS template, never a running or suspended guest",
+    )
+  }
+}
+
+///|
 async fn run_tart_worker(
   base : Options,
   token : String,
@@ -240,25 +252,24 @@ async fn run_tart_worker(
         // Download the pinned image before the bounded boot deadline; a cache
         // miss is preparation, never standby or an already leased attempt.
         let image = if current.runner_image.strip_prefix("local:") is Some(name) {
-          name.to_owned()
+          let name = name.to_owned()
+          validate_vm_template(
+            tart_control(macos, ["get", name, "--format", "json"]),
+          )
+          name
         } else {
           ignore(
             tart_control(macos, ["pull", current.runner_image], timeout=900000),
           )
           current.runner_image
         }
-        let template = @json.parse(
-          tart_control(macos, ["get", image, "--format", "json"]),
-        )
-        guard template is Object(fields) &&
-          fields.get("OS") is Some(String("darwin")) &&
-          fields.get("State") is Some(String("stopped")) else {
-          raise InvalidConfiguration(
-            "Use a stopped macOS template, never a running or suspended guest",
-          )
-        }
         slot.val = "moonhub-slot-" + random_hex(16)
         ignore(tart_control(macos, ["clone", image, slot.val], timeout=120000))
+        // `tart get` accepts local VMs only. Inspect the clone for OCI sources,
+        // while local templates were also checked before copying live disks.
+        validate_vm_template(
+          tart_control(macos, ["get", slot.val, "--format", "json"]),
+        )
         ignore(
           tart_control(macos, [
             "set",

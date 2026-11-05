@@ -25,3 +25,20 @@ test "Tart cleanup inventory is limited to owned slot names" {
     _ => fail("Accepted unsafe VM identity")
   }
 }
+
+///|
+test "Mac template readiness rejects Linux running and suspended disks" {
+  validate_vm_template("{\"OS\":\"darwin\",\"State\":\"stopped\"}")
+  for
+    template in [
+      "{\"OS\":\"linux\",\"State\":\"stopped\"}", "{\"OS\":\"darwin\",\"State\":\"running\"}",
+      "{\"OS\":\"darwin\",\"State\":\"suspended\"}",
+    ] {
+    try validate_vm_template(template) catch {
+      InvalidConfiguration(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("Accepted unsafe Mac template")
+    }
+  }
+}
