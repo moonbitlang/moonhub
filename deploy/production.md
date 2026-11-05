@@ -121,6 +121,32 @@ controller even if it was inactive beforehand, so idle retirement can resume.
 New commit-tagged bootstrap Runner image defaults do not change an enrolled
 provider's saved execution settings.
 
+An independently installed `moonhub-dind-controller.service` is upgraded in the
+same switch. The script reads its existing unit to preserve its server, provider
+identity, dedicated socket, private paths and resource limits. Set
+`MOONHUB_DIND_CONTROLLER_SERVICE` for a differently named local unit. Dynamic
+ExecStart values and systemd drop-ins are rejected before pausing production;
+use a literal unit so the managed binary and socket can be verified.
+
+Before pausing claims, the script loads the commit-tagged task image into the
+dedicated DinD daemon and verifies its revision label. After the atomic pause,
+it stops the local controller, refuses leftover task containers and retires that
+stopped controller's workers and lease. It backs up the unit, binary and private
+state under `controller-TIMESTAMP-COMMIT/dind`. The switch installs the matching
+controller binary, updates both the unit's image default and the enrolled
+provider's saved `runner_image`, preserving other execution settings and grants.
+The original pause state is restored before the new controller starts.
+
+Upgrade and `status` check the installed binary, unit image, DinD image revision,
+controller lease and observed configuration. An unpaused provider must also have
+applied the new configuration and reported a ready or busy worker. Verification
+waits up to `MOONHUB_DIND_START_TIMEOUT` seconds (default 180, maximum 600).
+An operator-paused provider stays paused and only needs to observe the new
+configuration. If replacement or verification fails after stopping DinD, the
+script leaves that provider paused, restores the other providers' original pause
+states and reports the recovery backup. It must not resume an incompatible old
+controller against a newly upgraded Web server.
+
 When the controller binary or settings change, the script automatically pauses the
 provider and leaves the old controller running to drain workers and both ASGs to
 zero before replacing it. Pause triggers draining without waiting for idle timeout.
@@ -169,6 +195,24 @@ and start the controller. Keep old ECR images and launch-template versions until
 rollback is no longer needed. Controller backups contain credentials: keep 0700
 directories and 0600 files. Web backup retention does not delete controller backups;
 remove obsolete controller bundles manually after verifying a newer recovery point.
+
+When an independent DinD controller is installed, pause its provider and wait for
+its attempts to finish, then stop its systemd service too. Restore its binary,
+unit and private state from the matching `dind/` backup alongside Web. If only the
+saved image needs recovery, while that provider is paused and has no active
+attempts, pass `dind/image.json` to the host helper:
+
+```sh
+docker exec -i --user git PROJECT-web-1 node --no-warnings - restore-image dind \
+  "$(cat /path/to/controller-backup/dind/image.json)" \
+  < deploy/production-dind-state.cjs
+```
+
+This restores only the image, preserves other current settings and advances the
+configuration revision. It refuses a different provider identity or an image
+changed since the backup. Keep the provider paused until the restored Web,
+controller and task image are compatible; restore its original pause state from
+`provider-state.json` and start the matching controller afterward.
 
 ## IAM responsibilities and launch-template authorization
 
