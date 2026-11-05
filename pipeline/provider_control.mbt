@@ -418,7 +418,7 @@ fn authenticate_worker(
 ) -> @database.DbRow raise {
   check_token(token)
   let row = tx.query_opt(
-    "SELECT w.*, p.paused,p.revoked,p.config_revision,p.config_json FROM pipeline_worker w JOIN pipeline_provider p ON p.id=w.provider_id WHERE w.token_hash=? AND p.revoked=0",
+    "SELECT w.*, p.paused,p.revoked,p.config_revision,p.config_json,p.mode AS provider_mode FROM pipeline_worker w JOIN pipeline_provider p ON p.id=w.provider_id WHERE w.token_hash=? AND p.revoked=0",
     params=[@identity.hash_token(token)],
   )
   guard row is Some(row) else {
@@ -467,7 +467,12 @@ pub fn Coordinator::sync_worker(
           raise Conflict("Worker is terminal.")
         }
         let now = (self.clock)()
-        let state = if draining && request.state == "ready" {
+        // A prepared VM is still an owned resource while idle. Tart workers
+        // must explicitly acknowledge drained only after stopping/deleting it.
+        // Preserve the historical ready->drained acknowledgement for Docker/ASG.
+        let state = if draining &&
+          request.state == "ready" &&
+          (row.get_name("provider_mode") : String) != "tart" {
           "drained"
         } else {
           request.state
