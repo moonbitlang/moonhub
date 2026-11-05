@@ -174,3 +174,10 @@ The smoke checks pinned-source upstream checkout, setup-node input/output handli
 using a preseeded tool cache, and both actions' post handlers. It exercises upstream
 Node 24 and Node 20 entry points. It does not test setup-node tool downloads,
 cache/artifact services, macOS, Windows or production deployment.
+
+## Artifact v4 service
+
+The original upload/download v4 Actions now use MoonHub's current-run Results and
+Block Blob service. Cross-job pattern downloads, overwrite, retention and private
+runtime credentials are covered by upstream acceptance. See [Artifact v4](artifact-v4.md)
+for deployment, limits, environment bridging and the opt-in acceptance command.

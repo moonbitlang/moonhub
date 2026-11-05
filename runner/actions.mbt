@@ -115,6 +115,22 @@ async fn Runtime::execute_action_runtime(
     permission=0o600,
   )
   let env = step.env.copy()
+  if self.artifacts is Some(fetch) && step.remote {
+    let grant = @async.with_timeout(Int32::min(timeout, 10000), () => {
+      fetch({
+        version: 1,
+        execution_id: self.execution_id,
+        origin: self.options.server,
+      })
+    })
+    self.check_live()
+    guard grant.results_url == self.options.server &&
+      grant.token.length() <= 4096 else {
+      raise InvalidResponse
+    }
+    env["MOONHUB_ACTION_ARTIFACT_TOKEN"] = grant.token
+    env["MOONHUB_ACTION_ARTIFACT_URL"] = grant.results_url
+  }
   env["MOONHUB_ACTION_NODE"] = self.action_node
   env["MOONHUB_ACTION_RUNTIME"] = self.action_runtime
   env["MOONHUB_ACTION_PLAN"] = filename
@@ -176,6 +192,7 @@ async fn Runtime::execute_action_posts(
   let step = {
     ..self.assignment.job.steps[self.assignment.job.steps.length() - 1],
     env: Map([]),
+    remote: self.assignment.job.steps.any(step => step.remote),
   }
   self.execute_action_runtime(step, filename, timeout, Map([]))
 }

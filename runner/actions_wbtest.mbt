@@ -20,6 +20,9 @@ async test "native action execution preserves environment secrets output state a
       action + "/main.cjs",
       (
         #|const fs = require('fs');
+        #|if (process.env.ACTIONS_RUNTIME_TOKEN !== 'artifact-runtime-private' || process.env.ACTIONS_RESULTS_URL !== 'https://moonhub.example') process.exit(4);
+        #|if (process.env.MOONHUB_ACTION_ARTIFACT_TOKEN) process.exit(5);
+        #|console.log(process.env.ACTIONS_RUNTIME_TOKEN);
         #|if (process.env['INPUT_ACCESS-TOKEN'] !== 'issued-value') process.exit(2);
         #|if (process.env['INPUT_REF-LABEL'] !== '${{ secrets.NOT_RECURSIVE }}') process.exit(3);
         #|fs.appendFileSync(process.env.GITHUB_ENV, 'EXPORTED=action-value\n');
@@ -72,11 +75,23 @@ async test "native action execution preserves environment secrets output state a
     let runtime = @fs.realpath("runner/actions/runtime.mjs")
     let report = execute_assignment(
       assignment,
-      test_options(launcher, workspace),
+      {
+        ..test_options(launcher, workspace),
+        server: "https://moonhub.example",
+      },
       (operation, body, until) => server.post(operation, body, until),
       source=() => bytes,
       action_node=node.text().trim().to_owned(),
       action_runtime=runtime,
+      artifacts=request => {
+        assert_eq(request.origin, "https://moonhub.example")
+        assert_eq(request.execution_id, server.execution_id)
+        {
+          token: "artifact-runtime-private",
+          results_url: request.origin,
+          expires_ms: "9999999999999",
+        }
+      },
       secrets=request => {
         assert_eq(request.step_id, "action")
         { version: 1, env: { "INPUT_ACCESS-TOKEN": "issued-value" }, }
@@ -84,6 +99,12 @@ async test "native action execution preserves environment secrets output state a
     )
     assert_eq(report.conclusion, "success")
     assert_true(report.reported)
+    assert_false(
+      server.logs
+      .map(log => log.text)
+      .join("")
+      .contains("artifact-runtime-private"),
+    )
     assert_eq(report.steps.map(step => step.state), ["success", "success"])
     assert_eq(
       @fs.read_file(workspace + "/repository/post").text(),

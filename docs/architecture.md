@@ -21,7 +21,7 @@ unchanged.
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, repository CI secrets and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation and result persistence |
+| `pipeline` | Authorized run snapshots, repository CI secrets and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, Artifact v4 metadata/storage/capabilities and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, local Tart VM workers, config synchronization and execution cleanup; no database or Web dependency |
 | `runner/platform` | OS detection, safe paths, minimal OS environment and private Windows directory ACLs; no database or Web dependency |
@@ -88,7 +88,10 @@ authorization, bounded Git operations, and the database adapter.
 `web/views/pipelines` owns the machine
 API and its HTTP tests. It is mounted independently of browser authentication;
 `web/dependencies.mbt` provides its coordinator and `web/server.mbt` owns lease
-reconciliation. The independent `runner` package executes assigned shell steps
+reconciliation and artifact cleanup. Artifact Results RPC and signed blob routes
+are mounted separately from browser authentication, while durable download links
+require repository read access; see [Artifact v4](artifact-v4.md). The independent
+`runner` package executes assigned shell steps
 and JavaScript/composite actions. The `provider` package owns Docker/ASG
 controllers and workers plus the local Tart backend; `runner/cli` owns single-assignment execution arguments,
 and `cmd/moonhub-runner` is the standalone entry point. The root package retains

@@ -202,9 +202,10 @@ async fn validate_options(
         !name.to_upper().has_prefix("RUNNER_") &&
         !name.to_upper().has_prefix("LD_") &&
         !name.to_upper().has_prefix("DYLD_") &&
-        !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
-          name.to_upper(),
-        ) &&
+        ![
+          "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
+          "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL",
+        ].contains(name.to_upper()) &&
         !value.contains("\u{0000}") else {
         raise InvalidConfiguration(
           "step contains a reserved or unsafe environment variable",
@@ -696,6 +697,7 @@ async fn execute_assignment(
   action_node~ : String = default_action_node(),
   action_runtime~ : String = default_action_runtime(),
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
+  artifacts? : async (@protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime,
   secrets~ : async (@protocol.SecretRequest) -> @protocol.SecretResponse = _ => {
     raise InvalidConfiguration("secret service unavailable")
   },
@@ -733,6 +735,7 @@ async fn execute_assignment(
     reporting_until: 0L,
     moon_home: "",
     secrets,
+    artifacts,
     action_node,
     action_runtime,
     action_state_key: execution_nonce() + execution_nonce(),
@@ -900,6 +903,9 @@ pub async fn run(
     action_node~,
     action_runtime~,
     secrets=request => fetch_secrets(options.server, attempt_id, token, request),
+    artifacts=request => {
+      fetch_artifact_runtime(options.server, attempt_id, token, request)
+    },
     source=() => fetch_source(options.server, attempt_id, token),
     bundle=() => fetch_source(options.server, attempt_id, token, bundle=true),
   )
@@ -917,9 +923,10 @@ fn valid_secret_env_name(name : String) -> Bool {
   !["MOONHUB_", "GITHUB_", "RUNNER_", "LD_", "DYLD_"].any(prefix => {
     name.to_upper().has_prefix(prefix)
   }) &&
-  !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
-    name.to_upper(),
-  )
+  ![
+    "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
+    "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL",
+  ].contains(name.to_upper())
 }
 
 ///|

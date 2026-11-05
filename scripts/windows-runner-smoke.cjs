@@ -36,8 +36,8 @@ async function main() {
   fs.writeFileSync(path.join(source,'source.txt'),'pinned source\n');
   fs.mkdirSync(path.join(source,'action'));
   fs.writeFileSync(path.join(source,'action/action.yml'),'name: Probe\nruns:\n  using: node20\n  main: main.cjs\n  post: post.cjs\n');
-  fs.writeFileSync(path.join(source,'action/main.cjs'), `require('node:assert/strict').equal(process.platform,'win32'); require('node:assert/strict').equal(process.versions.node.split('.')[0],'20'); console.log('windows-action-main');`);
-  fs.writeFileSync(path.join(source,'action/post.cjs'), `console.log('windows-action-post');`);
+  fs.writeFileSync(path.join(source,'action/main.cjs'), `require('node:assert/strict').equal(process.platform,'win32'); require('node:assert/strict').equal(process.versions.node.split('.')[0],'20'); require('node:assert/strict').match(process.env.ACTIONS_RUNTIME_TOKEN,/^[a-f0-9]{64}$/); require('node:assert/strict').equal(process.env.MOONHUB_ACTION_ARTIFACT_TOKEN,undefined); console.log(process.env.ACTIONS_RUNTIME_TOKEN); console.log('windows-action-main');`);
+  fs.writeFileSync(path.join(source,'action/post.cjs'), `require('node:assert/strict').match(process.env.ACTIONS_RUNTIME_TOKEN,/^[a-f0-9]{64}$/); console.log(process.env.ACTIONS_RUNTIME_TOKEN); console.log('windows-action-post');`);
   const git = args => execFileSync('git', args, {cwd:source,encoding:'utf8',timeout:30000}).trim();
   git(['init','--quiet']); git(['add','.']);
   git(['-c','user.name=Runner smoke','-c','user.email=runner@example.invalid','commit','--quiet','-m','fixture']);
@@ -107,25 +107,32 @@ async function main() {
           const steps=[...(claims===1?[step('moonbit','', '',{uses:'moonhub/setup-moonbit@v1',moonbit_version:fs.readFileSync('deploy/base.Dockerfile','utf8').match(/^ARG MOONBIT_VERSION=([^\r\n]+)/m)[1]})]:[]),step('probe',probe,'',claims===2?{secret_env:{SMOKE_SECRET:'SMOKE_SECRET'}}:{}),...(cancel?[]:[step('bash','test -f source.txt; test "$RUNNER_OS" = Windows','bash')])];
           // Attempt 2 exercises the complete v5 bundle + local JavaScript action path.
           if (claims===2) steps.push(step('action','', '',{uses:'./action',remote:true}));
-          const record={token:body.attempt_token,execution:'',sequence:0n,logs:'',conclusion:'',cancel,started:now};
+          const record={token:body.attempt_token,artifactTokens:[],execution:'',sequence:0n,logs:'',conclusion:'',cancel,started:now};
           attempts.set(id,record); console.log('Claimed Windows attempt '+id);
           reply={version:1,assignment:{version:claims===2?5:3,attempt_id:id,run_id:id,job_id:id,repository:'test/probe',commit_sha:sha,state:'leased',lease_until_ms:String(now+60000),server_time_ms:String(now),job:{id:'build',name:'Build',runs_on:['self-hosted','windows'],timeout_minutes:8,steps}}};
         }
       } else {
         assert.ok(attempt,'unknown attempt');
         if(route==='start') {attempt.execution=body.execution_id;console.log('Started Windows attempt '+id);}
+        if(route==='artifact-runtime') {
+          assert.equal(body.version,1); assert.equal(body.execution_id,attempt.execution);
+          assert.ok(attempt.execution); assert.equal(body.origin,`http://${gateway}:${port}`);
+          const artifactToken=crypto.randomBytes(32).toString('hex'); attempt.artifactTokens.push(artifactToken);
+          res.writeHead(200,{'Content-Type':'application/json',Connection:'close'});
+          res.end(JSON.stringify({token:artifactToken,results_url:body.origin,expires_ms:String(now+3600000)}));return;
+        }
         if(route==='secrets') { res.writeHead(200,{'Content-Type':'application/json',Connection:'close'});res.end(JSON.stringify({version:1,env:{SMOKE_SECRET:secret}}));return; }
         attempt.lastOperation=route;
         if(route==='logs') {
           assert.equal(BigInt(body.sequence),attempt.sequence+1n); attempt.sequence++;
-          assert.ok(!body.text.includes(attempt.token)); assert.ok(!body.text.includes('controller-only-sentinel')); assert.ok(!body.text.includes(secret));
+          assert.ok(!body.text.includes(attempt.token)); assert.ok(!body.text.includes('controller-only-sentinel')); assert.ok(!body.text.includes(secret)); assert.ok(attempt.artifactTokens.every(token=>!body.text.includes(token)));
           attempt.logs+=body.text; if(body.text.includes('container-ready-')) console.log('Probe ready for Windows attempt '+id);
         }
         if(route==='complete') {
           assert.equal(BigInt(body.last_log_sequence),attempt.sequence);
           assert.equal(body.conclusion,attempt.cancel?'cancelled':'success',attempt.logs);
           assert.ok(attempt.logs.includes('container-ready-'+id),attempt.logs);
-          if(id==='2') {assert.ok(attempt.logs.includes('windows-action-main')); assert.ok(attempt.logs.includes('windows-action-post'));}
+          if(id==='2') {assert.equal(attempt.artifactTokens.length,2); assert.ok(attempt.logs.includes('windows-action-main')); assert.ok(attempt.logs.includes('windows-action-post'));}
           attempt.conclusion=body.conclusion; completed++;console.log('Completed Windows attempt '+id+': '+body.conclusion);
         }
         reply={version:1,execution_id:attempt.execution,attempt_id:id,state:attempt.conclusion?'completed':'running',lease_until_ms:String(now+60000),server_time_ms:String(now),deadline_ms:String(attempt.started+480000),cancel_requested:attempt.cancel && attempt.logs.includes('container-ready-3'),log_sequence:String(attempt.sequence),conclusion:attempt.conclusion};
