@@ -179,20 +179,23 @@ boot and Spot availability need separate deployment acceptance.
 
 ## Windows x64 workers
 
-Windows uses the same ASG controller and CLI. Keep Linux and Windows in separate
-providers/ASGs; register the Windows provider with `self-hosted,windows,x64` and
+Windows supports standalone PCs through `--mode docker` as well as the existing
+ASG controller. See [standalone Windows deployment](windows-runner.md) for Windows
+11/Server 2022 installation without AWS. Keep Linux and Windows in separate
+providers; register the Windows provider with `self-hosted,windows,x64` and
 explicitly request those labels in workflows. Jobs without an OS label retain
 Linux semantics. There is no `--worker-os` flag: the controller resolves the
 existing `--launch-template` plus saved numeric `template_version`, reads its
-AMI's `Platform` and `Architecture`, and selects Windows bootstrap automatically.
+AMI's `Platform` and `Architecture`, and selects Windows bootstrap automatically
+in ASG mode. A standalone provider detects the local Windows daemon directly.
 The controller itself may remain on Linux. Claims include the worker's actual OS;
 old clients that omit it remain Linux and cannot claim from a Windows provider.
 
-The first supported Windows host/image combination is **Windows Server 2022 x64**
-(build 20348), with Windows process-isolated containers. Host and task image must
-have compatible Windows builds; the worker checks both build 20348 and x64 before
-acknowledging readiness. Linux Docker daemons cannot run these images.
-Prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
+The task image is **Windows Server 2022 x64** (build 20348). Server 2022 hosts
+use process isolation; Windows 11 hosts use Hyper-V isolation. The worker checks
+the real daemon platform, image and container startup before acknowledging
+readiness. Linux Docker daemons cannot run these images.
+For ASG deployment, prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
 v2 and SSM Agent. Build the worker bundle on Windows with Visual Studio C++ Build
 Tools and the production MoonBit version from `deploy/base.Dockerfile`:
 
