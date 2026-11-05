@@ -29,7 +29,7 @@ const allowed = {
   'pipeline/actions': [],
   runner: ['pipeline/protocol', 'pipeline/actions', 'runner/platform'],
   'runner/cli': ['runner', 'pipeline/protocol', 'runner/platform'],
-  'cmd/moonhub-runner': ['provider', 'runner/cli', 'runner/platform'],
+  'cmd/moonhub-runner': ['provider', 'runner/cli', 'runner/platform', 'pipeline/protocol'],
   provider: ['pipeline/protocol', 'runner/platform'],
   'runner/platform': [],
   'pipeline/workflow': ['vendor/yaml', 'pipeline/actions'],

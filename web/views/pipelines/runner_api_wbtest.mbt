@@ -73,7 +73,7 @@ async test "production runner mount uses bearer auth never browser sessions and 
     let body = ToJson::to_json(request).stringify()
     // Exercise the real wire shape used by current workers, not just legacy
     // clients that omit runner_os. Unknown fields must remain rejected below.
-    for os in ["linux", "windows"] {
+    for os in ["linux", "windows", "macos"] {
       let credential = if os == "linux" {
         token
       } else {
@@ -81,9 +81,9 @@ async test "production runner mount uses bearer auth never browser sessions and 
         ignore(
           coordinator.create_provider(
             @identity.active_user_by_name(pool, "admin"),
-            "http-windows",
+            "http-" + os,
             credential,
-            ["self-hosted", "windows"],
+            ["self-hosted", os],
             [],
           ),
         )

@@ -200,8 +200,8 @@ pub fn Coordinator::create_provider(
 fn normalize_provider_labels(labels : Array[String]) -> Array[String] raise {
   let labels = labels.map(label => label.to_lower())
   guard labels.contains("self-hosted") &&
-    labels.contains("linux") != labels.contains("windows") &&
-    !labels.contains("macos") &&
+    ["linux", "windows", "macos"].filter(os => labels.contains(os)).length() ==
+    1 &&
     labels.length() <= 8 &&
     labels.all(label => {
       !label.is_empty() &&
@@ -216,7 +216,7 @@ fn normalize_provider_labels(labels : Array[String]) -> Array[String] raise {
       })
     }) else {
     raise @domain.BadRequest(
-      message="Use up to 8 labels (1-64 letters, digits, underscores or hyphens each), including self-hosted and exactly one of linux or windows.",
+      message="Use up to 8 labels (1-64 letters, digits, underscores or hyphens each), including self-hosted and exactly one of linux, windows or macos.",
     )
   }
   labels

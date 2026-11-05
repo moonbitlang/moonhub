@@ -4,6 +4,10 @@ package "hackwaly/moonhub/runner/platform"
 // Values
 pub fn environment() -> Map[String, String]
 
+pub fn job_os(Array[String]) -> String
+
+pub fn macos() -> Bool
+
 pub fn os() -> String
 
 pub fn path_key(String) -> String

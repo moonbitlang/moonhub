@@ -8,7 +8,10 @@ async fn validate_options(
       @protocol.secret_assignment_version, @protocol.remote_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
-    assignment.job.runs_on.contains("windows") == @platform.windows() &&
+    (
+      @platform.job_os(assignment.job.runs_on) == @platform.os() ||
+      options.unsafe_local
+    ) &&
     assignment.has_valid_numbers() &&
     assignment.job.steps.length() > 0 &&
     assignment.job.steps.length() <= 64 else {
@@ -254,10 +257,15 @@ async fn Runtime::execute_script(
     "CI": "true",
     "RUNNER_OS": if @platform.windows() {
       "Windows"
+    } else if @platform.macos() {
+      "macOS"
     } else {
       "Linux"
     },
     "RUNNER_TEMP": self.action_temp,
+  }
+  if @platform.macos() {
+    job_env["PATH"] = "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   }
   if @platform.windows() {
     job_env["PATH"] = "C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/moonhub/git/usr/bin;" +

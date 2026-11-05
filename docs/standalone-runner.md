@@ -266,3 +266,9 @@ junctions and detached-child cleanup. Its container acceptance runs three attemp
 on one worker, verifies fresh volumes and cleanup before ready, checks cancellation,
 and drains the worker. This is separate from booting an EC2 AMI and validating
 operator-specific IAM/network/registry access, which require deployment acceptance.
+
+## macOS local VM workers
+
+See [macOS VM runner](macos-runner.md) for the Apple Silicon Tart backend,
+guest-image preparation, true standby readiness and real HTTP acceptance.
+This first slice does not provision EC2 Mac or Dedicated Hosts.

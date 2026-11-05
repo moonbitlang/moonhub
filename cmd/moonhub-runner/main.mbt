@@ -9,6 +9,9 @@ async fn run(args : ArrayView[String]) -> Int32 {
     return @runner_cli.execute(args[1:])
   }
   let common = [
+    @argparse.OptionArg("runner-server", long="runner-server", default_values=[
+      "",
+    ]),
     @argparse.OptionArg("docker", long="docker", default_values=[
       if @platform.windows() {
         "docker.exe"
@@ -63,6 +66,15 @@ async fn run(args : ArrayView[String]) -> Int32 {
         "/var/lib/moonhub-runner/controller"
       },
     ]),
+    @argparse.OptionArg("tart", long="tart", default_values=[
+      "/opt/homebrew/bin/tart",
+    ]),
+    @argparse.OptionArg("tart-home", long="tart-home", default_values=[
+      "/var/lib/moonhub-runner/tart",
+    ]),
+    @argparse.OptionArg("prepare-timeout", long="prepare-timeout", default_values=[
+      "180",
+    ]),
     @argparse.OptionArg("aws", long="aws", default_values=["aws"]),
     @argparse.OptionArg("region", long="region", default_values=["us-west-2"]),
     @argparse.OptionArg("asg", long="asg", default_values=[""]),
@@ -87,7 +99,7 @@ async fn run(args : ArrayView[String]) -> Int32 {
     subcommands=[
       @argparse.Command(
         "run",
-        about="Register and run a docker or asg provider.",
+        about="Register and run a docker, asg or local tart provider.",
         options=controller,
         flags=[@argparse.FlagArg("allow-http", long="allow-http")],
       ),
@@ -112,7 +124,11 @@ async fn run(args : ArrayView[String]) -> Int32 {
   }
   let base : @provider.Options = {
     server,
-    runner_server: server,
+    runner_server: if value(options, "runner-server").is_empty() {
+      server
+    } else {
+      value(options, "runner-server")
+    },
     runner_image: value(options, "runner-image"),
     docker: value(options, "docker"),
     docker_host: value(options, "docker-host"),
@@ -130,23 +146,38 @@ async fn run(args : ArrayView[String]) -> Int32 {
     @provider.run_bootstrap_worker(value(options, "bootstrap-file"), base)
     return 0
   }
-  @provider.run_managed({
-    base,
-    name: value(options, "name"),
-    mode: value(options, "mode"),
-    state_dir: value(options, "state-dir"),
-    registration_token_file: value(options, "registration-token-file"),
-    aws: value(options, "aws"),
-    region: value(options, "region"),
-    asg: value(options, "asg"),
-    spot_asg: value(options, "spot-asg"),
-    launch_template: value(options, "launch-template"),
-    parameter_prefix: value(options, "parameter-prefix"),
-    instance_types: value(options, "instance-types")
-    .split(",")
-    .map(t => t.trim().to_owned())
-    .collect(),
-  })
+  let prepare_seconds = @protocol.parse_decimal(
+    value(options, "prepare-timeout"),
+  ).unwrap_or(0L)
+  guard prepare_seconds >= 10L && prepare_seconds <= 900L else {
+    raise @provider.InvalidConfiguration(
+      "prepare-timeout must be 10-900 seconds",
+    )
+  }
+  @provider.run_managed(
+    {
+      base,
+      name: value(options, "name"),
+      mode: value(options, "mode"),
+      state_dir: value(options, "state-dir"),
+      registration_token_file: value(options, "registration-token-file"),
+      aws: value(options, "aws"),
+      region: value(options, "region"),
+      asg: value(options, "asg"),
+      spot_asg: value(options, "spot-asg"),
+      launch_template: value(options, "launch-template"),
+      parameter_prefix: value(options, "parameter-prefix"),
+      instance_types: value(options, "instance-types")
+      .split(",")
+      .map(t => t.trim().to_owned())
+      .collect(),
+    },
+    macos={
+      tart: value(options, "tart"),
+      home: value(options, "tart-home"),
+      prepare_timeout_ms: prepare_seconds.to_int() * 1000,
+    },
+  )
   0
 }
 

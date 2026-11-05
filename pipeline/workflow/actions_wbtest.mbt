@@ -140,3 +140,19 @@ test "PowerShell requires Windows after workflow job and step defaults resolve" 
     "\n        shell: bash"
   assert_eq(parse(overridden).jobs[0].steps[0].shell, Some("bash"))
 }
+
+///|
+test "macOS selection is explicit and cannot mix operating systems" {
+  let source = basic_workflow.replace_all(
+    old="[self-hosted, linux]",
+    new="[self-hosted, macos, arm64]",
+  )
+  assert_eq(parse(source).jobs[0].runs_on, ["self-hosted", "macos", "arm64"])
+  for labels in ["[self-hosted, macos, linux]", "[self-hosted, macos, windows]"] {
+    expect_invalid(
+      source.replace_all(old="[self-hosted, macos, arm64]", new=labels),
+      "runner labels",
+    )
+  }
+  expect_invalid(source + "\n        shell: pwsh", "pwsh requires Windows")
+}

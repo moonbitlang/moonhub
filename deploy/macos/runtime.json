@@ -1,0 +1,5 @@
+{
+  "tart": {"version":"2.41.1","url":"https://github.com/openai/tart/releases/download/2.41.1/tart.tar.gz","sha256":"e680a734febccfce7d4e910c1f7f13fc3b00f19a181c945e2d746de3214c32c2"},
+  "node24":{"url":"https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-arm64.tar.xz","sha256":"1f5ac075be50bed4780ea3be19a007fda95ea4d527d28d76d0b91de47d915115"},
+  "node20":{"url":"https://nodejs.org/dist/v20.20.2/node-v20.20.2-darwin-arm64.tar.xz","sha256":"6375a1d4421bc04ab284ba89459df788a78c49c89e83c463d0eede47e2efc07b"}
+}

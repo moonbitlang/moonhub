@@ -34,7 +34,11 @@ Docker SSH keeps
 image, and verifies shells, Actions, process cleanup and reusable container workers.
 See [Windows runner setup](standalone-runner.md#windows-x64-workers).
 
-`CI required` always evaluates all three job results and accepts only successes.
+`macOS runner` builds an ARM64 guest bundle on macOS and tests the native
+runtime and prepared-slot lifecycle. Full VM acceptance runs separately on a
+dedicated Apple Silicon host; hosted CI cannot substitute for VM isolation tests.
+
+`CI required` always evaluates all four job results and accepts only successes.
 Failure, cancellation or skipping any job cannot pass the gate. Updated PR
 runs cancel the older run for that PR. Non-PR runs use separate concurrency
 groups, leaving active production deployments running.
@@ -86,7 +90,7 @@ Historical MRs and Issues remain available on MoonHub.
 Run `actionlint .github/workflows/ci.yml .github/workflows/deploy.yml`, then the
 repository's `moon check --deny-warn`, `moon fmt`, `moon info` sequence.
 `node --test scripts/github-ci-test.cjs` executes the aggregate shell gate for
-all 64 combinations of success/failure/cancelled/skipped results, checks deployment
+all 256 combinations of success/failure/cancelled/skipped results, checks deployment
 conditions across events/refs/repositories/results/manual choices, checks version
 verification and concurrency configuration. The existing self-check and deploy
 regressions remain applicable. These local checks do not replace real GitHub

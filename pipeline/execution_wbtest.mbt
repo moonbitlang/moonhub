@@ -1499,3 +1499,60 @@ async test "Windows providers claim only Windows jobs and reject legacy Linux wo
     }
   })
 }
+
+///|
+async test "macOS claims cannot consume Windows or implicit Linux jobs" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let source =
+      #|on: workflow_dispatch
+      #|jobs:
+      #|  mac:
+      #|    runs-on: [self-hosted, macos, arm64]
+      #|    steps: [{run: echo mac}]
+      #|  linux:
+      #|    runs-on: self-hosted
+      #|    steps: [{run: echo linux}]
+      #|  windows:
+      #|    runs-on: [self-hosted, windows]
+      #|    steps: [{run: Write-Output windows}]
+    ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), source))
+    let c = Coordinator::new(pool)
+    let admin = @identity.active_user_by_name(pool, "admin")
+    ignore(
+      c.create_provider(
+        admin,
+        "macos",
+        provider_secret,
+        ["self-hosted", "macos", "arm64"],
+        [protocol_repo],
+      ),
+    )
+    ignore(
+      create_run(
+        pool,
+        root,
+        @identity.active_user_by_name(pool, "alice"),
+        protocol_repo,
+        "pipeline",
+        ".github/workflows/build.yml",
+      ),
+    )
+    let assignment = c
+      .claim(provider_secret, { ..claim_request(), runner_os: Some("macos"), })
+      .unwrap()
+    assert_eq(assignment.job.id, "mac")
+    assert_true(
+      c.claim(provider_secret, {
+        ..claim_request(id="2", secret="e".repeat(64)),
+        runner_os: Some("macos"),
+      })
+      is None,
+    )
+    try ignore(c.claim(provider_secret, claim_request())) catch {
+      @domain.Forbidden(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("Legacy Linux worker claimed macOS")
+    }
+  })
+}

@@ -1,6 +1,8 @@
 ///|
 fn render_provider_workers(
   workers : Array[@protocol.WorkerView],
+  revision~ : String = "0",
+  target~ : String = "0",
 ) -> @moonback.Html {
   let current = workers.filter(w => {
     !["drained", "failed"].contains(w.state) || w.active_attempts > 0
@@ -8,7 +10,14 @@ fn render_provider_workers(
   let history = workers.filter(w => {
     ["drained", "failed"].contains(w.state) && w.active_attempts == 0
   })
+  let (ready, preparing) = @protocol.standby_counts(
+    workers,
+    revision,
+    @env.now().reinterpret_as_int64(),
+  )
   Html(b => {
+    b <+
+      "<p class=\"settings-notice\" data-standby-capacity>Standby target \{target} · ready \{ready.to_string()} · preparing \{preparing.to_string()}. Only healthy workers prepared for the current configuration count as ready.</p>"
     b <+
       "<section class=\"provider-execution-workers\" aria-labelledby=\"provider-workers-heading\"><h2 id=\"provider-workers-heading\">Current workers (\{current.length().to_string()})</h2><ul class=\"mr-list\" data-current-workers>"
     for worker in current {
@@ -93,7 +102,8 @@ fn render_provider_config(
         }
         b <+ "<button type=\"submit\">Save configuration</button></form>"
       }
-      b <+ "\{render_provider_workers(snapshot.workers)}</section>"
+      b <+
+        "\{render_provider_workers(snapshot.workers, revision=snapshot.config_revision, target=snapshot.config.get("standby_workers").unwrap_or("0"))}</section>"
     }),
     current_user=Some(actor),
     head_end=@web_assets.repository_assets_head(assets),

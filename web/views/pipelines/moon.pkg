@@ -11,11 +11,13 @@ import {
   "moonbitlang/async",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
+  "moonbitlang/core/env",
   "moonbitlang/core/string",
   "moonbitlang/moonback",
 }
 
 import {
+  "moonbitlang/core/debug",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/gitops",

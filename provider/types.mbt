@@ -51,3 +51,21 @@ fn random_hex(byte_count : Int32) -> String raise ProviderError {
   }
   result.to_string()
 }
+
+///|
+pub(all) struct MacOptions {
+  tart : String
+  home : String
+  prepare_timeout_ms : Int32
+}
+
+///|
+priv struct WorkerBackend {
+  os : String
+  fresh_each_job : Bool
+  initialize : async () -> Unit
+  prepare : async (Options) -> Unit
+  health : async () -> Unit
+  execute : async (Options, @protocol.Assignment, String) -> Unit
+  cleanup : async () -> Unit
+}

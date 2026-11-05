@@ -91,11 +91,12 @@ async fn post_claim(
   provider_token : String,
   request_id : String,
   attempt_token : String,
+  runner_os : String,
 ) -> @protocol.Assignment? {
   let client = @http.Client(options.server)
   defer client.close()
   let request : @protocol.ClaimRequest = {
-    runner_os: Some(@platform.os()),
+    runner_os: Some(runner_os),
     version: @protocol.version,
     request_id,
     attempt_token,
@@ -148,13 +149,14 @@ async fn post_claim(
 async fn claim(
   options : Options,
   provider_token : String,
+  runner_os~ : String = if @platform.windows() { "windows" } else { "linux" },
 ) -> ClaimedAssignment? {
   let request_id = random_hex(16)
   let attempt_token = random_hex(32)
   let deadline = @env.now().reinterpret_as_int64() + 10000L
   for ;; {
     let result = Some(
-      post_claim(options, provider_token, request_id, attempt_token),
+      post_claim(options, provider_token, request_id, attempt_token, runner_os),
     ) catch {
       Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
       Rejected(code) => raise Rejected(code)
