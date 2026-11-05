@@ -99,6 +99,8 @@ test "assignment validates string identifiers and bounded timestamps" {
     job: {
       context: Map([]),
       contents_read: true,
+      matrix: Map([]),
+      strategy: Map([]),
       id: "build",
       name: "Build",
       runs_on: ["self-hosted"],
@@ -169,6 +171,8 @@ test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
     context: Map([]),
     contents_read: true,
+    matrix: Map([]),
+    strategy: Map([]),
     id: "build",
     name: "Build",
     runs_on: ["self-hosted", "linux"],

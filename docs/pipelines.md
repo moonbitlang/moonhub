@@ -40,7 +40,7 @@ Supported configuration:
   ordered exclusions and ignore lists. PR branch filters match the target branch.
   Tag events remain unsupported; see [workflow entry compatibility](workflow-entry.md)
   for diff semantics, conservative fallback and repository-required checks.
-- Static `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
+- `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
 - Explicit job labels include `self-hosted`; the execution target is Linux by
   default or Windows when `windows` is explicit. Selected standard environment
@@ -76,8 +76,9 @@ Supported configuration:
 
 Workflow/job `permissions` supports enforced read-only contents scope and explicit
 no-source access; unsupported scopes fail validation. All unknown fields are
-rejected before mapping. This includes `concurrency`, job-level `if` /
-`continue-on-error`, `strategy`, `container`,
+rejected before mapping. Workflow `concurrency` and static matrix `strategy`
+are supported; see [workflow scheduling](workflow-scheduling.md). Job-level `if` /
+`continue-on-error`, `container`,
 `services`, and job `outputs`. Downloaded actions accept `with`, and downloaded
 action/script steps accept step-level `if` and `continue-on-error`; see
 [GitHub Action execution](github-actions.md). Unknown fields are never silently stripped.
@@ -134,8 +135,8 @@ and reruns continue to work unchanged. No context is fabricated from live state.
 Migration 018 upgrades the database to schema 18 and protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
 together; an older server binary cannot open schema 18. Simple public context
-references still use ordinary resolved env strings. New runs with definition
-version 2 use assignment version 5, including jobs containing only shell steps.
+references still use ordinary resolved env strings. Current definition-v3 runs use assignment version 6; definition-v2 snapshots
+retain assignment version 5, including jobs containing only shell steps.
 Repository secrets retain the separate execution-time channel described below.
 
 ### Repository Secrets
@@ -284,7 +285,8 @@ and retained on rerun. Floating channels such as `stable`/`latest` and `nightly`
 are resolved by the official installer at execution time and can change between
 runs. Use an explicit version for reproducible compiler selection. This built-in
 setup does not download Action code; downloaded actions and runtime expressions
-use the separate [Action runtime](github-actions.md). Matrix jobs remain unsupported.
+use the separate [Action runtime](github-actions.md). Static matrix expansion and workflow concurrency are described in
+[workflow scheduling](workflow-scheduling.md).
 
 ### Source Preparation
 
@@ -337,7 +339,8 @@ jobs:
 ```
 
 Limits: 64 KiB input, one YAML document, 32 collection levels, 8192 YAML nodes,
-16 jobs, 64 steps per job, 256 steps overall, 100 environment entries per scope,
+16 logical jobs, 256 expanded jobs, 64 steps per instance, 4096 expanded steps,
+100 environment entries per scope,
 8 labels per job, and 1 MiB normalized plan JSON. Anchors, aliases, explicit tags,
 merge keys, empty/duplicate keys, decoded NULs and invalid UTF-8 are rejected.
 Dependencies must reference known jobs and form an acyclic graph. Generated step
@@ -398,7 +401,8 @@ Assignment versions are separate from the HTTP request protocol version:
 
 | Saved definition | Assignment version |
 | --- | --- |
-| Current definition version 2, including shell-only jobs | 5 |
+| Current definition version 3, including matrix/strategy contexts | 6 |
+| Historical definition version 2, including shell-only jobs | 5 |
 | Historical definition version 1 with repository secrets | 4 |
 | Historical definition version 1 with built-in MoonBit setup | 3 |
 | Historical definition version 1 with built-in checkout | 2 |
@@ -408,8 +412,9 @@ Reruns preserve the saved definition version. New decoders accept legacy steps
 without `uses` or `moonbit_version`; those fields are empty when unused. Lease,
 claim and result HTTP messages remain V1 under the existing API prefix. Older
 Runners/providers reject unsupported assignments. Upgrade Web, SSH, provider and
-Runner images together. Definition version 2 and assignment version 5 add JSON
-fields without a database schema migration.
+Runner images together. Definition version 3 and assignment version 6 add
+matrix/strategy contexts, and migration 031 adds durable scheduling state.
+Definition version 2 remains readable without reinterpreting its snapshots.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
@@ -667,7 +672,7 @@ require the echoed execution ID and fail closed against an older server.
 The additional `/attempts/:id/steps` endpoint accepts `version`, `step_id`,
 `state`, and `exit_code`. It enforces pending -> running -> terminal transitions,
 ordered execution, and idempotent repeats. Fenced executions cannot report job
-success until every step succeeded (or was conditionally skipped in version 5).
+success until every step succeeded (or was conditionally skipped in versions 5/6).
 Version 5 permits sequential cleanup steps after a failure without allowing that
 failure to become a successful job. Terminalization records interrupted running
 steps and skips pending ones. `Coordinator.read_steps` is repository-scoped;
@@ -675,7 +680,7 @@ the run page exposes persisted per-step state.
 
 ### Execution and Isolation
 
-- Each `run` starts a new shell, with captured environment and, for version 5,
+- Each `run` starts a new shell, with captured environment and, for versions 5/6,
   runtime templates and earlier file-command updates applied. The workspace is
   shared within the job, but shell variables, `cd`, and ordinary exports do not
   leak into later shells.

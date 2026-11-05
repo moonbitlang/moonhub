@@ -1,0 +1,104 @@
+name: Editor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/.moonbit-version"
+      - "editor/**"
+      - "moon.work"
+      - ".gitmodules"
+      - "justfile"
+      - ".github/workflows/editor.yml"
+  pull_request:
+    paths:
+      - "desktop/.moonbit-version"
+      - "editor/**"
+      - "moon.work"
+      - ".gitmodules"
+      - "justfile"
+      - ".github/workflows/editor.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Root CI checks the integrated native/JS workspace on Linux. This job keeps
+  # the editor's own all-target and cross-platform contract, using its scoped
+  # editor/moon.work so Proton setup is not part of an editor-only gate.
+  moon-gates:
+    name: moon (stable, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: editor
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install MoonBit (stable)
+        run: |
+          version="$(cat "$GITHUB_WORKSPACE/desktop/.moonbit-version")"
+          test -n "$version"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$version"
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Update dependencies
+        run: |
+          moon version --all
+          moon update
+
+      - name: Check
+        run: |
+          moon check --target all --warn-list +73 --deny-warn
+          moon fmt --check
+
+      - name: Test
+        run: moon test --target all
+
+  # Browser correctness owns the editor asset pipeline and Playwright suites.
+  # It stays on macOS because the maintained geometry expectations use macOS
+  # font defaults.
+  browser-correctness:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: editor
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install MoonBit (stable)
+        run: |
+          version="$(cat "$GITHUB_WORKSPACE/desktop/.moonbit-version")"
+          test -n "$version"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$version"
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Update dependencies
+        run: |
+          moon version --all
+          moon update
+
+      - name: Install just
+        run: brew install just
+
+      - name: Install Playwright
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Browser smoke suite
+        run: just test-browser-smoke

@@ -18,6 +18,16 @@ pub let secret_assignment_version : Int32 = 4
 pub let remote_assignment_version : Int32 = 5
 
 ///|
+// V6 carries typed matrix/strategy contexts. Old runners reject rather than
+// silently execute empty context values during a rolling upgrade.
+pub let scheduling_assignment_version : Int32 = 6
+
+///|
+pub fn action_runtime_version(version : Int32) -> Bool {
+  [remote_assignment_version, scheduling_assignment_version].contains(version)
+}
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct SecretRequest {
   version : Int32
@@ -166,6 +176,8 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 pub(all) struct JobPlan {
   context : Map[String, String]
   contents_read : Bool
+  matrix : Map[String, Json]
+  strategy : Map[String, Json]
   id : String
   name : String
   runs_on : Array[String]
@@ -179,6 +191,14 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job plan"))
   }
   {
+    strategy: @json.from_json(
+      fields.get("strategy").unwrap_or(({} : Json)),
+      path=path.add_key("strategy"),
+    ),
+    matrix: @json.from_json(
+      fields.get("matrix").unwrap_or(({} : Json)),
+      path=path.add_key("matrix"),
+    ),
     contents_read: @json.from_json(
       fields.get("contents_read").unwrap_or(Json::boolean(true)),
       path=path.add_key("contents_read"),

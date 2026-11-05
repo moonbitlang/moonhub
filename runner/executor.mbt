@@ -5,7 +5,7 @@ async fn validate_options(
 ) -> Options {
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
-      @protocol.secret_assignment_version, @protocol.remote_assignment_version,
+      @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -38,6 +38,10 @@ async fn validate_options(
   guard @fs.kind(launcher) is Regular && @fs.can_execute(launcher) else {
     raise InvalidConfiguration("step launcher is not executable")
   }
+  guard (assignment.job.matrix.is_empty() && assignment.job.strategy.is_empty()) ||
+    assignment.version == @protocol.scheduling_assignment_version else {
+    raise InvalidConfiguration("matrix contexts require assignment version 6")
+  }
   let ids : Map[String, Bool] = Map([])
   let mut checkouts = 0
   for step in assignment.job.steps {
@@ -46,7 +50,7 @@ async fn validate_options(
       checkouts += 1
     }
     if step.remote {
-      guard assignment.version == @protocol.remote_assignment_version else {
+      guard @protocol.action_runtime_version(assignment.version) else {
         raise InvalidConfiguration(
           "remote actions require assignment version 5",
         )
@@ -68,7 +72,7 @@ async fn validate_options(
       (
         !step.run.contains("${{") ||
         (
-          assignment.version == @protocol.remote_assignment_version &&
+          @protocol.action_runtime_version(assignment.version) &&
           step.templates.get("run") == Some(step.run)
         )
       ) &&
@@ -98,7 +102,7 @@ async fn validate_options(
         (if step.uses == "moonhub/setup-moonbit@v1" {
           [
             @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
-            @protocol.remote_assignment_version,
+            @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -106,6 +110,7 @@ async fn validate_options(
           [
             @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
             @protocol.secret_assignment_version, @protocol.remote_assignment_version,
+            @protocol.scheduling_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -117,7 +122,7 @@ async fn validate_options(
       raise InvalidConfiguration("invalid step plan")
     }
     guard step.templates.is_empty() ||
-      assignment.version == @protocol.remote_assignment_version else {
+      @protocol.action_runtime_version(assignment.version) else {
       raise InvalidConfiguration("step templates require assignment version 5")
     }
     guard step.templates.length() <= 202 &&
@@ -150,9 +155,10 @@ async fn validate_options(
     }
     ids[step.id] = true
     guard step.secret_env.is_empty() ||
-      [@protocol.secret_assignment_version, @protocol.remote_assignment_version].contains(
-        assignment.version,
-      ) else {
+      [
+        @protocol.secret_assignment_version, @protocol.remote_assignment_version,
+        @protocol.scheduling_assignment_version,
+      ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
     guard step.env_overrides.length() <= 100 &&
@@ -420,7 +426,7 @@ async fn Runtime::execute_steps(
     self.check_live()
     let script = "\{scratch}/step-\{index}.sh"
     if failed &&
-      self.assignment.version == @protocol.remote_assignment_version &&
+      @protocol.action_runtime_version(self.assignment.version) &&
       !step.remote &&
       !step.uses.is_empty() {
       self.step_state(index, "skipped", 0)
@@ -505,7 +511,7 @@ async fn Runtime::execute_steps(
         }
         let script_timeout = timeout - (monotonic_ms() - fetching_started)
         guard script_timeout > 0L else { raise Stopped("timed_out") }
-        if self.assignment.version == @protocol.remote_assignment_version {
+        if @protocol.action_runtime_version(self.assignment.version) {
           self.execute_action_step(
             step,
             index,
@@ -550,7 +556,7 @@ async fn Runtime::execute_steps(
       }
     }
     let state = if code == 0 &&
-      self.assignment.version == @protocol.remote_assignment_version &&
+      @protocol.action_runtime_version(self.assignment.version) &&
       @fs.exists(scratch + "/result-\{index}.json") {
       let bytes = @fs.read_file(scratch + "/result-\{index}.json")
       guard bytes.binary().length() <= 4096 else { raise InvalidResponse }
@@ -568,12 +574,12 @@ async fn Runtime::execute_steps(
     self.step_state(index, state, code)
     if code != 0 {
       failed = true
-      if self.assignment.version != @protocol.remote_assignment_version {
+      if !@protocol.action_runtime_version(self.assignment.version) {
         return "failure"
       }
     }
   }
-  if self.assignment.version == @protocol.remote_assignment_version &&
+  if @protocol.action_runtime_version(self.assignment.version) &&
     self.execute_action_posts(scratch, failed) != 0 {
     failed = true
   }
@@ -700,7 +706,7 @@ async fn execute_assignment(
     _ => ()
   })
   let root = options.workspace
-  let options = if assignment.version == @protocol.remote_assignment_version {
+  let options = if @protocol.action_runtime_version(assignment.version) {
     @fs.mkdir(root + "/repository", permission=0o700)
     { ..options, workspace: root + "/repository", }
   } else {
@@ -764,7 +770,7 @@ async fn execute_assignment(
       }
       @async.any([
         () => {
-          if assignment.version == @protocol.remote_assignment_version &&
+          if @protocol.action_runtime_version(assignment.version) &&
             assignment.job.contents_read &&
             bundle is Some(fetch) {
             try {

@@ -170,15 +170,15 @@ test "unsupported execution semantics fail closed at every mapping level" {
   for
     (field, fragment) in [
       ("permissions: read-all\n", "permissions"),
-      ("concurrency: deploy\n", "workflow.concurrency"),
+      ("concurrency: {group: deploy, unknown: true}\n", "concurrency.unknown"),
       ("unknown: true\n", "workflow.unknown"),
     ] {
     expect_invalid(field + basic_workflow, fragment)
   }
   for
     field in [
-      "if: false", "container: alpine", "services: {}", "strategy: {}", "continue-on-error: true",
-      "outputs: {}",
+      "if: false", "container: alpine", "services: {}", "strategy: {unknown: true}",
+      "continue-on-error: true", "outputs: {}",
     ] {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }

@@ -38,3 +38,12 @@ pub extend Step with ToJson::{to_json}
 
 ///|
 pub extend Step with @json.FromJson::{from_json}
+
+///|
+pub extend Concurrency with @debug.Debug::{to_repr}
+
+///|
+pub extend Concurrency with ToJson::{to_json}
+
+///|
+pub extend Concurrency with @json.FromJson::{from_json}

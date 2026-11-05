@@ -9,6 +9,10 @@ priv struct PipelineJobPage {
 ///|
 fn queue_reason_text(reason : @pipeline.QueueReason) -> String {
   match reason {
+    @pipeline.WaitingConcurrency =>
+      "Waiting for the previous run in this concurrency group to finish."
+    @pipeline.WaitingMatrixCapacity =>
+      "Waiting for an available matrix parallel slot."
     @pipeline.WaitingDependencies => "Waiting for dependency jobs to succeed."
     @pipeline.RequesterUnavailable =>
       "The requester no longer has permission to run this job, or the repository is not ready."
