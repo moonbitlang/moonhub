@@ -82,16 +82,19 @@ depend on `domain`. `identity` and `mail` use `database` and `domain`.
 `collaboration` builds on repository authorization. `ssh` uses repository and
 collaboration services. `web` is the outer application adapter.
 
-`pipeline/workflow` depends only on `vendor/yaml` and core packages. `pipeline`
-uses workflow/protocol definitions, repository/identity authorization, bounded
-Git operations, and the database adapter. `web/views/pipelines` owns the machine
+`pipeline/workflow` depends only on `pipeline/actions`, `vendor/yaml` and core
+packages. `pipeline` uses workflow/protocol definitions, repository/identity
+authorization, bounded Git operations, and the database adapter.
+`web/views/pipelines` owns the machine
 API and its HTTP tests. It is mounted independently of browser authentication;
 `web/dependencies.mbt` provides its coordinator and `web/server.mbt` owns lease
-reconciliation. The independent `runner` package executes assigned literal steps;
-the `provider` package claims assignments and invokes Docker; the root package
-owns both CLIs. The default Web/SSH services do not include the provider; deploy
-it through the dedicated Compose overlay. See
-[pipeline delivery scope](pipelines.md).
+reconciliation. The independent `runner` package executes assigned shell steps
+and JavaScript/composite actions. The `provider` package owns Docker/ASG
+controllers and workers; `runner/cli` owns single-assignment execution arguments,
+and `cmd/moonhub-runner` is the standalone entry point. The root package retains
+the legacy CLI entry points. The default Web/SSH services do not include a
+provider; use the dedicated Compose overlay or standalone controller. See
+[Pipeline operation](pipelines.md).
 
 MR checks add a one-way dependency from `pipeline` to `collaboration`.
 Collaboration owns required workflow policies, execution approval, versioned

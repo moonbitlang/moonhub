@@ -150,7 +150,7 @@ only compile its implementation under the old workflow.
 Migration 017 adds the MR event, distinguishes automatic/required checks and
 preserves existing execution approvals. Existing run definitions without `uses`
 remain readable and runnable. New checkout assignments require matching provider
-and Runner images; see [assignment compatibility](pipelines.md#runner-protocol-step-2).
+and Runner images; see [assignment compatibility](pipelines.md#runner-protocol).
 
 Migration 014 preserves existing MRs, reviews, branch rules, and Pipeline runs.
 It adds opt-in requirements, versioned check state, and immutable run-to-check

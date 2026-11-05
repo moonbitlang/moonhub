@@ -65,9 +65,9 @@ Use `--repo OWNER/NAME` or `MOONHUB_REPOSITORY`. When omitted, the client checks
 `origin` push URLs first, then the fetch URL, and accepts only a remote whose host
 matches the configured server. It supports SSH URLs, SCP-style Git URLs and HTTP
 Git URLs. It does not infer another server from a Git remote or change remotes.
-The CLI does not push MR branches. Push explicitly to
-`ssh://git@moonhub-dev.mooncakes.io:22/compiler/moonhub.git` rather than using a
-clone's custom `origin` push port.
+The CLI does not push MR branches. Use Git to push to the product repository's
+configured SSH remote before creating an MR. Development of MoonHub itself uses
+the GitHub remote described in [repository CI](github-ci.md).
 
 Add `--json` for machine-readable output. Resource IDs, versions and cursors are
 canonical decimal strings, avoiding JSON integer precision loss. List commands
@@ -267,9 +267,9 @@ access is required in addition to token permission.
 ## Upgrade and verification
 
 Migration 016 adds tokens without changing accounts, sessions or existing jobs.
-Build/Runner defaults use MoonBit `0.10.17+093cb8f9c`, matching the formatter
-syntax in this repository; rebuild the dependency base and Runner when changing
-that deployment pin.
+The Build/Runner compiler pin is defined in `deploy/base.Dockerfile`; see the
+[current toolchain requirements](../README.md#moonbit-toolchain). Rebuild the
+dependency base and Runner when changing that deployment pin.
 Upgrade matching Web/SSH executables together. Token credentials are excluded
 from identity-only exports; create replacement credentials on a migrated site.
 
