@@ -27,8 +27,7 @@ The script preserves the index/dependency initialization, check/fmt/info order,
 input/interface guard, package boundaries, script tests, frontend build, native
 tests and build with `--strip -j 1`, then the managed Docker/ASG lifecycle
 acceptance with local adapters (including cleanup failure and stale-worker drain).
-Docker SSH keeps
-`bash scripts/docker-smoke.sh`. No TypeScript or browser check is added.
+Docker SSH keeps `bash scripts/docker-smoke.sh`.
 
 `Windows runner` runs on Windows Server 2022, builds the Windows worker and task
 image, and verifies shells, Actions, process cleanup and reusable container workers.
@@ -38,9 +37,33 @@ See [Windows runner setup](standalone-runner.md#windows-x64-workers).
 runtime and prepared-slot lifecycle. Full VM acceptance runs separately on a
 dedicated Apple Silicon host; hosted CI cannot substitute for VM isolation tests.
 
-`CI required` always evaluates all four job results and accepts only successes.
-Failure, cancellation or skipping any job cannot pass the gate. Updated PR
-runs cancel the older run for that PR. Non-PR runs use separate concurrency
+The additional checks run alongside those four jobs, without waiting for
+Self-check or sharing its build outputs:
+
+- `.github/workflows/frontend-checks.yml` runs TypeScript (`npm run check --prefix js`)
+  and Playwright in the same Ubuntu 24.04 job. The browser job installs and
+  verifies the production MoonBit pin, resolves dependencies, installs Chromium
+  and its system libraries, builds browser assets, checks TypeScript against the
+  generated MoonBit client declarations, builds the native fixture server, then
+  runs all tests in `js/tests`. Failed runs upload the HTML report, traces and
+  test results for seven days.
+- `Build and deployment regressions` in `ci.yml` runs the eight build/deployment
+  script regressions (`apt-config`, `base-image`, `deploy-script`, `github-deploy`,
+  `moonbit-install`, `production-deploy`, `shared-build`, `shared-host`) and the
+  pipeline Compose configuration smoke. The same job runs the Python identity
+  transfer test, including its Node interoperability checks. These use disposable
+  local fixtures and do not deploy to production.
+
+The frontend workflow has only a `workflow_call` trigger, so it inherits the
+caller's commit, PR cancellation and deployment gate without creating duplicate
+push/PR runs. Browser tests and build/deployment regressions have independent
+runners; the original Self-check still runs its existing checks in order.
+Legacy standalone browser smoke scripts and the full Docker pipeline/recovery
+end-to-end scripts remain opt-in; these jobs do not invoke them.
+
+`CI required` always evaluates all six job/workflow results and accepts only
+successes. Failure, cancellation or skipping any job cannot pass the gate.
+Updated PR runs cancel the older run for that PR. Non-PR runs use separate concurrency
 groups, leaving active production deployments running.
 
 Only a successful `master` push calls the reusable `deploy.yml` automatically.
@@ -58,8 +81,9 @@ These are separate live operations. Source changes do not establish that any
 checkbox below is complete. Keep evidence URLs and timestamps with the migration
 PR. Do not disable other repositories' pipeline services.
 
-1. Open the GitHub migration PR and obtain successful `Self-check`, `Docker SSH`
-   and `CI required` results. Verify a PR update cancels an older running PR CI.
+1. Open the GitHub migration PR and obtain successful results for every job,
+   including `Frontend checks`, `Build and deployment regressions` and
+   `CI required`. Verify a PR update cancels an older running PR CI.
 2. Using the existing MoonHub administrator session, disable only
    `compiler/moonhub`'s outbound mirror to GitHub. Wait for in-flight transfers;
    remove GitHub's `moonhub-outbound-mirror` write deploy key, after matching its
@@ -87,10 +111,10 @@ Historical MRs and Issues remain available on MoonHub.
 
 ## Verification
 
-Run `actionlint .github/workflows/ci.yml .github/workflows/deploy.yml`, then the
+Run `actionlint .github/workflows/*.yml`, then the
 repository's `moon check --deny-warn`, `moon fmt`, `moon info` sequence.
 `node --test scripts/github-ci-test.cjs` executes the aggregate shell gate for
-all 256 combinations of success/failure/cancelled/skipped results, checks deployment
+all 4,096 combinations of success/failure/cancelled/skipped results, checks deployment
 conditions across events/refs/repositories/results/manual choices, checks version
 verification and concurrency configuration. The existing self-check and deploy
 regressions remain applicable. These local checks do not replace real GitHub
