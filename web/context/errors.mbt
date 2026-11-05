@@ -16,6 +16,7 @@ pub fn app_error_middleware(
             let (status, message) = match err {
               @domain.BadRequest(message~) | @gitops.Failure(message~) =>
                 (400, message)
+              @gitops.DiffFailure(message) => (503, message)
               @domain.Unauthorized(message~) => (401, message)
               @domain.Forbidden(message~) => (403, message)
               @domain.NotFound(message~) => (404, message)
@@ -26,6 +27,10 @@ pub fn app_error_middleware(
             }
             // A streaming response cannot be replaced once its headers are sent.
             guard !committed.val else { raise err }
+            let headers = private_page_headers().to_mut()
+            if status == 503 {
+              headers.set("Retry-After", "2")
+            }
             res.send_html(
               @web_ui.render_error(
                 status,
@@ -34,7 +39,7 @@ pub fn app_error_middleware(
                 current_user=current_user_from_request(req),
               ),
               status~,
-              headers=private_page_headers(),
+              headers~,
             )
           }
         }

@@ -21,6 +21,8 @@ pub let browser_app_module : @moonback.Module = Module(ctx => {
         ctx.use_(@web.browser_resources_module)
         let asset_path_map = ctx.require(@web_context.asset_paths_key)
         let root = ctx.require(@web_context.config_root)
+        ctx.provide(@web_context.diff_executor_key, @gitops.DiffExecutor::new())
+        ctx.provide(@web_context.diff_enabled_key, false)
         ctx.provide(@web_context.browser_access_key, {
           repositories: _ => @gitops.list_repositories(root),
           personal_owner: _ => None,

@@ -67,6 +67,9 @@ fn render_merge_discussion(
   }
   Html(b => {
     b <+ "<details class=\"mr-discussion\" id=\"discussion-\{id.to_string()}\""
+    if discussion.anchor is Some(anchor) {
+      b <+ " data-discussion-anchor data-anchor=\"\{Json(anchor).stringify()}\""
+    }
     if !discussion.resolved || selected {
       b <+ " open"
     }
@@ -79,7 +82,7 @@ fn render_merge_discussion(
         anchor.new_path
       }
       b <+
-        "<p class=\"discussion-anchor\"><a href=\"\{base}?tab=changes&amp;version=\{discussion.version.to_string()}&amp;commit=\{anchor.commit_sha}&amp;discussion=\{id.to_string()}&amp;code=\{id.to_string()}#diff-code\">\{path} · \{anchor.side} L\{anchor.start_line.to_string()}–\{anchor.end_line.to_string()}</a> · \{if anchor.commit_sha.is_empty() { "All changes" } else { "Commit " + anchor.commit_sha[:12].to_owned() }}</p><pre class=\"anchor-context\">\{anchor.context}</pre>"
+        "<p class=\"discussion-anchor\"><a href=\"\{base}?tab=changes&amp;version=\{discussion.version.to_string()}&amp;commit=\{anchor.commit_sha}&amp;discussion=\{id.to_string()}&amp;code=\{id.to_string()}&amp;mode=line&amp;ignore_comments=false&amp;ignore_tests=false#diff-code\">\{path} · \{anchor.side} L\{anchor.start_line.to_string()}–\{anchor.end_line.to_string()}</a> · \{if anchor.commit_sha.is_empty() { "All changes" } else { "Commit " + anchor.commit_sha[:12].to_owned() }}</p><pre class=\"anchor-context\">\{anchor.context}</pre>"
     }
     if !discussion.state_actor.is_empty() {
       b <+
