@@ -153,7 +153,15 @@ fn windows_container_isolation(
   if build == Some(20348L) {
     return "process"
   }
-  if info.operating_system.to_lower().contains("windows 11") &&
+  let operating_system = info.operating_system.to_lower()
+  // Moby formats client releases as "Microsoft Windows Version ..." without
+  // a marketing version; older engines can retain the Windows 10 product name.
+  // Build 22000+ distinguishes Windows 11 clients, while Server is excluded.
+  if (
+      operating_system.has_prefix("microsoft windows ") ||
+      operating_system.has_prefix("windows ")
+    ) &&
+    !operating_system.contains("server") &&
     build is Some(build) &&
     build >= 22000L {
     return "hyperv"

@@ -11,7 +11,7 @@ $admin = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsI
 if (-not $admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run elevated' }
 $hostOS = Get-CimInstance Win32_OperatingSystem
 $build = [int]$hostOS.BuildNumber
-$isolation = if ($hostOS.ProductType -eq 1 -and $build -ge 22000 -and $hostOS.Caption -match 'Windows 11') {
+$isolation = if ($hostOS.ProductType -eq 1 -and $build -ge 22000) {
   'hyperv'
 } elseif ($hostOS.ProductType -ne 1 -and $build -eq 20348) {
   'process'

@@ -141,6 +141,19 @@ test "Windows container isolation follows the actual daemon host" {
     )
   }
   for
+    operating_system in [
+      "Microsoft Windows Version 24H2 (OS Build 26100.4652)", "Microsoft Windows 10 Pro",
+    ] {
+    assert_eq(
+      windows_container_isolation({
+        ..server,
+        operating_system,
+        kernel_version: "10.0.26100.4652",
+      }),
+      "hyperv",
+    )
+  }
+  for
     invalid in [
       { ..server, os_type: "linux", },
       { ..server, architecture: "aarch64", },

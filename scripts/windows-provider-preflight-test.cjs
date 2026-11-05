@@ -18,7 +18,7 @@ async function scenario(cleanupFails) {
 const fs=require('node:fs'),assert=require('node:assert/strict'),path=require('node:path');
 const file=${JSON.stringify(stateFile)},state=JSON.parse(fs.readFileSync(file)),command=path.basename(process.argv[1]),args=process.argv.slice(2);
 const save=()=>fs.writeFileSync(file,JSON.stringify(state));
-if(command==='info') console.log(JSON.stringify({OSType:'windows',Architecture:'amd64',OperatingSystem:'Microsoft Windows 11 Pro',KernelVersion:'10.0.26100.4652'}));
+if(command==='info') console.log(JSON.stringify({OSType:'windows',Architecture:'amd64',OperatingSystem:'Microsoft Windows Version 24H2 (OS Build 26100.4652)',KernelVersion:'10.0.26100.4652'}));
 else if(command==='image') console.log(args.includes('{{.Os}}/{{.Architecture}}/{{.OsVersion}}')?'windows/amd64/10.0.20348.1':'sha256:fixture');
 else if(command==='run') {
   assert.equal(args[args.indexOf('--isolation')+1],'hyperv');
