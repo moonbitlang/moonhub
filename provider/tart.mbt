@@ -151,12 +151,27 @@ async fn run_tart_worker(
         return
       }
       let before = @env.now().reinterpret_as_int64()
+      // Join the actual VM process before deleting its directory: a shutdown
+      // finalizer can otherwise recreate NVRAM/config after `tart delete`.
+      ignore(tart_control(macos, ["stop", slot.val, "--timeout", "0"])) catch {
+        _ => ()
+      }
+      if running.val is Some(task) {
+        @async.with_timeout(15000, () => ignore(task.wait())) catch {
+          _ => raise CleanupFailure
+        }
+      }
       remove_vm(macos, slot.val) catch {
         _ => raise CleanupFailure
       }
-      if running.val is Some(task) {
-        ignore(task.wait())
+      let directory = macos.home + "/vms/" + slot.val
+      if @fs.exists(directory) {
+        guard @fs.kind(directory, follow_symlink=false) is Directory else {
+          raise CleanupFailure
+        }
+        @fs.rmdir(directory, recursive=true)
       }
+      guard !@fs.exists(directory) else { raise CleanupFailure }
       slot.val = ""
       running.val = None
       @stdio.stderr.write(
@@ -197,13 +212,21 @@ async fn run_tart_worker(
         guard tart_control(macos, ["--version"]).trim() == "2.41.1" else {
           raise InvalidConfiguration("Use verified Tart 2.41.1")
         }
-        for
-          name in vm_names(
-            tart_control(macos, [
-              "list", "--source", "local", "--format", "json",
-            ]),
-          ) {
+        let names = vm_names(
+          tart_control(macos, ["list", "--source", "local", "--format", "json"]),
+        )
+        for name in names {
           remove_vm(macos, name)
+        }
+        // Inventory can omit incomplete/corrupt VM directories. Refuse reuse
+        // instead of silently overlooking a possibly live orphan.
+        let directory = macos.home + "/vms"
+        if @fs.exists(directory) {
+          guard !@fs.readdir(directory).any(name => {
+            name.has_prefix("moonhub-slot-")
+          }) else {
+            raise CleanupFailure
+          }
         }
       },
       prepare: current => {

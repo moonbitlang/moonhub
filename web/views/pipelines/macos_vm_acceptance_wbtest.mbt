@@ -226,6 +226,9 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
       )
       assert_eq(inventory_code, 0)
       assert_true(!inventory.text().contains("moonhub-slot-"))
+      assert_true(
+        !@fs.readdir(home + "/vms").any(name => name.has_prefix("moonhub-slot-")),
+      )
     })
   })
 }
