@@ -390,6 +390,13 @@ test('hashFiles matches toolkit glob semantics and resolves top-level action inp
   const result = await execute({...config, step:{id:'hash',remote:true,uses,env:{},inputs:{key:''},templates:{'with:key':"cache-" + '$' + "{{ hashFiles('folder/moon.mod') }}"}}}, state);
   assert.equal(result.code,0);
   assert.equal(state.steps.hash.outputs.key, 'cache-' + await hashFiles(root,['folder/moon.mod']));
+  const alias = path.join(config.temp,'workspace-alias');
+  await fs.symlink(root,alias,'dir');
+  assert.equal(await hashFiles(alias,[path.join(alias,'folder/moon.mod')]),await hashFiles(root,['folder/moon.mod']));
+  const aliasState = {};
+  const aliasResult = await execute({...config,workspace:alias,step:{id:'hash',remote:true,uses,env:{},inputs:{key:''},templates:{'with:key':"cache-" + '$' + "{{ hashFiles(format('{0}/folder/moon.mod', github.workspace)) }}"}}},aliasState);
+  assert.equal(aliasResult.code,0);
+  assert.equal(aliasState.steps.hash.outputs.key,'cache-' + await hashFiles(root,['folder/moon.mod']));
   assert.throws(() => evaluate("hashFiles('**')"), /asynchronous/);
 });
 

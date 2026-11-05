@@ -15,16 +15,25 @@ export async function hashFiles(workspace, args) {
   if (typeof workspace !== 'string' || !workspace || !args.length || args.length > 100 || args.some(x => typeof x !== 'string')) throw new Error('hashFiles requires a workspace and string patterns');
   const input = args.join('\n');
   if (Buffer.byteLength(input) > 65536 || input.includes('\0')) throw new Error('hashFiles patterns exceed limits');
-  const root = await fs.realpath(workspace), patterns = [];
+  const sourceRoot = path.resolve(workspace), root = await fs.realpath(sourceRoot), patterns = [];
   for (let line of input.replaceAll('\r', '\n').split('\n')) {
     line = line.trim();
     if (!line || line.startsWith('#')) continue;
     let negate = false;
     while (line.startsWith('!')) { negate = !negate; line = line.slice(1).trim(); }
     if (!line) continue;
-    const resolved = path.resolve(root, line);
+    const trailing = line.endsWith(path.sep) || line.endsWith('/') ? path.sep : '';
+    let resolved = path.resolve(root, line);
+    let absolute = path.isAbsolute(line) ? line : Pattern.globEscape(root) + resolved.slice(root.length) + trailing;
+    // Expressions are evaluated before Action entry canonicalizes the workspace.
+    // Preserve absolute patterns made from that original alias (/tmp on macOS,
+    // a Windows junction, etc.) while still checking the physical boundary.
+    if (path.isAbsolute(line) && isWithin(sourceRoot, resolved)) {
+      const relative = path.relative(sourceRoot, resolved);
+      resolved = path.resolve(root, relative);
+      absolute = Pattern.globEscape(root) + (relative ? path.sep + relative : '') + trailing;
+    }
     if (!isWithin(root, resolved)) continue;
-    const absolute = path.isAbsolute(line) ? line : Pattern.globEscape(root) + resolved.slice(root.length) + (line.endsWith(path.sep) || line.endsWith('/') ? path.sep : '');
     const pattern = new Pattern((negate ? '!' : '') + absolute);
     // Outside patterns cannot affect the result and must never initiate a walk.
     if (!isWithin(root, pattern.searchPath)) continue;

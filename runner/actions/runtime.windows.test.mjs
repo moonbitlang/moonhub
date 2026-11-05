@@ -90,6 +90,9 @@ test('Windows hashFiles is case insensitive and hashes literal brackets', { skip
     await fs.mkdir(path.join(runtime.workspace,'folder'));
     await fs.writeFile(path.join(runtime.workspace,'folder','lock'),'folder');
     assert.equal(await hashFiles(runtime.workspace,['folder/']),sum('folder'));
+    const alias = path.join(runtime.temp,'workspace-alias');
+    await fs.symlink(runtime.workspace,alias,'junction');
+    assert.equal(await hashFiles(alias,[path.join(alias,'Moon.Mod')]),sum('windows'));
     await fs.writeFile(path.join(runtime.workspace,'[lock].json'),'lock');
     assert.equal(await hashFiles(runtime.workspace,['[[]lock].json']),sum('lock'));
   });
