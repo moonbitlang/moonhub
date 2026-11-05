@@ -6,7 +6,7 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { test } = require('node:test');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function scenario(failCleanup = false, remoteImage = false) {
+async function scenario(failCleanup = false, remoteImage = false, stopIdle = false) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-tart-state-')),
       file = path.join(root, 'state.json');
     fs.writeFileSync(file, JSON.stringify({ vms: {}, prepared: 0, executions: 0, deleted: 0 }));
@@ -102,7 +102,7 @@ else process.exit(2);
             assert.equal(st.deleted, st.executions);
             ready++;
           }
-          if (body.state === 'failed') { if(failCleanup)failed=true;else throw Error('worker failed'); }
+          if (body.state === 'failed') { if(failCleanup || stopIdle)failed=true;else throw Error('worker failed'); }
           if (body.state === 'drained') {
             assert.deepEqual(state().vms, {}, 'drained before VM cleanup');
             drained = true;
@@ -121,7 +121,7 @@ else process.exit(2);
           assert.ok(ready > 0);
           const st = state();
           assert.equal(st.deleted, st.executions);
-          if (applied !== '1') reply = { version: 1, assignment: null };
+          if (stopIdle || applied !== '1') reply = { version: 1, assignment: null };
           else {
             claims++;
             const now = Date.now();
@@ -209,9 +209,18 @@ else process.exit(2);
           resolve();
         });
       });
-      for (let i = 0; i < 550 && !exited && !failure && !drained; i++) await delay(100);
+      let stopped=false;
+      for (let i = 0; i < 550 && !exited && !failure && !drained; i++) {
+        if(stopIdle && ready>0 && !stopped) { stopped=true;child.kill('SIGINT'); }
+        await delay(100);
+      }
       if (failure) throw failure;
-      if(failCleanup) {
+      if(stopIdle) {
+        assert.ok(exited,output);await closed;
+        assert.equal(claims,0);assert.equal(state().executions,0);
+        assert.equal(state().deleted,1,'shutdown left a prepared VM behind');
+        assert.deepEqual(state().vms,{},output);
+      } else if(failCleanup) {
         assert.ok(exited,output);await closed;assert.notEqual(code,0);assert.equal(failed,true);
         assert.equal(claims,1);assert.equal(state().executions,1);assert.equal(state().deleted,0);assert.equal(drained,false);
       } else {
@@ -241,3 +250,5 @@ test('macOS worker claims only after guest readiness and replaces each consumed 
 test('macOS cleanup failure prevents readiness and further claims', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(true));
 
 test('immutable OCI VM sources are inspected through their local clone', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,true));
+
+test('interrupting an idle Mac worker removes its prepared VM', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,false,true));

@@ -1,7 +1,7 @@
 ///|
 fn valid_vm_image(image : String) -> Bool {
   if image.strip_prefix("local:") is Some(name) {
-    return !name.is_empty() &&
+    return !["", ".", ".."].contains(name.to_owned()) &&
       name.length() <= 100 &&
       !name.has_prefix("-") &&
       !name.has_prefix("moonhub-slot-") &&
@@ -169,7 +169,14 @@ async fn run_tart_worker(
         _ => ()
       }
       if running.val is Some(task) {
-        @async.with_timeout(15000, () => ignore(task.wait())) catch {
+        @async.with_timeout(15000, () => {
+          ignore(task.wait()) catch {
+            // Process::run waits for native termination before propagating
+            // cancellation. A cancelled joined task is still safe to delete.
+            @async.WaitedTaskAlreadyCancelled => ()
+            err => raise err
+          }
+        }) catch {
           _ => raise CleanupFailure
         }
       }

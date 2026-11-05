@@ -5,7 +5,7 @@ test "Tart image policy allows pinned remote digests and explicit local template
   for
     image in [
       "latest", "ghcr.io/example/macos:latest", "local:../template", "local:moonhub-slot-test",
-      "local:-x", "local:",
+      "local:-x", "local:", "local:.", "local:..",
     ] {
     assert_true(!valid_vm_image(image))
   }

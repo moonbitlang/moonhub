@@ -5,17 +5,38 @@ set -euo pipefail
 [[ $(sysctl -n kern.hv_vmm_present) = 1 ]] || { echo 'Refusing installation on a physical host' >&2; exit 1; }
 BUNDLE=${1:?Usage: install-guest.sh /path/to/bundle}
 [[ -x "$BUNDLE/bin/moonhub-runner" && -x "$BUNDLE/bin/moonhub-runner-step" && -x "$BUNDLE/bin/node" ]]
-if ! id _moonhub >/dev/null 2>&1; then
-  ! dscl . -search /Users UniqueID 599 | grep -q .
-  ! dscl . -search /Groups PrimaryGroupID 599 | grep -q .
+# Identity lookups must fail closed: `! command` is exempt from bash `set -e`.
+assert_identity_owner() {
+  local records
+  records=$(dscl . -search "$1" "$2" 599) || return 1
+  if [[ -n "$records" ]]; then
+    records=$(printf '%s\n' "$records" | awk -v attribute="$2" '
+      $0 ~ "[[:space:]]" attribute "[[:space:]]*=" {
+        sub("[[:space:]]+" attribute "[[:space:]]*=.*$", ""); print
+      }')
+    [[ -n "$records" ]] || return 1
+  fi
+  if [[ "$records" != "$3" ]]; then
+    echo "Reserved MoonHub identity 599 is already in use" >&2
+    return 1
+  fi
+}
+if id _moonhub >/dev/null 2>&1; then
+  [[ $(id -u _moonhub) = 599 && $(id -g _moonhub) = 599 ]]
+  assert_identity_owner /Users UniqueID _moonhub
+  assert_identity_owner /Groups PrimaryGroupID _moonhub
+else
+  assert_identity_owner /Users UniqueID ''
+  assert_identity_owner /Groups PrimaryGroupID ''
   dscl . -create /Groups/_moonhub PrimaryGroupID 599
   dscl . -create /Users/_moonhub
   dscl . -create /Users/_moonhub UniqueID 599
   dscl . -create /Users/_moonhub PrimaryGroupID 599
-  dscl . -create /Users/_moonhub UserShell /usr/bin/false
-  dscl . -create /Users/_moonhub NFSHomeDirectory /var/empty
-  dscl . -create /Users/_moonhub IsHidden 1
 fi
+# Enforce the dedicated account policy even when repairing an existing template.
+dscl . -create /Users/_moonhub UserShell /usr/bin/false
+dscl . -create /Users/_moonhub NFSHomeDirectory /var/empty
+dscl . -create /Users/_moonhub IsHidden 1
 [[ " $(id -Gn _moonhub) " != *' admin '* ]]
 mkdir -p /usr/local/bin /usr/local/lib/moonhub /usr/local/libexec /opt/actions/node20/bin
 # Run the transport as a root LaunchDaemon so readiness never depends on GUI

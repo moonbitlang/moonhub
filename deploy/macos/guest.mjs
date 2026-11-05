@@ -53,6 +53,60 @@ async function identity() {
   }
   return { uid, gid };
 }
+// Observe process exit separately from pipe closure: detached descendants can
+// retain stdout/stderr after the executor has exited. The host destroys the
+// complete guest next, so reporting must not wait indefinitely for their EOF.
+export async function collectExecution(child, token, timeoutMs) {
+  const output = [],
+    diagnostic = [];
+  let outputBytes = 0,
+    diagnosticBytes = 0,
+    overflow = false,
+    drainTimer;
+  child.stdout.on('data', (chunk) => {
+    outputBytes += chunk.length;
+    if (outputBytes > 65536) {
+      overflow = true;
+      child.kill('SIGKILL');
+    } else output.push(chunk);
+  });
+  child.stderr.on('data', (chunk) => {
+    if (diagnosticBytes < 8192) {
+      const retained = chunk.subarray(0, 8192 - diagnosticBytes);
+      diagnostic.push(retained);
+      diagnosticBytes += retained.length;
+    }
+  });
+  const closed = new Promise((resolve) => child.once('close', resolve));
+  const exited = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', resolve);
+  });
+  const timeout = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+  child.stdin.on('error', () => {});
+  child.stdin.end(token + '\n');
+  try {
+    const code = await exited;
+    await Promise.race([
+      closed,
+      new Promise((resolve) => {
+        drainTimer = setTimeout(resolve, 250);
+      }),
+    ]);
+    assert.ok(!overflow, 'Executor response exceeds limits');
+    return {
+      code,
+      output: Buffer.concat(output).toString('utf8'),
+      diagnostic: Buffer.concat(diagnostic).toString('utf8'),
+    };
+  } finally {
+    clearTimeout(timeout);
+    clearTimeout(drainTimer);
+    child.stdout.destroy();
+    child.stderr.destroy();
+  }
+}
+
 async function main() {
   const { uid, gid } = await identity();
   if (process.argv[2] === 'health') {
@@ -97,26 +151,11 @@ async function main() {
     env: { PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', TMPDIR: '/tmp', HOME: workspace },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  let output = '',
-    diagnostic = '';
-  child.stdout.on('data', (b) => {
-    output += b;
-    if (Buffer.byteLength(output) > 65536) child.kill('SIGKILL');
-  });
-  child.stderr.on('data', (b) => {
-    if (diagnostic.length < 8192) diagnostic += b;
-  });
-  const timeout = setTimeout(
-    () => child.kill('SIGKILL'),
-    (payload.assignment.job.timeout_minutes || 1) * 60000 + 15000,
+  const { code, output, diagnostic } = await collectExecution(
+    child,
+    payload.token,
+    payload.assignment.job.timeout_minutes * 60000 + 15000,
   );
-  child.stdin.on('error', () => {});
-  child.stdin.end(payload.token + '\n');
-  const code = await new Promise((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', resolve);
-  });
-  clearTimeout(timeout);
   // Protocol output only. Guest diagnostics can include private data.
   let report;
   try {
