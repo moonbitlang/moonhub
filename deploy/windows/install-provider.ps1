@@ -20,6 +20,8 @@ if (-not [Uri]::TryCreate($Server, [UriKind]::Absolute, [ref]$uri) -or
 if ($RunnerImage -notmatch '^\S{1,256}$' -or $RunnerImage.StartsWith('-')) { throw 'Invalid runner image' }
 $Directory = [IO.Path]::GetFullPath($Directory).TrimEnd('\')
 if ($Directory -match '[",\r\n]' -or $Directory -eq [IO.Path]::GetPathRoot($Directory)) { throw 'Use an absolute private installation directory' }
+. "$PSScriptRoot/installation-path.ps1"
+Assert-MoonHubInstallationPath -Directory $Directory
 # Keep installation identity immutable. Reinstallation may replace binaries but
 # must not silently enroll another provider or reuse an ASG worker's state.
 $configPath = Join-Path $Directory 'provider.json'

@@ -28,21 +28,10 @@ if (-not [IO.Path]::IsPathRooted($Directory) -or $Directory -match '[",\r\n]' -o
 foreach ($binary in 'moonhub-runner.exe', 'moonhub-runner-step.exe') {
   if (-not (Test-Path -LiteralPath (Join-Path $Bundle "bin/$binary") -PathType Leaf)) { throw "Missing bundle binary: $binary" }
 }
-# Reject junctions/symlinks before a privileged copy or recursive ACL operation.
-$ancestor = $Directory
-while ($ancestor) {
-  if ((Test-Path -LiteralPath $ancestor) -and ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Installation paths must not contain reparse points' }
-  $ancestor = Split-Path $ancestor -Parent
-}
-$dataRoot = [Environment]::GetFolderPath('CommonApplicationData').TrimEnd('\')
-if ((Split-Path $Directory -Parent) -ne $dataRoot) { throw 'Install into a direct child of the system ProgramData directory' }
-if (Test-Path -LiteralPath $Directory) {
-  if ((Get-ChildItem -LiteralPath $Directory -Force).Count -gt 0 -and
-      -not (Test-Path -LiteralPath (Join-Path $Directory 'bin/moonhub-runner.exe'))) { throw 'Refusing to reuse a non-MoonHub installation directory' }
-  foreach ($entry in Get-ChildItem -LiteralPath $Directory -Recurse -Force) {
-    if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Installation directory contains a reparse point' }
-  }
-}
+. "$PSScriptRoot/installation-path.ps1"
+Assert-MoonHubInstallationPath -Directory $Directory
+if ((Test-Path -LiteralPath $Directory) -and @(Get-ChildItem -LiteralPath $Directory -Force).Count -gt 0 -and
+    -not (Test-Path -LiteralPath (Join-Path $Directory 'bin/moonhub-runner.exe'))) { throw 'Refusing to reuse a non-MoonHub installation directory' }
 $previousPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 $imageJson = & $docker --host $endpoint image inspect --format '{{json .}}' $RunnerImage 2>$null
@@ -67,7 +56,6 @@ try {
   $remaining = & $docker --host $endpoint ps -aq --filter "name=^$probe`$"
   if ($LASTEXITCODE -ne 0 -or $remaining) { throw 'Preflight container cleanup failed' }
 }
-New-Item -ItemType Directory -Force $Directory | Out-Null
 # Remove inherited and explicit unprivileged grants, including on old files.
 $acl = [Security.AccessControl.DirectorySecurity]::new()
 $acl.SetAccessRuleProtection($true, $false)
@@ -75,7 +63,20 @@ $acl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
 foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
   $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
 }
-Set-Acl -LiteralPath $Directory -AclObject $acl
+if (Test-Path -LiteralPath $Directory) {
+  Assert-MoonHubInstallationPath -Directory $Directory
+  Set-Acl -LiteralPath $Directory -AclObject $acl
+} else {
+  # Supply the private ACL at creation: no permissive interval between mkdir
+  # and Set-Acl, and an attacker-created path is validated instead of trusted.
+  $newDirectory = [IO.DirectoryInfo]::new($Directory)
+  if ($PSVersionTable.PSEdition -eq 'Core') {
+    [IO.FileSystemAclExtensions]::Create($newDirectory, $acl)
+  } else {
+    $newDirectory.Create($acl)
+  }
+}
+Assert-MoonHubInstallationPath -Directory $Directory
 # /reset replaces old explicit grants with the now-private inherited ACL.
 if (@(Get-ChildItem -LiteralPath $Directory -Force).Count -gt 0) {
   & icacls.exe "$Directory\*" /reset /T /Q | Out-Null

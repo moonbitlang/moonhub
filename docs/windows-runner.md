@@ -51,8 +51,8 @@ node scripts/resolve-dependencies.cjs
 ./scripts/build-windows-runner.ps1
 ```
 
-The bundle includes `install-provider.ps1`, `install-worker.ps1` and
-`run-provider.ps1`, the native host executable and the existing task runtime.
+The bundle includes `install-provider.ps1`, `install-worker.ps1`,
+`installation-path.ps1` and `run-provider.ps1`, the native host executable and the existing task runtime.
 The deployment PC only needs Docker and the host bundle's `bin` files; it does
 not need a compiler, Git, Node, PowerShell 7 or AWS tooling installed globally.
 Job tools are supplied by the task image or setup actions.
@@ -87,7 +87,8 @@ token to a private file. In an elevated PowerShell session on the deployment PC:
 ```
 
 The installer validates the environment, protects `C:\ProgramData\MoonHub` for
-SYSTEM/Administrators, installs the host binary and creates the
+SYSTEM/Administrators, rejects existing trees owned by or writable to other
+identities, installs the host binary and creates the
 `MoonHubRunnerProvider` scheduled task. It starts at boot without a user password,
 has no execution-time limit, permits battery operation and prevents overlapping
 task instances. `-NoStart` installs without starting immediately. `-Directory`

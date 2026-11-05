@@ -153,6 +153,17 @@ async function main() {
     let exited=false, exitCode, closed;
     if(standalone) {
       const tokenFile=path.join(root,'registration');fs.writeFileSync(tokenFile,registration);
+      // A precreated root or child controlled by an unprivileged identity
+      // must fail before reading provider.json or running copied executables.
+      for(const target of [install,path.join(install,'bin')]) {
+        runPowerShell(['-Command',`New-Item -ItemType Directory -Force ${quote(path.join(install,'bin'))} | Out-Null; $rootAcl=[Security.AccessControl.DirectorySecurity]::new(); $rootAcl.SetAccessRuleProtection($true,$false); $rootAcl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')); foreach($sid in 'S-1-5-18','S-1-5-32-544'){$rootAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))}; Set-Acl -LiteralPath ${quote(install)} -AclObject $rootAcl; & icacls.exe ${quote(target)} /setowner '*S-1-5-32-545' | Out-Null; if($LASTEXITCODE -ne 0){throw 'Fixture owner change failed'}`]);
+        assert.throws(()=>runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']),/untrusted owner/);
+        assert.equal(fs.existsSync(path.join(install,'provider.json')),false);
+        fs.rmSync(install,{recursive:true,force:true});
+      }
+      runPowerShell(['-Command',`New-Item -ItemType Directory -Force ${quote(install)} | Out-Null; & icacls.exe ${quote(install)} /setowner '*S-1-5-32-544' | Out-Null; & icacls.exe ${quote(install)} /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null; if($LASTEXITCODE -ne 0){throw 'Fixture permissions failed'}`]);
+      assert.throws(()=>runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']),/unprivileged writes/);
+      fs.rmSync(install,{recursive:true,force:true});
       runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
       taskInstalled=true;
       const metadata=JSON.parse(runPowerShell(['-Command',`$task=Get-ScheduledTask -TaskName ${quote(taskName)}; [pscustomobject]@{user=$task.Principal.UserId; arguments=$task.Actions.Arguments; executionLimit=$task.Settings.ExecutionTimeLimit; restart=$task.Settings.RestartCount; permissions=@((Get-Acl -LiteralPath ${quote(install)}).Access | ForEach-Object {$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value})} | ConvertTo-Json -Compress`]));
