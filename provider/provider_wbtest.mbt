@@ -25,6 +25,29 @@ test "provider validates origins and builds a constrained runner command" {
   let args = container_args(
     options, "/run/assignment.json", "42", "moonhub-workspace-42-test",
   )
+  if @platform.windows() {
+    assert_true(args.contains("--isolation"))
+    assert_true(args.contains("process"))
+    assert_true(args.contains("ContainerUser"))
+    assert_true(!args.contains("--read-only"))
+    assert_true(!args.contains("--cap-drop"))
+    assert_true(!args.contains("--pids-limit"))
+    assert_true(
+      args.contains(
+        "type=volume,src=moonhub-workspace-42-test,dst=C:\\workspace",
+      ),
+    )
+    let hyperv = container_args(
+      options,
+      "C:/control/assignment.json",
+      "42",
+      "workspace",
+      windows_isolation="hyperv",
+    )
+    assert_true(hyperv.contains("hyperv"))
+    assert_true(!hyperv.contains("process"))
+    return
+  }
   assert_true(args.contains("--read-only"))
   assert_true(args.contains("--interactive"))
   assert_true(args.contains("--cap-drop"))
@@ -48,6 +71,17 @@ test "workspaces are isolated disk volumes while scratch memory stays bounded" {
   let args = container_args(
     options, "/run/assignment.json", "42", "moonhub-workspace-42-fresh",
   )
+  if @platform.windows() {
+    assert_true(
+      args.contains(
+        "type=volume,src=moonhub-workspace-42-fresh,dst=C:\\workspace",
+      ),
+    )
+    assert_true(!args.contains("--tmpfs"))
+    assert_true(args.contains("--memory"))
+    assert_true(args.contains("--cpu-count"))
+    return
+  }
   assert_true(args.contains("/tmp:rw,noexec,nosuid,nodev,size=64m"))
   assert_true(
     args.contains("type=volume,src=moonhub-workspace-42-fresh,dst=/workspace"),
@@ -79,6 +113,58 @@ test "provider rejects unsafe runner server and partial host mappings" {
       err => raise err
     } noraise {
       _ => fail("accepted shared network namespace")
+    }
+  }
+}
+
+///|
+test "Windows container isolation follows the actual daemon host" {
+  let server : DockerPlatform = {
+    os_type: "windows",
+    architecture: "amd64",
+    kernel_version: "10.0 20348 (20348.1.amd64fre)",
+    operating_system: "Microsoft Windows Server 2022 Datacenter",
+  }
+  assert_eq(windows_container_isolation(server), "process")
+  assert_eq(
+    windows_container_isolation({ ..server, kernel_version: "10.0.20348.2402", }),
+    "process",
+  )
+  for kernel_version in ["10.0 22631 (22631.1.amd64fre)", "10.0.26100.4652"] {
+    assert_eq(
+      windows_container_isolation({
+        ..server,
+        operating_system: "Microsoft Windows 11 Pro",
+        kernel_version,
+      }),
+      "hyperv",
+    )
+  }
+  for
+    invalid in [
+      { ..server, os_type: "linux", },
+      { ..server, architecture: "aarch64", },
+      {
+        ..server,
+        kernel_version: "10.0.17763.1",
+        operating_system: "Windows 10 Pro",
+      },
+      {
+        ..server,
+        kernel_version: "10.0.26100.1",
+        operating_system: "Windows Server 2025",
+      },
+      {
+        ..server,
+        kernel_version: "garbled",
+        operating_system: "Windows 11 Pro",
+      },
+    ] {
+    try windows_container_isolation(invalid) catch {
+      InvalidConfiguration(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted an unsupported Docker host")
     }
   }
 }

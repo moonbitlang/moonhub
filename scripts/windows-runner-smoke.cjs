@@ -11,8 +11,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const docker = args => execFileSync('docker.exe', args, {encoding:'utf8', timeout:30000}).trim();
 const image = process.env.MOONHUB_RUNNER_IMAGE || 'moonhub:runner-windows';
 const binary = path.resolve('.tmp/windows-runner/bin/moonhub-runner.exe');
+const standalone = process.argv.includes('--standalone');
 const secret = crypto.randomBytes(20).toString('hex');
-const workerToken = crypto.randomBytes(32).toString('hex');
+const registration = crypto.randomBytes(32).toString('hex');
+let workerToken = crypto.randomBytes(32).toString('hex');
+let providerToken, providerConfig, providerSchema, workerKey, workerState='starting', workerRevision='0';
 const step = (id, run, shell = '', extra = {}) => ({ id, name:id, run, shell, uses:'', working_directory:'.', env:{}, timeout_minutes:0, ...extra });
 
 async function main() {
@@ -43,7 +46,9 @@ async function main() {
       const route = req.url.split('/').pop();
       const id = req.url.match(/\/attempts\/(\d+)\//)?.[1];
       const attempt = attempts.get(id);
-      assert.equal(req.headers.authorization, `Bearer ${attempt ? attempt.token : workerToken}`);
+      const providerRoute = /\/providers\/(register|sync)$/.test(req.url) || /\/workers\/(register|[^/]+\/drain)$/.test(req.url);
+      const credential = req.url.endsWith('/providers/register') ? registration : providerRoute ? providerToken : attempt ? attempt.token : workerToken;
+      assert.equal(req.headers.authorization, `Bearer ${credential}`);
       if (req.method === 'GET') {
         const bytes = route === 'source-bundle' ? bundle : archive;
         assert.ok(['source','source-bundle'].includes(route));
@@ -51,11 +56,20 @@ async function main() {
       }
       let text=''; for await (const chunk of req) {text+=chunk; assert.ok(text.length<65536);}
       const body=JSON.parse(text), now=Date.now(); let reply;
-      if (req.url.endsWith('/workers/sync')) {
+      const providerSnapshot = () => ({version:1,id:'1',mode:'docker',paused:false,config_revision:'1',schema:providerSchema,config:providerConfig,queued_jobs:Math.max(0,3-completed),workers:workerKey?[{id:'1',key:workerKey,state:workerState,draining:drained,applied_revision:workerRevision,last_seen_ms:String(now),idle_since_ms:String(now),active_attempts:0}]:[]});
+      if (req.url.endsWith('/providers/register')) {
+        assert.equal(standalone,true); assert.equal(body.mode,'docker'); assert.equal(body.name,'windows-pc-smoke');
+        providerToken=body.provider_token;providerSchema=body.schema;providerConfig={...body.defaults,cpus:'1',memory_mib:'2048'};reply=providerSnapshot();
+      } else if (req.url.endsWith('/providers/sync')) reply=providerSnapshot();
+      else if (req.url.endsWith('/workers/register')) {
+        workerToken=body.token;workerKey=body.key;reply={version:1,id:'1'};
+      } else if (/\/workers\/[^/]+\/drain$/.test(req.url)) reply={version:1};
+      else if (req.url.endsWith('/workers/sync')) {
+        workerState=body.state;workerRevision=body.applied_revision;
         if (body.state === 'ready' && completed > readyAfterCleanup) {
           assert.equal(docker(['ps','-aq','--filter','name=^moonhub-pipeline-']), '', 'task container survived readiness');
           assert.equal(docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']), '', 'workspace survived readiness');
-          assert.deepEqual(fs.readdirSync(path.join(root,'workspace')),[], 'assignment directory survived readiness');
+          assert.deepEqual(fs.readdirSync(standalone?path.join(install,'workspace'):path.join(root,'workspace')),[], 'assignment directory survived readiness');
           readyAfterCleanup=completed;
         }
         if (body.state==='drained') drained=true;
@@ -115,13 +129,31 @@ async function main() {
   await new Promise(resolve=>server.listen(0,'0.0.0.0',resolve));
   const port=server.address().port, rule='MoonHubRunnerSmoke-'+crypto.randomBytes(6).toString('hex');
   const ps = command=>execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',command],{stdio:'inherit',timeout:30000});
+  const taskName='MoonHubStandaloneSmoke'+crypto.randomBytes(6).toString('hex');
+  const install=path.join(process.env.ProgramData || 'C:/ProgramData',taskName+' install');
+  const runPowerShell = args => execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',...args],{encoding:'utf8',timeout:240000});
+  const quote = value => "'"+value.replaceAll("'","''")+"'";
+  let taskInstalled=false;
   try {
     ps(`New-NetFirewallRule -Name '${rule}' -DisplayName '${rule}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} | Out-Null`);
     const bootstrap=path.join(root,'bootstrap.json');
     fs.writeFileSync(bootstrap,JSON.stringify({server:`http://${gateway}:${port}`,token:workerToken,allow_http:true,runner_image:image,runner_os:'windows'}));
-    worker=spawn(binary,['worker','--bootstrap-file',bootstrap,'--workspace-root',path.join(root,'workspace')],{env:{...process.env,MOONHUB_PROVIDER_TOKEN:'controller-only-sentinel',AWS_SECRET_ACCESS_KEY:'controller-only-sentinel'},stdio:['ignore','pipe','pipe']});
-    worker.stdout.on('data',chunk=>{output+=chunk;process.stdout.write(chunk);}); worker.stderr.on('data',chunk=>{output+=chunk;process.stderr.write(chunk);});
-    let exited=false, exitCode; const closed=new Promise((resolve,reject)=>{worker.once('error',reject);worker.once('close',code=>{exited=true;exitCode=code;resolve();});});
+    let exited=false, exitCode, closed;
+    if(standalone) {
+      const tokenFile=path.join(root,'registration');fs.writeFileSync(tokenFile,registration);
+      runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
+      taskInstalled=true;
+      const metadata=JSON.parse(runPowerShell(['-Command',`$task=Get-ScheduledTask -TaskName ${quote(taskName)}; [pscustomobject]@{user=$task.Principal.UserId; arguments=$task.Actions.Arguments; executionLimit=$task.Settings.ExecutionTimeLimit; restart=$task.Settings.RestartCount; permissions=@((Get-Acl -LiteralPath ${quote(install)}).Access | ForEach-Object {$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value})} | ConvertTo-Json -Compress`]));
+      assert.ok(['SYSTEM','S-1-5-18'].includes(metadata.user),JSON.stringify(metadata));
+      assert.equal(metadata.executionLimit,'PT0S');assert.equal(metadata.restart,999);
+      assert.ok(!metadata.arguments.includes(registration));
+      assert.deepEqual(new Set(metadata.permissions),new Set(['S-1-5-18','S-1-5-32-544']));
+      runPowerShell(['-Command',`Start-ScheduledTask -TaskName ${quote(taskName)}`]);
+    } else {
+      worker=spawn(binary,['worker','--bootstrap-file',bootstrap,'--workspace-root',path.join(root,'workspace')],{env:{...process.env,MOONHUB_PROVIDER_TOKEN:'controller-only-sentinel',AWS_SECRET_ACCESS_KEY:'controller-only-sentinel'},stdio:['ignore','pipe','pipe']});
+      worker.stdout.on('data',chunk=>{output+=chunk;process.stdout.write(chunk);}); worker.stderr.on('data',chunk=>{output+=chunk;process.stderr.write(chunk);});
+      closed=new Promise((resolve,reject)=>{worker.once('error',reject);worker.once('close',code=>{exited=true;exitCode=code;resolve();});});
+    }
     for(let i=0;i<1800 && !drained && !exited && !failure;i++) {
       await delay(500);
       const cancelled=attempts.get('3');
@@ -130,19 +162,38 @@ async function main() {
       }
     }
     if(failure) throw failure;
+    if(standalone && fs.existsSync(path.join(install,'provider.log'))) output+=fs.readFileSync(path.join(install,'provider.log'),'utf8');
     assert.ok(drained,`Worker did not drain; claims=${claims}, completed=${completed}\n${output}`);
+    if(standalone) {
+      assert.ok(providerToken && workerKey,'provider enrollment did not register a worker');
+      const controller=path.join(install,'controller');
+      const binding=fs.readFileSync(path.join(controller,'registered.json'),'utf8');
+      const savedToken=fs.readFileSync(path.join(controller,'provider-token'),'utf8');
+      runPowerShell(['-Command',`Stop-ScheduledTask -TaskName ${quote(taskName)}; for($i=0;$i -lt 50 -and (Get-ScheduledTask -TaskName ${quote(taskName)}).State -eq 'Running';$i++){Start-Sleep -Milliseconds 100}`]);
+      assert.throws(()=>runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','different-provider','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']),/another provider/);
+      // Reinstall without a registration credential: the private identity must survive.
+      fs.rmSync(path.join(install,'registration-token'));
+      runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
+      assert.equal(fs.readFileSync(path.join(controller,'registered.json'),'utf8'),binding);
+      assert.equal(fs.readFileSync(path.join(controller,'provider-token'),'utf8'),savedToken);
+    } else {
     await Promise.race([closed,delay(10000).then(()=>{throw Error('Drained worker did not exit');})]);
     assert.equal(exitCode,0,output);
+    }
     assert.equal(claims,3);assert.equal(completed,3);assert.equal(readyAfterCleanup,3);
     assert.equal(docker(['ps','-aq','--filter','name=^moonhub-pipeline-']), '');
     assert.equal(docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']), '');
-    console.log('Windows container smoke passed: same worker, fresh volumes, PowerShell, Bash, Node20 action + post, cancellation, cleanup before ready, drain.');
+    console.log(`Windows ${standalone?'standalone provider':'ASG worker'} container smoke passed: same worker, fresh volumes, PowerShell, Bash, Node20 action + post, cancellation, cleanup before ready, drain.`);
   } finally {
     const owned=docker(['ps','-aq','--filter','name=^moonhub-pipeline-']).split(/\s+/).filter(Boolean);
     for(const container of owned) {
       try {console.log('Remaining container '+container+'\n'+docker(['top',container]));console.log(docker(['logs',container]));} catch {}
     }
     if(worker) worker.kill('SIGKILL');
+    if(taskInstalled) {
+      try {runPowerShell(['-Command',`Stop-ScheduledTask -TaskName ${quote(taskName)} -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName ${quote(taskName)} -Confirm:$false`]);}catch{}
+    }
+    if(fs.existsSync(install)) fs.rmSync(install,{recursive:true,force:true});
     const containers=docker(['ps','-aq','--filter','name=^moonhub-pipeline-']).split(/\s+/).filter(Boolean);
     if(containers.length) docker(['rm','-f',...containers]);
     const volumes=docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']).split(/\s+/).filter(Boolean);

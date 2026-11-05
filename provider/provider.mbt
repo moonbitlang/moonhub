@@ -1,26 +1,7 @@
 ///|
 async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
   if @platform.windows() {
-    let (code, output) = docker_control(options, [
-      "info", "--format", "{{json .}}",
-    ])
-    guard code == 0 else { raise DockerFailure(code) }
-    let info : DockerPlatform = @json.from_json(@json.parse(output)) catch {
-      _ =>
-        raise InvalidConfiguration(
-          "Docker returned invalid platform information.",
-        )
-    }
-    guard info.os_type == "windows" &&
-      ["x86_64", "amd64"].contains(info.architecture) &&
-      (
-        info.kernel_version.has_prefix("10.0 20348 ") ||
-        info.kernel_version.has_prefix("10.0.20348.")
-      ) else {
-      raise InvalidConfiguration(
-        "Windows workers require a Windows Server 2022 x64 Docker daemon (build 20348).",
-      )
-    }
+    ignore(windows_docker_isolation(options))
     return
   }
   let code = @process.run(
@@ -68,7 +49,118 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
         "Runner image must target Windows Server 2022 x64 (build 20348).",
       )
     }
+    verify_windows_container(options)
   }
+}
+
+///|
+async fn verify_windows_container(
+  options : Options,
+) -> Unit raise ProviderError {
+  let isolation = windows_docker_isolation(options)
+  let name = "moonhub-pipeline-preflight-" + random_hex(16)
+  defer (@async.protect_from_cancel(() => {
+    ignore(docker_control(options, ["rm", "-f", name]))
+    let (code, remaining) = docker_control(options, [
+      "ps",
+      "-aq",
+      "--filter",
+      "name=^" + name + "$",
+    ])
+    guard code == 0 && remaining.trim().is_empty() else { raise CleanupFailure }
+  }) catch {
+    _ => raise CleanupFailure
+  })
+  // A running Windows daemon and a cached image do not prove that Hyper-V is
+  // enabled/usable. Verify the real isolation path before advertising ready.
+  @async.with_timeout(90000, () => {
+    let code = @process.run(
+      options.docker,
+      [
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--isolation",
+        isolation,
+        "--network",
+        "none",
+        "--user",
+        "ContainerUser",
+        "--memory",
+        options.memory,
+        "--cpu-count",
+        options.cpus,
+        "--entrypoint",
+        "cmd.exe",
+        options.runner_image,
+        "/d",
+        "/s",
+        "/c",
+        "exit /b 0",
+      ],
+      inherit_env=false,
+      extra_env=docker_environment(options),
+    )
+    guard code == 0 else {
+      raise InvalidConfiguration(
+        "Windows container preflight failed; verify Docker, Hyper-V and the task image.",
+      )
+    }
+  }) catch {
+    _ =>
+      raise InvalidConfiguration(
+        "Windows container preflight failed; verify Docker, Hyper-V and the task image.",
+      )
+  }
+}
+
+///|
+async fn windows_docker_isolation(
+  options : Options,
+) -> String raise ProviderError {
+  let (code, output) = docker_control(options, [
+    "info", "--format", "{{json .}}",
+  ])
+  guard code == 0 else { raise DockerFailure(code) }
+  let info : DockerPlatform = @json.from_json(@json.parse(output)) catch {
+    _ =>
+      raise InvalidConfiguration(
+        "Docker returned invalid platform information.",
+      )
+  }
+  windows_container_isolation(info)
+}
+
+///|
+fn windows_container_isolation(
+  info : DockerPlatform,
+) -> String raise ProviderError {
+  guard info.os_type == "windows" &&
+    ["x86_64", "amd64"].contains(info.architecture) else {
+    raise InvalidConfiguration(
+      "Use a Windows x64 Docker daemon, not Linux containers.",
+    )
+  }
+  let kernel = info.kernel_version
+  let build = if kernel.strip_prefix("10.0 ") is Some(rest) {
+    @protocol.parse_decimal(rest.split(" ").next().unwrap_or("").to_owned())
+  } else if kernel.strip_prefix("10.0.") is Some(rest) {
+    @protocol.parse_decimal(rest.split(".").next().unwrap_or("").to_owned())
+  } else {
+    None
+  }
+  if build == Some(20348L) {
+    return "process"
+  }
+  if info.operating_system.to_lower().contains("windows 11") &&
+    build is Some(build) &&
+    build >= 22000L {
+    return "hyperv"
+  }
+  raise InvalidConfiguration(
+    "Use Windows Server 2022 x64 or Windows 11 x64 with Hyper-V and Windows containers enabled.",
+  )
 }
 
 ///|
@@ -186,6 +278,7 @@ priv struct DockerPlatform {
   os_type : String
   architecture : String
   kernel_version : String
+  operating_system : String
 }
 
 ///|
@@ -202,6 +295,11 @@ impl @json.FromJson for DockerPlatform with fn from_json(json, path) {
       fields.get("KernelVersion").unwrap_or(Json::null()),
       path=path.add_key("KernelVersion"),
     ),
+    operating_system: match fields.get("OperatingSystem") {
+      Some(value) =>
+        @json.from_json(value, path=path.add_key("OperatingSystem"))
+      None => ""
+    },
     architecture: @json.from_json(
       fields.get("Architecture").unwrap_or(Json::null()),
       path=path.add_key("Architecture"),

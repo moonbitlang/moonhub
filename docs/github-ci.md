@@ -99,3 +99,9 @@ Actions, branch-protection or production acceptance evidence.
 For the job dependency and reusable-workflow semantics, see
 [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 and [reusing workflow configurations](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations).
+
+The Windows job also installs a standalone PC provider as a real SYSTEM startup
+task and verifies enrollment, task execution, cleanup and identity-preserving
+reinstallation without AWS. Windows 11/Hyper-V policy and fail-closed readiness
+are covered by deterministic tests; physical Windows 11 acceptance remains a
+separate deployment check documented in `windows-runner.md`.

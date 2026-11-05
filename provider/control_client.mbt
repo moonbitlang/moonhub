@@ -64,7 +64,7 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
       cleanup_stale_workspaces(base)
     },
     prepare: current => ensure_runner_image(current),
-    health: () => (),
+    health: () => if @platform.windows() { wait_for_docker(base) },
     execute: (current, assignment, credential) => {
       execute_assignment(current, assignment, credential)
     },
