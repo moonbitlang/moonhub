@@ -13,6 +13,9 @@ unchanged.
 | `config` | Environment loading and primitive configuration parsing |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
 | `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
+| `diff/protocol` | Versioned worker/data protocol and resource limits; no Git, Web or database dependency |
+| `diff/compute` | Pure MoonDiff calculation and original-file coordinate projection |
+| `cmd/moonhub-diff-worker` | One-request isolated diff executable; protocol IO and pure calculation only |
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events, recovery and outbound push mirrors |
@@ -156,6 +159,16 @@ have separate Moonback containers, so their composition roots initialize their
 own resources. Only these composition roots read custom bootstrap config.
 The server owns database and worker lifetimes; providers borrow the database
 and never close it.
+
+Structured diff uses an application-scoped `gitops.DiffExecutor`, registered at
+the Web composition boundary and required by feature/API/MCP modules. Gitops
+loads fixed comparison manifests and bounded blobs, and runs the standalone
+worker under deadlines and cancellation. It imports only `diff/protocol`;
+MoonDiff calculation stays out of the server process. Shared rendering lives
+in `web/ui`; session endpoints remain in the MR/repository feature packages.
+Inline comment preparation happens before repository locking, then the write
+section rechecks authorization and immutable revision identity. See
+[Structured diff](moondiff.md) for the protocol, limits and runtime configuration.
 
 Repository ref-update events are below Pipeline in the dependency graph. SSH
 hooks and the merge worker record them without importing Pipeline. The Pipeline
