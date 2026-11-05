@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/diff/protocol" @diff_protocol,
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",

@@ -139,7 +139,10 @@ fn tool_catalog() -> Array[Tool] {
       description: "Read the diff for an immutable MR version (defaults to current).",
       permission: "read",
       required: ["repository", "number"],
-      optional: ["version", "commit"],
+      optional: [
+        "version", "commit", "format", "file_id", "page", "mode", "ignore_comments",
+        "ignore_tests",
+      ],
     },
     {
       name: "moonhub_get_merge_request_checks",
@@ -248,10 +251,13 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_comment_merge_request",
-      description: "Comment on the explicitly observed MR version.",
+      description: "Comment on an observed MR version; optional source coordinates and structured document identity start an inline discussion.",
       permission: "write",
       required: ["repository", "number", "version", "body"],
-      optional: [],
+      optional: [
+        "commit", "path", "side", "start_line", "end_line", "document_id", "file_id",
+        "hunk_id", "diff_page", "mode", "ignore_comments", "ignore_tests",
+      ],
     },
     {
       name: "moonhub_edit_merge_request",
@@ -392,6 +398,7 @@ async fn invoke_tool(
   pool : @database.Database,
   root : String,
   coordinator : @pipeline.Coordinator,
+  diff_executor : @gitops.DiffExecutor,
   actor : @domain.CurrentUser,
   name : String,
   args : Map[String, Json],
@@ -495,6 +502,34 @@ async fn invoke_tool(
             revision,
             args.get("commit").map(_ => string_arg(args, "commit")),
           )
+          let format = string_arg(args, "format", fallback="patch")
+          guard format == "patch" || format == "structured" else {
+            raise @domain.BadRequest(message="invalid diff format")
+          }
+          if format == "structured" {
+            let page = tool_page(args)
+            let result = diff_executor.structured(
+              dir,
+              comparison.base_sha,
+              comparison.head_sha,
+              @gitops.diff_options(
+                mode=string_arg(args, "mode", fallback="lexical"),
+                ignore_comments=string_arg(
+                  args,
+                  "ignore_comments",
+                  fallback="true",
+                ),
+                ignore_tests=string_arg(args, "ignore_tests", fallback="true"),
+              ),
+              page=page.to_int(),
+              file_id=string_arg(args, "file_id", fallback=""),
+            )
+            @repository.authorize_repository(pool, actor, repo, Read)
+            if result is Object(fields) {
+              fields.set("version", Json(version.to_string()))
+            }
+            return result
+          }
           let patch = @gitops.merge_git(dir, [
             "diff",
             "--no-ext-diff",
@@ -704,7 +739,51 @@ async fn invoke_tool(
     | "moonhub_resolve_merge_discussion"
     | "moonhub_reopen_merge_discussion"
     | "moonhub_approve_merge_checks"
-    | "moonhub_merge_merge_request" =>
+    | "moonhub_merge_merge_request" => {
+      let prepared = if name == "moonhub_comment_merge_request" &&
+        args.contains("path") {
+        let mr = @collaboration.require_merge_request(pool, scope, id)
+        let fields : Map[String, String] = Map([])
+        for
+          key in [
+            "document_id", "file_id", "hunk_id", "diff_page", "mode", "ignore_comments",
+            "ignore_tests",
+          ] {
+          if args.contains(key) {
+            fields.set(key, string_arg(args, key))
+          }
+        }
+        Some(
+          @collaboration.prepare_anchored_merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            @repository.resolve_repository_dir(root, repo),
+            decimal(string_arg(args, "version")),
+            args
+            .get("commit")
+            .map(_ => string_arg(args, "commit"))
+            .filter(s => !s.is_empty()),
+            string_arg(args, "path"),
+            string_arg(args, "side"),
+            decimal(string_arg(args, "start_line")),
+            decimal(
+              string_arg(
+                args,
+                "end_line",
+                fallback=string_arg(args, "start_line"),
+              ),
+            ),
+            markdown_arg(pool, root, scope, actor, args, "body", ""),
+            structured?=@web_context.diff_selection(fields).map(selection => {
+              (diff_executor, selection)
+            }),
+          ),
+        )
+      } else {
+        None
+      }
       @repository.with_repository_write(pool, root, actor, repo, (scope, dir) => {
         let mr = @collaboration.require_merge_request(pool, scope, id)
         let mr = if [
@@ -716,14 +795,22 @@ async fn invoke_tool(
         }
         match name {
           "moonhub_comment_merge_request" =>
-            @collaboration.submit_merge_review(
-              pool,
-              actor,
-              mr,
-              decimal(string_arg(args, "version")),
-              "comment",
-              markdown_arg(pool, root, scope, actor, args, "body", ""),
-            )
+            if prepared is Some(prepared) {
+              ignore(
+                @collaboration.create_prepared_merge_discussion(
+                  pool, scope, actor, mr, prepared,
+                ),
+              )
+            } else {
+              @collaboration.submit_merge_review(
+                pool,
+                actor,
+                mr,
+                decimal(string_arg(args, "version")),
+                "comment",
+                markdown_arg(pool, root, scope, actor, args, "body", ""),
+              )
+            }
           "moonhub_edit_merge_request" => {
             guard args.contains("title") ||
               args.contains("description") ||
@@ -793,6 +880,7 @@ async fn invoke_tool(
         }
         @user_api.mr_json(@collaboration.require_merge_request(pool, scope, id))
       })
+    }
     "moonhub_list_runs" =>
       {
         "items": @pipeline.list_runs(pool, actor, repo)

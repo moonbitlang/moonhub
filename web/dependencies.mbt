@@ -35,6 +35,7 @@ pub let browser_resources_module : @moonback.Module = Module(ctx => {
 
 ///|
 let services_module : @moonback.Module = Module(ctx => {
+  ctx.use_(diff_dependencies_module)
   let config = ctx.config()
   guard config.get_custom(@web_context.config_db_pool) is Some(pool) else {
     raise @domain.BadRequest(message="missing moonhub.db_pool")
@@ -97,6 +98,7 @@ let services_module : @moonback.Module = Module(ctx => {
 
 ///|
 let user_api_dependencies_module : @moonback.Module = Module(ctx => {
+  ctx.use_(diff_dependencies_module)
   guard ctx.config().get_custom(@web_context.config_db_pool) is Some(pool) else {
     raise @domain.BadRequest(message="missing moonhub.db_pool")
   }
@@ -140,4 +142,23 @@ let mcp_app_module : @moonback.Module = Module(ctx => {
     .unwrap_or([]),
   )
   ctx.use_(@mcp.mcp_module)
+})
+
+///|
+let diff_dependencies_module : @moonback.Module = Module(ctx => {
+  let executor = ctx
+    .config()
+    .get_custom(@web_context.diff_executor_key)
+    .unwrap_or_else(() => {
+      @gitops.DiffExecutor::new(
+        worker=@config.env_value("MOONHUB_DIFF_WORKER").unwrap_or(
+          "moonhub-diff-worker",
+        ),
+      )
+    })
+  ctx.provide(@web_context.diff_executor_key, executor)
+  ctx.provide(
+    @web_context.diff_enabled_key,
+    ctx.config().get_custom(@web_context.diff_enabled_key).unwrap_or(false),
+  )
 })

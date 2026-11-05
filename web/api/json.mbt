@@ -10,6 +10,7 @@ fn api_handler(
           @domain.Forbidden(message~) => (403, "forbidden", message)
           @domain.NotFound(message~) => (404, "not_found", message)
           @domain.BadRequest(message~) => (400, "invalid_request", message)
+          @gitops.DiffFailure(message) => (503, "diff_unavailable", message)
           @pipeline.Conflict(message) => (409, "conflict", message)
           @gitops.Failure(message~) =>
             (400, "git_error", @domain.public_merge_block_reason(message))
@@ -18,10 +19,11 @@ fn api_handler(
         (status, { "error": { "code": code, "message": message } })
       }
     }
-    res.send_json(json, status~, headers={
-      "Cache-Control": "no-store",
-      "Connection": "close",
-    })
+    let headers = { "Cache-Control": "no-store", "Connection": "close" }
+    if status == 503 {
+      headers["Retry-After"] = "2"
+    }
+    res.send_json(json, status~, headers~)
   }
 }
 

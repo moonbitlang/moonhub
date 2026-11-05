@@ -243,6 +243,7 @@ fn render_merge_detail(
   comparison : @gitops.RevisionComparison?,
   patch : String,
   diff_error : String,
+  structured_view : @moonback.Html?,
   blocker : String,
   approved : Int64,
   required : Int64,
@@ -500,6 +501,12 @@ fn render_merge_detail(
         if tab == "changes" {
           if !diff_error.is_empty() {
             b <+ "<p class=\"flash-error\" role=\"alert\">\{diff_error}</p>"
+          } else if structured_view is Some(view) {
+            if contributor && comparison is Some(comparison) {
+              b <+
+                "\{render_inline_composer(base, csrf, version.to_string(), comparison.commit.map(c => c.hash).unwrap_or(""), Map([]), None)}"
+            }
+            b <+ "\{view}"
           } else if patch.is_empty() {
             b <+ "<p class=\"muted\">No file changes in this comparison.</p>"
           } else {

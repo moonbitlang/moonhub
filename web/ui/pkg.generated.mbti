@@ -3,7 +3,9 @@ package "hackwaly/moonhub/web/ui"
 
 import {
   "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/diff/protocol",
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
   "moonbitlang/moonback",
@@ -24,9 +26,13 @@ pub fn page_middleware() -> @moonback.Middleware
 
 pub fn render_breadcrumb_trail(Array[(String, String?)], label? : String, file_path? : Bool) -> @moonback.Html
 
+pub fn render_diff_document(@gitops.FileDiff) -> @moonback.Html
+
 pub fn render_error(Int32, String, Map[String, String], current_user? : @domain.CurrentUser?) -> @moonback.Html
 
 pub fn render_repo_nav(@domain.RepoId, String, String?) -> @moonback.Html
+
+pub fn render_structured_diff(@gitops.DiffManifest, @gitops.FileDiff?, @protocol.Options, String, String) -> @moonback.Html
 
 pub fn render_team_repositories(@identity.TeamSummary, Array[@repository.TeamRepository], Bool) -> @moonback.Html
 
