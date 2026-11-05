@@ -120,12 +120,17 @@ all original step contents, scalar inputs and defaults. It complements the
 server's original-YAML expansion and transactional scheduling tests; it does not
 substitute for full Linux/macOS/Browser acceptance.
 
-Observed local Linux acceptance on November 5, 2026: checkout v6, the original
-pinned MoonBit install, dependency update, all-target check and format succeeded
-through V6. The final unmodified `moon test --target all` failed with multiple
-link workers reporting `Killed` in the local emulated x64 container. The native
-runner reported failure and executed checkout post cleanup. This is deliberately
-not recorded as a passing full Editor acceptance; rerun on an appropriately
-provisioned native x64 worker and complete macOS/browser acceptance before claiming
-that migration gate. No upstream test steps or compiler optimization mode were
-changed to manufacture a passing result.
+Observed local Linux acceptance on November 5, 2026: the unchanged Editor Linux
+instance passed all five steps through the actual V6 runner and HTTP protocol.
+Upstream checkout v6 resolved to `d23441a48e516b6c34aea4fa41551a30e30af803`;
+MoonBit `0.10.18+1fd8467c3-nightly` was installed by the original script. All-target
+check and format passed; tests passed for wasm (1102), JS (1920) and native
+(1246), with no wasm-gc tests discovered. The final success report and checkout
+post cleanup were verified.
+
+The first run on the local 12-CPU/8-GiB emulated x64 Docker environment terminated
+several parallel link workers with `Killed`. Running the same commands with
+`--cpuset-cpus=0-1` passed; no upstream script or compiler optimization mode was
+changed. One intervening retry failed on a transient package-download TLS error.
+Use a runner whose CPU/parallelism and memory are provisioned together. This is
+Linux matrix-instance acceptance, not a claim of macOS/browser acceptance.
