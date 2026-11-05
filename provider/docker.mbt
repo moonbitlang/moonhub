@@ -124,13 +124,15 @@ async fn run_container(
   @async.with_timeout(
     assignment.job.timeout_minutes * 60000 + 90000,
     () => {
+      // Reader handles must outlive their task group, including cancellation
+      // of the Docker client while an overlapped Windows read is pending.
+      let (stdout, stdout_writer) = @process.read_from_process()
+      defer stdout.close()
+      let (stderr, stderr_writer) = @process.read_from_process()
+      defer stderr.close()
+      let (stdin, stdin_writer) = @process.write_to_process()
+      defer stdin_writer.close()
       @async.with_task_group(group => {
-        let (stdout, stdout_writer) = @process.read_from_process()
-        defer stdout.close()
-        let (stderr, stderr_writer) = @process.read_from_process()
-        defer stderr.close()
-        let (stdin, stdin_writer) = @process.write_to_process()
-        defer stdin_writer.close()
         let process = @process.spawn(
           group,
           options.docker,
