@@ -170,7 +170,8 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
             Some("block") => {
               let block = req.query().get("blockid").unwrap_or("")
               let bytes = artifact_request_bytes(
-                req, @pipeline.maximum_artifact_block_bytes,
+                req,
+                coordinator.artifact_block_limit(id, sig),
               )
               coordinator.stage_artifact_block(root, id, sig, block, bytes)
             }
@@ -182,6 +183,15 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
                 sig,
                 artifact_block_list(text),
               )
+            }
+            None => {
+              let limit = coordinator.artifact_block_limit(id, sig)
+              guard limit > @pipeline.maximum_artifact_block_bytes else {
+                raise @domain.BadRequest(message="unsupported blob operation")
+              }
+              let bytes = artifact_request_bytes(req, limit)
+              coordinator.stage_artifact_block(root, id, sig, "c2luZ2xl", bytes)
+              coordinator.commit_artifact_blocks(root, id, sig, ["c2luZ2xl"])
             }
             _ => raise @domain.BadRequest(message="unsupported blob operation")
           }
@@ -246,6 +256,33 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
         })
       })
       stream_artifact(file, writer, authorize)
+    })
+  })
+})
+
+///|
+pub let cache_rpc_module : @moonback.Module = Module(ctx => {
+  let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.post("/:operation", async fn(req, res) {
+    let (status, json) = try {
+      let token = artifact_bearer(req)
+      let payload = request_json(req, [
+        "key", "version", "restore_keys", "size_bytes", "metadata",
+      ])
+      (
+        200,
+        coordinator.cache_rpc(
+          token,
+          @web_context.required_param(req, "operation", "operation"),
+          payload,
+        ),
+      )
+    } catch {
+      err => artifact_error(err)
+    }
+    res.send_json(json, status~, headers={
+      "Cache-Control": "no-store",
+      "Connection": "close",
     })
   })
 })

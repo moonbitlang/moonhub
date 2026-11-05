@@ -181,3 +181,11 @@ The original upload/download v4 Actions now use MoonHub's current-run Results an
 Block Blob service. Cross-job pattern downloads, overwrite, retention and private
 runtime credentials are covered by upstream acceptance. See [Artifact v4](artifact-v4.md)
 for deployment, limits, environment bridging and the opt-in acceptance command.
+
+## Cache v4 service and hashFiles
+
+Downloaded cache v4 Actions and JavaScript tool setup cache clients use MoonHub's
+Cache Service v2. The server owns immutable branch/MR scopes, archive publication
+and lifecycle. Runtime expressions support asynchronous workspace hashFiles()
+with Actions glob semantics. See [Cache v4](cache-v4.md) for supported flows,
+isolation, limits and original Action acceptance.

@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument } from 'yaml';
 import { reference, resolveCommit, downloadArchive, extractArchive } from './download.mjs';
-import { evaluate, interpolate, truthy, string } from './expression.mjs';
+import { evaluateAsync as evaluate, interpolateAsync as interpolate, truthy, string } from './expression.mjs';
 import { LogCommands, parseFileCommands, validEnvName, maskText } from './commands.mjs';
 import { encodeState, decodeState } from './state.mjs';
 import { windows, runnerOS, nullDevice, validRelative, isWithin, environment, shellCommand, scriptSource } from './platform.mjs';
@@ -113,7 +113,7 @@ export class ActionRuntime {
       this.state.actions[key] = action;
       process.stdout.write(`Resolved ${requested.repository}@${requested.ref} to ${commit}\n`);
     }
-    return { ...action, directory: requested.path ? await contained(action.directory, requested.path) : action.directory };
+    return { ...action, root: action.directory, directory: requested.path ? await contained(action.directory, requested.path) : action.directory };
   }
   async process(program, args, env, cwd, result) {
     const publish = (stream, text) => {
@@ -177,8 +177,9 @@ export class ActionRuntime {
     // Source transport redirects this one repository to an immutable local Git
     // bundle. No runner, provider, application or GitHub credential is exposed.
     if (this.config.source_git) {
-      env.GIT_CONFIG_COUNT = '2'; env.GIT_CONFIG_KEY_0 = `url.${pathToFileURL(this.config.source_git).href}.insteadOf`;
+      env.GIT_CONFIG_COUNT = '3'; env.GIT_CONFIG_KEY_0 = `url.${pathToFileURL(this.config.source_git).href}.insteadOf`;
       env.GIT_CONFIG_VALUE_0 = `${this.config.server}/${this.config.repository}`;
+      env.GIT_CONFIG_KEY_2 = env.GIT_CONFIG_KEY_0; env.GIT_CONFIG_VALUE_2 = 'http://moonhub.localhost/' + this.config.repository;
       env.GIT_CONFIG_KEY_1 = 'protocol.file.allow'; env.GIT_CONFIG_VALUE_1 = 'always';
     }
     return env;
@@ -194,25 +195,34 @@ export class ActionRuntime {
     if (this.artifact) {
       env.ACTIONS_RUNTIME_TOKEN = this.artifact.token;
       env.ACTIONS_RESULTS_URL = this.artifact.url;
+      env.ACTIONS_CACHE_URL = this.artifact.url + '/';
+      env.ACTIONS_CACHE_SERVICE_V2 = 'true';
       env.GITHUB_RETENTION_DAYS = '90';
     }
     // Upstream v4 deliberately rejects non-GitHub server hosts. Its supported
     // localhost compatibility identity avoids modifying downloaded executable
     // code; the actual Results service and authorization remain MoonHub scoped.
-    if (artifactAction && this.artifact) env.GITHUB_SERVER_URL = 'http://moonhub.localhost';
+    if (this.artifact) env.GITHUB_SERVER_URL = 'http://moonhub.localhost';
     const node = value.runs.using === 'node20' ? this.config.node20 || (windows ? 'C:/moonhub/bin/node20.exe' : '/opt/actions/node20/bin/node') : this.config.node24 || process.execPath;
-    const filename = await contained(action.directory, value.runs[phase]);
+    // Subdirectory Actions (cache/restore, cache/save) legitimately refer to
+    // ../dist. Resolve within the downloaded repository, never beyond it.
+    const root = action.root || action.directory;
+    const filename = await contained(root, path.relative(root, path.resolve(action.directory, value.runs[phase])).split(path.sep).join('/'));
     if (!(await fs.stat(filename)).isFile()) throw new Error('Action JavaScript entry is not a file');
     const code = await this.files(env, result, () => this.process(node, [filename], env, this.workspace, result));
     if (artifactAction && result.outputs['artifact-id']) result.outputs['artifact-url'] = `${this.config.server}/${this.config.repository}/actions/runs/${this.config.run_id}/artifacts/${result.outputs['artifact-id']}`;
     return { ...result, code };
   }
   async action(uses, provided = {}, supplied = {}, extra = {}, depth = 0) {
+    // Toolkits use real paths for archive manifests; aliases such as macOS /tmp
+    // must identify the same workspace when tar computes relative paths.
+    this.workspace = await fs.realpath(this.workspace);
+    this.temp = await fs.realpath(this.temp);
     if (depth > 8 || ++this.count > 256) throw new Error('Action nesting or invocation count exceeds limits');
     const action = await this.resolve(uses), value = await metadata(action.directory);
     const context = this.context({ ...extra, env: environment(this.context().env, extra.env, supplied), github: { ...this.context().github, ...extra.github, action_path: action.directory } });
     const inputs = Object.create(null);
-    for (const [name, definition] of Object.entries(value.inputs || {})) inputs[name.toLowerCase()] = interpolate(definition.default ?? '', context);
+    for (const [name, definition] of Object.entries(value.inputs || {})) inputs[name.toLowerCase()] = await interpolate(definition.default ?? '', context);
     for (const [name, item] of Object.entries(provided)) {
       if (!/^[A-Za-z0-9_-]{1,100}$/.test(name)) throw new Error('Invalid action input name');
       inputs[name.toLowerCase()] = string(item);
@@ -227,22 +237,23 @@ export class ActionRuntime {
         if (own(steps, id)) throw new Error('Duplicate composite step id');
         let result, tolerate = false;
         try {
-          const condition = step.if === undefined ? !compositeFailure : truthy(evaluate(string(step.if), ctx, true));
+          const condition = step.if === undefined ? !compositeFailure : truthy(await evaluate(string(step.if), ctx, true));
           if (!condition) { steps[id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' }; continue; }
           const allowed = ['id', 'name', 'if', 'run', 'shell', 'working-directory', 'env', 'uses', 'with', 'continue-on-error'];
           for (const field of Object.keys(step)) if (!allowed.includes(field)) throw new Error(`Unsupported composite step.${field}`);
           const env = { ...supplied };
           for (const [name, item] of Object.entries(scalarMap(step.env, 'step.env'))) {
             if (!validEnvName(name)) throw new Error('Invalid composite environment variable');
-            env[name] = interpolate(item, ctx);
+            env[name] = await interpolate(item, ctx);
           }
           const stepContext = { ...ctx, env: environment(ctx.env, env) };
-          tolerate = step['continue-on-error'] === undefined ? false : truthy(evaluate(string(step['continue-on-error']), stepContext));
+          tolerate = step['continue-on-error'] === undefined ? false : truthy(await evaluate(string(step['continue-on-error']), stepContext));
           if (typeof step.uses === 'string' && step.run === undefined) {
-            const with_ = Object.fromEntries(Object.entries(scalarMap(step.with, 'step.with')).map(([key, item]) => [key, interpolate(item, stepContext)]));
+            const with_ = {};
+            for (const [key, item] of Object.entries(scalarMap(step.with, 'step.with'))) with_[key] = await interpolate(item, stepContext);
             result = await this.action(step.uses, with_, env, stepContext, depth + 1);
           } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh', 'pwsh'].includes(step.shell)) {
-            result = await this.script(interpolate(step.run, stepContext), step.shell, interpolate(step['working-directory'] || '.', stepContext), env, stepContext);
+            result = await this.script(await interpolate(step.run, stepContext), step.shell, await interpolate(step['working-directory'] || '.', stepContext), env, stepContext);
           } else throw new Error('Composite steps require run with bash/sh/pwsh or uses');
         } catch (error) {
           this.error(error);
@@ -252,7 +263,7 @@ export class ActionRuntime {
         steps[id] = { outputs: result.outputs, outcome: failed ? 'failure' : 'success', conclusion: failed && !tolerate ? 'failure' : 'success' };
         if (failed && !tolerate) compositeFailure = true;
       }
-      for (const [name, output] of Object.entries(value.outputs || {})) outputs[name] = interpolate(output.value || '', { ...inputContext, steps });
+      for (const [name, output] of Object.entries(value.outputs || {})) outputs[name] = await interpolate(output.value || '', { ...inputContext, steps });
       return { code: compositeFailure ? 1 : 0, outputs, state: {} };
     }
     // Pre and main share private action state; post handlers run once, LIFO.
@@ -262,7 +273,7 @@ export class ActionRuntime {
       post = { action, value, inputs, env: supplied, saved, condition: value.runs['post-if'] || 'always()' };
       this.state.posts.push(post);
     }
-    if (value.runs.pre && truthy(evaluate(value.runs['pre-if'] || 'always()', context))) {
+    if (value.runs.pre && truthy(await evaluate(value.runs['pre-if'] || 'always()', context))) {
       const pre = await this.javascript(action, value, inputs, supplied, context, saved, 'pre'); saved = pre.state;
       if (post) post.saved = saved;
       if (pre.code) return pre;
@@ -292,7 +303,7 @@ export class ActionRuntime {
     while (this.state.posts.length) {
       const post = this.state.posts.pop(), context = this.context();
       try {
-        if (!truthy(evaluate(post.condition, context))) continue;
+        if (!truthy(await evaluate(post.condition, context))) continue;
         const result = await this.javascript(post.action, post.value, post.inputs, post.env, context, post.saved, 'post');
         if (result.code) { code = result.code; this.failure = true; this.state.failure = true; }
       } catch { process.stderr.write('runner: action post failed\n'); code = 1; this.failure = true; this.state.failure = true; }
@@ -313,7 +324,7 @@ export async function execute(config, state = {}, adapters = {}) {
     const inheritedExport = key => own(runtime.state.env, key) && !overrides.has(key);
     const supplied = Object.fromEntries(Object.entries(step.env || {}).filter(([key]) => !inheritedExport(key)));
     const condition = templates.if ?? 'success()';
-    if (!truthy(evaluate(condition, runtime.context({ env: environment(runtime.context().env, supplied) }), true))) {
+    if (!truthy(await evaluate(condition, runtime.context({ env: environment(runtime.context().env, supplied) }), true))) {
       runtime.state.steps[step.id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' };
       return { code: 0, conclusion: 'skipped', state: runtime.state };
     }
@@ -324,17 +335,17 @@ export async function execute(config, state = {}, adapters = {}) {
       if (process.env[key] && !runtime.state.masks.includes(process.env[key])) runtime.state.masks.push(process.env[key]);
     }
     const envContext = runtime.context({ env: environment(runtime.context().env, supplied) });
-    for (const [key, template] of Object.entries(templates)) if (key.startsWith('env:') && !inheritedExport(key.slice(4))) supplied[key.slice(4)] = interpolate(template, envContext);
+    for (const [key, template] of Object.entries(templates)) if (key.startsWith('env:') && !inheritedExport(key.slice(4))) supplied[key.slice(4)] = await interpolate(template, envContext);
     const context = runtime.context({ env: environment(runtime.context().env, supplied) });
     const inputs = { ...step.inputs };
-    for (const [key, template] of Object.entries(templates)) if (key.startsWith('with:')) inputs[key.slice(5)] = interpolate(template, context);
+    for (const [key, template] of Object.entries(templates)) if (key.startsWith('with:')) inputs[key.slice(5)] = await interpolate(template, context);
     for (const name of Object.keys(inputs)) {
       const key = `INPUT_${name.toUpperCase()}`;
       if (own(step.secret_env || {}, key)) inputs[name] = supplied[key];
     }
-    tolerate = templates['continue-on-error'] === undefined ? false : truthy(evaluate(templates['continue-on-error'], context));
+    tolerate = templates['continue-on-error'] === undefined ? false : truthy(await evaluate(templates['continue-on-error'], context));
     result = step.remote ? await runtime.action(step.uses, inputs, supplied) :
-      await runtime.script(templates.run === undefined ? step.run : interpolate(templates.run, context), step.shell, step.working_directory, supplied);
+      await runtime.script(templates.run === undefined ? step.run : await interpolate(templates.run, context), step.shell, step.working_directory, supplied);
   } catch (error) {
     runtime.error(error);
     result = { code: 1, outputs: {} };

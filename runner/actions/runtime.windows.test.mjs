@@ -78,3 +78,19 @@ test('Windows working directories cannot escape through a junction', { skip: !wi
     await assert.rejects(runtime.script('Write-Output bad', '', 'escape'), /escapes/);
   });
 });
+
+test('Windows hashFiles is case insensitive and hashes literal brackets', { skip: !windows }, async () => {
+  await fixture(async runtime => {
+    const { hashFiles } = await import('./hash-files.mjs');
+    const { createHash } = await import('node:crypto');
+    await fs.writeFile(path.join(runtime.workspace,'Moon.Mod'),'windows');
+    const sum = value => createHash('sha256').update(createHash('sha256').update(value).digest()).digest('hex');
+    assert.equal(await hashFiles(runtime.workspace,['**/moon.mod']),sum('windows'));
+    assert.equal(await hashFiles(runtime.workspace,['Moon.Mod/']),'');
+    await fs.mkdir(path.join(runtime.workspace,'folder'));
+    await fs.writeFile(path.join(runtime.workspace,'folder','lock'),'folder');
+    assert.equal(await hashFiles(runtime.workspace,['folder/']),sum('folder'));
+    await fs.writeFile(path.join(runtime.workspace,'[lock].json'),'lock');
+    assert.equal(await hashFiles(runtime.workspace,['[[]lock].json']),sum('lock'));
+  });
+});

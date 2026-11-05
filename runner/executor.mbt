@@ -204,7 +204,8 @@ async fn validate_options(
         !name.to_upper().has_prefix("DYLD_") &&
         ![
           "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
-          "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL",
+          "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL", "ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2",
+          "ACTIONS_CACHE_MODE",
         ].contains(name.to_upper()) &&
         !value.contains("\u{0000}") else {
         raise InvalidConfiguration(
@@ -925,7 +926,8 @@ fn valid_secret_env_name(name : String) -> Bool {
   }) &&
   ![
     "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
-    "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL",
+    "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL", "ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2",
+    "ACTIONS_CACHE_MODE",
   ].contains(name.to_upper())
 }
 

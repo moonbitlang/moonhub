@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 32L
+pub let database_schema_version : Int64 = 33L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -102,6 +102,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
   let artifact_migration = @fs.read_file(
     "db/migrations/032_pipeline_artifacts.sql",
   ).text()
+  let cache_migration = @fs.read_file("db/migrations/033_pipeline_cache.sql").text()
   pool.with_client(client => {
     client.with_transaction(tx => {
       let row = tx.query_one("PRAGMA user_version")
@@ -207,7 +208,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 32L {
         tx.driver.exec_script(artifact_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 32")
+      if version < 33L {
+        tx.driver.exec_script(cache_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 33")
     })
   })
 }
