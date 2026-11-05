@@ -85,6 +85,3 @@ fn execution_nonce() -> String {
   }
   result.to_string()
 }
-
-///|
-extern "C" fn windows_trace(phase : Int32) -> Unit = "moonhub_runner_windows_trace"

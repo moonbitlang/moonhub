@@ -7,7 +7,6 @@
 #ifdef _MSC_VER
 #pragma comment(lib, "advapi32.lib")
 #endif
-void moonhub_runner_windows_trace(int32_t phase) { fprintf(stderr, "runner: Windows cleanup phase %d\n", phase); fflush(stderr); }
 int64_t moonhub_runner_monotonic(void) { return (int64_t)GetTickCount64(); }
 int32_t moonhub_runner_prepare(int32_t local) {
   if (local) return 0;
@@ -29,9 +28,10 @@ int32_t moonhub_runner_prepare(int32_t local) {
 }
 void moonhub_runner_kill_group(int32_t pid) {
   if (pid <= 0) return;
-  HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, (DWORD)pid);
+  HANDLE process = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, (DWORD)pid);
   if (process) {
-    if (!TerminateProcess(process, 1)) fprintf(stderr, "runner: cannot terminate step (%lu)\n", GetLastError());
+    DWORD code = STILL_ACTIVE;
+    if (GetExitCodeProcess(process, &code) && code == STILL_ACTIVE) TerminateProcess(process, 1);
     WaitForSingleObject(process, 3000);
     CloseHandle(process);
   } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
@@ -53,7 +53,6 @@ int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #include <sys/prctl.h>
 #endif
 
-void moonhub_runner_windows_trace(int32_t phase) { (void)phase; }
 int64_t moonhub_runner_monotonic(void) {
   struct timespec t;
 #ifdef CLOCK_BOOTTIME

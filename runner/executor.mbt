@@ -302,11 +302,14 @@ async fn Runtime::execute_script(
   @async.with_timeout(
     timeout_ms,
     () => {
+      // Keep pipe handles alive until every reader has left the task group.
+      // Closing a Windows handle during task unwinding removes it from IOCP
+      // before a pending reader receives its completion notification.
+      let (out, out_writer) = @process.read_from_process()
+      defer out.close()
+      let (err, err_writer) = @process.read_from_process()
+      defer err.close()
       @async.with_task_group(group => {
-        let (out, out_writer) = @process.read_from_process()
-        defer out.close()
-        let (err, err_writer) = @process.read_from_process()
-        defer err.close()
         let input = @process.redirect_from_file(
           if @platform.windows() {
             "NUL"
@@ -333,7 +336,6 @@ async fn Runtime::execute_script(
         self.groups.push(process.pid)
         let drain_until = Ref(0L)
         let stdout = group.spawn(() => {
-          defer (if @platform.windows() { windows_trace(3) })
           if @platform.windows() {
             @async.protect_from_cancel(() => {
               self.stream_log(out, step.id, "stdout", drain_until)
@@ -343,7 +345,6 @@ async fn Runtime::execute_script(
           }
         })
         let stderr = group.spawn(() => {
-          defer (if @platform.windows() { windows_trace(4) })
           if @platform.windows() {
             @async.protect_from_cancel(() => {
               self.stream_log(err, step.id, "stderr", drain_until)
@@ -768,9 +769,6 @@ async fn execute_assignment(
       _ => "lost"
     }
   })
-  if @platform.windows() {
-    windows_trace(5)
-  }
   let outcome = completed.unwrap_or("cancelled")
   let report = @async.protect_from_cancel(() => {
     let outcome = try {
