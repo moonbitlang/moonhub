@@ -71,6 +71,13 @@ can remain paused through the Web update; they do not have to be destroyed.
 On a timeout or refusal, let tasks finish and rerun CI on `master` with deployment
 selected. If `master` advanced, its newer workflow handles deployment.
 
+An installed standalone DinD controller participates in that switch as well.
+Deployment loads the matching image into its dedicated daemon and updates its
+binary, startup image and saved provider image together. The tracked `status`
+command verifies its release and configuration acknowledgement, so an older
+independent executor prevents `MOONHUB_DEPLOY_OK` even when Web/SSH are healthy.
+See the local DinD upgrade and recovery procedure in [production.md](production.md).
+
 ## Logs, retries and recovery
 
 Use the GitHub Actions run and its deployment job summary to find the SSM
@@ -94,5 +101,6 @@ fetches GitHub with its host-only read key. Retiring the outbound mirror must
 not revoke this production key. Neither SSH key is an AWS credential.
 
 Validate changes with `node --test scripts/github-deploy-test.cjs` and
-`node scripts/production-deploy-test.cjs`. A real `master` push must also produce
+`node --test scripts/production-deploy-test.cjs scripts/production-dind-test.cjs`.
+These deployment regressions also run in `Self-check`. A real `master` push must also produce
 `MOONHUB_DEPLOY_OK:SHA` and matching healthy production image revisions.
