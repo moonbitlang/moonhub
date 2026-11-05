@@ -1,29 +1,16 @@
-# Pipelines: Steps 1 through 7
+# Pipelines
 
-The first delivery provides workflow validation and immutable run snapshots.
-The second adds a persistent runner protocol and authenticated machine API.
-Step 3 adds a single-job Runner and a dedicated container image. Step 4 adds
-the Docker provider and a dedicated DinD service. Step 5 adds DAG scheduling
-and explicit reruns. Steps 6 and 7 add the browser controls, fault/recovery
-coverage, orphan cleanup, and deployment topology acceptance. The server does
-not execute repository code. Only explicitly provisioned providers can claim work.
+MoonHub validates a bounded workflow subset, saves immutable run snapshots,
+schedules DAG jobs and exposes authenticated runner and browser APIs. Docker
+and ASG providers execute each assignment in a fresh task container. The server
+does not execute repository code; only explicitly provisioned providers can
+claim work. Job containers must never receive privileged mode, the Docker
+control socket/certificates, provider credentials or the application's data volume.
 
-## Delivery Sequence
-
-| Step | Scope | Status |
-| --- | --- | --- |
-| 1 | Workflow subset, authorization, immutable source/config snapshots, migration | Implemented; business APIs and tests only |
-| 2 | Provider authentication, claims, attempts, leases, logs and result protocol | Implemented; simulated-provider and HTTP acceptance tests |
-| 3 | Single-job Runner and execution semantics | Implemented; native and HTTP execution tests plus container smoke |
-| 4 | Docker provider, dedicated DinD, ephemeral jobs and isolation | Implemented; provider smoke and Compose overlay |
-| 5 | Multi-job scheduling, concurrency and explicit reruns | Implemented; DAG scheduler and snapshot reruns |
-| 6 | Repository pages and management controls | Implemented; run/provider pages and CSRF controls |
-| 7 | Fault injection, recovery, cleanup and deployment acceptance | Implemented; recovery tests, orphan cleanup and topology smoke |
-
-Each step is a separate implementation commit with its own acceptance tests.
-Provider and DinD are separate services. Job containers must never receive
-privileged mode, the Docker control socket/certificates, provider credentials,
-or the application's data volume. Isolation checks accompany step 4, not step 7.
+This document owns workflow, scheduling and runner contracts. See
+[GitHub Action execution](github-actions.md) for downloaded actions, runtime
+expressions, file commands and source transport, and [MR checks](merge-checks.md)
+for candidate selection, execution approval and merge gates.
 
 ## Standalone runner
 
@@ -33,8 +20,8 @@ configuration in the administration UI. See [standalone runner](standalone-runne
 ## Current Workflow Contract
 
 Same-repository Merge Requests discover `pull_request` workflows automatically
-from the pinned target revision and test the merged source/target tree. They
-appear as optional MR checks unless branch protection requires their path.
+from the pinned merged source/target candidate and execute that same candidate.
+They appear as optional MR checks unless branch protection requires their path.
 See [MR Pipeline checks](merge-checks.md) for execution approval and merge gates.
 
 Workflow files are regular UTF-8 Git blobs directly under `.github/workflows/`,
@@ -142,8 +129,9 @@ created before migration 018, `context` is `null`; their existing definitions
 and reruns continue to work unchanged. No context is fabricated from live state.
 Migration 018 upgrades the database to schema 18 and protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
-together; an older server binary cannot open schema 18. Simple public context references still use ordinary resolved env strings. Jobs
-containing downloaded actions or runtime expressions require assignment version 5.
+together; an older server binary cannot open schema 18. Simple public context
+references still use ordinary resolved env strings. New runs with definition
+version 2 use assignment version 5, including jobs containing only shell steps.
 Repository secrets retain the separate execution-time channel described below.
 
 ### Repository Secrets
@@ -208,10 +196,11 @@ forms preserve metadata and clear the value field.
 
 The parser separates secret references from public env before resolving captured
 context, preventing recursive interpolation of branch or repository names. Run
-snapshots, reruns and provider assignments contain only secret names. Assignment
-version 4 requires updated server, provider/controller and task Runner binaries;
-older executors fail closed. Jobs without downloaded actions or runtime templates retain assignment versions
-1–4, and older snapshots without the new fields remain readable.
+snapshots, reruns and provider assignments contain only secret names. New runs
+use assignment version 5. Historical runs with definition version 1 and secrets
+use assignment version 4; other historical jobs retain assignment versions 1–3.
+Upgrade server, provider/controller and task Runner together; older executors
+reject unsupported assignments. Older snapshots without secret fields remain readable.
 
 After binding its execution instance and starting a step, the Runner calls
 `POST /-/runner-api/v1/attempts/:id/secrets` with its attempt credential,
@@ -289,23 +278,27 @@ Step/job timeouts, cancellation and lease loss also stop setup and its processes
 The normalized version selector is saved in the immutable workflow snapshot
 and retained on rerun. Floating channels such as `stable`/`latest` and `nightly`
 are resolved by the official installer at execution time and can change between
-runs. Use an explicit version for reproducible compiler selection. This feature
-does not add GitHub Actions expressions, matrix jobs or arbitrary `uses` support.
+runs. Use an explicit version for reproducible compiler selection. This built-in
+setup does not download Action code; downloaded actions and runtime expressions
+use the separate [Action runtime](github-actions.md). Matrix jobs remain unsupported.
 
 ### Source Preparation
 
-Checkout downloads the pinned archive from the authenticated MoonHub source API
-and extracts it when that step runs, with its own log and outcome. It does not
-fetch or execute third-party Action code. This is a source-only compatibility
-subset: no `.git`, credentials, history, alternate ref/path/repository, submodules,
-LFS or checkout inputs. The source workspace must be empty at that point;
-earlier steps may run commands but must not leave files there. A checkout
-failure stops subsequent steps. Existing jobs with only literal `run` steps
-keep their automatic source preparation before the first step.
+The built-in `moonhub/checkout@v1` downloads the pinned archive from the
+authenticated MoonHub source API and extracts it when that step runs, with its
+own log and outcome. This built-in does not fetch Action code or create `.git`;
+it supports no history, alternate ref/path/repository, submodules, LFS or checkout
+inputs. Its source workspace must be empty, so earlier steps must not leave
+files there. Jobs without an explicit checkout prepare source automatically.
 
-For example, commit this workflow on the MR target branch and provision a
-matching provider. Opening a ready MR discovers it without a branch rule;
-execution still requires manager approval as described below.
+Newly parsed `actions/checkout@ref` uses the downloaded upstream action with a
+bounded single-commit Git bundle and creates a real checkout. Historical
+snapshots that used built-in checkout semantics retain them on rerun. See
+[source transport](github-actions.md#source-transport) for the exact limits.
+
+For example, include this workflow in the MR's merged candidate and provision a
+matching provider. A ready MR discovers it without a branch rule; execution
+still requires manager authorization as described in [MR checks](merge-checks.md).
 
 ```yaml
 name: MoonBit CI
@@ -362,18 +355,18 @@ Migration 007 adds runs, jobs, dependency edges, and separate attempt history.
 Run configuration is immutable and versioned. New runs contain no attempts;
 jobs without dependencies are queued and dependent jobs are waiting. Lifecycle
 state and conclusion are separate. Completed records require a conclusion, and
-at most one active attempt can exist per job. Step 2 adds transactional claiming
-and attempt transitions; Step 5 advances dependent jobs transactionally and
-supports explicit reruns from an immutable completed snapshot.
+at most one active attempt can exist per job. Claims and attempt transitions are
+transactional. The scheduler advances dependent jobs transactionally and supports
+explicit reruns from an immutable completed snapshot.
 
 The repository's existing cross-process write lock coordinates run creation.
 Source is pinned under a random `refs/moonhub/pipelines/<token>` ref **before**
 the SQLite transaction commits. The existing SSH `transfer.hideRefs` policy
 already hides this namespace. Expected failures remove the pin and roll back
 all rows. A crash between Git and SQLite may leave an orphan pin; it cannot leave
-a committed run relying solely on a movable branch. Reconciliation/retention
-arrives in step 7. Successful pins are retained until an explicit future cleanup
-policy is implemented; this stage does not delete source snapshots.
+a committed run relying solely on a movable branch. Run pins have no automatic
+retention policy; do not confuse task-container/workspace cleanup with deletion
+of retained Git snapshots.
 
 ## Acceptance
 
@@ -382,6 +375,7 @@ moon test --strip -j 1 vendor/yaml
 moon test --strip -j 1 pipeline/workflow
 moon test --strip -j 1 pipeline
 moon test --strip -j 1 gitops database
+npm run build --prefix js
 moon test --strip -j 1
 node scripts/check-package-boundaries.cjs
 ```
@@ -390,20 +384,28 @@ Tests cover upstream YAML behavior, multiline script preservation, scalar
 coercion, defaults/env precedence, fail-closed validation, structural limits,
 dependency cycles, current authorization, concurrent run numbering, rollback,
 attempt constraints, migration from schema 6, database reopen, and source
-retention after a force push plus immediate Git garbage collection. Those tests
-do not execute workflow scripts or connect to Docker. Step 3 execution tests
-run only application-owned fixtures.
+retention after a force push plus immediate Git garbage collection. Workflow and
+store tests do not execute scripts or connect to Docker. The full MoonBit suite
+also runs Runner execution tests using application-owned fixtures.
 
-## Runner Protocol (Step 2)
+## Runner Protocol
 
-Checkout jobs use assignment payload `version: 2`; jobs using MoonBit setup use
-assignment `version: 3`. Each step has string `uses` and `moonbit_version` fields
-(`""` when unused). Pure shell jobs retain assignment V1; new decoders accept
-legacy steps without these fields. Lease, claim and result HTTP messages remain
-V1 under the existing API prefix. Older Runners/providers reject new action
-assignments rather than silently skip them. Upgrade Web, SSH, provider and
-Runner images together before enabling these workflows. No database migration
-is needed.
+Assignment versions are separate from the HTTP request protocol version:
+
+| Saved definition | Assignment version |
+| --- | --- |
+| Current definition version 2, including shell-only jobs | 5 |
+| Historical definition version 1 with repository secrets | 4 |
+| Historical definition version 1 with built-in MoonBit setup | 3 |
+| Historical definition version 1 with built-in checkout | 2 |
+| Historical definition version 1 with only shell steps | 1 |
+
+Reruns preserve the saved definition version. New decoders accept legacy steps
+without `uses` or `moonbit_version`; those fields are empty when unused. Lease,
+claim and result HTTP messages remain V1 under the existing API prefix. Older
+Runners/providers reject unsupported assignments. Upgrade Web, SSH, provider and
+Runner images together. Definition version 2 and assignment version 5 add JSON
+fields without a database schema migration.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
@@ -411,14 +413,14 @@ injected by `web/dependencies.mbt`. Browser cookies cannot authenticate runners.
 Use HTTPS outside a trusted local development connection; do not log Authorization
 headers or claim request bodies in a reverse proxy.
 
-Provider creation, pause/revocation, and repository grant changes are currently
-business APIs requiring a live site-administrator identity. There is no default
-credential, public registration endpoint, or registration UI. Step 4 adds the
-`pipeline-provider-create` deployment command and Compose provider service. Each
-provider starts with an explicit repository allowlist and normalized labels
-including `self-hosted` and `linux`. No grant means no work. Each provider still
-has one live attempt at a time; different providers can claim different ready
-jobs. DAG scheduling and explicit reruns are described below.
+Site administrators create, pause/revoke and edit provider access at
+`/-/admin/pipelines/providers`. Providers use selected-repository grants or an
+explicit all-repository scope and normalized labels including `self-hosted` and
+`linux`. No eligible grant means no work. The legacy Docker provider also supports
+the `pipeline-provider-create` operator command and Compose service below.
+Standalone controllers enroll through the authenticated registration API using
+the one-time token from the UI; see [standalone runner](standalone-runner.md).
+Controllers do not claim jobs; their workers claim one attempt at a time.
 
 ### Credentials and Replay
 
@@ -503,8 +505,8 @@ The Web lifecycle owns a lease worker checking expiry every two seconds in
 bounded batches. Requests also reconcile expiry. Lease loss or an unacknowledged
 cancel becomes `lost`, not success or an automatic retry. A reached job deadline
 becomes `timed_out` if the lease remained valid until that deadline. Old attempt
-credentials cannot update a later attempt. Step 3 adds stopping inside the
-execution container; Step 4 adds provider-side container supervision. External
+credentials cannot update a later attempt. The Runner stops work inside the
+execution container; the provider supervises container cleanup. External
 side effects are never guaranteed exactly-once.
 
 ### Logs
@@ -641,7 +643,7 @@ stopped, multiple workflows, fixed SHAs, restart/no-op deduplication and filters
 `MOONHUB_KEEP_PREVIEW=1` retains the preview under
 `_build/pipeline-push-smoke/preview.json`. No production deployment is touched.
 
-## Single-job Runner (Step 3)
+## Single-job Runner
 
 `moonhub runner` consumes one bare `Assignment` JSON file and one 64-character
 attempt credential from stdin. It does not claim jobs, access the database,
@@ -665,15 +667,19 @@ success until every step succeeded (or was conditionally skipped in version 5).
 Version 5 permits sequential cleanup steps after a failure without allowing that
 failure to become a successful job. Terminalization records interrupted running
 steps and skips pending ones. `Coordinator.read_steps` is repository-scoped;
-the step UI remains part of step 6.
+the run page exposes persisted per-step state.
 
 ### Execution and Isolation
 
-- Each literal `run` starts a new shell, with workflow/job/step environment
-  already resolved in the plan. The workspace is shared within the job, but shell
-  variables, `cd`, and exports do not leak into later shells.
+- Each `run` starts a new shell, with captured environment and, for version 5,
+  runtime templates and earlier file-command updates applied. The workspace is
+  shared within the job, but shell variables, `cd`, and ordinary exports do not
+  leak into later shells.
 - Implicit Bash uses `-e`; explicit Bash uses `-e -o pipefail`; `sh` uses `-e`.
-  Custom shell templates and file commands such as `GITHUB_ENV` are not supported.
+  Custom shell templates are unsupported. Version 5 supports `GITHUB_ENV`,
+  `GITHUB_PATH`, `GITHUB_OUTPUT` and other bounded
+  [file commands](github-actions.md#supported-actions); historical assignments
+  retain their earlier shell execution behavior.
 - The child environment is constructed explicitly, never inherited from the
   controller. It includes the assigned repository/SHA/workspace, CI markers and
   private HOME/TMPDIR directories. The image's MoonBit tools are read-only under
@@ -743,27 +749,27 @@ no Docker daemon:
 moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
 ```
 
-Each Runner now downloads a tar snapshot of its pinned commit before literal
-steps execute. Only a live, running, authorized attempt can read the source;
+Automatic source preparation and built-in checkout download a tar snapshot of
+the pinned commit. Only a live, running, authorized attempt can read the source;
 completed, expired, cancelled and revoked credentials are rejected. The request
 is bounded to 30 seconds, 64 MiB and 10,000 regular files. The initial archive
 checkout rejects symlinks, submodules and runner-reserved paths (`.git`, `.home`,
 `.tmp`), preserves executable files and binary data, and does not create `.git`
-or fetch LFS objects. Git archive attributes apply. This is not yet an
-implementation of `actions/checkout` or arbitrary `uses` actions.
+or fetch LFS objects. Git archive attributes apply. Downloaded `actions/checkout`
+instead uses the [Git bundle transport](github-actions.md#source-transport).
 The provider creates one isolated container per ready DAG Job; workspaces are
 not shared across jobs. Trusted local tests use the same source-fetch path.
 
-## DAG Scheduling and Reruns (Step 5)
+## DAG Scheduling and Reruns
 
 Jobs without `needs` enter `queued`; dependent jobs enter `waiting`. After an
 attempt completes successfully, its direct dependents become queued when all
 their dependencies succeeded. If any dependency concludes with failure,
 timeout, cancellation, loss, or skip, the dependent job is completed as
 `skipped`; this propagates through deeper branches in the same transaction.
-Claims can continue from a Run whose status is already `running`, so a provider
-can execute each ready Job in order. A provider still has one active attempt;
-parallelism comes from multiple provisioned providers and matching labels.
+Claims can continue from a Run whose status is already `running`. Each legacy
+Docker provider or standalone worker has one active attempt; parallelism comes
+from multiple eligible workers/providers with matching labels and repository grants.
 
 `rerun_run` accepts a completed Run under the normal repository-manager
 authorization. It creates a new Run number and Git pin for the original commit,
@@ -775,7 +781,11 @@ recovery remain explicit operations.
 The Run detail page offers snapshot rerun. Per-repository concurrency policy is
 not yet implemented.
 
-## Docker Provider (Step 4)
+## Docker Provider
+
+This section describes the supported legacy Compose/DinD deployment. For new
+Docker or ASG controllers with runtime configuration, see
+[standalone runner](standalone-runner.md).
 
 The provider is a separate `moonhub:provider` service. It reads its long-lived
 provider credential from `/run/secrets/provider_token`, claims at most one live

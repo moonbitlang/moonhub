@@ -25,13 +25,11 @@ assigned Issues and collaboration updates. Email reminders are optional. See
 See [package boundaries, dependency injection and tests](docs/architecture.md)
 for the source layout and module initialization rules.
 
-Pipeline implementation is staged. Workflow validation, immutable run snapshots,
-an authenticated runner protocol, and a single-job Runner are implemented.
-Docker provider, bounded source checkout, standard `pull_request` triggers and
-the built-in checkout action and captured run-context references in `env` are
-available; full GitHub Actions compatibility is
-not yet implemented. See
-[the supported subset and delivery plan](docs/pipelines.md).
+Pipelines provide immutable run snapshots, DAG scheduling, Docker/ASG providers,
+bounded source checkout and MR checks. Downloaded JavaScript/composite actions,
+runtime expressions and file commands are supported within a bounded GitHub
+Actions subset. See [the workflow and runner contract](docs/pipelines.md) and
+[GitHub Action execution](docs/github-actions.md) for supported behavior and gaps.
 
 ## Browser frontend
 
