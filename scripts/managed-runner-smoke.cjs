@@ -8,7 +8,7 @@ const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhu
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const registration = 'a'.repeat(64);
 
-async function scenario(mode, failCleanup = false, stale = false) {
+async function scenario(mode, failCleanup = false, stale = false, terminal = false, claimRace = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
   for (const directory of ['controller', 'workspace']) {
     fs.mkdirSync(path.join(root, directory), {mode:0o700});
@@ -81,6 +81,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
   const workers = [];
   let providerToken, config, schema, revision = '1', observed = '0', applied = '0', claims = 0, queued = mode === 'asg' ? 0 : 1, paused = false, failure;
   let readyFailures = 0, recoverReadyAt = 0;
+  let pendingClaim, releaseClaim, releaseTimer, raceConflicts = 0, raceWorker;
   const server = http.createServer(async (req, res) => {
     try {
       let text = ''; for await (const chunk of req) text += chunk;
@@ -106,7 +107,26 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         result = worker;
       } else if (route === '/workers/sync') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
-        if (mode === 'docker' && !failCleanup && body.state === 'ready') {
+        if (claimRace && pendingClaim && body.state === 'ready') {
+          // The server has leased the task, but its claim response is still in
+          // flight. A concurrent ready heartbeat must not retire this worker.
+          assert.equal(worker.key, raceWorker);
+          assert.equal(worker.state, 'busy');
+          raceConflicts++; res.writeHead(409); res.end('{}');
+          releaseTimer = setTimeout(() => {pendingClaim = false; releaseClaim();}, 500);
+          return;
+        }
+        if (claimRace && body.state === 'ready' && worker.active_attempts > 0) {
+          const st = state();
+          assert.equal(st.runs, claims, 'worker became ready before executing its claimed task');
+          assert.equal(st.volumes.length, 0, 'worker became ready before workspace cleanup');
+          assert.deepEqual(fs.readdirSync(path.join(root, 'workspace')), ['.existing'], 'worker became ready before assignment cleanup');
+          worker.active_attempts = 0;
+        }
+        if (terminal && body.state === 'ready') {
+          worker.state='failed';res.writeHead(409);res.end('{}');return;
+        }
+        if (mode === 'docker' && !failCleanup && !claimRace && body.state === 'ready') {
           recoverReadyAt ||= Date.now() + 1200;
           if (Date.now() < recoverReadyAt) {
             readyFailures++; res.writeHead(503); res.end('{}'); return;
@@ -117,12 +137,21 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         result = {version:1,provider_id:'1',worker_id:worker.id,paused,draining:worker.draining,config_revision:revision,config};
       } else if (route === '/claims') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
-        if (applied !== revision) result = {version:1,assignment:null};
+        if (applied !== revision || claimRace && claims >= 2) result = {version:1,assignment:null};
         else {
           claims++; queued = 0;
           const now = Date.now();
           result = {version:1,assignment:claims <= 2 ? {version:1,attempt_id:String(claims),run_id:'1',job_id:String(claims),repository:'alice/demo',commit_sha:'a'.repeat(40),lease_until_ms:String(now + 60000),server_time_ms:String(now),state:'leased',job:{id:'build',name:'Build',runs_on:['self-hosted','linux'],timeout_minutes:1,steps:[{id:'check',name:'Check',run:'true',shell:'bash',working_directory:'.',env:{},timeout_minutes:0}]}} : null};
           if (claims === 1 && !failCleanup) {config = {...config,cpus:'1'}; revision = '2';}
+          if (claimRace && claims <= 2) {
+            assert.equal(workers.length, 1, 'claim race replaced the worker');
+            worker.state = 'busy'; worker.active_attempts = 1;
+            if (claims === 1) {
+              raceWorker = worker.key; pendingClaim = true;
+              console.log('Claim race: first task leased; holding its response until a background ready heartbeat receives 409.');
+              await new Promise(resolve => {releaseClaim = resolve;});
+            } else assert.equal(worker.key, raceWorker, 'second task used a different worker');
+          }
         }
       } else if (/^\/workers\/[^/]+\/drain$/.test(route)) {
         const worker = workers.find(w => w.id === route.split('/')[2]);
@@ -140,7 +169,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     child = spawn(binary,args,{stdio:['ignore','pipe','pipe']});
     child.stdout.on('data',b => {output += b;}); child.stderr.on('data',b => {output += b;});
     child.on('exit',() => {exited = true;});
-    const deadline = Date.now() + (mode === 'asg' ? 140000 : 30000);
+    const deadline = Date.now() + (terminal ? 6000 : mode === 'asg' ? 140000 : 30000);
     let standbySince;
     for (;;) {
       if (failure) throw failure;
@@ -170,22 +199,36 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         assert.ok(Date.now() - Number(workers[0].idle_since_ms) >= 30000, 'worker retired before its idle timeout');
         assert.ok(workers[0].draining); break;
       }
+      if (terminal && exited) {assert.equal(claims,0,'claim after worker retirement');assert.equal(workers[0].state,'failed');break;}
       if (mode === 'docker' && failCleanup && exited) {assert.equal(claims,1,'claim after cleanup failure'); assert.equal(st.volumes.length,1); break;}
-      if (mode === 'docker' && !failCleanup && st.runs >= 2 && st.volumes.length === 0 && applied === '2') {assert.ok(st.containerArgs.includes('1')); break;}
-      if (exited || Date.now() > deadline) throw Error(`${mode} timed out/stopped: ${output}; revisions=${observed}/${applied}/${revision}; claims=${claims}; workers=${JSON.stringify(workers.map(({secret,...w}) => w))}; calls=${JSON.stringify(st.calls.map(c => c.slice(0,3)))}`);
+      if (mode === 'docker' && !failCleanup && st.runs >= 2 && st.volumes.length === 0 && applied === '2' && (!claimRace || workers[0]?.active_attempts === 0)) {
+        assert.ok(st.containerArgs.includes('1'));
+        if (claimRace) {
+          assert.equal(raceConflicts, 1, 'claim response was not held across one conflicting background heartbeat');
+          assert.equal(workers.length, 1, 'claim race replaced the worker');
+          assert.equal(workers[0].key, raceWorker);
+          assert.equal(claims, 2); assert.equal(st.runs, 2);
+          assert.equal(workers[0].active_attempts, 0, 'second task never acknowledged cleanup');
+          for (const id of ['1', '2']) assert.ok(st.calls.some(c => c[0] === 'rm' && c.includes('moonhub-pipeline-' + id)), 'task container was not removed');
+          assert.deepEqual(fs.readdirSync(path.join(root, 'workspace')), ['.existing'], 'assignment directory survived cleanup');
+        }
+        break;
+      }
+      if (exited || Date.now() > deadline) throw Error(`${mode}${claimRace ? ' claim race' : ''} timed out/stopped: ${output}; revisions=${observed}/${applied}/${revision}; claims=${claims}; raceConflicts=${raceConflicts}; runs=${st.runs || 0}; workers=${JSON.stringify(workers.map(({secret,...w}) => w))}; calls=${JSON.stringify(st.calls.map(c => c.slice(0,3)))}`);
       await delay(100);
     }
-    if (mode === 'docker' && !failCleanup) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
+    if (mode === 'docker' && !failCleanup && !terminal && !claimRace) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
     for (const directory of ['controller', 'workspace']) {
       assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
     }
-    console.log(`Managed ${mode}${failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
+    console.log(`Managed ${mode}${claimRace ? ' claim race' : terminal ? ' retired worker' : failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
+    clearTimeout(releaseTimer); releaseClaim?.();
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(r => child.once('exit',r)),delay(20000).then(() => {if (!exited) child.kill('SIGKILL');})]);}
     server.closeAllConnections(); await new Promise(r => server.close(r));
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});

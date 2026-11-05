@@ -9,6 +9,7 @@ fn container_args(
   assignment_path : String,
   attempt_id : String,
   workspace_volume : String,
+  windows_isolation~ : String = "process",
 ) -> Array[String] {
   let args = [
     "run",
@@ -20,7 +21,7 @@ fn container_args(
   if @platform.windows() {
     args.append([
       "--isolation",
-      "process",
+      windows_isolation,
       "--user",
       "ContainerUser",
       "--memory",
@@ -120,6 +121,11 @@ async fn run_container(
     assignment_path,
     assignment.attempt_id,
     workspace_volume,
+    windows_isolation=if @platform.windows() {
+      windows_docker_isolation(options)
+    } else {
+      "process"
+    },
   )
   @async.with_timeout(
     assignment.job.timeout_minutes * 60000 + 90000,

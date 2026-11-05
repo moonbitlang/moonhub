@@ -64,7 +64,7 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
       cleanup_stale_workspaces(base)
     },
     prepare: current => ensure_runner_image(current),
-    health: () => (),
+    health: () => if @platform.windows() { wait_for_docker(base) },
     execute: (current, assignment, credential) => {
       execute_assignment(current, assignment, credential)
     },
@@ -80,6 +80,7 @@ async fn run_backend_worker(
 ) -> Unit {
   validate_origin(base.server, base.allow_http)
   let state = Ref("starting")
+  let claiming = Ref(false)
   let applied = Ref("0")
   let latest : Ref[@protocol.WorkerSnapshot?] = Ref(None)
   @platform.private_directory(base.workspace_root)
@@ -121,7 +122,15 @@ async fn run_backend_worker(
           )
           latest.val = Some(response)
         } catch {
-          Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
+          // A retired worker cannot recover with the same identity (for example
+          // after a sleeping PC missed its heartbeat window). Let the host
+          // supervisor restart and enroll a fresh worker instead of retrying forever.
+          Rejected(code) if permanent_worker_rejection(
+              code,
+              request.state,
+              state.val,
+              claiming.val,
+            ) => raise Rejected(code)
           _ => ()
         }
         @async.sleep(5000)
@@ -173,7 +182,8 @@ async fn run_backend_worker(
           allow_http=base.allow_http,
         ),
       ) catch {
-        Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
+        Rejected(code) if code == 401 || code == 403 || code == 409 =>
+          raise Rejected(code)
         _ => {
           @async.sleep(base.poll_ms)
           continue
@@ -188,13 +198,19 @@ async fn run_backend_worker(
         @async.sleep(base.poll_ms)
         continue
       }
+      // A claim can already be committed on the server while its response is
+      // still in flight. Preserve that pending claim when a ready heartbeat
+      // conflicts with the newly busy server-side worker.
+      claiming.val = true
       let assignment = claim(current.val, token, runner_os=backend.os) catch {
         Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
         _ => {
+          claiming.val = false
           @async.sleep(base.poll_ms)
           continue
         }
       }
+      claiming.val = false
       match assignment {
         None => @async.sleep(base.poll_ms)
         Some(claimed) => {
@@ -241,4 +257,23 @@ async fn run_backend_worker(
     )
     group.return_immediately(())
   })
+}
+
+///|
+fn permanent_worker_rejection(
+  code : Int32,
+  sent_state : String,
+  current_state : String,
+  claiming : Bool,
+) -> Bool {
+  code == 401 ||
+  code == 403 ||
+  // The server may have accepted a claim before the client receives it. A
+  // heartbeat conflict during that request or its job must not interrupt work.
+  (
+    code == 409 &&
+    !claiming &&
+    current_state != "busy" &&
+    sent_state == current_state
+  )
 }

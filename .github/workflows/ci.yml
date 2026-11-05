@@ -101,7 +101,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "$pwd/.tmp/windows-runner/bin;$pwd/.tmp/windows-runner/pwsh;$pwd/.tmp/windows-runner/git/cmd;$pwd/.tmp/windows-runner/git/usr/bin;$env:PATH"
-          moon test --target native --strip -j 1 --deny-warn runner/platform
+          moon test --target native --strip -j 1 --deny-warn runner/platform provider
           if ($LASTEXITCODE -ne 0) { throw 'Platform tests failed' }
           node --test runner/actions/runtime.windows.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Action runtime tests failed' }
@@ -109,6 +109,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Process cleanup tests failed' }
           node scripts/windows-runner-cancellation-test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Runner cancellation tests failed' }
+          node scripts/windows-provider-preflight-test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows 11 preflight regression failed' }
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |
@@ -119,6 +121,11 @@ jobs:
         run: |
           node scripts/windows-runner-smoke.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows container smoke failed' }
+      - name: Install and exercise a standalone Windows provider
+        shell: pwsh
+        run: |
+          node scripts/windows-runner-smoke.cjs --standalone
+          if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows provider smoke failed' }
 
   macos-runner:
     name: macOS runner
