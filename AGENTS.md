@@ -134,8 +134,9 @@ pull-request artifact tool is available.
 GitHub `master` requires a PR, an up-to-date branch and the GitHub Actions check
 `CI required`. No review approvals are required. Force pushes, deletion and
 administrator bypass are forbidden. `Self-check` and `Docker SSH` run in parallel
-on GitHub-hosted Ubuntu 24.04 runners. Only success from both checks passes the
-aggregate gate. See `docs/github-ci.md` for configuration and cutover status.
+on GitHub-hosted Ubuntu 24.04 runners. A separate `Windows runner` job runs on
+Windows Server 2022. Only success from all three checks passes the aggregate gate.
+See `docs/github-ci.md` for configuration and cutover status.
 
 ## Continuous Deployment
 

@@ -19,8 +19,8 @@ export function parseFileCommands(text) {
   return result;
 }
 export function validEnvName(name) {
-  return /^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(name) && !/^(GITHUB_|RUNNER_|MOONHUB_|LD_|DYLD_)/.test(name) &&
-    !['BASH_ENV', 'ENV', 'SHELLOPTS', 'BASHOPTS', 'NODE_OPTIONS'].includes(name);
+  return /^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(name) && !/^(GITHUB_|RUNNER_|MOONHUB_|LD_|DYLD_)/i.test(name) &&
+    !['BASH_ENV', 'ENV', 'SHELLOPTS', 'BASHOPTS', 'NODE_OPTIONS'].includes(name.toUpperCase());
 }
 const unescape = value => value.replaceAll('%0D', '\r').replaceAll('%0A', '\n').replaceAll('%25', '%');
 // Process commands before publishing any log bytes. Chunk boundaries (including

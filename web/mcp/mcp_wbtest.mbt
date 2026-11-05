@@ -1013,6 +1013,7 @@ async test "MCP CI tools create query cancel rerun and reject out of scope log r
     let assignment = coordinator
       .claim(provider_token, {
         version: 1,
+        runner_os: None,
         request_id: @identity.random_hex(16),
         attempt_token,
       })

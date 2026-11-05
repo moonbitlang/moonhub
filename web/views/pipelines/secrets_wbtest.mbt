@@ -129,6 +129,7 @@ async test "real runner obtains step secrets through HTTP and stores only masked
       let assignment = coordinator
         .claim(provider, {
           version: 1,
+          runner_os: None,
           request_id: @identity.random_hex(16),
           attempt_token: token,
         })

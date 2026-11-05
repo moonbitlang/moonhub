@@ -133,7 +133,7 @@ const state = JSON.parse(fs.readFileSync(file));
 let result = null;
 if (args[0] === 'ec2' && args[1] === 'describe-instance-types') result = [{cpus:2,memory_mib:8192,architectures:['x86_64']}];
 else if (args[0] === 'ec2' && args[1] === 'describe-launch-template-versions') result = [{image:'ami-local',tokens:'required',hop:1}];
-else if (args[0] === 'ec2' && args[1] === 'describe-images') result = ['x86_64'];
+else if (args[0] === 'ec2' && args[1] === 'describe-images') result = [{ architecture: 'x86_64', platform: null }];
 else if (args[0] === 'autoscaling' && args[1] === 'describe-auto-scaling-groups') {
   result = [{name:args[args.indexOf('--auto-scaling-group-names')+1],min:0,max:3,desired:0,instances:[]}];
 } else if (args[0] === 'autoscaling' && args[1] === 'update-auto-scaling-group') {

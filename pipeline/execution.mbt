@@ -9,6 +9,10 @@ let eligible_provider_jobs : String =
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
   #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
   #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
+  #|AND ((EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='windows')
+  #|  AND EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label='windows'))
+  #|  OR (NOT EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='windows')
+  #|  AND EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label='linux')))
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
   #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
 
@@ -328,6 +332,21 @@ pub fn Coordinator::claim(
           p
         }
         let provider_id : Int64 = provider.get_name("id")
+        let runner_os = request.runner_os.unwrap_or("linux")
+        guard ["linux", "windows"].contains(runner_os) else {
+          raise @domain.BadRequest(
+            message="Unsupported runner operating system.",
+          )
+        }
+        guard tx.query_opt(
+            "SELECT label FROM pipeline_provider_label WHERE provider_id=? AND label=?",
+            params=[provider_id, runner_os],
+          )
+          is Some(_) else {
+          raise @domain.Forbidden(
+            message="Runner operating system does not match provider labels.",
+          )
+        }
         ignore(
           tx.execute(
             "UPDATE pipeline_provider SET last_seen_ms = ? WHERE id = ?",

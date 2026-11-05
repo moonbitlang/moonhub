@@ -135,6 +135,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
         let assignment = coordinator
           .claim("a".repeat(64), {
             version: 1,
+            runner_os: None,
             request_id: "c".repeat(32),
             attempt_token: token,
           })

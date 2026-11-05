@@ -65,6 +65,7 @@ pub fn parse_decimal(value : String) -> Int64? {
 ///|
 #derive(ToJson, FromJson)
 pub(all) struct ClaimRequest {
+  runner_os : String?
   version : Int32
   request_id : String
   attempt_token : String

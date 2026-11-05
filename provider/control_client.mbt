@@ -55,12 +55,7 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
   let state = Ref("starting")
   let applied = Ref("0")
   let latest : Ref[@protocol.WorkerSnapshot?] = Ref(None)
-  @fs.mkdir(
-    base.workspace_root,
-    recursive=true,
-    permission=0o700,
-    allow_exist=true,
-  )
+  @platform.private_directory(base.workspace_root)
   errdefer (@async.protect_from_cancel(() => {
     let request : @protocol.WorkerSyncRequest = {
       version: 1,

@@ -56,6 +56,7 @@ pub fn Assignment::to_repr(Self) -> @debug.Repr
 
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct ClaimRequest {
+  runner_os : String?
   version : Int32
   request_id : String
   attempt_token : String

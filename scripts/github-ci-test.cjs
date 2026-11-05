@@ -11,17 +11,17 @@ const deploy = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 
 const results = ['success', 'failure', 'cancelled', 'skipped'];
 
 test('the actual aggregate gate rejects every non-success combination', () => {
-  assert.match(ci, /name: CI required\n    if: \$\{\{ always\(\) \}\}\n    needs: \[self-check, docker-ssh\]/);
+  assert.match(ci, /name: CI required\n    if: \$\{\{ always\(\) \}\}\n    needs: \[self-check, docker-ssh, windows-runner\]/);
   assert.match(ci, /SELF_CHECK_RESULT: \$\{\{ needs.self-check.result \}\}/);
   assert.match(ci, /DOCKER_SSH_RESULT: \$\{\{ needs.docker-ssh.result \}\}/);
-  const gate = ci.match(/      - name: Require both checks to succeed[\s\S]*?        run: \|\n((?:          .+\n)+)/)?.[1];
+  const gate = ci.match(/      - name: Require all checks to succeed[\s\S]*?        run: \|\n((?:          .+\n)+)/)?.[1];
   assert.ok(gate, 'missing aggregate shell gate');
-  for (const self of results) for (const docker of results) {
+  for (const self of results) for (const docker of results) for (const windows of results) {
     const result = spawnSync('bash', ['-e', '-c', gate], {
-      env: { ...process.env, SELF_CHECK_RESULT: self, DOCKER_SSH_RESULT: docker },
+      env: { ...process.env, SELF_CHECK_RESULT: self, DOCKER_SSH_RESULT: docker, WINDOWS_RUNNER_RESULT: windows },
       encoding: 'utf8',
     });
-    assert.equal(result.status === 0, self === 'success' && docker === 'success', `${self}/${docker}`);
+    assert.equal(result.status === 0, self === 'success' && docker === 'success' && windows === 'success', `${self}/${docker}/${windows}`);
   }
 });
 

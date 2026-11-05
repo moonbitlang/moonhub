@@ -122,6 +122,7 @@ async function main() {
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
+  await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }
 

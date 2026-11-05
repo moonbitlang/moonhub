@@ -25,11 +25,17 @@ verifies `moonc -v` before running `node scripts/self-check.cjs`.
 
 The script preserves the index/dependency initialization, check/fmt/info order,
 input/interface guard, package boundaries, script tests, frontend build, native
-tests and build with `--strip -j 1`. Docker SSH keeps
+tests and build with `--strip -j 1`, then the managed Docker/ASG lifecycle
+acceptance with local adapters (including cleanup failure and stale-worker drain).
+Docker SSH keeps
 `bash scripts/docker-smoke.sh`. No TypeScript or browser check is added.
 
-`CI required` always evaluates both job results and accepts only two successes.
-Failure, cancellation or skipping either job cannot pass the gate. Updated PR
+`Windows runner` runs on Windows Server 2022, builds the Windows worker and task
+image, and verifies shells, Actions, process cleanup and reusable container workers.
+See [Windows runner setup](standalone-runner.md#windows-x64-workers).
+
+`CI required` always evaluates all three job results and accepts only successes.
+Failure, cancellation or skipping any job cannot pass the gate. Updated PR
 runs cancel the older run for that PR. Non-PR runs use separate concurrency
 groups, leaving active production deployments running.
 
@@ -80,7 +86,7 @@ Historical MRs and Issues remain available on MoonHub.
 Run `actionlint .github/workflows/ci.yml .github/workflows/deploy.yml`, then the
 repository's `moon check --deny-warn`, `moon fmt`, `moon info` sequence.
 `node --test scripts/github-ci-test.cjs` executes the aggregate shell gate for
-all 16 pairs of success/failure/cancelled/skipped results, checks deployment
+all 64 combinations of success/failure/cancelled/skipped results, checks deployment
 conditions across events/refs/repositories/results/manual choices, checks version
 verification and concurrency configuration. The existing self-check and deploy
 regressions remain applicable. These local checks do not replace real GitHub

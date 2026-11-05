@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { validRelative, windows } from './platform.mjs';
 const exec = promisify(execFile);
 export function reference(value) {
   const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)((?:\/[A-Za-z0-9_.-]+)*)@([A-Za-z0-9_+./-]+)$/.exec(value);
@@ -84,8 +85,9 @@ export async function extractArchive(buffer, directory) {
     if (!['', '0', '5'].includes(type)) throw new Error('Action archives may contain only regular files and directories');
     if (parts.length === 1) continue;
     const relative = parts.slice(1).join('/');
-    if (names.has(relative) || ++count > 10000) throw new Error('Action archive contains duplicate paths or too many files');
-    names.add(relative);
+    const key = windows ? relative.toLowerCase() : relative;
+    if (!validRelative(relative) || names.has(key) || ++count > 10000) throw new Error('Action archive contains duplicate paths or too many files');
+    names.add(key);
     const executable = Number.parseInt(tarString(header.subarray(100, 108)).trim(), 8) & 0o111;
     entries.push({ relative, type, content, executable });
   }

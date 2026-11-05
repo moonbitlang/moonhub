@@ -91,3 +91,35 @@ test "ASG capacity counts busy tasks and queued jobs, respects cap and pause" {
   config["standby_workers"] = "20"
   assert_eq(desired_workers({ ..snapshot, workers: [], queued_jobs: 0, }), 3)
 }
+
+///|
+test "Windows ASG bootstrap uses PowerShell and keeps credentials out of history" {
+  let (document, command) = worker_bootstrap_command(
+    "us-west-2", "/moonhub-runner/windows/i-example", "windows",
+  )
+  assert_eq(document, "AWS-RunPowerShellScript")
+  assert_true(command.contains("--with-decryption"))
+  assert_true(command.contains("icacls.exe"))
+  assert_true(command.contains("New-ScheduledTaskAction"))
+  assert_true(command.contains("-MultipleInstances IgnoreNew"))
+  assert_true(command.contains("-User 'SYSTEM'"))
+  assert_true(!command.contains("systemd"))
+  let (document, command) = worker_bootstrap_command(
+    "us-west-2", "/moonhub-runner/linux/i-example", "linux",
+  )
+  assert_eq(document, "AWS-RunShellScript")
+  assert_true(command.contains("systemd-run"))
+}
+
+///|
+test "AMI platform is optional for Linux and explicit for Windows" {
+  let linux : Array[WorkerImage] = @json.from_json(
+    @json.parse("[{\"architecture\":\"x86_64\",\"platform\":null}]"),
+  )
+  assert_eq(linux[0].architecture, "x86_64")
+  assert_eq(linux[0].platform, None)
+  let windows : Array[WorkerImage] = @json.from_json(
+    @json.parse("[{\"architecture\":\"x86_64\",\"platform\":\"windows\"}]"),
+  )
+  assert_eq(windows[0].platform, Some("windows"))
+}

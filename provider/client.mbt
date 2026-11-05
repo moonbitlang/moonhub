@@ -95,6 +95,7 @@ async fn post_claim(
   let client = @http.Client(options.server)
   defer client.close()
   let request : @protocol.ClaimRequest = {
+    runner_os: Some(@platform.os()),
     version: @protocol.version,
     request_id,
     attempt_token,

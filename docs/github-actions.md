@@ -19,7 +19,7 @@ GitHub Actions service compatibility. See [the migration inventory](openseek-mig
   `setup-node` can change PATH for workflow scripts without changing the binary
   used to execute another action's declared runtime.
 - Composite actions, including nested local/remote actions, `inputs`, `outputs`,
-  bash/sh steps, per-step environment and conditions.
+  bash/sh/pwsh steps, per-step environment and conditions.
 - JavaScript `pre`, `pre-if`, `main`, `post`, `post-if`, state propagation and
   once-only reverse-order post execution. Normal failures run applicable cleanup;
   cancellation, deadline or lease loss immediately fence execution instead.

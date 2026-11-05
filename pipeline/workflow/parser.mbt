@@ -104,13 +104,13 @@ fn yaml_to_string_map(
   for key, value in fields {
     guard valid_identifier(key) &&
       !key.contains("-") &&
-      !key.has_prefix("MOONHUB_") &&
-      !key.has_prefix("GITHUB_") &&
-      !key.has_prefix("RUNNER_") &&
-      !key.has_prefix("LD_") &&
-      !key.has_prefix("DYLD_") &&
+      !key.to_upper().has_prefix("MOONHUB_") &&
+      !key.to_upper().has_prefix("GITHUB_") &&
+      !key.to_upper().has_prefix("RUNNER_") &&
+      !key.to_upper().has_prefix("LD_") &&
+      !key.to_upper().has_prefix("DYLD_") &&
       !["BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS"].contains(
-        key,
+        key.to_upper(),
       ) else {
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
@@ -134,10 +134,21 @@ fn yaml_to_string_map(
 fn merge_env(
   base : Map[String, String],
   overlay : Map[String, String],
-) -> Map[String, String] {
-  let result = base.copy()
-  for key, value in overlay {
-    result[key] = value
+  windows~ : Bool = false,
+) -> Map[String, String] raise InvalidWorkflow {
+  let result : Map[String, String] = Map([])
+  for layer in [base, overlay] {
+    let seen : Map[String, Bool] = Map([])
+    for key, value in layer {
+      let key = if windows { key.to_upper() } else { key }
+      guard !seen.contains(key) else {
+        raise InvalidWorkflow(
+          "Windows environment names must be unique ignoring case",
+        )
+      }
+      seen[key] = true
+      result[key] = value
+    }
   }
   result
 }
@@ -174,8 +185,11 @@ fn parse_shell(
   ctx : String,
 ) -> String? raise InvalidWorkflow {
   let shell = yaml_as_optional_string(value, ctx)
-  guard shell is None || shell == Some("bash") || shell == Some("sh") else {
-    raise InvalidWorkflow("\{ctx} supports only bash and sh")
+  guard shell is None ||
+    shell == Some("bash") ||
+    shell == Some("sh") ||
+    shell == Some("pwsh") else {
+    raise InvalidWorkflow("\{ctx} supports only bash, sh and pwsh")
   }
   shell
 }
@@ -389,10 +403,10 @@ fn parse_job(
         ch == '_'
       })
     }) &&
-    !runs_on.contains("windows") &&
+    !(runs_on.contains("windows") && runs_on.contains("linux")) &&
     !runs_on.contains("macos") else {
     raise InvalidWorkflow(
-      "\{ctx}.runs-on requires self-hosted Linux runner labels",
+      "\{ctx}.runs-on requires self-hosted Linux or Windows runner labels",
     )
   }
   let unique_labels : Map[String, Bool] = Map([])
@@ -405,6 +419,7 @@ fn parse_job(
   let env = merge_env(
     workflow_env,
     yaml_to_string_map(fields.get("env"), "\{ctx}.env"),
+    windows=runs_on.contains("windows"),
   )
   let job_defaults = inherit_defaults(
     defaults,
@@ -565,15 +580,24 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
+    guard uses is Some(_) ||
+      step_defaults.shell != Some("pwsh") ||
+      runs_on.contains("windows") else {
+      raise InvalidWorkflow("\{ctx}.shell: pwsh requires Windows runner labels")
+    }
     let explicit_env = if uses is Some(_) && !remote {
       Map([])
     } else {
-      yaml_to_string_map(fields.get("env"), "\{ctx}.env")
+      merge_env(
+        Map([]),
+        yaml_to_string_map(fields.get("env"), "\{ctx}.env"),
+        windows=runs_on.contains("windows"),
+      )
     }
     let step_env = if uses is Some(_) && !remote {
       Map([])
     } else {
-      merge_env(env, explicit_env)
+      merge_env(env, explicit_env, windows=runs_on.contains("windows"))
     }
     let literal_env : Map[String, String] = Map([])
     let secret_env : Map[String, String] = input_secrets
