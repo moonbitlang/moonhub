@@ -12,6 +12,11 @@ fn Coordinator::source_snapshot(
           (row.get_name("cancel_at_ms") : Int64?) is None else {
           raise Conflict("source requires a running, authorized attempt")
         }
+        guard attempt_job(row).contents_read else {
+          raise @domain.Forbidden(
+            message="job permissions deny contents access",
+          )
+        }
         let repo : @domain.RepoId = {
           owner: row.get_name("owner_name"),
           name: row.get_name("repo_name"),

@@ -217,3 +217,35 @@ async test "provider label edits require a current administrator and a nonrevoke
     ])
   })
 }
+
+///|
+async test "Ubuntu environment selectors require exact provider image and architecture labels" {
+  let source = @test_support.single_job_workflow.replace_all(
+    old="[self-hosted, linux]",
+    new="ubuntu-24.04",
+  )
+  with_protocol_fixture(
+    (coordinator, pool, _, _, provider, _) => {
+      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+      let admin = @identity.active_user_by_name(pool, "admin")
+      coordinator.set_provider_labels(admin, provider.id, [
+        "self-hosted", "linux", "x64", "ubuntu-22.04",
+      ])
+      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+      coordinator.set_provider_labels(admin, provider.id, [
+        "self-hosted", "linux", "arm64", "ubuntu-24.04",
+      ])
+      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+      coordinator.set_provider_labels(admin, provider.id, [
+        "self-hosted", "linux", "x64", "ubuntu-24.04",
+      ])
+      let assignment = coordinator
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      assert_eq(assignment.job.runs_on, [
+        "self-hosted", "linux", "x64", "ubuntu-24.04",
+      ])
+    },
+    workflow=source,
+  )
+}

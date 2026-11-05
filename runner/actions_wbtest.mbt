@@ -219,3 +219,63 @@ async test "native action jobs keep MoonBit setup outside the checkout directory
     assert_true(@fs.exists(workspace + "/.home/moonbit-0/bin/moon"))
   })
 }
+
+///|
+async test "contents none jobs do not fetch source or expose a source token" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let base = test_assignment([
+      test_step("check", "test -z \"$TOKEN\"; echo no-source"),
+    ])
+    let assignment = {
+      ..base,
+      version: @protocol.remote_assignment_version,
+      job: {
+        ..base.job,
+        contents_read: false,
+        steps: [
+          {
+            ..base.job.steps[0],
+            templates: { "env:TOKEN": "${{ github.token }}" },
+          },
+        ],
+      },
+    }
+    let server = fake_server()
+    let (code, node) = @process.collect_output_merged("node", [
+      "-p", "process.execPath",
+    ])
+    assert_eq(code, 0)
+    let report = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (operation, body, until) => server.post(operation, body, until),
+      source=() => fail("unexpected source"),
+      bundle=() => fail("unexpected bundle"),
+      action_node=node.text().trim().to_owned(),
+      action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+    )
+    assert_eq(report.conclusion, "success")
+    assert_true(report.reported)
+  })
+}
+
+///|
+test "runner environment checks prevent mislabeled distro versions and architectures" {
+  let labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
+  validate_runner_environment(
+    labels, "ID=ubuntu\nVERSION_ID=\"24.04\"\n", "x86_64",
+  )
+  for
+    (release, arch) in [
+      ("ID=debian\nVERSION_ID=12", "x86_64"),
+      ("ID=ubuntu\nVERSION_ID=22.04", "x86_64"),
+      ("ID=ubuntu\nVERSION_ID=24.04", "aarch64"),
+    ] {
+    try validate_runner_environment(labels, release, arch) catch {
+      InvalidConfiguration(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted incompatible runner environment")
+    }
+  }
+}

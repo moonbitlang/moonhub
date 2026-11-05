@@ -92,7 +92,7 @@ export class ActionRuntime {
     const github = { repository: this.config.repository, sha: this.config.sha, server_url: this.config.server,
       api_url: `${this.config.server}/-/api/v1`, ref: this.config.context?.ref || this.config.sha,
       workflow: this.config.context?.workflow || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
-      event_name: this.config.context?.event_name || 'workflow_dispatch', token: 'moonhub-local-source',
+      event_name: this.config.context?.event_name || 'workflow_dispatch', token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
       steps: this.state.steps, failure: this.failure, cancelled: this.cancelled, ...extra };
