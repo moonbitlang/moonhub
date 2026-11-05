@@ -69,6 +69,7 @@ RUN groupadd --gid 10001 git \
     && usermod --password '*' git \
     && chown root:root /home/git
 COPY --from=build /src/_build/native/release/build/moonhub.exe /usr/local/bin/moonhub
+COPY --from=build /src/_build/native/release/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe /usr/local/bin/moonhub-diff-worker
 COPY --from=assets /src/assets/ /app/assets/
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY LICENSE /usr/share/doc/moonhub/LICENSE

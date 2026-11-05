@@ -1,0 +1,7 @@
+import {
+  "hackwaly/moonhub/diff/protocol",
+  "moonbit-community/moondiff/mbtdiff",
+  "moonbit-community/moondiff/linediff",
+  "moonbit-community/moondiff/model",
+  "moonbitlang/core/encoding/utf8",
+}

@@ -121,6 +121,7 @@ async function main() {
   await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
+  await run('Diff worker build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub-diff-worker']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
