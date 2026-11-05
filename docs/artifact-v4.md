@@ -87,7 +87,10 @@ unreferenced storage directories left by run/repository deletion. Artifact
 access expires immediately even if physical deletion is queued. Staged blocks
 and the assembled archive coexist until cleanup; allow up to twice the staged
 byte quota plus in-flight upload space (four concurrent blob transfers per Web
-process) on the Web data disk. Existing whole-data-volume backups include the
+process) on the Web data disk. Transfer-slot waits, response headers and each
+response-body write are bounded to 30 seconds. Authorization is rechecked after
+a slot becomes available and before every downloaded chunk, including browser
+downloads. Existing whole-data-volume backups include the
 artifact directory.
 
 This increment supports the v4 current-run protocol. Cross-run/cross-repository

@@ -122,6 +122,34 @@ fn artifact_block_list(text : String) -> Array[String] raise {
 }
 
 ///|
+// Release scarce transfer slots on errors/cancellation, and reject authorization
+// that expired while queued before the caller opens files or sends headers.
+async fn[T] with_artifact_transfer(
+  transfers : @async.Semaphore,
+  authorize : () -> Unit raise,
+  f : async () -> T,
+  timeout_ms~ : Int32 = 30000,
+) -> T {
+  @async.with_timeout(timeout_ms, () => transfers.acquire())
+  defer transfers.release()
+  authorize()
+  f()
+}
+
+///|
+async fn stream_artifact(
+  file : @fs.File,
+  writer : &@io.Writer,
+  authorize : () -> Unit raise,
+  timeout_ms~ : Int32 = 30000,
+) -> Unit {
+  while file.read_some(max_len=65536) is Some(chunk) {
+    authorize()
+    @async.with_timeout(timeout_ms, () => writer.write(chunk))
+  }
+}
+
+///|
 pub let artifact_blob_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   let root = ctx.require(@web_context.config_root)
@@ -134,36 +162,41 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
       )
       let sig = req.query().get("sig").unwrap_or("")
       coordinator.authorize_artifact_blob(id, sig, "write")
-      transfers.acquire()
-      defer transfers.release()
-      coordinator.authorize_artifact_blob(id, sig, "write")
-      match req.query().get("comp") {
-        Some("block") => {
-          let block = req.query().get("blockid").unwrap_or("")
-          let bytes = artifact_request_bytes(
-            req, @pipeline.maximum_artifact_block_bytes,
-          )
-          coordinator.stage_artifact_block(root, id, sig, block, bytes)
-        }
-        Some("blocklist") => {
-          let text = @utf8.decode(artifact_request_bytes(req, 65536))
-          coordinator.commit_artifact_blocks(
-            root,
-            id,
-            sig,
-            artifact_block_list(text),
-          )
-        }
-        _ => raise @domain.BadRequest(message="unsupported blob operation")
-      }
-      let writer = res.respond(status=201, headers={
-        "Content-Length": "0",
-        "ETag": "\"moonhub-artifact\"",
-        "x-ms-request-id": @identity.random_hex(16),
-        "x-ms-version": "2023-11-03",
-        "Cache-Control": "no-store",
-      })
-      writer.write("")
+      with_artifact_transfer(
+        transfers,
+        () => coordinator.authorize_artifact_blob(id, sig, "write"),
+        () => {
+          match req.query().get("comp") {
+            Some("block") => {
+              let block = req.query().get("blockid").unwrap_or("")
+              let bytes = artifact_request_bytes(
+                req, @pipeline.maximum_artifact_block_bytes,
+              )
+              coordinator.stage_artifact_block(root, id, sig, block, bytes)
+            }
+            Some("blocklist") => {
+              let text = @utf8.decode(artifact_request_bytes(req, 65536))
+              coordinator.commit_artifact_blocks(
+                root,
+                id,
+                sig,
+                artifact_block_list(text),
+              )
+            }
+            _ => raise @domain.BadRequest(message="unsupported blob operation")
+          }
+          let writer = @async.with_timeout(30000, () => {
+            res.respond(status=201, headers={
+              "Content-Length": "0",
+              "ETag": "\"moonhub-artifact\"",
+              "x-ms-request-id": @identity.random_hex(16),
+              "x-ms-version": "2023-11-03",
+              "Cache-Control": "no-store",
+            })
+          })
+          writer.write("")
+        },
+      )
     } catch {
       err => {
         let (status, json) = artifact_error(err)
@@ -190,27 +223,29 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
         return
       }
     }
-    transfers.acquire()
-    defer transfers.release()
-    let file = @fs.open(blob.path, mode=ReadOnly)
-    defer file.close()
-    guard file.size() == blob.size else {
-      raise @domain.NotFound(message="artifact data missing")
-    }
-    let writer = res.respond(status=200, headers={
-      "Content-Type": "application/zip",
-      "Content-Length": blob.size.to_string(),
-      "Cache-Control": "private, no-store",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "attachment; filename=artifact.zip",
-    })
-    while file.read_some(max_len=65536) is Some(chunk) {
+    let authorize = () => {
       coordinator.authorize_artifact_blob(
         blob.id,
         req.query().get("sig").unwrap_or(""),
         "read",
       )
-      writer.write(chunk)
     }
+    with_artifact_transfer(transfers, authorize, () => {
+      let file = @fs.open(blob.path, mode=ReadOnly)
+      defer file.close()
+      guard file.size() == blob.size else {
+        raise @domain.NotFound(message="artifact data missing")
+      }
+      let writer = @async.with_timeout(30000, () => {
+        res.respond(status=200, headers={
+          "Content-Type": "application/zip",
+          "Content-Length": blob.size.to_string(),
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Disposition": "attachment; filename=artifact.zip",
+        })
+      })
+      stream_artifact(file, writer, authorize)
+    })
   })
 })

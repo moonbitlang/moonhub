@@ -44,6 +44,12 @@ const server=http.createServer(async (req,res)=> {
     assert.equal(req.method,'POST');
     let raw=''; for await(const chunk of req) {raw+=chunk; assert.ok(raw.length<2*1024*1024);}
     const body=JSON.parse(raw);
+    if(operation==='artifact-runtime') {
+      assert.equal(body.version,1); assert.equal(body.execution_id,execution); assert.ok(execution);
+      assert.equal(body.origin,`http://127.0.0.1:${server.address().port}`);
+      res.writeHead(200,{'Content-Type':'application/json'});
+      res.end(JSON.stringify({token:randomBytes(32).toString('hex'),results_url:body.origin,expires_ms:String(Date.now()+3600000)})); return;
+    }
     if(operation==='start') execution=body.execution_id;
     else if(operation==='logs') {
       assert.equal(body.sequence,String(sequence+1)); sequence++; process.stdout.write(body.text);

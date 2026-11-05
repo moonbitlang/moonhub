@@ -439,3 +439,136 @@ async test "production artifact mounts keep browser downloads repository authori
     ignore(client.read_all())
   })
 }
+
+///|
+priv struct ArtifactTestWriter {
+  blocked : @async.Semaphore
+  bytes : @buffer.Buffer
+  stall : Bool
+}
+
+///|
+impl @io.Writer for ArtifactTestWriter with fn write_once(
+  self,
+  data,
+  offset~,
+  len~,
+) {
+  if self.stall {
+    self.blocked.acquire()
+  }
+  self.bytes.write_bytes(data[offset:offset + len])
+  len
+}
+
+///|
+async test "artifact streams time out stalled writers and release transfer capacity" {
+  let root = @fs.tmpdir(prefix="moonhub-artifact-stream-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.write_file(root + "/zip", b"archive")
+  let file = @fs.open(root + "/zip", mode=ReadOnly)
+  defer file.close()
+  let transfers = @async.Semaphore(1)
+  let writer : ArtifactTestWriter = {
+    blocked: @async.Semaphore(1, initial_value=0),
+    bytes: @buffer.Buffer(),
+    stall: true,
+  }
+  try
+    with_artifact_transfer(transfers, () => (), () => {
+      stream_artifact(file, writer, () => (), timeout_ms=10)
+    })
+  catch {
+    @async.TimeoutError => ()
+    err => raise err
+  } noraise {
+    _ => fail("stalled writer retained transfer capacity")
+  }
+  assert_true(transfers.try_acquire())
+  transfers.release()
+  assert_true(writer.bytes.is_empty())
+}
+
+///|
+async test "artifact transfers bound queue waits and reauthorize before sending bytes" {
+  let transfers = @async.Semaphore(1)
+  transfers.acquire()
+  let entered = Ref(false)
+  try
+    with_artifact_transfer(
+      transfers,
+      () => (),
+      () => entered.val = true,
+      timeout_ms=10,
+    )
+  catch {
+    @async.TimeoutError => ()
+    err => raise err
+  } noraise {
+    _ => fail("unbounded transfer queue")
+  }
+  assert_false(entered.val)
+  transfers.release()
+  @async.with_task_group(group => {
+    let started = @async.Semaphore(1, initial_value=0)
+    let authorized = Ref(true)
+    transfers.acquire()
+    let waiter = group.spawn(async fn() -> Unit {
+      started.release()
+      try
+        with_artifact_transfer(
+          transfers,
+          () => {
+            if !authorized.val {
+              raise @domain.Unauthorized(message="expired while queued")
+            }
+          },
+          () => entered.val = true,
+        )
+      catch {
+        @domain.Unauthorized(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("queued capability was not rechecked")
+      }
+    })
+    // Hold the only slot until the request is waiting; then revoke it.
+    started.acquire()
+    @async.sleep(1)
+    authorized.val = false
+    transfers.release()
+    waiter.wait()
+  })
+  assert_false(entered.val)
+  assert_true(transfers.try_acquire())
+  transfers.release()
+}
+
+///|
+async test "artifact streams stop on authorization revocation before the next chunk" {
+  let root = @fs.tmpdir(prefix="moonhub-artifact-revoke-stream-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.write_file(root + "/zip", Bytes::make(65537, 0x61))
+  let file = @fs.open(root + "/zip", mode=ReadOnly)
+  defer file.close()
+  let writer : ArtifactTestWriter = {
+    blocked: @async.Semaphore(1),
+    bytes: @buffer.Buffer(),
+    stall: false,
+  }
+  let calls = Ref(0)
+  try
+    stream_artifact(file, writer, () => {
+      calls.val += 1
+      if calls.val > 1 {
+        raise @domain.Unauthorized(message="revoked")
+      }
+    })
+  catch {
+    @domain.Unauthorized(_) => ()
+    err => raise err
+  } noraise {
+    _ => fail("revoked stream continued")
+  }
+  assert_eq(writer.bytes.length(), 65536)
+}

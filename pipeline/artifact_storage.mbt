@@ -107,9 +107,10 @@ pub async fn Coordinator::stage_artifact_block(
   let directory = make_artifact_directory(root, key)
   let file = @identity.random_hex(32)
   let filename = directory + "/" + file
-  @fs.write_file(filename, bytes, create_mode=CreateNew, permission=0o600)
   let mut committed = false
+  // A failed or cancelled filesystem write can leave a partial file too.
   defer (if !committed { @fs.remove(filename) catch { _ => () } })
+  @fs.write_file(filename, bytes, create_mode=CreateNew, permission=0o600)
   let digest = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
   let old_file : String? = self.pool.with_client(client => {
     client.with_transaction(
