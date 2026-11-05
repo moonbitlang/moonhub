@@ -415,8 +415,10 @@ Use the same image version for web and SSH when upgrading. See
 [collaboration behavior and architecture](../docs/collaboration.md) for review,
 merge recovery, limits and permissions.
 
-SMTP variables from the top-level `.env.example` are forwarded only to `web`;
-the default transport writes invitation messages under `/data/mail_outbox`.
+Configure SMTP in **Site settings > Email delivery**; saved settings apply to
+subsequent deliveries without restarting Web. `MAIL_TRANSPORT` and `SMTP_*`
+environment variables are no longer read. The default file transport writes
+messages under `/data/mail_outbox`. See [email delivery](../README.md#email-delivery).
 
 For manual Compose builds, refresh/check the dependency base with
 `./deploy/deploy.sh build-base` before `docker compose up -d --build --wait`.
@@ -589,8 +591,10 @@ the default is `moby/buildkit:buildx-stable-1`. Shared-host `build-base` remains
 disabled because the linked dependency base is managed by the application build.
 `MOONHUB_BUILD_IMAGES=0` still supports explicitly pinned prebuilt images.
 
-After configuring server Git authentication and the self-hosted repository as
-`origin`, normal updates are:
+For this repository, configure server Git authentication with GitHub as `origin`.
+The current production deployment uses [GitHub CD](github-cd.md) and
+`production.sh`; existing shared-host installations can update a clean, tested
+checkout with:
 
 ```sh
 git pull --ff-only
@@ -630,7 +634,7 @@ recovery script that silently discards limits.
 
 `deploy/identity-transfer.py export SOURCE DESTINATION` exports only users,
 teams, membership, invitation and user SSH public-key records from a read-only SQLite snapshot.
-`import ... --schema-root db --schema-version 11|12|13` creates a fresh database
+`import ... --schema-root db --schema-version 11|12|13|14` creates a fresh database
 with those identities; it refuses existing destinations. Password hashes are
 preserved, including public-key revocation state, but server SSH host keys,
 sessions, password resets, mail settings/outbox,
@@ -638,9 +642,13 @@ repositories and pipelines are excluded. Export files are sensitive and mode
 0600; transfer them over SSH without displaying contents. Existing users log
 in with their old passwords and use their existing SSH keys. Verify
 the helper with `python3 scripts/identity-transfer-test.py`.
-When Python is absent from the old Web image, `export-identities.cjs` performs
-the same export using Node 24's SQLite API and the shared `identity-tables.json`
-allowlist. It reads a transaction snapshot and outputs counts only.
+The Python exporter accepts source schema versions 11–14. When Python is absent
+from the old Web image, `export-identities.cjs` performs the same export for
+source schema versions 11–16 using Node 24's SQLite API and the shared
+`identity-tables.json` allowlist. It reads a transaction snapshot and outputs
+counts only. These are legacy identity-transfer tools; neither exporter accepts
+the current application schema. Use complete deployment backups for current
+installations.
 
 ### Standard Restores
 
@@ -728,7 +736,8 @@ MOONHUB_WEBHOOK_ALLOWED_ORIGINS and restart Web. See
 For deployment clones, use [repository-scoped deploy keys](../docs/deploy-keys.md)
 instead of a root/user SSH key. The guide covers server-side generation, strict
 host verification, read-only registration, rotation and the temporary root-key
-migration. Web and SSH must be upgraded together for schema 13.
+migration. Upgrade Web and SSH together; database migrations and trusted receive
+hooks require matching executables. Rollback restores the matching backup.
 
 ```sh
 moon test --strip -j 1
@@ -737,9 +746,10 @@ node scripts/deploy-script-test.cjs
 node scripts/recovery-e2e.cjs
 ```
 
-Tests run separately from Docker image builds, through the commands above or the
-MoonHub self-check workflow. Run them before deploying a revision; a successful
-image build is not a test result. Native tests use the temporary
+Tests run separately from Docker image builds, through the commands above or
+[GitHub CI](../docs/github-ci.md). Build browser assets before local Web tests
+as described in the root README. Run checks before deploying a revision; a
+successful image build is not a test result. Native tests use the temporary
 [compiler workaround](../README.md#temporary-compiler-workaround).
 Production image builds retain `moon build --target native --release --deny-warn`
 and the C launcher's compiler warnings as errors.
