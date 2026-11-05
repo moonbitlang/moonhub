@@ -15,26 +15,31 @@ script enhancement: it hides at zero, caps its visible value at `99+`, and
 includes the full unread count in the link's accessible name. The link itself
 works without scripts.
 
-The page composes a heading and subtitle, four wrapping filter links, a
-separator list, pagination, then a bounded email-settings section. The filters
+The page composes a heading and subtitle, a Notification settings link, four
+filter links in one horizontally scrollable row, a separator list and pagination.
+The filters
 are Unread (with the user's actual count), Review requests, Assigned issues and
 All notifications. Unread is the default. Each filter has its own explanatory
 empty state; preserve the distinction between caught up, no pending reviews,
 no open assigned issues and no notification history.
 
-Rows show the event label, an explicit `Unread` label when applicable, a linked
-title, and secondary repository/resource, actor, version and time metadata as
-available. Do not fabricate missing metadata or counts. The title link opens
-the resource; the separate `Read and open` POST action explicitly marks an
-unread notification read before redirecting. Read rows and live task rows
-without a notification ID omit that action. `Mark all read` is a neutral
-heading action shown only on the first page when unread notifications and
-items exist; its submitted boundary is the newest item in the returned list.
-The list displays up to 50 items, with Newer/Older links preserving the filter.
+Rows group updates by resource before pagination and show its current state,
+linked title, repository/number and actual unread count. Review/assignment rows
+identify the task; merged/closed resources identify updates as historical.
+Recent activity uses native disclosure and shows up to ten event-specific links
+with actor, version and exact UTC time. Do not fabricate missing metadata or counts.
 
-Email notifications use a labeled checkbox and explicit Save notification
-settings button. The checkbox reflects the saved preference; delivery uses
-the site's email configuration. A successful save returns a status message.
+Opening a title does not mark it read. A group's protected `Mark read` POST
+action marks updates through the submitted event watermark and returns to the
+same filter/page. `Mark all read` appears on the first list page when unread
+notifications and a nonzero item watermark exist. The list displays up to 50
+resource groups, with Newer/Older links preserving the filter.
+
+Notification settings opens `/-/notifications?settings=1`, replacing the queue
+with a bounded email-settings section and Back to inbox link. Email notifications
+use a labeled checkbox and explicit Save notification settings button. The
+checkbox reflects the saved preference; delivery uses the site's email
+configuration. A successful save stays in settings and returns a status message.
 Keep preference state distinct from any claim of successful email delivery.
 
 ## Discussion subscriptions and reviewers
@@ -44,9 +49,9 @@ Requests. Its neutral button toggles between Subscribe to updates and
 Unsubscribe from updates. Keep the adjacent policy text: direct review requests
 and assignments still notify the user after unsubscribing.
 
-On a Merge Request, the subscription form follows version/source-target
-metadata and appears across its views. The Discussion view adds an unframed
-Reviewers section before the description and activity. Separator rows show
+On a Merge Request, subscriptions and reviewers live in the readiness side
+column beside the description and discussion, including on Changes. At narrower
+widths that column moves before the main content. Separator rows show
 the reviewer's display name, Review requested/Review submitted status, and
 version. An empty section says no reviewers have been requested yet.
 
@@ -67,18 +72,20 @@ keyboard focus treatment, skip link and mobile drawer behavior.
 
 At 900px and below, the shell uses its existing mobile navigation arrangement.
 At 600px and below, Inbox rows stack their content and action, and subscription
-buttons stack above their policy text. Filter links and reviewer actions wrap;
-titles and metadata can break long words. Inherit 44px mobile buttons and the
+buttons stack above their policy text. Filters remain one horizontally scrollable
+row; reviewer actions wrap. Titles and metadata can break long words.
+Inherit 44px mobile buttons and the
 existing responsive field sizing. Keep the email section within its `65ch`
 maximum and avoid fixed row widths that cause horizontal page overflow.
 
 ## Implementation and visual references
 
-- Inbox rendering/routes: `web/views/notifications/views.mbt` and `routes.mbt`.
+- Inbox rendering/routes: `web/views/notifications/views.mbt` and
+  `web/views/notifications/routes.mbt`.
 - Reviewer composition: `web/views/merge_requests/merge_views.mbt`.
 - Shared subscriptions: `web/ui/notifications.mbt`.
 - Feature styles and inherited tokens: `js/src/app.css`; badge enhancement:
-  `js/src/app-shell.ts`.
+  `js/src/page-shell.ts`.
 - Local smoke captures: `_build/notifications-smoke/inbox-desktop.png`,
   `inbox-mobile.png`, `review-desktop.png`, and `review-mobile.png`. These are
   generated review evidence, not durable fixtures or sources of product data.
