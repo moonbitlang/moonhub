@@ -43,7 +43,16 @@ try {
   foreach ($name in 'node24', 'node20', 'powershell', 'git') {
     $dependency = $pins.$name
     $archive = Join-Path $downloads ([IO.Path]::GetFileName($dependency.url))
-    Invoke-WebRequest $dependency.url -OutFile $archive
+    for ($attempt = 1; ; $attempt++) {
+      try {
+        Invoke-WebRequest $dependency.url -OutFile $archive -TimeoutSec 300
+        break
+      } catch {
+        if ($attempt -ge 3) { throw }
+        Write-Warning "Dependency download failed ($name), retrying attempt $($attempt + 1)/3"
+        Start-Sleep -Seconds 2
+      }
+    }
     if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dependency.sha256) { throw "Checksum mismatch: $name" }
     switch ($name) {
       node24 {

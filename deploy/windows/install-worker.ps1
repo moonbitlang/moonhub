@@ -77,8 +77,10 @@ foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
 }
 Set-Acl -LiteralPath $Directory -AclObject $acl
 # /reset replaces old explicit grants with the now-private inherited ACL.
-& icacls.exe "$Directory\*" /reset /T /Q | Out-Null
-if ($LASTEXITCODE -ne 0 -and (Get-ChildItem -LiteralPath $Directory -Force).Count -gt 0) { throw 'Worker directory ACL failed' }
+if (@(Get-ChildItem -LiteralPath $Directory -Force).Count -gt 0) {
+  & icacls.exe "$Directory\*" /reset /T /Q | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Worker directory ACL failed' }
+}
 Copy-Item -LiteralPath (Join-Path $Bundle 'bin') -Destination $Directory -Recurse -Force
 & "$Directory\bin\moonhub-runner.exe" --help | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Runner executable verification failed' }
