@@ -231,6 +231,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       req.query().get("discussion").map(@web_context.positive_resource_number)
     }
     let mut anchor_error = ""
+    let discussion_filter = req.query().get("filter").unwrap_or("all")
+    guard ["all", "unresolved", "resolved"].contains(discussion_filter) else {
+      raise @domain.BadRequest(message="invalid discussion filter")
+    }
     if requested_discussion is Some(id) {
       let discussion = @collaboration.merge_discussion(
         pool, scope, actor, mr, id,
@@ -273,7 +277,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           let options = @web_context.structured_diff_options(req)
           let target = StringBuilder()
           target.write_string(
-            "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}?tab=changes&version=\{discussion.version}&commit=\{anchor.commit_sha}&discussion=\{id}&discussion_page=\{discussion_page}&commit_page=\{commit_page}",
+            "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}?tab=changes&version=\{discussion.version}&commit=\{anchor.commit_sha}&discussion=\{id}&discussion_page=\{discussion_page}&commit_page=\{commit_page}&filter=\{discussion_filter}",
           )
           // Preserve an omitted file page on errors so a refresh retries locating
           // notification/legacy links, without creating a redirect loop.
@@ -335,10 +339,35 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       Some(value) => @web_context.positive_resource_number(value)
       None => 1L
     }
+    let selected_discussion = req
+      .query()
+      .get("discussion")
+      .map(@web_context.positive_resource_number)
+    let selected_comment = req
+      .query()
+      .get("comment")
+      .map(@web_context.positive_resource_number)
+    let discussion_page = match selected_comment {
+      Some(comment) => {
+        guard selected_discussion is Some(discussion) else {
+          raise @domain.BadRequest(
+            message="comment target requires a discussion",
+          )
+        }
+        @collaboration.merge_discussion_comment_page(
+          pool, scope, actor, mr, discussion, comment,
+        )
+      }
+      None =>
+        @web_context.positive_resource_number(
+          req.query().get("discussion_page").unwrap_or("1"),
+        )
+    }
     let mut comparison : @gitops.RevisionComparison? = None
     let mut patch = ""
     let mut diff_error = anchor_error
     let mut structured_view : @moonback.Html? = None
+    let mut diff_toolbar : @moonback.Html? = None
     let mut commits : Array[@gitops.CommitInfo] = []
     if revision is Some(revision) {
       if tab == "changes" || tab == "commits" {
@@ -367,14 +396,31 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
               }
               let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
               let query = "?version=\{revision.version}&commit=\{selected_commit.unwrap_or("")}"
+              let page_url = base +
+                query +
+                "&tab=changes&discussion_page=\{discussion_page}&commit_page=\{commit_page}&filter=\{discussion_filter}" +
+                selected_discussion.map(id => "&discussion=\{id}").unwrap_or("") +
+                selected_comment.map(id => "&comment=\{id}").unwrap_or("")
+              let view_url = page_url +
+                "&page=\{manifest.page}" +
+                file.map(result => "&file_id=\{result.file.id}").unwrap_or("") +
+                code.map(id => "&code=\{id}").unwrap_or("")
               structured_view = Some(
                 @web_ui.render_structured_diff(
                   manifest,
                   file,
                   options,
                   base + "/diff" + query,
-                  base + query + "&tab=changes",
+                  page_url,
+                  view_url~,
+                  toolbar_target="mr-diff-toolbar",
                 ),
+              )
+              diff_toolbar = Some(
+                @moonback.Html(b => {
+                  b <+
+                    "<moonhub-diff-toolbar id=\"mr-diff-toolbar\"><div data-toolbar-fallback>\{@web_ui.render_diff_options(options, view_url)}</div></moonhub-diff-toolbar>"
+                }),
               )
             } else {
               patch = @gitops.merge_git(git_dir, [
@@ -421,32 +467,6 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       raise @domain.BadRequest(message="invalid page")
     }
     let activities = @collaboration.list_merge_activity(pool, mr, activity_page)
-    let discussion_filter = req.query().get("filter").unwrap_or("all")
-    let selected_discussion = req
-      .query()
-      .get("discussion")
-      .map(@web_context.positive_resource_number)
-    let discussion_page = match req.query().get("comment") {
-      Some(comment) => {
-        guard selected_discussion is Some(discussion) else {
-          raise @domain.BadRequest(
-            message="comment target requires a discussion",
-          )
-        }
-        @collaboration.merge_discussion_comment_page(
-          pool,
-          scope,
-          actor,
-          mr,
-          discussion,
-          @web_context.positive_resource_number(comment),
-        )
-      }
-      None =>
-        @web_context.positive_resource_number(
-          req.query().get("discussion_page").unwrap_or("1"),
-        )
-    }
     let discussions = match selected_discussion {
       Some(id) =>
         [
@@ -518,6 +538,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         @collaboration.review_candidates(pool, actor, scope, mr),
         @collaboration.thread_subscription(pool, actor, scope, mr.id, false),
         @web_context.request_form_token(req, "notifications"),
+        diff_toolbar~,
         branches=if mr.status == "open" {
           @domain.split_lines(
             @gitops.merge_git(git_dir, [

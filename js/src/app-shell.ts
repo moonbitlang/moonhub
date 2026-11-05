@@ -22,7 +22,7 @@ function enhance() {
   mountRepoClone(signal);
   mountPipelineLogs(signal);
   // Custom elements own their children and unmount themselves on disconnection.
-  if (document.querySelector('moonhub-file-view, moonhub-commit-diff')) {
+  if (document.querySelector('moonhub-file-view, moonhub-commit-diff, moonhub-structured-diff')) {
     void import('./custom-elements').catch(error => console.error('Code view unavailable', error));
   }
 }
@@ -173,6 +173,29 @@ function installNavigation() {
   history.replaceState({ moonhub: historyIndex }, '', location.href);
   history.scrollRestoration = 'manual';
   window.addEventListener('scroll', () => positions.set(historyIndex, [scrollX, scrollY]), { passive: true });
+  // View controls may replace the mounted page's query without fetching it or
+  // creating a history entry. Keep this synchronous so rejected changes never
+  // reach component state, and keep currentURL in step with the address bar.
+  document.addEventListener('moonhub:replace-view-url', event => {
+    if (event.defaultPrevented) return;
+    const source = event.target;
+    const detail = (event as CustomEvent<{ url: string }>).detail;
+    if (!event.cancelable || !(source instanceof HTMLElement) || !source.isConnected ||
+        source !== document.querySelector('main moonhub-structured-diff') ||
+        request || submitting || committing || restoringHistory !== undefined ||
+        location.pathname !== currentURL.pathname || location.search !== currentURL.search ||
+        history.state?.moonhub !== historyIndex || typeof detail?.url !== 'string') {
+      event.preventDefault(); return;
+    }
+    try {
+      const url = new URL(detail.url, currentURL);
+      if (url.origin !== currentURL.origin || url.pathname !== currentURL.pathname) {
+        event.preventDefault(); return;
+      }
+      history.replaceState(history.state, '', url);
+      currentURL = url;
+    } catch { event.preventDefault(); }
+  });
   document.addEventListener('click', event => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;

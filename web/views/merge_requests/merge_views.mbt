@@ -257,6 +257,7 @@ fn render_merge_detail(
   candidates : Array[@collaboration.IssueAssignee],
   subscription : @collaboration.ThreadSubscription,
   notification_csrf : String,
+  diff_toolbar~ : @moonback.Html? = None,
   branches~ : Array[String] = [],
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
@@ -278,6 +279,10 @@ fn render_merge_detail(
     "!\{mr.number} \{mr.title}",
     assets,
     Html(b => {
+      if diff_toolbar is Some(_) {
+        b <+
+          "<button class=\"icon-button mobile-menu-button diff-navigation\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
+      }
       b <+
         "<a class=\"back-link\" href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">Merge requests</a><div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{@web_ui.merge_status(mr).to_lower()}\">\{@web_ui.merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{target}</code></p>"
       if editable {
@@ -720,6 +725,7 @@ fn render_merge_detail(
       assets,
       code_view=tab == "changes",
     ),
+    header_content=diff_toolbar,
     current_user=Some(user),
     navigation=@web_ui.RepositoryNavigation(
       scope.repo,

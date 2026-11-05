@@ -202,7 +202,7 @@ export function mountShell(signal: AbortSignal) {
   const actor = document.querySelector('.account-identity span')?.textContent ?? '';
   for (const form of document.querySelectorAll<HTMLFormElement>('.mr-form')) {
     const contentFields = [...form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[name=title], textarea[name=description], textarea[name=body]')];
-    const fields: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [...contentFields, ...(form.hasAttribute('data-inline-form') ? form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[name=path], input[name=start_line], input[name=end_line], select[name=side]') : [])];
+    const fields: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [...contentFields, ...(form.hasAttribute('data-inline-form') ? form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input[name=path], input[name=start_line], input[name=end_line], select[name=side], input[name=document_id], input[name=file_id], input[name=hunk_id], input[name=diff_page], input[name=mode], input[name=ignore_comments], input[name=ignore_tests]') : [])];
     if (!actor || !fields.length) continue;
     const version = form.querySelector<HTMLInputElement>('input[name=version]')?.value ?? document.querySelector<HTMLSelectElement>('#mr-version')?.value ?? '';
     const discussion = form.querySelector<HTMLInputElement>('input[name=discussion]')?.value;
