@@ -1236,6 +1236,7 @@ async test "MCP explicit origin policy and rate limits are isolated per applicat
       1,
     )
     let fixture_module : @moonback.Module = Module(ctx => {
+      ctx.provide(@web_context.diff_executor_key, @gitops.DiffExecutor::new())
       ctx.provide(@web_context.config_db_pool, pool)
       ctx.provide(@web_context.config_root, root)
       ctx.provide(
@@ -1349,4 +1350,177 @@ async test "MCP merge submission requires the merge scope and creates the existi
       "merged",
     )
   })
+}
+
+///|
+async test "MCP structured diff and inline comments use the same fixed document" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let token = @identity.create_access_token(
+      pool, actor, "structured mcp", "write", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    let _ = @test_support.merge_test_commit(
+      dir,
+      "structured",
+      @gitops.branch_sha(dir, "master"),
+      "mcp content\n",
+    )
+    let _ = @collaboration.create_merge_request(
+      pool, scope, dir, actor, "MCP diff", "", "structured", "master", false,
+    )
+    let (_, manifest) = mcp_tool(
+      port,
+      token,
+      "moonhub_get_merge_request_diff",
+      {
+        "repository": Json("alice/demo"),
+        "number": Json("1"),
+        "format": Json("structured"),
+      },
+    )
+    guard manifest
+      is {
+        "result": {
+          "isError": False,
+          "structuredContent": {
+            "version": String("1"),
+            "files": Array(files),
+            ..
+          },
+          ..
+        },
+        ..
+      } else {
+      fail("missing MCP manifest")
+    }
+    let file = files
+      .iter()
+      .find_first(f => f is { "new_path": String("README.md"), .. })
+      .unwrap()
+    guard file is { "id": String(file_id), .. } else { fail("missing file ID") }
+    let (_, result) = mcp_tool(port, token, "moonhub_get_merge_request_diff", {
+      "repository": Json("alice/demo"),
+      "number": Json("1"),
+      "version": Json("1"),
+      "format": Json("structured"),
+      "file_id": Json(file_id),
+    })
+    guard result
+      is {
+        "result": {
+          "isError": False,
+          "structuredContent": {
+            "document_id": String(document_id),
+            "document": {
+              "sections": Array(
+                [
+                  { "hunks": Array([{ "id": String(hunk_id), .. }, ..]), .. },
+                  ..,
+                ]
+              ),
+              ..
+            },
+            ..
+          },
+          ..
+        },
+        ..
+      } else {
+      fail("missing MCP document")
+    }
+    let (_, result) = mcp_tool(port, token, "moonhub_comment_merge_request", {
+      "repository": Json("alice/demo"),
+      "number": Json("1"),
+      "version": Json("1"),
+      "body": Json("MCP anchored review"),
+      "path": Json("README.md"),
+      "side": Json("new"),
+      "start_line": Json("1"),
+      "document_id": Json(document_id),
+      "file_id": Json(file_id),
+      "hunk_id": Json(hunk_id),
+      "mode": Json("line"),
+      "ignore_comments": Json("false"),
+      "ignore_tests": Json("false"),
+    })
+    assert_true(result is { "result": { "isError": False, .. }, .. })
+    let (_, result) = mcp_tool(port, token, "moonhub_list_merge_discussions", {
+      "repository": Json("alice/demo"),
+      "number": Json("1"),
+    })
+    assert_true(
+      result
+      is {
+        "result": {
+          "structuredContent": {
+            "items": Array(
+              [{ "anchor": { "context": String(context), .. }, .. }, ..]
+            ),
+            ..
+          },
+          ..
+        },
+        ..
+      } &&
+      context.contains("mcp content"),
+    )
+  })
+}
+
+///|
+async test "MCP manifest queue failure uses the tool isError response" {
+  let executor = @gitops.DiffExecutor::new()
+  @web_testkit.with_repository_test_app(
+    (port, pool, root, _, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let token = @identity.create_access_token(
+        pool, actor, "busy mcp", "write", 1,
+      )
+      let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let scope = @repository.repository_scope(pool, actor, repo)
+      let dir = repo.git_dir(root)
+      ignore(
+        @test_support.merge_test_commit(
+          dir,
+          "feature",
+          @gitops.branch_sha(dir, "master"),
+          "changed\n",
+        ),
+      )
+      ignore(
+        @collaboration.create_merge_request(
+          pool, scope, dir, actor, "Busy MCP", "", "feature", "master", false,
+        ),
+      )
+      executor.slots.acquire()
+      defer executor.slots.release()
+      let (status, json) = mcp_tool(
+        port,
+        token,
+        "moonhub_get_merge_request_diff",
+        {
+          "repository": Json("alice/demo"),
+          "number": Json("1"),
+          "format": Json("structured"),
+        },
+      )
+      assert_eq(status, 200)
+      assert_true(
+        json
+        is {
+          "result": {
+            "isError": True,
+            "content": Array([{ "text": String(message), .. }]),
+            ..
+          },
+          ..
+        } &&
+        message.contains("queue wait exceeded"),
+      )
+    },
+    diff_executor=executor,
+  )
 }

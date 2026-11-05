@@ -24,6 +24,8 @@ pub fn create_issue(@database.Database, @repository.RepositoryScope, @domain.Cur
 
 pub async fn create_merge_request(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, String, String, String, String, Bool, issue? : Int64, authorize_checks? : Bool) -> MergeRequest
 
+pub fn create_prepared_merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, PreparedDiscussion) -> Int64 raise
+
 pub fn edit_merge_request(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, String, String, expected? : Int64) -> Unit raise
 
 pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
@@ -73,6 +75,8 @@ pub fn mutate_issue(@database.Database, @repository.RepositoryScope, @domain.Cur
 pub fn notification_email_enabled(@database.Database, @domain.CurrentUser) -> Bool raise
 
 pub fn notification_label(String) -> String
+
+pub async fn prepare_anchored_merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, Int64, String?, String, String, Int64, Int64, String, structured? : (@gitops.DiffExecutor, @gitops.DiffSelection)) -> PreparedDiscussion
 
 pub fn prepare_merge_checks(@database.Database, @repository.RepositoryScope, MergeRequest, actor? : @domain.CurrentUser, workflows? : Array[String]) -> Unit raise
 
@@ -243,6 +247,10 @@ pub struct MergeRequest {
   job_error : String
   issue_number : Int64
   edit_version : Int64
+}
+
+pub struct PreparedDiscussion {
+  // private fields
 }
 
 pub struct ReviewRequest {

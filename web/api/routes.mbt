@@ -1,5 +1,6 @@
 ///|
 pub let api_module : @moonback.Module = Module(ctx => {
+  let diff_executor = ctx.require(@web_context.diff_executor_key)
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
@@ -344,6 +345,32 @@ pub let api_module : @moonback.Module = Module(ctx => {
         revision,
         req.query().get("commit").filter(value => !value.is_empty()),
       )
+      let format = req.query().get("format").unwrap_or("patch")
+      guard format == "patch" || format == "structured" else {
+        raise @domain.BadRequest(message="invalid diff format")
+      }
+      if format == "structured" {
+        let result = diff_executor.structured(
+          git_dir,
+          comparison.base_sha,
+          comparison.head_sha,
+          @web_context.structured_diff_options(req),
+          page=@web_context.diff_page(req),
+          file_id=req.query().get("file_id").unwrap_or(""),
+        )
+        ignore(api_actor(pool, req, "read"))
+        @repository.authorize_repository(pool, actor, scope.repo, Read)
+        if result is Object(fields) {
+          fields.set("version", Json(selected.to_string()))
+          fields.set("source_sha", Json(revision.source_sha))
+          fields.set("target_sha", Json(revision.target_sha))
+          fields.set(
+            "commit_sha",
+            comparison.commit.map(c => Json(c.hash)).unwrap_or(Json::null()),
+          )
+        }
+        return result
+      }
       let patch = @gitops.merge_git(git_dir, [
         "diff",
         "--no-ext-diff",
@@ -419,6 +446,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
           "inline-comment" =>
             [
               "version", "commit", "path", "side", "start_line", "end_line", "body",
+              "document_id", "file_id", "hunk_id", "diff_page", "mode", "ignore_comments",
+              "ignore_tests",
             ]
           "reply" => ["discussion", "body"]
           "resolve-discussion" | "reopen-discussion" =>
@@ -430,6 +459,44 @@ pub let api_module : @moonback.Module = Module(ctx => {
         images=(pool, root, scope, actor),
       )
       let id = number(@web_context.required_param(req, "number", "MR"))
+      let prepared = if action == "inline-comment" {
+        let mr = @collaboration.require_merge_request(pool, scope, id)
+        let git_dir = @repository.resolve_repository_dir(root, scope.repo)
+        let selection_fields : Map[String, String] = Map([])
+        for
+          key in [
+            "document_id", "file_id", "hunk_id", "diff_page", "mode", "ignore_comments",
+            "ignore_tests",
+          ] {
+          if body.contains(key) {
+            selection_fields.set(key, field(body, key))
+          }
+        }
+        Some(
+          @collaboration.prepare_anchored_merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            git_dir,
+            number(field(body, "version")),
+            body
+            .get("commit")
+            .map(_ => field(body, "commit"))
+            .filter(value => !value.is_empty()),
+            field(body, "path"),
+            field(body, "side"),
+            number(field(body, "start_line")),
+            number(field(body, "end_line")),
+            field(body, "body"),
+            structured?=@web_context.diff_selection(selection_fields).map(selection => {
+              (diff_executor, selection)
+            }),
+          ),
+        )
+      } else {
+        None
+      }
       @repository.with_repository_write(
         pool,
         root,
@@ -450,22 +517,12 @@ pub let api_module : @moonback.Module = Module(ctx => {
           match action {
             "inline-comment" =>
               created_discussion = Some(
-                @collaboration.create_anchored_merge_discussion(
+                @collaboration.create_prepared_merge_discussion(
                   pool,
                   scope,
                   actor,
                   current,
-                  git_dir,
-                  number(field(body, "version")),
-                  body
-                  .get("commit")
-                  .map(_ => field(body, "commit"))
-                  .filter(value => !value.is_empty()),
-                  field(body, "path"),
-                  field(body, "side"),
-                  number(field(body, "start_line")),
-                  number(field(body, "end_line")),
-                  field(body, "body"),
+                  prepared.unwrap(),
                 ),
               )
             "reply" =>

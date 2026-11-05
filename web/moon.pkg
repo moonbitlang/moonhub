@@ -1,4 +1,7 @@
 import {
+  "hackwaly/moonhub/gitops",
+  "moonbitlang/core/string",
+  "moonbitlang/core/env",
   "hackwaly/moonhub/web/mcp",
   "hackwaly/moonhub/web/api" @user_api,
   "hackwaly/moonhub/collaboration",

@@ -36,11 +36,21 @@ try {
   const commit = git(['commit-tree', tree, '-p', 'master', '-m', 'Nested browser fixture']);
   git(['update-ref', 'refs/heads/feature/breadcrumbs', commit]);
   git(['update-ref', 'refs/heads/release', 'master']);
+  const diffTree = (value) => {
+    const source = git(['hash-object', '-w', '--stdin'], value);
+    const test = git(['hash-object', '-w', '--stdin'], 'test { assert_true(true) }\n');
+    const api = git(['hash-object', '-w', '--stdin'], 'pub fn a() -> Int\n');
+    return git(['mktree'], `100644 blob ${source}\tmain.mbt\n100644 blob ${test}\tmain_test.mbt\n100644 blob ${api}\tpkg.generated.mbti\n`);
+  };
+  const diffBase = git(['commit-tree', diffTree('fn a() { 1 }\n\n///|\nfn b() { 2 }\n'), '-p', 'master', '-m', 'MoonDiff base']);
+  const diffHead = git(['commit-tree', diffTree('fn b() { 3 }\n\n///|\nfn a() { 1 }\n'), '-p', diffBase, '-m', 'MoonDiff reordered declarations']);
+  git(['update-ref', 'refs/heads/moondiff-base', diffBase]);
+  git(['update-ref', 'refs/heads/moondiff-feature', diffHead]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',
     '--root-user', 'browser-root', '--root-password', 'browser-test-password'], {
-    cwd: directory, env: { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
+    cwd: directory, env: { ...process.env, MOONHUB_DIFF_WORKER: join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'), DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.pipe(process.stderr);
