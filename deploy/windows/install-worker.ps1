@@ -57,7 +57,7 @@ $image = $imageJson | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $image.Os -ne 'windows' -or $image.Architecture -ne 'amd64' -or ([version]$image.OsVersion).Build -ne 20348) { throw 'Use a Windows Server 2022 x64 task image' }
 $probe = 'moonhub-pipeline-install-' + [guid]::NewGuid().ToString('N')
 try {
-  & $docker --host $endpoint run --rm --name $probe --isolation $isolation --network none --user ContainerUser --entrypoint cmd.exe $RunnerImage /d /s /c 'exit /b 0'
+  & $docker --host $endpoint run --rm --name $probe --isolation $isolation --network none --user ContainerUser --memory 2048m --cpu-count 1 --entrypoint cmd.exe $RunnerImage /d /s /c 'exit /b 0'
   if ($LASTEXITCODE -ne 0) { throw 'Windows container preflight failed; enable Hyper-V/Containers and restart Windows if required' }
 } finally {
   $previousPreference = $ErrorActionPreference

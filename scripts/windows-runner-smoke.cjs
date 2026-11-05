@@ -8,7 +8,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const docker = args => execFileSync('docker.exe', args, {encoding:'utf8', timeout:30000}).trim();
+const docker = args => execFileSync('docker.exe', ['--host','npipe:////./pipe/docker_engine',...args], {encoding:'utf8', timeout:30000}).trim();
 const image = process.env.MOONHUB_RUNNER_IMAGE || 'moonhub:runner-windows';
 const binary = path.resolve('.tmp/windows-runner/bin/moonhub-runner.exe');
 const standalone = process.argv.includes('--standalone');
@@ -20,7 +20,14 @@ const step = (id, run, shell = '', extra = {}) => ({ id, name:id, run, shell, us
 
 async function main() {
   assert.equal(process.platform,'win32');
-  assert.equal(JSON.parse(docker(['info','--format','{{json .}}'])).OSType,'windows');
+  let daemon,lastDaemonError;
+  const daemonDeadline=Date.now()+120000;
+  do {
+    try {daemon=JSON.parse(docker(['info','--format','{{json .}}']));break;}
+    catch(error){lastDaemonError=error;console.log('Waiting for the local Windows Docker engine after image build');await delay(2000);}
+  }while(Date.now()<daemonDeadline);
+  if(!daemon)throw lastDaemonError;
+  assert.equal(daemon.OSType,'windows');
   const nat = JSON.parse(docker(['network','inspect','nat']))[0];
   const gateway = nat.IPAM.Config.find(config => config.Gateway)?.Gateway;
   assert.ok(gateway && /^[\d.]+$/.test(gateway),'NAT host gateway is missing');
@@ -141,7 +148,7 @@ async function main() {
     let exited=false, exitCode, closed;
     if(standalone) {
       const tokenFile=path.join(root,'registration');fs.writeFileSync(tokenFile,registration);
-      runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
+      runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-RegistrationTokenFile',tokenFile,'-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
       taskInstalled=true;
       const metadata=JSON.parse(runPowerShell(['-Command',`$task=Get-ScheduledTask -TaskName ${quote(taskName)}; [pscustomobject]@{user=$task.Principal.UserId; arguments=$task.Actions.Arguments; executionLimit=$task.Settings.ExecutionTimeLimit; restart=$task.Settings.RestartCount; permissions=@((Get-Acl -LiteralPath ${quote(install)}).Access | ForEach-Object {$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value})} | ConvertTo-Json -Compress`]));
       assert.ok(['SYSTEM','S-1-5-18'].includes(metadata.user),JSON.stringify(metadata));
@@ -170,10 +177,10 @@ async function main() {
       const binding=fs.readFileSync(path.join(controller,'registered.json'),'utf8');
       const savedToken=fs.readFileSync(path.join(controller,'provider-token'),'utf8');
       runPowerShell(['-Command',`Stop-ScheduledTask -TaskName ${quote(taskName)}; for($i=0;$i -lt 50 -and (Get-ScheduledTask -TaskName ${quote(taskName)}).State -eq 'Running';$i++){Start-Sleep -Milliseconds 100}`]);
-      assert.throws(()=>runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','different-provider','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']),/another provider/);
+      assert.throws(()=>runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','different-provider','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']),/another provider/);
       // Reinstall without a registration credential: the private identity must survive.
       fs.rmSync(path.join(install,'registration-token'));
-      runPowerShell(['-File',path.resolve('deploy/windows/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
+      runPowerShell(['-File',path.resolve('.tmp/windows-runner/install-provider.ps1'),'-Bundle',path.resolve('.tmp/windows-runner'),'-RunnerImage',image,'-Server',`http://${gateway}:${port}`,'-Name','windows-pc-smoke','-Directory',install,'-TaskName',taskName,'-AllowHttp','-NoStart']);
       assert.equal(fs.readFileSync(path.join(controller,'registered.json'),'utf8'),binding);
       assert.equal(fs.readFileSync(path.join(controller,'provider-token'),'utf8'),savedToken);
     } else {

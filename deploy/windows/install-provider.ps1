@@ -24,7 +24,7 @@ if ($Directory -match '[",\r\n]' -or $Directory -eq [IO.Path]::GetPathRoot($Dire
 # must not silently enroll another provider or reuse an ASG worker's state.
 $configPath = Join-Path $Directory 'provider.json'
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if ($existing -and $existing.State -eq 'Running') { throw 'Drain the provider and stop its scheduled task before reinstalling' }
+if ($existing -and $existing.State -in @('Running', 'Queued')) { throw 'Drain the provider and stop its scheduled task before reinstalling' }
 if ($existing -and -not (Test-Path -LiteralPath $configPath)) { throw 'Scheduled task belongs to another installation' }
 if (Test-Path -LiteralPath (Join-Path $Directory 'private/bootstrap.json')) { throw 'Use a different directory from the ASG worker installation' }
 if (Test-Path -LiteralPath $configPath) {
