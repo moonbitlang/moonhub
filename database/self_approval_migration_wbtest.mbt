@@ -3,7 +3,7 @@ async test "self approval migration preserves branch rules and defaults to disab
   @test_support.with_ssh_test_db(pool => {
     pool.with_client(client => {
       client.batch_execute(
-        "DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; ALTER TABLE branch_rule DROP COLUMN allow_self_approval; INSERT INTO branch_rule (repository_id, branch, required_approvals) VALUES (1, 'main', 1); INSERT INTO branch_required_check (repository_id, branch, workflow_path) VALUES (1, 'main', '.github/workflows/check.yml'); PRAGMA user_version = 29;",
+        "DROP TABLE pipeline_cache; DROP TABLE pipeline_cache_scope; DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; ALTER TABLE branch_rule DROP COLUMN allow_self_approval; INSERT INTO branch_rule (repository_id, branch, required_approvals) VALUES (1, 'main', 1); INSERT INTO branch_required_check (repository_id, branch, workflow_path) VALUES (1, 'main', '.github/workflows/check.yml'); PRAGMA user_version = 29;",
       )
     })
     initialize_db(pool)

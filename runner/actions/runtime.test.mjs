@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ActionRuntime, execute, metadata } from './runtime.mjs';
-import { evaluate, interpolate } from './expression.mjs';
+import { evaluate, interpolate, evaluateAsync, interpolateAsync } from './expression.mjs';
 import { parseFileCommands, LogCommands } from './commands.mjs';
 import { reference, extractArchive } from './download.mjs';
 
@@ -339,10 +339,80 @@ test('Artifact bridge keeps runtime credentials private and canonicalizes upstre
 
 test('Actions file commands cannot replace service credentials', async t => {
   const { config, runtime } = await fixture(t);
-  for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_RUNTIME_URL']) {
+  for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_RUNTIME_URL', 'ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2', 'ACTIONS_CACHE_MODE']) {
     const uses = await action(config, name, 'runs: {using: node24, main: main.cjs}', {
       'main.cjs': `require('fs').appendFileSync(process.env.GITHUB_ENV,${JSON.stringify(name + '=attacker\n')});`,
     });
     await assert.rejects(runtime.action(uses), /Reserved or unsafe/);
   }
+});
+
+test('hashFiles hashes content digests, exclusions and lazy expressions within the workspace', async t => {
+  const { config } = await fixture(t);
+  const { createHash } = await import('node:crypto');
+  const sum = (...values) => createHash('sha256').update(Buffer.concat(values.map(v => createHash('sha256').update(v).digest()))).digest('hex');
+  const context = { github: { workspace: config.workspace } };
+  await fs.mkdir(path.join(config.workspace, 'nested'));
+  await fs.writeFile(path.join(config.workspace, 'moon.mod'), 'root');
+  await fs.writeFile(path.join(config.workspace, 'nested/moon.mod'), 'nested');
+  await fs.writeFile(path.join(config.workspace, '.hidden'), 'hidden');
+  assert.equal(await evaluateAsync("hashFiles('**/moon.mod')", context), sum('root', 'nested'));
+  assert.equal(await evaluateAsync("hashFiles('**/moon.mod', '!nested/**')", context), sum('root'));
+  assert.equal(await evaluateAsync("hashFiles('**/moon.mod', '!nested/**', 'nested/moon.mod')", context), sum('root', 'nested'));
+  assert.equal(await evaluateAsync("hashFiles('.hidden')", context), sum('hidden'));
+  assert.equal(await evaluateAsync("hashFiles('missing')", context), '');
+  assert.equal(await evaluateAsync("false && hashFiles('**')", {}), false);
+  assert.equal(await interpolateAsync("cache-${{ hashFiles('moon.mod') }}", context), 'cache-' + sum('root'));
+  await fs.writeFile(path.join(config.workspace, 'moon.mod'), 'changed');
+  assert.equal(await evaluateAsync("HASHFILES('moon.mod')", context), sum('changed'));
+  await fs.writeFile(path.join(config.temp, 'outside'), 'private');
+  await fs.symlink(config.temp, path.join(config.workspace, 'outside'));
+  await fs.symlink(config.workspace, path.join(config.workspace, 'loop'));
+  assert.equal(await evaluateAsync("hashFiles('outside/**', '../tmp/outside')", context), '');
+  await assert.rejects(evaluateAsync('hashFiles(42)', context), /string patterns/);
+});
+
+test('hashFiles matches toolkit glob semantics and resolves top-level action inputs', async t => {
+  const { config } = await fixture(t);
+  const { hashFiles } = await import('./hash-files.mjs');
+  const { hashFiles: toolkitHash } = await import('@actions/glob');
+  const root = await fs.realpath(config.workspace);
+  await fs.mkdir(path.join(root, 'folder'));
+  for (const [name, value] of Object.entries({ 'folder/moon.mod':'mod', 'folder/a.txt':'a', 'folder/b.txt':'b', '[literal].txt':'brackets', '.hidden':'hidden' })) await fs.writeFile(path.join(root,name),value);
+  for (const patterns of [['**/*.txt'],['folder/'],['folder/moon.mod/'],['**', '!folder/**', 'folder/b.txt'],['folder/b.txt', 'folder/a.txt'],['[[]literal].txt']]) {
+    const absolute = patterns.map(x => (x.startsWith('!') ? '!' : '') + root + '/' + x.replace(/^!/, '')).join('\n');
+    assert.equal(await hashFiles(root, patterns), await toolkitHash(absolute, root));
+  }
+  const uses = await action(config, 'hash-input', 'inputs: {key: {}}\nruns: {using: node24, main: main.cjs}', {
+    'main.cjs': "require('fs').appendFileSync(process.env.GITHUB_OUTPUT,'key='+process.env.INPUT_KEY+'\\n');",
+  });
+  const state = {};
+  const result = await execute({...config, step:{id:'hash',remote:true,uses,env:{},inputs:{key:''},templates:{'with:key':"cache-" + '$' + "{{ hashFiles('folder/moon.mod') }}"}}}, state);
+  assert.equal(result.code,0);
+  assert.equal(state.steps.hash.outputs.key, 'cache-' + await hashFiles(root,['folder/moon.mod']));
+  const alias = path.join(config.temp,'workspace-alias');
+  await fs.symlink(root,alias,'dir');
+  assert.equal(await hashFiles(alias,[path.join(alias,'folder/moon.mod')]),await hashFiles(root,['folder/moon.mod']));
+  const aliasState = {};
+  const aliasResult = await execute({...config,workspace:alias,step:{id:'hash',remote:true,uses,env:{},inputs:{key:''},templates:{'with:key':"cache-" + '$' + "{{ hashFiles(format('{0}/folder/moon.mod', github.workspace)) }}"}}},aliasState);
+  assert.equal(aliasResult.code,0);
+  assert.equal(aliasState.steps.hash.outputs.key,'cache-' + await hashFiles(root,['folder/moon.mod']));
+  assert.throws(() => evaluate("hashFiles('**')"), /asynchronous/);
+});
+
+test('downloaded subdirectory Actions resolve entry points within their repository including posts', async t => {
+  const { config, runtime } = await fixture(t);
+  const uses = await action(config, 'subdir', 'runs: {using: node24, main: main.cjs}', {});
+  const root = path.join(config.workspace,uses.slice(2));
+  await fs.mkdir(path.join(root,'restore'));
+  await fs.mkdir(path.join(root,'dist'));
+  await fs.writeFile(path.join(root,'restore/action.yml'),'runs: {using: node24, main: ../dist/main.cjs, post: ../dist/post.cjs}');
+  await fs.writeFile(path.join(root,'dist/main.cjs'),'');
+  await fs.writeFile(path.join(root,'dist/post.cjs'),"require('fs').writeFileSync(process.env.GITHUB_WORKSPACE+'/post-done','done')");
+  runtime.resolve = async () => ({root,directory:path.join(root,'restore'),repository:'example/cache',ref:'sha'});
+  assert.equal((await runtime.action('example/cache/restore@sha')).code,0);
+  assert.equal(await runtime.posts(),0);
+  assert.equal(await fs.readFile(path.join(config.workspace,'post-done'),'utf8'),'done');
+  await fs.writeFile(path.join(root,'restore/action.yml'),'runs: {using: node24, main: ../../outside.cjs}');
+  await assert.rejects(runtime.action('example/cache/restore@sha'),/escapes/);
 });

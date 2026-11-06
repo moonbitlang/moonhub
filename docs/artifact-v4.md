@@ -61,11 +61,13 @@ and file commands cannot replace these reserved service variables. Post handlers
 receive a fresh runtime grant while their execution remains live.
 
 The upstream v4 toolkit rejects non-GitHub server hostnames. While executing the
-official `actions/upload-artifact` or `actions/download-artifact` JavaScript entry
-point, the runner supplies its supported localhost compatibility identity,
+JavaScript Action entry point with a Results service grant, the runner supplies
+its supported localhost compatibility identity,
 `GITHUB_SERVER_URL=http://moonhub.localhost`. The original downloaded executable
 code is unchanged. `ACTIONS_RESULTS_URL` still points to the real MoonHub origin;
-`github.server_url` expressions and unrelated Actions retain that origin. The
+`github.server_url` expressions retain that origin. Embedded cache consumers use
+the same compatibility identity, and the local source Git redirect recognizes it.
+The
 runner canonicalizes artifact download links in logs and `artifact-url` outputs
 back to MoonHub's authenticated
 `/<owner>/<repo>/actions/runs/<internal-run-id>/artifacts/<artifact-id>` route.
@@ -95,9 +97,10 @@ artifact directory.
 
 This increment supports the v4 current-run protocol. Cross-run/cross-repository
 GitHub REST downloads using the Action's `github-token` input fail explicitly;
-GitHub API token compatibility is separate work. Cache v4 and release/OIDC APIs
-are also separate services. An interrupted pending upload reserves its name
-until cleanup; upstream overwrite can replace finalized artifacts, but does not
+GitHub API token compatibility is separate work. Cache v4 has its own Results
+service; see [Cache v4](cache-v4.md).
+Release/OIDC APIs remain separate work. An interrupted pending upload reserves
+its name until cleanup; upstream overwrite can replace finalized artifacts, but does not
 list or remove incomplete uploads. This implementation does not expose arbitrary
 Azure Storage APIs, containers or accounts.
 

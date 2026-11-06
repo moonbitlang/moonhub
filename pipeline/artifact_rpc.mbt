@@ -111,7 +111,7 @@ pub fn Coordinator::artifact_rpc(
               ),
             )
             guard tx.query_opt(
-                "SELECT id FROM pipeline_artifact WHERE run_id=? AND name=? AND state <> 'deleted'",
+                "SELECT id FROM pipeline_artifact WHERE kind='artifact' AND run_id=? AND name=? AND state <> 'deleted'",
                 params=[access.run_id, name],
               )
               is None else {
@@ -119,7 +119,7 @@ pub fn Coordinator::artifact_rpc(
             }
             let count : Int64 = tx
               .query_one(
-                "SELECT COUNT(*) AS count FROM pipeline_artifact WHERE run_id=?",
+                "SELECT COUNT(*) AS count FROM pipeline_artifact WHERE kind='artifact' AND run_id=?",
                 params=[access.run_id],
               )
               .get_name("count")
@@ -149,7 +149,7 @@ pub fn Coordinator::artifact_rpc(
           }
           "ListArtifacts" => {
             let rows = tx.query_all(
-              "SELECT *,strftime('%Y-%m-%dT%H:%M:%fZ',created_ms/1000.0,'unixepoch') AS created_iso FROM pipeline_artifact WHERE run_id=? AND state='ready' AND expires_ms>? ORDER BY id",
+              "SELECT *,strftime('%Y-%m-%dT%H:%M:%fZ',created_ms/1000.0,'unixepoch') AS created_iso FROM pipeline_artifact WHERE kind='artifact' AND run_id=? AND state='ready' AND expires_ms>? ORDER BY id",
               params=[access.run_id, now],
             )
             let name = match fields.get("name_filter") {
@@ -179,7 +179,7 @@ pub fn Coordinator::artifact_rpc(
             let size = artifact_string(fields, "size")
             let hash = artifact_string(fields, "hash")
             let row = tx.query_opt(
-              "SELECT * FROM pipeline_artifact WHERE run_id=? AND attempt_id=? AND name=? AND state IN ('uploaded','ready') AND expires_ms>?",
+              "SELECT * FROM pipeline_artifact WHERE kind='artifact' AND run_id=? AND attempt_id=? AND name=? AND state IN ('uploaded','ready') AND expires_ms>?",
               params=[access.run_id, access.attempt_id, name, now],
             )
             guard row is Some(row) &&
@@ -201,7 +201,7 @@ pub fn Coordinator::artifact_rpc(
           "GetSignedArtifactURL" | "DeleteArtifact" => {
             let name = artifact_name(fields)
             let row = tx.query_opt(
-              "SELECT * FROM pipeline_artifact WHERE run_id=? AND name=? AND state='ready' AND expires_ms>?",
+              "SELECT * FROM pipeline_artifact WHERE kind='artifact' AND run_id=? AND name=? AND state='ready' AND expires_ms>?",
               params=[access.run_id, name, now],
             )
             guard row is Some(row) &&

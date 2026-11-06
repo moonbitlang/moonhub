@@ -10,6 +10,10 @@ pub let app_module : @moonback.Module = Module(ctx => {
     App(artifact_rpc_app_module, config~),
   )
   ctx.mount("/-/artifact-blobs", App(artifact_blob_app_module, config~))
+  ctx.mount(
+    "/twirp/github.actions.results.api.v1.CacheService",
+    App(cache_rpc_app_module, config~),
+  )
   ctx.mount("/", App(app_main_module, config~))
 })
 
@@ -76,4 +80,10 @@ let user_api_module : @moonback.Module = Module(ctx => {
   ctx.use_(user_api_dependencies_module)
   ctx.use_(@user_api.api_module)
   ctx.use_(@user_api.webhooks_api_module)
+})
+
+///|
+let cache_rpc_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(pipeline_dependencies_module)
+  ctx.use_(@pipeline_views.cache_rpc_module)
 })

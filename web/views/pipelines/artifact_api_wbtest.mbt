@@ -86,6 +86,15 @@ async fn with_artifact_http(
           ),
         )
         ctx.mount(
+          "/twirp/github.actions.results.api.v1.CacheService",
+          App(
+            Module(child => {
+              child.use_(dependencies)
+              child.use_(cache_rpc_module)
+            }),
+          ),
+        )
+        ctx.mount(
           "/-/artifact-blobs",
           App(
             Module(child => {
@@ -195,15 +204,13 @@ test "Azure block list parser rejects arbitrary XML and preserves block order" {
 ///|
 // Network opt-in: run unmodified, pinned upstream v4 Actions against the actual
 // HTTP service, with producer and consumer credentials from separate attempts.
-async test "upstream Artifact v4 actions upload overwrite and download across jobs" {
-  guard @env.get_env_vars().get("MOONHUB_ARTIFACT_UPSTREAM") == Some("1") else {
-    return
-  }
+async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit {
+  guard @env.get_env_vars().get(enabled) == Some("1") else { return }
   with_artifact_http((port, c, pool, _, first, lease) => {
     let root = @fs.tmpdir(prefix="moonhub-artifact-upstream-")
     defer @fs.rmdir(root, recursive=true)
     let origin = "http://127.0.0.1:\{port}"
-    let script = @fs.realpath("scripts/artifact-upstream-smoke.mjs")
+    let script = @fs.realpath("scripts/" + script_name)
     for phase in ["produce", "consume"] {
       let token = if phase == "produce" { lease } else { "d".repeat(64) }
       let a = if phase == "produce" {
@@ -571,4 +578,134 @@ async test "artifact streams stop on authorization revocation before the next ch
     _ => fail("revoked stream continued")
   }
   assert_eq(writer.bytes.length(), 65536)
+}
+
+///|
+async test "upstream Artifact v4 actions upload overwrite and download across jobs" {
+  upstream_service_smoke(
+    "MOONHUB_ARTIFACT_UPSTREAM", "artifact-upstream-smoke.mjs",
+  )
+}
+
+///|
+async test "upstream Cache v4 actions save in post and restore exact prefix and lookup hits across jobs" {
+  upstream_service_smoke("MOONHUB_CACHE_UPSTREAM", "cache-upstream-smoke.mjs")
+}
+
+///|
+async test "Cache HTTP authenticates RPCs handles single PUT replay and accepts Azure SDK sized blocks" {
+  with_artifact_http((port, c, _, _, a, lease) => {
+    let id = @protocol.parse_decimal(a.attempt_id).unwrap()
+    ignore(c.start(id, lease, 1, execution_id="e".repeat(32)))
+    let origin = "http://127.0.0.1:\{port}"
+    let grant = c.artifact_runtime(id, lease, {
+      version: 1,
+      execution_id: "e".repeat(32),
+      origin,
+    })
+    let client = @http.Client(origin)
+    defer client.close()
+    let endpoint = "/twirp/github.actions.results.api.v1.CacheService/"
+    let payload : Json = { "key": "http-cache", "version": "v1" }
+    assert_eq(
+      client.post(endpoint + "CreateCacheEntry", payload.stringify(), extra_headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + lease,
+      }).code,
+      401,
+    )
+    ignore(client.read_all())
+    let headers : Map[@http.CaseInsensitiveString, String] = {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + grant.token,
+    }
+    assert_eq(
+      client.post(
+        endpoint + "CreateCacheEntry",
+        payload.stringify(),
+        extra_headers=headers,
+      ).code,
+      200,
+    )
+    guard client.read_all().json() is { "signed_upload_url": String(url), .. } else {
+      fail("missing upload capability")
+    }
+    let path = url.strip_prefix(origin).unwrap().to_owned()
+    assert_eq(client.put(path, b"single-body").code, 201)
+    ignore(client.read_all())
+    assert_eq(client.put(path, b"single-body").code, 201)
+    ignore(client.read_all())
+    assert_eq(
+      client.post(
+        endpoint + "FinalizeCacheEntryUpload",
+        "{\"key\":\"http-cache\",\"version\":\"v1\",\"size_bytes\":\"11\"}",
+        extra_headers=headers,
+      ).code,
+      200,
+    )
+    assert_true(client.read_all().json() is { "ok": true, .. })
+    assert_eq(
+      client.post(
+        endpoint + "GetCacheEntryDownloadURL",
+        payload.stringify(),
+        extra_headers=headers,
+      ).code,
+      200,
+    )
+    guard client.read_all().json() is { "signed_download_url": String(url), .. } else {
+      fail("missing download capability")
+    }
+    assert_eq(
+      client.get(url.strip_prefix(origin).unwrap().to_owned()).code,
+      200,
+    )
+    assert_eq(client.read_all().text(), "single-body")
+    let second : Json = { "key": "block-cache", "version": "v1" }
+    assert_eq(
+      client.post(
+        endpoint + "CreateCacheEntry",
+        second.stringify(),
+        extra_headers=headers,
+      ).code,
+      200,
+    )
+    guard client.read_all().json() is { "signed_upload_url": String(url), .. } else {
+      fail("missing block capability")
+    }
+    let path = url.strip_prefix(origin).unwrap().to_owned()
+    let large = "z".repeat(9 * 1024 * 1024)
+    assert_eq(
+      client.put(path + "&comp=block&blockid=YQ%3D%3D", large).code,
+      201,
+    )
+    ignore(client.read_all())
+    assert_eq(
+      client.put(path + "&comp=block&blockid=Yg%3D%3D", b"tail").code,
+      201,
+    )
+    ignore(client.read_all())
+    assert_eq(
+      client.put(
+        path + "&comp=blocklist",
+        "<BlockList><Latest>YQ==</Latest><Latest>Yg==</Latest></BlockList>",
+      ).code,
+      201,
+    )
+    ignore(client.read_all())
+    let size = (9 * 1024 * 1024 + 4).to_string()
+    let finalize : Json = {
+      "key": "block-cache",
+      "version": "v1",
+      "size_bytes": size,
+    }
+    assert_eq(
+      client.post(
+        endpoint + "FinalizeCacheEntryUpload",
+        finalize.stringify(),
+        extra_headers=headers,
+      ).code,
+      200,
+    )
+    assert_true(client.read_all().json() is { "ok": true, .. })
+  })
 }

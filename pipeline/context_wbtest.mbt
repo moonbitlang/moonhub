@@ -131,6 +131,19 @@ async test "MR context uses merged candidate and reruns use saved context not li
       )
       assert_eq(context.head_ref, "feature")
       assert_eq(context.base_ref, "master")
+      let saved_cache = pool.with_client(client => {
+        client.query_one("SELECT * FROM pipeline_cache_scope WHERE run_id=?", params=[
+          run.id,
+        ])
+      })
+      assert_eq(
+        (saved_cache.get_name("scope") : String),
+        "refs/pull/" + mr.id.to_string() + "/merge",
+      )
+      assert_eq(
+        (saved_cache.get_name("base_scope") : String),
+        "refs/heads/master",
+      )
       let env = run.definition.jobs[0].steps[0].env
       assert_eq(env.get("SHA"), Some(run.commit_sha))
       assert_eq(env.get("HEAD"), Some("feature"))
@@ -155,6 +168,12 @@ async test "MR context uses merged candidate and reruns use saved context not li
             params=[mr.id],
           ),
         )
+        ignore(
+          client.execute(
+            "UPDATE repository SET default_branch='renamed' WHERE id=?",
+            params=[mr.repository_id],
+          ),
+        )
       })
       let again = rerun_run(pool, root, actor, protocol_repo, run.number)
       assert_eq(
@@ -166,6 +185,17 @@ async test "MR context uses merged candidate and reruns use saved context not li
         Some("feature"),
       )
       assert_eq(again.source_branch, "feature")
+      let again_cache = pool.with_client(client => {
+        client.query_one("SELECT * FROM pipeline_cache_scope WHERE run_id=?", params=[
+          again.id,
+        ])
+      })
+      for name in ["scope", "base_scope", "default_scope"] {
+        assert_eq(
+          (again_cache.get_name(name) : String),
+          (saved_cache.get_name(name) : String),
+        )
+      }
     },
     workflow=context_workflow,
   )

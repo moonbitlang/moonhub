@@ -103,6 +103,7 @@ fn insert_run_snapshot(
   context~ : @workflow.RunContext? = None,
   event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
+  cache_scope_source~ : Int64 = 0L,
 ) -> Run raise {
   validate_secret_policy(
     tx, repository_id, branch, workflow_path, context, definition,
@@ -133,6 +134,7 @@ fn insert_run_snapshot(
     ],
   )
   let run = Run::from_row(row)
+  snapshot_cache_scope(tx, run, merge_check_id, source=cache_scope_source)
   if merge_check_id != 0L {
     ignore(
       tx.execute(
@@ -342,6 +344,7 @@ pub async fn rerun_run(
           definition_version=previous.definition_version,
           context=previous.context,
           merge_check_id~,
+          cache_scope_source=previous.id,
         )
       })
     })

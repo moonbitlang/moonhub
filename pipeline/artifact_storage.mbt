@@ -26,8 +26,8 @@ fn artifact_blob_access(
   }
   let access = artifact_access(tx, cap.get_name("runtime_hash"), now)
   let row = tx.query_opt(
-    "SELECT * FROM pipeline_artifact WHERE id=? AND run_id=? AND repository_id=? AND state <> 'deleted' AND expires_ms>?",
-    params=[id, access.run_id, access.repository_id, now],
+    "SELECT * FROM pipeline_artifact WHERE id=? AND repository_id=? AND state <> 'deleted' AND expires_ms>?",
+    params=[id, access.repository_id, now],
   )
   guard row is Some(row) &&
     (
@@ -35,6 +35,25 @@ fn artifact_blob_access(
       (row.get_name("attempt_id") : Int64) == access.attempt_id
     ) else {
     raise @domain.Forbidden(message="artifact capability scope mismatch")
+  }
+  if (row.get_name("kind") : String) == "cache" {
+    let cache = tx.query_opt(
+      "SELECT scope FROM pipeline_cache WHERE artifact_id=? AND state <> 'deleted'",
+      params=[id],
+    )
+    guard cache is Some(cache) &&
+      cache_scopes(tx, access).contains((cache.get_name("scope") : String)) else {
+      raise @domain.Forbidden(message="cache scope mismatch")
+    }
+    if operation == "write" {
+      guard (cache.get_name("scope") : String) == cache_scopes(tx, access)[0] else {
+        raise @domain.Forbidden(message="cache scope is read-only")
+      }
+    }
+  } else {
+    guard (row.get_name("run_id") : Int64) == access.run_id else {
+      raise @domain.Forbidden(message="artifact run mismatch")
+    }
   }
   row
 }
@@ -92,18 +111,46 @@ pub async fn Coordinator::stage_artifact_block(
       ['+', '/', '='].contains(ch)
     }) &&
     bytes.length() > 0 &&
-    bytes.length() <= maximum_artifact_block_bytes else {
+    bytes.length() <= 134217728 else {
     raise @domain.BadRequest(message="invalid or oversized artifact block")
   }
+  self.make_cache_space(root, id, sig, block, bytes.length().to_int64())
   let key : String = self.pool.with_client(client => {
     client.with_transaction(tx => {
       let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
-      guard (row.get_name("state") : String) == "pending" else {
+      guard bytes.length() <=
+        (if (row.get_name("kind") : String) == "cache" {
+          134217728
+        } else {
+          maximum_artifact_block_bytes
+        }) else {
+        raise @domain.BadRequest(message="block size exceeded")
+      }
+      guard (row.get_name("state") : String) == "pending" ||
+        (row.get_name("kind") : String) == "cache" else {
         raise Conflict("artifact already committed")
       }
       row.get_name("storage_key")
     })
   })
+  let replay = self.pool.with_client(client => {
+    let row = client.query_opt(
+      "SELECT a.kind,a.state,b.digest,b.size FROM pipeline_artifact a JOIN pipeline_artifact_block b ON b.artifact_id=a.id WHERE a.id=? AND b.block_id=?",
+      params=[id, block],
+    )
+    match row {
+      Some(row) =>
+        (row.get_name("kind") : String) == "cache" &&
+        ["uploaded", "ready"].contains((row.get_name("state") : String)) &&
+        (row.get_name("size") : Int64) == bytes.length().to_int64() &&
+        (row.get_name("digest") : String) ==
+        @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
+      None => false
+    }
+  })
+  if replay {
+    return
+  }
   let directory = make_artifact_directory(root, key)
   let file = @identity.random_hex(32)
   let filename = directory + "/" + file
@@ -122,7 +169,7 @@ pub async fn Coordinator::stage_artifact_block(
         let run : Int64 = row.get_name("run_id")
         let total : Int64 = tx
           .query_one(
-            "SELECT COALESCE(SUM(b.size),0) AS size FROM pipeline_artifact_block b JOIN pipeline_artifact a ON a.id=b.artifact_id WHERE a.run_id=?",
+            "SELECT COALESCE(SUM(b.size),0) AS size FROM pipeline_artifact_block b JOIN pipeline_artifact a ON a.id=b.artifact_id WHERE a.run_id=? AND a.kind='artifact'",
             params=[run],
           )
           .get_name("size")
@@ -140,8 +187,18 @@ pub async fn Coordinator::stage_artifact_block(
           Some(entry) => entry.get_name("size")
           None => 0L
         }
+        if (row.get_name("kind") : String) == "cache" {
+          check_cache_bytes(
+            tx,
+            row.get_name("repository_id"),
+            bytes.length().to_int64() - old_size,
+          )
+        }
         guard own + bytes.length().to_int64() <= maximum_artifact_bytes &&
-          total - old_size + bytes.length().to_int64() <= 4294967296L else {
+          (
+            (row.get_name("kind") : String) == "cache" ||
+            total - old_size + bytes.length().to_int64() <= 4294967296L
+          ) else {
           raise @domain.BadRequest(message="artifact byte quota exceeded")
         }
         let count : Int64 = tx
@@ -336,6 +393,11 @@ pub async fn Coordinator::cleanup_artifacts(
         params=[now, now - 3600000L],
       ),
     )
+    ignore(
+      client.execute(
+        "UPDATE pipeline_cache SET state='deleted' WHERE artifact_id IN (SELECT id FROM pipeline_artifact WHERE state='deleted')",
+      ),
+    )
     client.query_all(
       "SELECT id,storage_key FROM pipeline_artifact WHERE state='deleted' ORDER BY id LIMIT 100",
     )
@@ -404,7 +466,7 @@ pub fn Coordinator::user_artifact(
   @repository.authorize_repository(self.pool, actor, repo, Read)
   self.pool.with_client(client => {
     let row = client.query_opt(
-      "SELECT * FROM pipeline_artifact WHERE id=? AND run_id=? AND repository_id=? AND state='ready' AND expires_ms>?",
+      "SELECT * FROM pipeline_artifact WHERE id=? AND run_id=? AND repository_id=? AND kind='artifact' AND state='ready' AND expires_ms>?",
       params=[id, run_id, scope.id, (self.clock)()],
     )
     guard row is Some(row) else {
@@ -418,5 +480,23 @@ pub fn Coordinator::user_artifact(
       size: row.get_name("size"),
       digest: row.get_name("digest"),
     }
+  })
+}
+
+///|
+pub fn Coordinator::artifact_block_limit(
+  self : Coordinator,
+  id : Int64,
+  sig : String,
+) -> Int32 raise {
+  self.pool.with_client(client => {
+    client.with_transaction(tx => {
+      let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
+      if (row.get_name("kind") : String) == "cache" {
+        134217728
+      } else {
+        maximum_artifact_block_bytes
+      }
+    })
   })
 }

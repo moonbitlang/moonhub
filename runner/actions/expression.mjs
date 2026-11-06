@@ -1,7 +1,8 @@
 import { windows } from './platform.mjs';
+import { hashFiles } from './hash-files.mjs';
 // A small, parsed Actions expression language; never evaluates JavaScript.
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
-export function evaluate(source, context = {}, implicitSuccess = false) {
+function* expression(source, context = {}, implicitSuccess = false) {
   source = source.trim();
   if (source.startsWith('${{') && source.endsWith('}}')) source = source.slice(3, -2);
   const tokens = [];
@@ -53,7 +54,7 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
   };
   const tree = binary(0);
   if (index !== tokens.length) throw new Error('Unexpected Actions expression tokens');
-  const visit = (node) => {
+  const visit = function* (node) {
     const [type, a, b] = node;
     if (type === 'value') return a;
     if (type === 'path') {
@@ -65,15 +66,17 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
         return field !== undefined && Object.hasOwn(Object(value), field) ? value[field] : '';
       }, context[root]);
     }
-    if (type === 'not') return !truthy(visit(a));
-    if (type === '&&') { const value = visit(a); return truthy(value) ? visit(b) : value; }
-    if (type === '||') { const value = visit(a); return truthy(value) ? value : visit(b); }
-    if (type === '==' || type === '!=') { const same = equal(visit(a), visit(b)); return type === '==' ? same : !same; }
-    const args = b.map(visit);
+    if (type === 'not') return !truthy(yield* visit(a));
+    if (type === '&&') { const value = yield* visit(a); return truthy(value) ? yield* visit(b) : value; }
+    if (type === '||') { const value = yield* visit(a); return truthy(value) ? value : yield* visit(b); }
+    if (type === '==' || type === '!=') { const same = equal(yield* visit(a), yield* visit(b)); return type === '==' ? same : !same; }
+    const args = [];
+    for (const argument of b) args.push(yield* visit(argument));
     if (type === 'call') {
       if (['success', 'failure', 'cancelled', 'always'].includes(a) && args.length === 0) {
         return a === 'always' || (a === 'success' ? !context.failure && !context.cancelled : Boolean(context[a]));
       }
+      if (a === 'hashfiles') return yield () => hashFiles(context.github?.workspace, args);
       if (a === 'tojson' && args.length === 1) return JSON.stringify(args[0]);
       if (a === 'fromjson' && args.length === 1) return JSON.parse(args[0]);
       if (a === 'contains' && args.length === 2) return Array.isArray(args[0]) ? args[0].some(x => equal(x, args[1])) : String(args[0]).toLowerCase().includes(String(args[1]).toLowerCase());
@@ -85,7 +88,18 @@ export function evaluate(source, context = {}, implicitSuccess = false) {
     throw new Error('Unsupported Actions expression');
   };
   const hasStatus = node => Array.isArray(node) && ((node[0] === 'call' && ['always', 'success', 'failure', 'cancelled'].includes(node[1])) || node.some(hasStatus));
-  return implicitSuccess && !hasStatus(tree) && (context.failure || context.cancelled) ? false : visit(tree);
+  return implicitSuccess && !hasStatus(tree) && (context.failure || context.cancelled) ? false : yield* visit(tree);
+}
+export function evaluate(source, context = {}, implicitSuccess = false) {
+  const result = expression(source, context, implicitSuccess).next();
+  if (!result.done) throw new Error('hashFiles requires asynchronous expression evaluation');
+  return result.value;
+}
+export async function evaluateAsync(source, context = {}, implicitSuccess = false) {
+  const iterator = expression(source, context, implicitSuccess);
+  let result = iterator.next();
+  while (!result.done) result = iterator.next(await result.value());
+  return result.value;
 }
 export function truthy(value) { return value !== false && value !== null && value !== undefined && value !== '' && value !== 0 && !Number.isNaN(value); }
 function equal(a, b) {
@@ -94,7 +108,7 @@ function equal(a, b) {
   return number(a) === number(b);
 }
 export function string(value) { return value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
-export function interpolate(value, context) {
+function* interpolation(value, context) {
   if (typeof value !== 'string') return string(value);
   let rest = value, output = '';
   while (rest.includes('${{')) {
@@ -106,8 +120,20 @@ export function interpolate(value, context) {
       if (!quoted && rest.slice(end, end + 2) === '}}') break;
     }
     if (end >= rest.length) throw new Error('Unterminated Actions expression');
-    output += string(evaluate(rest.slice(start + 3, end), context));
+    output += string(yield* expression(rest.slice(start + 3, end), context));
     rest = rest.slice(end + 2);
   }
   return output + rest;
+}
+
+export function interpolate(value, context) {
+  const result = interpolation(value, context).next();
+  if (!result.done) throw new Error('hashFiles requires asynchronous expression evaluation');
+  return result.value;
+}
+export async function interpolateAsync(value, context) {
+  const iterator = interpolation(value, context);
+  let result = iterator.next();
+  while (!result.done) result = iterator.next(await result.value());
+  return result.value;
 }

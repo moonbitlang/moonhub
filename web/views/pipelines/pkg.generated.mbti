@@ -10,6 +10,8 @@ pub let artifact_blob_module : @moonback.Module
 
 pub let artifact_rpc_module : @moonback.Module
 
+pub let cache_rpc_module : @moonback.Module
+
 pub let pipeline_pages_module : @moonback.Module
 
 pub let repository_secrets_module : @moonback.Module

@@ -78,11 +78,13 @@ pub struct Coordinator {
 }
 pub fn Coordinator::append_log(Self, Int64, String, @protocol.LogRequest) -> @protocol.LeaseState raise
 pub fn Coordinator::artifact_blob(Self, String, Int64, String) -> ArtifactBlob raise
+pub fn Coordinator::artifact_block_limit(Self, Int64, String) -> Int32 raise
 pub fn Coordinator::artifact_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::artifact_runtime(Self, Int64, String, @protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime raise
 pub fn Coordinator::authenticate_attempt(Self, Int64, String) -> Unit raise
 pub fn Coordinator::authenticate_provider(Self, String) -> Unit raise
 pub fn Coordinator::authorize_artifact_blob(Self, Int64, String, String) -> Unit raise
+pub fn Coordinator::cache_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::cancel_run(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
 pub fn Coordinator::claim(Self, String, @protocol.ClaimRequest) -> @protocol.Assignment? raise
 pub async fn Coordinator::cleanup_artifacts(Self, String) -> Unit
