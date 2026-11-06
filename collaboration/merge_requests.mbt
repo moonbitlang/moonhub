@@ -16,7 +16,8 @@ pub async fn refresh_merge_request(
     let previous = merge_revision(pool, mr)
     source_changed = previous.source_sha != comparison.source_sha
     if previous.source_sha == comparison.source_sha &&
-      previous.target_sha == comparison.target_sha {
+      previous.target_sha == comparison.target_sha &&
+      previous.target_branch == mr.target {
       // Bind a pending reopen to the first observed source, even when its
       // refs are unchanged. A later push must become synchronize independently
       // of when the Pipeline worker next discovers workflows.
@@ -36,28 +37,16 @@ pub async fn refresh_merge_request(
     err => raise err
   }
   let version = mr.version + 1L
-  // Keep reviewed objects reachable even after branch deletion or force-push.
-  ignore(
-    @gitops.merge_git(
-      git_dir,
-      ["update-ref", "--stdin"],
-      input="start\nverify refs/heads/\{mr.source} \{comparison.source_sha}\nverify refs/heads/\{mr.target} \{comparison.target_sha}\nupdate refs/moonhub/mr/\{mr.id}/\{version}/source \{comparison.source_sha}\nupdate refs/moonhub/mr/\{mr.id}/\{version}/target \{comparison.target_sha}\nprepare\ncommit\n",
-    ),
-  )
+  let revision = {
+    ..comparison,
+    version,
+    merge_tree: tree,
+    block_reason: reason,
+  }
+  pin_merge_revision(git_dir, mr, revision)
   pool.with_client(client => {
     client.with_transaction(tx => {
-      let _ = tx.execute(
-        "INSERT INTO merge_revision (merge_request_id, version, source_sha, target_sha, base_sha, merge_tree, block_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        params=[
-          mr.id,
-          version,
-          comparison.source_sha,
-          comparison.target_sha,
-          comparison.base_sha,
-          tree,
-          reason,
-        ],
-      )
+      insert_merge_revision(tx, mr, revision)
       let _ = tx.execute(
         "UPDATE merge_request SET current_version = ?, workflow_event = CASE WHEN ? AND workflow_event_pending = 0 THEN 'synchronize' ELSE workflow_event END, workflow_event_pending = 0, checks_poll_after = 0, updated_at = datetime('now') WHERE id = ?",
         params=[version, source_changed, mr.id],
@@ -79,6 +68,45 @@ pub async fn refresh_merge_request(
     })
   })
   require_merge_request(pool, scope, mr.number)
+}
+
+///|
+// Keep reviewed objects reachable even after branch deletion or force-push.
+async fn pin_merge_revision(
+  git_dir : String,
+  mr : MergeRequest,
+  revision : MergeRevision,
+) -> Unit {
+  ignore(
+    @gitops.merge_git(
+      git_dir,
+      ["update-ref", "--stdin"],
+      input="start\nverify refs/heads/\{mr.source} \{revision.source_sha}\nverify refs/heads/\{revision.target_branch} \{revision.target_sha}\nupdate refs/moonhub/mr/\{mr.id}/\{revision.version}/source \{revision.source_sha}\nupdate refs/moonhub/mr/\{mr.id}/\{revision.version}/target \{revision.target_sha}\nprepare\ncommit\n",
+    ),
+  )
+}
+
+///|
+fn insert_merge_revision(
+  tx : @database.DbTransaction,
+  mr : MergeRequest,
+  revision : MergeRevision,
+) -> Unit raise {
+  ignore(
+    tx.execute(
+      "INSERT INTO merge_revision (merge_request_id, version, target_branch, source_sha, target_sha, base_sha, merge_tree, block_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      params=[
+        mr.id,
+        revision.version,
+        revision.target_branch,
+        revision.source_sha,
+        revision.target_sha,
+        revision.base_sha,
+        revision.merge_tree,
+        revision.block_reason,
+      ],
+    ),
+  )
 }
 
 ///|
@@ -188,18 +216,18 @@ fn require_mutable_merge(mr : MergeRequest) -> Unit raise {
 }
 
 ///|
-pub fn edit_merge_request(
+fn require_merge_editor(
   pool : @database.Database,
   scope : @repository.RepositoryScope,
   actor : @domain.CurrentUser,
   mr : MergeRequest,
-  action : String,
-  title : String,
-  description : String,
-  expected? : Int64,
+  expected : Int64,
 ) -> Unit raise {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
-  guard expected.unwrap_or(mr.edit_version) == mr.edit_version else {
+  guard mr.repository_id == scope.id else {
+    raise @domain.NotFound(message="merge request not found")
+  }
+  guard expected == mr.edit_version else {
     raise @domain.BadRequest(
       message="merge request changed; reload before saving",
     )
@@ -211,6 +239,141 @@ pub fn edit_merge_request(
       message="only the author or a team administrator may edit this merge request",
     )
   }
+}
+
+///|
+// Call under the repository write lock. Target and metadata changes commit as
+// one revision; API/MCP writes never grant check execution permission.
+pub async fn update_merge_request(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  git_dir : String,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  title : String,
+  description : String,
+  target : String,
+  expected : Int64,
+  authorize_checks~ : Bool = false,
+) -> Unit {
+  let current = require_merge_request(pool, scope, mr.number)
+  require_merge_editor(pool, scope, actor, current, expected)
+  if target == current.target {
+    if title != current.title || description != current.description {
+      edit_merge_request(
+        pool,
+        scope,
+        actor,
+        current,
+        "edit",
+        title,
+        description,
+        expected~,
+      )
+    }
+    return
+  }
+  guard current.status == "open" else {
+    raise @domain.BadRequest(
+      message="only open merge requests can change target branch",
+    )
+  }
+  let title = title.trim().to_owned()
+  guard !title.is_empty() &&
+    title.length() <= 200 &&
+    description.length() <= 20000 else {
+    raise @domain.BadRequest(message="invalid title or description length")
+  }
+  let comparison = @gitops.compare_branches(git_dir, current.source, target)
+  guard comparison.source_sha != comparison.base_sha else {
+    raise @domain.BadRequest(message="source branch has no new commits")
+  }
+  let previous = merge_revision(pool, current)
+  let (tree, reason) = (@gitops.merged_tree(git_dir, comparison), "") catch {
+    @domain.BadRequest(message~) | @gitops.Failure(message~) => ("", message)
+    err => raise err
+  }
+  let version = current.version + 1L
+  let revision = {
+    ..comparison,
+    version,
+    merge_tree: tree,
+    block_reason: reason,
+  }
+  pin_merge_revision(git_dir, current, revision)
+  pool.with_client(client => {
+    client.with_transaction(tx => {
+      guard tx.query_opt(
+          "SELECT id FROM merge_request WHERE repository_id = ? AND source_branch = ? AND target_branch = ? AND status = 'open' AND id <> ?",
+          params=[scope.id, current.source, target, current.id],
+        )
+        is None else {
+        raise @domain.BadRequest(
+          message="another open merge request already uses these branches",
+        )
+      }
+      let changed = tx.execute(
+        "UPDATE merge_request SET target_branch = ?, title = ?, description = ?, current_version = ?, edit_version = edit_version + 1, check_generation = check_generation + 1, checks_poll_after = 0, reviews_poll_after = 0, workflow_event = CASE WHEN ? AND workflow_event_pending = 0 THEN 'synchronize' ELSE workflow_event END, workflow_event_pending = 0, updated_at = datetime('now') WHERE id = ? AND edit_version = ? AND current_version = ? AND status = 'open' AND NOT EXISTS (SELECT 1 FROM merge_job WHERE merge_request_id = ? AND status IN ('pending', 'running'))",
+        params=[
+          target,
+          title,
+          description,
+          version,
+          previous.source_sha != comparison.source_sha,
+          current.id,
+          expected,
+          current.version,
+          current.id,
+        ],
+      )
+      guard changed == 1 else {
+        raise @domain.BadRequest(
+          message="merge request changed; reload before saving",
+        )
+      }
+      insert_merge_revision(tx, current, revision)
+      @attachments.replace_references(
+        tx,
+        scope.id,
+        actor.id,
+        MergeRequest(current.id),
+        description,
+      )
+      merge_activity(
+        tx,
+        { ..current, target, version, },
+        actor.id,
+        "retargeted",
+        body="Changed target branch from `\{current.target}` to `\{target}`.",
+      )
+    })
+  })
+  let updated = require_merge_request(pool, scope, current.number)
+  if authorize_checks {
+    prepare_merge_checks(pool, scope, updated, actor~)
+  } else {
+    prepare_merge_checks(pool, scope, updated)
+  }
+}
+
+///|
+pub fn edit_merge_request(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  action : String,
+  title : String,
+  description : String,
+  expected? : Int64,
+) -> Unit raise {
+  require_merge_editor(
+    pool,
+    scope,
+    actor,
+    mr,
+    expected.unwrap_or(mr.edit_version),
+  )
   pool.with_client(client => {
     client.with_transaction(tx => {
       match action {

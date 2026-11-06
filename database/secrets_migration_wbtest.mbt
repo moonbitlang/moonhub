@@ -3,7 +3,7 @@ async test "repository secret migration upgrades schema 28 without changing repo
   @test_support.with_ssh_test_db(pool => {
     pool.with_client(client => {
       client.batch_execute(
-        "DROP TABLE pipeline_job_output; DROP TABLE pipeline_cache; DROP TABLE pipeline_cache_scope; DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; ALTER TABLE branch_rule DROP COLUMN allow_self_approval; DROP TABLE pipeline_secret_delivery; DROP TABLE repository_secret; PRAGMA user_version = 28;",
+        "DROP TABLE pipeline_job_output; ALTER TABLE merge_revision DROP COLUMN target_branch; DROP TABLE pipeline_cache; DROP TABLE pipeline_cache_scope; DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; ALTER TABLE branch_rule DROP COLUMN allow_self_approval; DROP TABLE pipeline_secret_delivery; DROP TABLE repository_secret; PRAGMA user_version = 28;",
       )
     })
     initialize_db(pool)

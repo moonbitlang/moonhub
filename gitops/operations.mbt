@@ -172,6 +172,7 @@ pub async fn repository_write_lock(git_dir : String) -> @fs.File {
 ///|
 pub(all) struct Revision {
   version : Int64
+  target_branch : String
   source_sha : String
   target_sha : String
   base_sha : String
@@ -201,6 +202,7 @@ pub async fn compare_branches(
   }
   {
     version: 0L,
+    target_branch: target,
     source_sha,
     target_sha,
     base_sha: lines[0],

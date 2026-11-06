@@ -31,7 +31,16 @@ and
 branch/path filters are rejected. Draft MRs wait until ready. Source changes
 select `synchronize`; reopening selects `reopened`. Advancing only the target
 reruns selected workflows against a new merged tree while retaining the last
-source/lifecycle event. At most 64 candidate workflow entries are inspected.
+source/lifecycle event. Changing an open MR's target branch follows the same
+selection semantics: it retains the most recently observed source/lifecycle
+event (or selects `synchronize` if the source also changed), creates a new
+comparison even for identical target commits, and starts a new check generation.
+Old execution approvals tied to the prior generation are not reused; current
+manager-push authorization of the exact source still follows the normal policy.
+Old runs are canceled asynchronously and their results cannot satisfy the new
+version. Required paths are always selected from the new target's rules, and
+`github.base_ref` in new runs names the new target. Historical runs keep their
+saved context. At most 64 candidate workflow entries are inspected.
 A workflow added by the source is discovered immediately when its candidate
 trigger matches. Deleting an optional workflow, or removing its matching trigger,
 omits it from the new comparison. Target-branch required paths are always

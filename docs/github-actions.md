@@ -142,7 +142,7 @@ version 2 always uses assignment version 5, including jobs containing only
 action. Older definition version 1 remains readable and runnable; reruns preserve
 its saved definition version and legacy assignment selection.
 Historical definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
-New definition-v4 snapshots use assignment version 7 for job dataflow; migration 034
+New definition-v4 snapshots use assignment version 7 for job dataflow; migration 035
 adds attempt-bound output storage.
 Migration 031 adds durable scheduling state; upgrade coordinator, provider and
 runner together. See [workflow scheduling](workflow-scheduling.md).

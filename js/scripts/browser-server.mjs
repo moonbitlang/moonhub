@@ -35,6 +35,7 @@ try {
   }
   const commit = git(['commit-tree', tree, '-p', 'master', '-m', 'Nested browser fixture']);
   git(['update-ref', 'refs/heads/feature/breadcrumbs', commit]);
+  git(['update-ref', 'refs/heads/release', 'master']);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',

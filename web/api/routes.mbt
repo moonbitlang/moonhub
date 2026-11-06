@@ -310,6 +310,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         "version": selected.to_string(),
         "source_sha": revision.source_sha,
         "target_sha": revision.target_sha,
+        "target": revision.target_branch,
         "comparison": if comparison.commit is Some(_) {
           "commit"
         } else {
@@ -372,7 +373,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           "reply" => ["discussion", "body"]
           "resolve-discussion" | "reopen-discussion" =>
             ["discussion", "state_version"]
-          "edit" => ["edit_version", "title", "description"]
+          "edit" => ["edit_version", "title", "description", "target"]
           "delete-comment" | "restore-comment" => ["version", "comment"]
           _ => ["version", "decision", "body", "reviewer", "edit_version"]
         },
@@ -439,20 +440,23 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 action == "resolve-discussion",
               )
             "edit" => {
-              guard body.contains("title") || body.contains("description") else {
+              guard body.contains("title") ||
+                body.contains("description") ||
+                body.contains("target") else {
                 raise @domain.BadRequest(
-                  message="MR edit requires title or description",
+                  message="MR edit requires title, description or target",
                 )
               }
-              @collaboration.edit_merge_request(
+              @collaboration.update_merge_request(
                 pool,
                 scope,
+                git_dir,
                 actor,
                 current,
-                "edit",
                 field(body, "title", fallback=current.title),
                 field(body, "description", fallback=current.description),
-                expected=number(field(body, "edit_version")),
+                field(body, "target", fallback=current.target),
+                number(field(body, "edit_version")),
               )
             }
             "delete-comment" | "restore-comment" =>

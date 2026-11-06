@@ -85,6 +85,7 @@ pub fn merge_revision(
     }
     {
       version: row.get_name("version"),
+      target_branch: row.get_name("target_branch"),
       source_sha: row.get_name("source_sha"),
       target_sha: row.get_name("target_sha"),
       base_sha: row.get_name("base_sha"),

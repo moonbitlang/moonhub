@@ -8,7 +8,7 @@ async test "cache schema upgrades version 32 without changing stored artifacts" 
       client.batch_execute(
         (
           #|DROP TABLE pipeline_job_output;
-          #|DROP TABLE pipeline_cache;
+          #|ALTER TABLE merge_revision DROP COLUMN target_branch; DROP TABLE pipeline_cache;
           #|DROP TABLE pipeline_cache_scope;
           #|DROP INDEX pipeline_artifact_name;
           #|ALTER TABLE pipeline_artifact DROP COLUMN kind;

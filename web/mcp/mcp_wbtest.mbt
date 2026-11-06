@@ -109,6 +109,73 @@ async fn mcp_tool(
 }
 
 ///|
+async test "MCP edits target branches with version checks and preserves omitted metadata" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let write = @identity.create_access_token(
+      pool, actor, "retarget", "write", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let dir = repo.git_dir(root)
+    ignore(
+      @gitops.merge_git(dir, [
+        "update-ref",
+        "refs/heads/release",
+        @gitops.branch_sha(dir, "master"),
+      ]),
+    )
+    ignore(
+      @test_support.merge_test_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "master"),
+        "source\n",
+      ),
+    )
+    let mr = @collaboration.create_merge_request(
+      pool, scope, dir, actor, "Original", "Keep body", "feature", "master", false,
+    )
+    let (status, data) = mcp_tool(port, write, "moonhub_edit_merge_request", {
+      "repository": Json("alice/demo"),
+      "number": Json(mr.number.to_string()),
+      "edit_version": Json("1"),
+      "target": Json("release"),
+    })
+    assert_eq(status, 200)
+    assert_true(
+      data
+      is {
+        "result": {
+          "isError": False,
+          "structuredContent": {
+            "target": String("release"),
+            "title": String("Original"),
+            "description": String("Keep body"),
+            "version": String("2"),
+            "edit_version": String("2"),
+            ..
+          },
+          ..
+        },
+        ..
+      },
+    )
+    let (_, stale) = mcp_tool(port, write, "moonhub_edit_merge_request", {
+      "repository": Json("alice/demo"),
+      "number": Json(mr.number.to_string()),
+      "edit_version": Json("1"),
+      "target": Json("master"),
+    })
+    assert_true(stale is { "result": { "isError": True, .. }, .. })
+    assert_eq(
+      @collaboration.require_merge_request(pool, scope, mr.number).target,
+      "release",
+    )
+  })
+}
+
+///|
 async test "MCP 2 discovery and tools work without initialization or connection state" {
   @web_testkit.with_repository_test_app((port, pool, _, _, _) => {
     let actor = @identity.active_user_by_name(pool, "alice")

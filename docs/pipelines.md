@@ -420,7 +420,7 @@ Runners/providers reject unsupported assignments. Upgrade Web, SSH, provider and
 Runner images together. Definition version 3 and assignment version 6 add
 matrix/strategy contexts, and migration 031 adds durable scheduling state.
 Definition version 4 and assignment version 7 add job dataflow, with output
-storage in migration 034. Older definitions remain readable without
+storage in migration 035. Older definitions remain readable without
 reinterpreting their snapshots.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session

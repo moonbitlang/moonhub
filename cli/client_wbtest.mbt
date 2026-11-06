@@ -78,6 +78,15 @@ test "MR edit and comment lifecycle commands retain explicit revisions" {
 }
 
 ///|
+test "MR edit accepts a target branch with its observed edit version" {
+  let parsed = command().parse(argv=[
+    "mr", "edit", "4", "--target", "release/stable", "--edit-version", "2",
+  ])
+  assert_eq(option(parsed, "target"), Some("release/stable"))
+  assert_eq(option(parsed, "edit-version"), Some("2"))
+}
+
+///|
 test "discussion commands retain independent discussion and state IDs" {
   for
     action in [

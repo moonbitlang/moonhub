@@ -495,3 +495,51 @@ for (const action of ['forward', 'anchor'] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+
+test('MR target edits preserve history and work on desktop and mobile without JavaScript', async ({ browser, baseURL }) => {
+  for (const javaScriptEnabled of [true, false]) {
+    const context = await browser.newContext({ javaScriptEnabled, viewport: { width: 1440, height: 1000 } });
+    const page = await context.newPage();
+    await page.goto(baseURL + '/-/login');
+    if (javaScriptEnabled) await hydrated(page);
+    await page.locator('[name=name_key]').fill('alice');
+    await page.getByLabel('Password', { exact: true }).fill('browser-test-password');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await page.goto(baseURL + '/alice/demo/merge-requests/new');
+    if (javaScriptEnabled) await hydrated(page);
+    await page.locator('select[name=source]').selectOption('feature/breadcrumbs');
+    await page.locator('select[name=target]').selectOption('master');
+    await page.getByLabel('Title', { exact: true }).fill('Change target browser fixture');
+    await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+    await expect(page).toHaveURL(/merge-requests\/\d+$/);
+    const detail = page.url();
+    await page.locator('.mr-more-actions > summary').click();
+    const form = page.locator('form[action$="/retarget"]');
+    const target = form.getByRole('combobox', { name: 'Target branch', exact: true });
+    await expect(target).toBeVisible();
+    await expect(target.locator('option[value="feature/breadcrumbs"]')).toHaveCount(0);
+    await target.selectOption('release');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      if (width < 600 && javaScriptEnabled) {
+        await page.waitForFunction(() => document.querySelector('#app-sidebar')!.getBoundingClientRect().right <= 1);
+      }
+      await expect(form.getByRole('button', { name: 'Change target branch' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: `test-results/mr-target-${javaScriptEnabled ? 'spa' : 'native'}-${width}.png`, fullPage: true });
+    }
+    await form.getByRole('button', { name: 'Change target branch' }).click();
+    await expect(page.locator('.mr-branch-summary')).toContainText('into release');
+    await expect(page.locator('#mr-version')).toHaveValue('2');
+    await page.goto(detail + '?version=1');
+    await expect(page.locator('.mr-branch-summary')).toContainText('into master');
+    await expect(page.locator('form[action$="/retarget"]')).toHaveCount(0);
+    // Close the fixture so the no-script pass may create the same source/target pair.
+    await page.goto(detail);
+    await page.locator('.mr-more-actions > summary').click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await context.close();
+  }
+});

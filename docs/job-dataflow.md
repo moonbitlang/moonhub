@@ -75,7 +75,7 @@ fail-fast and max-parallel policies remain in force.
 
 ## Persistence and limits
 
-Migration 034 adds `pipeline_job_output`, linked to both job and attempt. No old
+Migration 035 adds `pipeline_job_output`, linked to both job and attempt. No old
 outputs are invented or jobs replayed. Reruns create new storage. Expired leases
 and conflicting completion replays cannot overwrite it; identical reports are
 idempotent.

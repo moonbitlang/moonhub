@@ -89,6 +89,7 @@ moonhub mr reply 4 --discussion 42 --body-file reply.md
 moonhub mr resolve-discussion 4 --discussion 42 --state-version 1
 moonhub mr reopen-discussion 4 --discussion 42 --state-version 2
 moonhub mr edit 4 --edit-version 1 --title 'Updated title' --body-file description.md
+moonhub mr edit 4 --edit-version 2 --target release/stable
 moonhub mr delete-comment 4 --comment 42 --version 1
 moonhub mr restore-comment 4 --comment 42 --version 1
 moonhub mr review 4 --version 1 --decision approved
@@ -128,10 +129,25 @@ moonhub inbox read 25
 ```
 
 MR review decisions are `approved`, `changes_requested`, `withdrawn` or `comment`.
-`mr edit` requires `--edit-version` and at least one of `--title` or `--body-file`.
-Omitted fields are preserved; an empty body file explicitly clears the description.
-Editing metadata does not refresh branches, create a revision, or reset approvals
-and checks. The author or a repository team administrator may edit metadata.
+`mr edit` requires `--edit-version` and at least one of `--title`, `--body-file`
+or `--target`. Omitted fields are preserved; an empty body file explicitly clears
+the description. Editing only title/description does not refresh branches, create
+a revision, or reset approvals and checks. The author or a repository team
+administrator with repository write access may edit.
+
+Changing `--target` is allowed only for open MRs (including drafts), while no merge
+is queued or running. The branch must exist, differ from the source and leave new
+source commits; another open MR must not already use the same source/target pair.
+A changed target always creates a new comparison version, even when both target
+branches point to the same commit. Reviews and check results from the old version
+no longer count, requested reviews become pending for the new version, and checks
+are selected using the new target's protection rules. Plain write requests do not
+grant CI execution permission. Repeating the current target is a no-op unless
+metadata changes. Combined metadata and target edits commit atomically.
+
+The API accepts `target` on `POST /-/api/v1/repos/:owner/:repo/mrs/:number/edit`
+with the observed `edit_version`. Historical diff responses include `target`,
+the branch name saved with that comparison version.
 
 `mr view --json` activity entries include stable decimal-string `id` and `actor_id`
 (empty for system activity). Use a plain comment's `id` as `--comment`, and its

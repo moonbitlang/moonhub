@@ -389,6 +389,15 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         @collaboration.review_candidates(pool, actor, scope, mr),
         @collaboration.thread_subscription(pool, actor, scope, mr.id, false),
         @web_context.request_form_token(req, "notifications"),
+        branches=if mr.status == "open" {
+          @domain.split_lines(
+            @gitops.merge_git(git_dir, [
+              "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
+            ]),
+          )
+        } else {
+          []
+        },
       ),
       headers=@web_context.private_page_headers(
         refresh=mr.job_status == "pending" || mr.job_status == "running",
@@ -492,6 +501,21 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           ),
           action == "delete-comment",
         )
+      } else if action == "retarget" {
+        @collaboration.update_merge_request(
+          pool,
+          scope,
+          git_dir,
+          actor,
+          mr,
+          mr.title,
+          mr.description,
+          form.get("target").unwrap_or(""),
+          @web_context.positive_resource_number(
+            form.get("edit_version").unwrap_or(""),
+          ),
+          authorize_checks=true,
+        )
       } else if action == "request-review" {
         let current = @collaboration.refresh_merge_request(
           pool, scope, git_dir, mr,
@@ -559,12 +583,52 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       }
     }) catch {
       @domain.BadRequest(message~) =>
-        if action == "inline-comment" {
+        if action == "inline-comment" || action == "retarget" {
           inline_error = Some(message)
         } else {
           raise @domain.BadRequest(message~)
         }
-      err => raise err
+      err =>
+        if action == "retarget" {
+          match err {
+            @gitops.Failure(message~) => inline_error = Some(message)
+            _ => raise err
+          }
+        } else {
+          raise err
+        }
+    }
+    if inline_error is Some(_) && action == "retarget" {
+      let scope = @repository.repository_scope(pool, actor, repo)
+      let mr = @collaboration.require_merge_request(pool, scope, number)
+      let git_dir = @repository.resolve_repository_dir(root, repo)
+      let branches = @domain.split_lines(
+        @gitops.merge_git(git_dir, [
+          "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
+        ]),
+      )
+      let base = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}"
+      res.send_html(
+        @web_ui.layout(
+          "Change target branch",
+          assets,
+          Html(b => {
+            b <+
+              "<a href=\"\{base}\">Back to merge request</a><h1>Change target branch</h1>"
+            b <+
+              "\{render_merge_target_form(base, @web_context.request_form_token(req, "merge-requests"), branches, mr.source, form.get("target").unwrap_or(""), form.get("edit_version").unwrap_or(""), inline_error)}"
+          }),
+          current_user=Some(actor),
+          navigation=@web_ui.RepositoryNavigation(
+            repo,
+            "merge-requests",
+            @identity.can_manage_team(pool, actor, scope.team_id),
+          ),
+        ),
+        status=400,
+        headers=@web_context.private_page_headers(),
+      )
+      return
     }
     if inline_error is Some(_) {
       let scope = @repository.repository_scope(pool, actor, repo)
