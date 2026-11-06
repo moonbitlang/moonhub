@@ -108,6 +108,16 @@ manager access, an explicitly observed MR version and passing branch checks.
 Edits use `edit_version`; discussion resolution uses `state_version`.
 Reload current state after stale-version errors.
 
+`moonhub_edit_merge_request` accepts optional `title`, `description` and `target`;
+at least one must be supplied. Omitted metadata is preserved. A target change is
+allowed only on an open MR with no merge queued/running and creates a new revision
+even if both target branches have the same commit. Old reviews and check results
+no longer apply; new checks follow the new target's protection rules. The write
+invocation does not grant execution approval. Retrying the same target with the
+current `edit_version` is a no-op unless metadata also changes.
+`moonhub_get_merge_request_diff` returns the target branch saved with its selected
+revision in `target`, including when an older version is requested.
+
 Paged issue/MR/activity/discussion and Inbox queries return up to 50 entries.
 Discussion lists contain previews and the three most recent replies per thread.
 Pass `discussion` to `moonhub_list_merge_discussions` to return a full

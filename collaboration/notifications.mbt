@@ -50,6 +50,7 @@ pub fn notification_label(kind : String) -> String {
     "reopen" => "Reopened"
     "ready" => "Ready for review"
     "updated" => "New version to review"
+    "retargeted" => "Target branch changed"
     "checks_failed" => "Pipeline checks failed"
     "checks_awaiting_approval" => "Checks need execution approval"
     _ => "New activity"

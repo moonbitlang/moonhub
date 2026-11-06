@@ -227,10 +227,10 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_edit_merge_request",
-      description: "Edit MR title or description using the last observed edit_version.",
+      description: "Edit MR title, description or target branch using the last observed edit_version.",
       permission: "write",
       required: ["repository", "number", "edit_version"],
-      optional: ["title", "description"],
+      optional: ["title", "description", "target"],
     },
     {
       name: "moonhub_reply_merge_discussion",
@@ -481,6 +481,7 @@ async fn invoke_tool(
           @repository.authorize_repository(pool, actor, repo, Read)
           {
             "version": version.to_string(),
+            "target": revision.target_branch,
             "base_sha": comparison.base_sha,
             "head_sha": comparison.head_sha,
             "patch": patch,
@@ -696,17 +697,19 @@ async fn invoke_tool(
               markdown_arg(pool, root, scope, actor, args, "body", ""),
             )
           "moonhub_edit_merge_request" => {
-            guard args.contains("title") || args.contains("description") else {
+            guard args.contains("title") ||
+              args.contains("description") ||
+              args.contains("target") else {
               raise @domain.BadRequest(
-                message="MR edit requires title or description",
+                message="MR edit requires title, description or target",
               )
             }
-            @collaboration.edit_merge_request(
+            @collaboration.update_merge_request(
               pool,
               scope,
+              dir,
               actor,
               mr,
-              "edit",
               string_arg(args, "title", fallback=mr.title),
               markdown_arg(
                 pool,
@@ -717,7 +720,8 @@ async fn invoke_tool(
                 "description",
                 mr.description,
               ),
-              expected=decimal(string_arg(args, "edit_version")),
+              string_arg(args, "target", fallback=mr.target),
+              decimal(string_arg(args, "edit_version")),
             )
           }
           "moonhub_reply_merge_discussion" =>

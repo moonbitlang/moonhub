@@ -295,6 +295,157 @@ async fn poll_merge_checks(pool : @database.Database, root : String) -> Unit {
 }
 
 ///|
+async test "retargeting cancels old execution and rebuilds required checks with a new base context" {
+  with_merge_check_fixture((pool, root, scope, actor, mr) => {
+    let dir = protocol_repo.git_dir(root)
+    let base = @gitops.branch_sha(dir, "master")
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/release", base]))
+    @collaboration.save_branch_rule(
+      pool,
+      scope,
+      dir,
+      actor,
+      "release",
+      true,
+      0L,
+      checks=[".github/workflows/build.yml"],
+    )
+    poll_merge_checks(pool, root)
+    let old_run = list_runs(pool, actor, protocol_repo)[0]
+    let coordinator = merge_check_provider(pool)
+    let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
+    let attempt = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+    ignore(coordinator.start(attempt, token, 1))
+    @collaboration.update_merge_request(
+      pool,
+      scope,
+      dir,
+      actor,
+      mr,
+      mr.title,
+      mr.description,
+      "release",
+      1L,
+    )
+    let current = @collaboration.require_merge_request(pool, scope, mr.number)
+    assert_eq(current.version, 2L)
+    poll_merge_checks(pool, root)
+    assert_eq(
+      @collaboration.merge_checks(pool, current)[0].state,
+      "awaiting_approval",
+    )
+    pool.with_client(client => {
+      assert_true(
+        (
+          client
+          .query_one("SELECT cancel_requested FROM pipeline_run WHERE id = ?", params=[
+            old_run.id,
+          ])
+          .get_name("cancel_requested") : Bool),
+      )
+      // Simulate a late provider result from the old comparison.
+      ignore(
+        client.execute(
+          "UPDATE pipeline_run SET status = 'completed', conclusion = 'success' WHERE id = ?",
+          params=[old_run.id],
+        ),
+      )
+    })
+    assert_eq(
+      @collaboration.merge_checks(pool, current)[0].state,
+      "awaiting_approval",
+    )
+    assert_false(
+      @collaboration.merge_blocker(
+        pool,
+        scope,
+        current,
+        @collaboration.merge_revision(pool, current),
+      ).is_empty(),
+    )
+    @collaboration.approve_merge_checks(pool, scope, actor, current, 2L)
+    poll_merge_checks(pool, root)
+    let new_run = list_runs(pool, actor, protocol_repo)[0]
+    assert_true(new_run.number != old_run.number)
+    assert_true(
+      new_run.context is Some({ base_ref: "release", head_ref: "feature", .. }),
+    )
+    assert_true(old_run.context is Some({ base_ref: "master", .. }))
+    assert_eq(@collaboration.merge_checks(pool, current)[0].state, "queued")
+    assert_eq(
+      merge_check_context(pool, actor, protocol_repo, new_run.number).unwrap().version,
+      2L,
+    )
+  })
+}
+
+///|
+async test "retargeting selects the new target required workflows and reports missing files" {
+  with_merge_check_fixture((pool, root, scope, actor, mr) => {
+    let dir = protocol_repo.git_dir(root)
+    ignore(
+      @gitops.merge_git(dir, [
+        "update-ref",
+        "refs/heads/release",
+        @gitops.branch_sha(dir, "master"),
+      ]),
+    )
+    @collaboration.save_branch_rule(
+      pool,
+      scope,
+      dir,
+      actor,
+      "release",
+      true,
+      0L,
+      checks=[".github/workflows/release.yml"],
+    )
+    poll_merge_checks(pool, root)
+    let coordinator = merge_check_provider(pool)
+    finish_merge_check(coordinator)
+    assert_eq(
+      @collaboration.merge_blocker(
+        pool,
+        scope,
+        mr,
+        @collaboration.merge_revision(pool, mr),
+      ),
+      "",
+    )
+    @collaboration.update_merge_request(
+      pool,
+      scope,
+      dir,
+      actor,
+      mr,
+      mr.title,
+      mr.description,
+      "release",
+      1L,
+      authorize_checks=true,
+    )
+    let current = @collaboration.require_merge_request(pool, scope, mr.number)
+    poll_merge_checks(pool, root)
+    let checks = @collaboration.merge_checks(pool, current)
+    assert_eq(checks.length(), 1)
+    assert_eq(checks[0].workflow_path, ".github/workflows/release.yml")
+    assert_eq(checks[0].state, "error")
+    assert_false(
+      @collaboration.merge_blocker(
+        pool,
+        scope,
+        current,
+        @collaboration.merge_revision(pool, current),
+      ).is_empty(),
+    )
+    assert_eq(
+      @collaboration.merge_checks(pool, mr, version=1L)[0].conclusion,
+      "success",
+    )
+  })
+}
+
+///|
 fn merge_check_provider(pool : @database.Database) -> Coordinator raise {
   let coordinator = Coordinator::new(pool)
   ignore(

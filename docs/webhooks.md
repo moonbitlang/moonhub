@@ -43,7 +43,7 @@ Gitea/GitHub webhook compatibility.
 | --- | --- |
 | push | Branch/tag creation, updates and deletion through managed Git writes, and MR merges. Includes ref, before, after; all-zero OIDs represent an absent ref. No-op/aborted updates are omitted. |
 | issue | Issue activity: opened, comment, edit, assigned, close, reopen; includes an issue snapshot and activity body/ID. |
-| merge_request | MR lifecycle, updates, comments/replies and merge queue/failure activity; includes title/body/state, branches, saved version and source/target SHAs. Discussion IDs preserve reply identity; inline roots include the saved anchor. |
+| merge_request | MR lifecycle, updates, comments/replies and merge queue/failure activity; includes title/body/state, branches, saved version and source/target SHAs. A target change uses action `retargeted`, with the new branch/version in the MR snapshot and the old/new branch names in the activity body. Discussion IDs preserve reply identity; inline roots include the saved anchor. |
 | review | approved, changes_requested, withdrawn and explicit review_requested; requests include the reviewer ID. |
 | workflow_run | Run creation and real state/conclusion changes, including completion; includes run number, workflow path, branch and pinned SHA. |
 | ping | Explicit test event, sent only to the selected hook. |

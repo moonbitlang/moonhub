@@ -188,6 +188,42 @@ fn render_merge_new(
 }
 
 ///|
+fn render_merge_target_form(
+  base : String,
+  csrf : String,
+  branches : Array[String],
+  source : String,
+  target : String,
+  edit_version : String,
+  error : String?,
+) -> @moonback.Html {
+  Html(b => {
+    b <+
+      "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}/retarget\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"edit_version\" value=\"\{edit_version}\">"
+    if error is Some(message) {
+      b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
+    }
+    b <+
+      "<label class=\"field\"><span>Target branch</span><select name=\"target\" required aria-describedby=\"mr-target-notice\">"
+    if !branches.contains(target) && !target.is_empty() {
+      b <+
+        "<option value=\"\{target}\" selected>\{target} (unavailable)</option>"
+    }
+    for branch in branches {
+      if branch != source {
+        b <+ "<option value=\"\{branch}\""
+        if branch == target {
+          b <+ " selected"
+        }
+        b <+ ">\{branch}</option>"
+      }
+    }
+    b <+
+      "</select></label><p class=\"muted\" id=\"mr-target-notice\">Changing the target creates a new version. Existing reviews and check results will not apply; checks run again under the new target branch rules.</p><button class=\"secondary-button\" type=\"submit\">Change target branch</button></form>"
+  })
+}
+
+///|
 fn render_merge_detail(
   assets : Map[String, String],
   user : @domain.CurrentUser,
@@ -220,6 +256,7 @@ fn render_merge_detail(
   candidates : Array[@collaboration.IssueAssignee],
   subscription : @collaboration.ThreadSubscription,
   notification_csrf : String,
+  branches~ : Array[String] = [],
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
   let version = revision.map(value => value.version).unwrap_or(0L)
@@ -230,6 +267,7 @@ fn render_merge_detail(
   let commit_query = selected_commit
     .map(commit => "&commit=" + commit.hash)
     .unwrap_or("")
+  let target = revision.map(value => value.target_branch).unwrap_or(mr.target)
   let busy = mr.job_status == "pending" || mr.job_status == "running"
   let editable = contributor &&
     (user.id == mr.author_id || manager) &&
@@ -240,7 +278,7 @@ fn render_merge_detail(
     assets,
     Html(b => {
       b <+
-        "<a class=\"back-link\" href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">Merge requests</a><div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{@web_ui.merge_status(mr).to_lower()}\">\{@web_ui.merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{mr.target}</code></p>"
+        "<a class=\"back-link\" href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">Merge requests</a><div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{@web_ui.merge_status(mr).to_lower()}\">\{@web_ui.merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{target}</code></p>"
       if editable {
         b <+
           "<details class=\"secondary-details mr-more-actions\"><summary>More actions</summary><div class=\"mr-actions\">"
@@ -251,7 +289,12 @@ fn render_merge_detail(
           b <+
             "\{merge_action(base, csrf, "reopen", "Reopen", version, edit_version=mr.edit_version)}"
         }
-        b <+ "</div></details>"
+        b <+ "</div>"
+        if mr.status == "open" && version == mr.version {
+          b <+
+            "\{render_merge_target_form(base, csrf, branches, mr.source, mr.target, mr.edit_version.to_string(), None)}"
+        }
+        b <+ "</details>"
       }
       b <+ "<nav class=\"mr-tabs\" aria-label=\"Merge request views\">"
       for value in ["discussion", "commits", "changes"] {

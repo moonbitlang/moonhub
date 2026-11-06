@@ -230,7 +230,7 @@ async function main() {
     for (const socket of stalledSockets) socket.destroy();
     await new Promise(resolve => stalled.close(resolve));
   }
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const split = rootCookie.indexOf('=');
   await context.addCookies([{ name: rootCookie.slice(0, split), value: rootCookie.slice(split + 1), url: base }]);
@@ -615,6 +615,19 @@ async function main() {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
   await page.screenshot({ path: path.join(output, 'tokens-error-mobile.png'), fullPage: true });
+  // Exercise actual CLI serialization of --target with a fresh comparison.
+  git(['update-ref', 'refs/heads/retarget-base', initial]);
+  git(['update-ref', 'refs/heads/retarget-release', initial]);
+  const retargetMR = cli(['mr', 'create', '--title', 'Retarget CLI', '--source', 'feature', '--target', 'retarget-base', '--body-file', body]);
+  const retargeted = cli(['mr', 'edit', retargetMR.number, '--target', 'retarget-release', '--edit-version', '1']);
+  assert.equal(retargeted.target, 'retarget-release');
+  assert.equal(retargeted.title, 'Retarget CLI');
+  assert.equal(retargeted.description, fs.readFileSync(body, 'utf8'));
+  assert.equal(retargeted.version, '2');
+  assert.equal(retargeted.edit_version, '2');
+  cli(['mr', 'edit', retargetMR.number, '--target', 'retarget-base', '--edit-version', '1'], write, 1);
+  assert.equal(cli(['mr', 'diff', retargetMR.number, '--version', '1']).target, 'retarget-base');
+  assert.equal(cli(['mr', 'edit', retargetMR.number, '--target', 'retarget-release', '--edit-version', '2']).edit_version, '2');
   cookie = rootCookie;
   const tokenPage = await (await fetch(base + '/-/settings/tokens', { headers: { Cookie: cookie } })).text();
   const csrf = tokenPage.match(/name="csrf_token" value="([^"]+)"/)[1];
@@ -623,7 +636,7 @@ async function main() {
   cli(['mr', 'list'], write, 1);
   execFileSync(binary, ['auth', 'logout'], { cwd: temp, env: cliEnv, stdio: 'pipe' });
   assert.ok(!fs.existsSync(credentials));
-  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms', 'nullable string commit SHA, annotated tag rejection, bounded large commit metadata and small diff access', 'inline CLI anchors, gutter and range editors, fixed draft anchors across cancel/reload/collapse, complete in-diff reply/resolve/reopen, desktop/mobile layout and no-script ranges'], secretsPrinted: false }, null, 2));
+  fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR target edit serialization, stale rejection, history and no-op', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms', 'nullable string commit SHA, annotated tag rejection, bounded large commit metadata and small diff access', 'inline CLI anchors, gutter and range editors, fixed draft anchors across cancel/reload/collapse, complete in-diff reply/resolve/reopen, desktop/mobile layout and no-script ranges'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
