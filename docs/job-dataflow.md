@@ -84,7 +84,11 @@ At most 100 names are allowed per job. Each value is at most 16 KiB UTF-8, the
 encoded map at most 32 KiB, and all stored maps in a run at most 256 KiB. NUL and
 undeclared names are rejected. The run budget bounds downstream assignment
 contexts; provider responses are limited to 2 MiB, matching the standalone runner.
-Oversized reports do not partially publish output or complete an attempt.
+Oversized reports do not partially publish output or complete an attempt. After
+an explicit HTTP 400 for a non-empty output completion, the runner reports failure
+without outputs so a full run budget cannot leave an executed job waiting for
+lease expiry. Conflicts and uncertain transport results retain the original
+completion payload.
 
 The runner omits values containing registered masks, including Action runtime
 credentials and post-handler masks. The server independently filters secrets

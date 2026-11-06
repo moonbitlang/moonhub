@@ -169,3 +169,115 @@ async test "real runner carries version outputs through conditional matrix build
     workflow~,
   )
 }
+
+///|
+async test "real runner terminates a job after the shared output budget rejects completion" {
+  let workflow =
+    #|on: workflow_dispatch
+    #|permissions: {}
+    #|jobs:
+    #|  produce:
+    #|    strategy: {fail-fast: false, matrix: {index: [0,1,2,3,4,5,6,7,8]}}
+    #|    runs-on: self-hosted
+    #|    outputs:
+    #|      first: FIRST_OUTPUT
+    #|      second: SECOND_OUTPUT
+    #|    steps:
+    #|      - id: produce
+    #|        run: printf x >> executed
+  let workflow = workflow
+    .replace_all(old="FIRST_OUTPUT", new="x".repeat(16300))
+    .replace_all(old="SECOND_OUTPUT", new="y".repeat(16300))
+  with_artifact_http(
+    (port, c, pool, _, first, lease) => {
+      let mut assignment = first
+      let mut token = lease
+      for index = 0; index < 8; index = index + 1 {
+        let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+        ignore(c.start(id, token, 1, execution_id="e".repeat(32)))
+        ignore(
+          c.update_step(id, token, {
+            version: 1,
+            step_id: "produce",
+            state: "running",
+            exit_code: 0,
+          }),
+        )
+        ignore(
+          c.update_step(id, token, {
+            version: 1,
+            step_id: "produce",
+            state: "success",
+            exit_code: 0,
+          }),
+        )
+        let request : @protocol.CompleteRequest = {
+          version: 1,
+          conclusion: "success",
+          last_log_sequence: "0",
+          outputs: { "first": "x".repeat(16300), "second": "y".repeat(16300) },
+        }
+        assert_eq(c.complete(id, token, request).conclusion, "success")
+        token = @identity.random_hex(32)
+        assignment = c
+          .claim("a".repeat(64), {
+            version: 1,
+            runner_os: None,
+            request_id: @identity.random_hex(16),
+            attempt_token: token,
+          })
+          .unwrap()
+      }
+      @test_support.with_runner_workspace((_, launcher, workspace) => {
+        let (code, node) = @process.collect_output_merged("node", [
+          "-p", "process.execPath",
+        ])
+        assert_eq(code, 0)
+        let report = @runner.run(
+          assignment,
+          token,
+          {
+            server: "http://127.0.0.1:\{port}",
+            workspace,
+            launcher,
+            allow_http: true,
+            unsafe_local: true,
+            heartbeat_ms: 50,
+          },
+          action_node=node.text().trim().to_owned(),
+          action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+        )
+        assert_eq(report.conclusion, "failure")
+        assert_true(report.reported)
+        assert_eq(@fs.read_file(workspace + "/repository/executed").text(), "x")
+      })
+      let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let runs = @pipeline.list_runs(pool, actor, repo)
+      assert_true(runs[0].state is @pipeline.Completed)
+      assert_true(runs[0].conclusion is Some(@pipeline.Failure))
+      let logs = c
+        .read_logs(
+          actor,
+          repo,
+          runs[0].number,
+          @protocol.parse_decimal(assignment.attempt_id).unwrap(),
+        )
+        .map(chunk => chunk.text)
+        .join("")
+      if !logs.contains("coordinator rejected job outputs") {
+        fail(logs)
+      }
+      pool.with_client(client => {
+        assert_eq(
+          (
+            client
+            .query_one("SELECT COUNT(*) AS n FROM pipeline_job_output")
+            .get_name("n") : Int64),
+          8L,
+        )
+      })
+    },
+    workflow~,
+  )
+}

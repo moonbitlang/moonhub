@@ -847,7 +847,7 @@ async fn execute_assignment(
   })
   let outcome = completed.unwrap_or("cancelled")
   let report = @async.protect_from_cancel(() => {
-    let outcome = try {
+    let mut outcome = try {
       runtime.cleanup_processes()
       outcome
     } catch {
@@ -891,7 +891,32 @@ async fn execute_assignment(
       // Older coordinators validate the original completion field set.
       ignore(fields.remove("outputs"))
     }
-    let state = Some(runtime.request("complete", body)) catch { _ => None }
+    let state = Some(runtime.request("complete", body)) catch {
+      Rejected(400) if assignment.version ==
+        @protocol.dataflow_assignment_version &&
+        !runtime.job_outputs.is_empty() => {
+        // A definitive rejection did not commit the original completion. The
+        // shared run output budget is unknown to the runner, so terminate as
+        // failure without outputs instead of leaving an executed attempt live.
+        // Never change payload after a conflict or an ambiguous transport error.
+        outcome = "failure"
+        runtime.upload(
+          "", "stderr", "runner: coordinator rejected job outputs; reporting failure without outputs\n",
+        ) catch {
+          _ => ()
+        }
+        let rejected : @protocol.CompleteRequest = {
+          version: @protocol.version,
+          conclusion: outcome,
+          last_log_sequence: runtime.sequence.to_string(),
+          outputs: Map([]),
+        }
+        Some(runtime.request("complete", ToJson::to_json(rejected))) catch {
+          _ => None
+        }
+      }
+      _ => None
+    }
     match state {
       Some(state) if state.state == "completed" =>
         { conclusion: state.conclusion, reported: true, steps: runtime.steps, }
