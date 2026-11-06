@@ -83,9 +83,11 @@ IDs are checked against their original JSON token before executing a tool, so
 fractional values cannot pass validation through floating-point rounding.
 
 Tool results provide `structuredContent` and the same JSON as text in `content`.
-Arguments follow the published JSON Schema 2020-12 schemas: all values are
-strings, including IDs, versions, pages and `draft: "true"`. Unknown fields,
-missing required fields and non-string arguments are rejected. Schemas have no
+Arguments follow the published JSON Schema 2020-12 schemas. IDs, versions, pages
+and `draft: "true"` are strings. `moonhub_create_run` also accepts an optional
+`inputs` object containing up to 25 string, boolean or number values; workflow
+input definitions validate names, types, required values and choices. Other
+non-string arguments, unknown fields and missing required fields are rejected. Schemas have no
 external references or `x-mcp-header` parameters. The `Mcp-Name` Base64
 sentinel encoding is supported and validated against the body.
 

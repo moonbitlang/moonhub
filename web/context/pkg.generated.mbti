@@ -61,13 +61,13 @@ pub fn positive_resource_number(String) -> Int64 raise
 
 pub fn private_page_headers(location? : String, refresh? : Bool) -> @moonback.Headers
 
-pub async fn protected_form(@moonback.Request, String) -> Map[String, String]
+pub async fn protected_form(@moonback.Request, String, limit? : Int32) -> Map[String, String]
 
 pub fn query_rev(@moonback.Request) -> String?
 
 pub async fn read_bounded_body(@moonback.Request, Int32) -> Bytes
 
-pub async fn read_form(@moonback.Request) -> Map[String, String]
+pub async fn read_form(@moonback.Request, limit? : Int32) -> Map[String, String]
 
 pub fn redirect_headers(String) -> @moonback.Headers
 

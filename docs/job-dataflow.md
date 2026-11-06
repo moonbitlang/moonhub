@@ -43,7 +43,7 @@ inside downloaded JavaScript/composite Actions. Pass untrusted output through
 env/with instead of interpolating shell code.
 
 Job `if` accepts a boolean, an expression string or a whole expression wrapper.
-It uses captured `github` and direct `needs`, scalar literals, field/string-key
+It uses captured `github`, typed dispatch `inputs` and direct `needs`, scalar literals, field/string-key
 indexes, parentheses, `!`, `==`, `!=`, `&&`, `||`, `contains`, `startsWith`,
 `endsWith`, `format`, and `success()`, `failure()`, `cancelled()`, `always()`.
 Function names and field lookup ignore case; boolean operators short circuit.
@@ -60,8 +60,8 @@ error fails that job without rolling back upstream completion. Cancelling a
 whole run still cancels all queued/waiting jobs, including always jobs.
 
 Output definitions accept scalar templates using `steps`, `needs`, `github`,
-`matrix`, `strategy` and `runner`. Values become strings. Secret references,
-env, dispatch inputs/vars and unsupported functions fail validation. Values are
+`matrix`, `strategy`, `runner` and dispatch `inputs`. Values become strings.
+Secret references, env, vars and unsupported functions fail validation. Values are
 evaluated once, without recursively interpreting captured expression markers.
 Success/failure reports may publish outputs; cancelled/timed-out/lost attempts do
 not.
@@ -95,8 +95,9 @@ credentials and post-handler masks. The server independently filters secrets
 delivered to that attempt, using log-mask variants. These substring checks do
 not guarantee protection against deliberately transformed secrets.
 
-New runs use assignment version 7; old runners reject it. Upgrade coordinator,
-provider/controller and runner together. Definition versions 1-3 and their
+Definition-v4 snapshots use assignment version 7. New definition-v5 runs use
+assignment version 8 for [dispatch inputs](dispatch-inputs.md); old runners reject it. Upgrade coordinator,
+provider/controller and runner together. Definition versions 1-4 and their
 original assignment versions remain supported, including old completion hashes.
 The runner retains the original completion field set for legacy assignments.
 Reruns retain their saved definition version.
@@ -126,7 +127,7 @@ pinned node20 entry points. Production defaults still use the prepared Node 20
 runtime. All matrix instances here execute on the local host, not separate
 macOS/Windows release machines.
 
-Dynamic matrices, job continue-on-error, dispatch inputs, vars, scheduled triggers,
+Dynamic matrices, job continue-on-error, vars, scheduled triggers,
 OIDC, write permissions and authenticated release APIs remain separate work. See
 [GitHub Actions](github-actions.md), [workflow scheduling](workflow-scheduling.md),
 [Artifact v4](artifact-v4.md) and [Cache v4](cache-v4.md).

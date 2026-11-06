@@ -181,7 +181,7 @@ fn insert_run_snapshot(
       )
     }
   }
-  schedule_run(tx, run, merge_check_id)
+  schedule_run(tx, run)
   if definition_version >= 4 {
     advance_run_jobs(tx, run.id)
     finalize_run(tx, run.id)
@@ -200,6 +200,7 @@ pub async fn create_run(
   repo : @domain.RepoId,
   branch : String,
   workflow_path : String,
+  inputs~ : Map[String, Json] = Map([]),
 ) -> Run {
   ignore(require_run_author(pool, actor, repo))
   validate_workflow_path(workflow_path)
@@ -232,10 +233,14 @@ pub async fn create_run(
     let definition = @workflow.parse(source) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
-    guard @workflow.triggers(source).dispatch else {
+    let triggers = @workflow.triggers(source)
+    guard triggers.dispatch else {
       raise @domain.BadRequest(
         message="workflow does not allow manual dispatch",
       )
+    }
+    let inputs = @workflow.resolve_dispatch_inputs(triggers.inputs, inputs) catch {
+      @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
     let context : @workflow.RunContext = {
       repository: repo.owner + "/" + repo.name,
@@ -243,6 +248,7 @@ pub async fn create_run(
       event_name: "workflow_dispatch",
       head_ref: "",
       base_ref: "",
+      inputs,
     }
     let definition = @workflow.resolve_context(definition, context) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)

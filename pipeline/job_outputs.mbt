@@ -1,4 +1,26 @@
 ///|
+fn run_event_context(
+  context : @workflow.RunContext,
+  event_ref~ : String,
+) -> Map[String, Json] {
+  let event : Map[String, Json] = {
+    "repository": { "full_name": context.repository },
+    "ref": Json::string(event_ref),
+  }
+  if context.event_name == "workflow_dispatch" {
+    let inputs : Map[String, String] = Map([])
+    for name, value in context.inputs {
+      inputs[name] = match value {
+        String(text) => text
+        _ => value.stringify()
+      }
+    }
+    event["inputs"] = ToJson::to_json(inputs)
+  }
+  event
+}
+
+///|
 fn run_job_github(
   tx : @database.DbTransaction,
   run : Run,
@@ -9,12 +31,11 @@ fn run_job_github(
       params=[run.id],
     )
     .get_name("number")
-  {
-    "ref": Json::string(
-      number
-      .map(n => "refs/pull/" + n.to_string() + "/merge")
-      .unwrap_or("refs/heads/" + run.source_branch),
-    ),
+  let event_ref = number
+    .map(n => "refs/pull/" + n.to_string() + "/merge")
+    .unwrap_or("refs/heads/" + run.source_branch)
+  let github : Map[String, Json] = {
+    "ref": Json::string(event_ref),
     "repository": Json::string(
       run.context.map(ctx => ctx.repository).unwrap_or(""),
     ),
@@ -27,6 +48,10 @@ fn run_job_github(
     "base_ref": Json::string(run.context.map(ctx => ctx.base_ref).unwrap_or("")),
     "run_id": Json::string(run.id.to_string()),
   }
+  if run.definition_version >= 5 && run.context is Some(context) {
+    github["event"] = ToJson::to_json(run_event_context(context, event_ref~))
+  }
+  github
 }
 
 ///|

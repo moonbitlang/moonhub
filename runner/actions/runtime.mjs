@@ -86,6 +86,21 @@ export class ActionRuntime {
     this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
     this.workspace = path.resolve(config.workspace);
     this.temp = path.resolve(config.temp);
+    this.dispatchContext = config.dispatch_context === true;
+    const inputs = mapping(config.dispatch_inputs ?? {}, 'dispatch inputs');
+    if (Object.keys(inputs).length > 25 || Object.entries(inputs).some(([name, value]) =>
+      !/^[A-Za-z_][A-Za-z0-9_-]{0,99}$/.test(name) || ['__proto__', 'prototype', 'constructor'].includes(name.toLowerCase()) ||
+      !['string', 'number', 'boolean'].includes(typeof value) || (typeof value === 'number' && !Number.isFinite(value)) ||
+      (typeof value === 'string' && value.includes('\0')))) throw new Error('Invalid dispatch inputs');
+    if (new Set(Object.keys(inputs).map(name => name.toLowerCase())).size !== Object.keys(inputs).length) throw new Error('Duplicate dispatch input names');
+    if (!this.dispatchContext && (Object.keys(inputs).length || Object.keys(mapping(config.event ?? {}, 'event payload')).length)) throw new Error('Dispatch context requires assignment version 8');
+    const inputSource = JSON.stringify(inputs);
+    if (Buffer.byteLength(inputSource) > 65535) throw new Error('Dispatch inputs exceed limits');
+    this.inputs = JSON.parse(inputSource);
+    this.eventSource = JSON.stringify(mapping(config.event ?? {}, 'event payload'));
+    if (Buffer.byteLength(this.eventSource) > 196608) throw new Error('Event payload exceeds limits');
+    this.event = JSON.parse(this.eventSource);
+    this.eventPath = path.join(this.temp, `_event-${randomUUID()}.json`);
     this.failure = Boolean(config.failure || state.failure);
     this.cancelled = Boolean(config.cancelled);
     this.count = 0;
@@ -94,10 +109,10 @@ export class ActionRuntime {
     const github = { repository: this.config.repository, sha: this.config.sha, server_url: this.config.server,
       api_url: `${this.config.server}/-/api/v1`, ref: this.config.context?.ref || this.config.sha,
       workflow: this.config.context?.workflow || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
-      event_name: this.config.context?.event_name || 'workflow_dispatch', token: this.config.contents_read === false ? '' : 'moonhub-local-source',
+      event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
-      steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
+      ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
     if (uses.startsWith('./')) return { directory: await contained(this.workspace, uses), repository: this.config.repository, ref: this.config.sha };
@@ -146,7 +161,10 @@ export class ActionRuntime {
     const names = ['ENV', 'PATH', 'OUTPUT', 'STATE', 'STEP_SUMMARY'];
     const files = Object.fromEntries(names.map(name => [name, path.join(directory, name)]));
     for (const [name, filename] of Object.entries(files)) { await fs.writeFile(filename, '', { flag: 'wx', mode: 0o600 }); env[`GITHUB_${name}`] = filename; }
+    // Rewrite the captured payload for every pre/main/post/script invocation.
+    // An Action may edit its own file, but cannot change a later step's event.
     try {
+      if (this.dispatchContext) await fs.writeFile(this.eventPath, this.eventSource, { flag: 'wx', mode: 0o600 });
       const code = await execute();
       const changes = parseFileCommands(await readBounded(files.ENV));
       for (const key of Object.keys(changes)) if (!validEnvName(key)) throw new Error(`Reserved or unsafe action environment variable: ${key}`);
@@ -162,13 +180,16 @@ export class ActionRuntime {
       if (summary && ((await fs.stat(path.join(this.temp, "summary.md")).catch(() => ({size: 0}))).size + Buffer.byteLength(summary) > limit)) throw new Error("Action summaries exceed 1 MiB");
       if (summary) await fs.appendFile(path.join(this.temp, 'summary.md'), summary, { mode: 0o600 });
       return code;
-    } finally { await fs.rm(directory, { recursive: true, force: true }); }
+    } finally {
+      if (this.dispatchContext) await fs.rm(this.eventPath, { force: true });
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   }
   environment(extra = {}, context = this.context()) {
     const env = environment(this.baseEnv, this.state.env, extra);
     env.PATH = [...this.state.path, env.PATH].filter(Boolean).join(path.delimiter);
     Object.assign(env, { GITHUB_WORKSPACE: this.workspace, GITHUB_REPOSITORY: this.config.repository, GITHUB_SHA: this.config.sha,
-      GITHUB_SERVER_URL: this.config.server, GITHUB_API_URL: `${this.config.server}/-/api/v1`, GITHUB_EVENT_NAME: context.github.event_name,
+      GITHUB_SERVER_URL: this.config.server, GITHUB_API_URL: `${this.config.server}/-/api/v1`, GITHUB_EVENT_NAME: context.github.event_name, ...(this.dispatchContext ? { GITHUB_EVENT_PATH: this.eventPath } : {}),
       GITHUB_REF: context.github.ref, GITHUB_HEAD_REF: context.github.head_ref, GITHUB_BASE_REF: context.github.base_ref,
       GITHUB_ACTIONS: 'true', GITHUB_ACTION: this.config.step?.id || 'post',
       GITHUB_RUN_ID: this.config.run_id || '0', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: this.config.job_id || '',

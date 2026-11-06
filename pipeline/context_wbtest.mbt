@@ -102,6 +102,7 @@ async test "push context is taken from durable event and retained on rerun" {
     let context = run.context.unwrap()
     assert_eq(context.sha, sha)
     assert_eq(context.event_name, "push")
+    assert_true(context.inputs.is_empty())
     assert_eq(context.head_ref, "")
     assert_eq(context.base_ref, "")
     assert_eq(run.definition.jobs[0].steps[0].env.get("EVENT"), Some("push"))
@@ -125,6 +126,7 @@ async test "MR context uses merged candidate and reruns use saved context not li
       let run = list_runs(pool, actor, protocol_repo)[0]
       let context = run.context.unwrap()
       assert_eq(context.event_name, "pull_request")
+      assert_true(context.inputs.is_empty())
       assert_eq(context.sha, run.commit_sha)
       assert_true(
         context.sha != @collaboration.merge_revision(pool, mr).source_sha,

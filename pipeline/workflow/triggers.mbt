@@ -9,6 +9,7 @@ pub struct EventFilters {
 ///|
 pub struct Triggers {
   dispatch : Bool
+  inputs : Array[DispatchInput]
   push : Bool
   pull_request : Bool
   pull_request_types : Array[String]
@@ -87,11 +88,12 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     raise InvalidWorkflow("on requires a trigger")
   }
   check_fields(fields, ["push", "pull_request", "workflow_dispatch"], "on")
-  if fields.get("workflow_dispatch") is Some(options) {
-    guard options is Null || (options is Map(options) && options.is_empty()) else {
-      raise InvalidWorkflow("workflow_dispatch inputs are not supported")
-    }
+  let dispatch_options = match fields.get("workflow_dispatch") {
+    None | Some(Null) => Map([])
+    Some(value) => yaml_as_obj(value, "on.workflow_dispatch")
   }
+  check_fields(dispatch_options, ["inputs"], "on.workflow_dispatch")
+  let inputs = parse_dispatch_inputs(dispatch_options.get("inputs"))
   let filters : Map[String, EventFilters] = Map([])
   let mut pull_request_types : Array[String] = []
   for event in ["push", "pull_request"] {
@@ -128,6 +130,7 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
   }
   {
     dispatch: fields.contains("workflow_dispatch"),
+    inputs,
     push: fields.contains("push"),
     pull_request: fields.contains("pull_request"),
     pull_request_types,

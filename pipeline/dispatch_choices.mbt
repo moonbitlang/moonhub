@@ -3,6 +3,7 @@ pub struct WorkflowChoice {
   path : String
   name : String
   reason : String
+  inputs : Array[@workflow.DispatchInput]
 }
 
 ///|
@@ -56,29 +57,31 @@ pub async fn dispatch_choices(
   }
   let workflows : Array[WorkflowChoice] = []
   for path in paths {
-    let (name, reason) = try {
+    let (name, reason, inputs) = try {
       validate_workflow_path(path)
       let source = read_workflow_source(git_dir, commit, path)
       let definition = @workflow.parse(source)
+      let trigger = @workflow.triggers(source)
       (
         if definition.name.is_empty() {
           path
         } else {
           definition.name
         },
-        if @workflow.triggers(source).dispatch {
+        if trigger.dispatch {
           ""
         } else {
           "Manual dispatch is not enabled"
         },
+        trigger.inputs,
       )
     } catch {
       @workflow.InvalidWorkflow(message) | @domain.BadRequest(message~) =>
-        (path, message)
-      SnapshotError(_) => (path, "Workflow could not be read")
+        (path, message, [])
+      SnapshotError(_) => (path, "Workflow could not be read", [])
       err => raise err
     }
-    workflows.push({ path, name, reason, })
+    workflows.push({ path, name, reason, inputs, })
   }
   ignore(require_run_author(pool, actor, scope.repo))
   { branches, branch, commit, workflows, }

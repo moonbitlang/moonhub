@@ -48,7 +48,7 @@ fn parse_job_condition(
     _ => raise InvalidWorkflow("job.if requires a boolean or expression")
   }
   let expr = schedule_parse(text)
-  expr.check_context({ "github": {}, "needs": {}, "__status": {} })
+  expr.check_context({ "github": {}, "inputs": {}, "needs": {}, "__status": {} })
   expr.check_needs(needs)
   text
 }
@@ -80,6 +80,7 @@ fn parse_job_outputs(
     ignore(
       scheduling_template(text, {
         "github": {},
+        "inputs": {},
         "needs": {},
         "steps": {},
         "matrix": {},
@@ -97,6 +98,7 @@ pub fn job_condition(
   source : String,
   github : Map[String, Json],
   needs : Map[String, Json],
+  inputs~ : Map[String, Json] = Map([]),
   success~ : Bool,
   failure~ : Bool,
   cancelled~ : Bool,
@@ -104,6 +106,7 @@ pub fn job_condition(
   let expr = schedule_parse(source)
   let context : Map[String, Json] = {
     "github": ToJson::to_json(github),
+    "inputs": ToJson::to_json(inputs),
     "needs": ToJson::to_json(needs),
     "__status": {
       "success": success,

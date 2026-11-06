@@ -27,9 +27,14 @@ pub let scheduling_assignment_version : Int32 = 6
 pub let dataflow_assignment_version : Int32 = 7
 
 ///|
+// V8 carries immutable workflow dispatch inputs and its event payload.
+pub let dispatch_assignment_version : Int32 = 8
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
+    dispatch_assignment_version,
   ].contains(version)
 }
 
@@ -181,6 +186,8 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 ///|
 #derive(Debug, ToJson)
 pub(all) struct JobPlan {
+  dispatch_inputs : Map[String, Json]
+  event : Map[String, Json]
   outputs : Map[String, String]
   needs : Map[String, Json]
   context : Map[String, String]
@@ -200,6 +207,14 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job plan"))
   }
   {
+    dispatch_inputs: @json.from_json(
+      fields.get("dispatch_inputs").unwrap_or(({} : Json)),
+      path=path.add_key("dispatch_inputs"),
+    ),
+    event: @json.from_json(
+      fields.get("event").unwrap_or(({} : Json)),
+      path=path.add_key("event"),
+    ),
     outputs: @json.from_json(
       fields.get("outputs").unwrap_or(({} : Json)),
       path=path.add_key("outputs"),

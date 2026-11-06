@@ -47,6 +47,7 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("state-version", long="state-version", global=true),
     @argparse.OptionArg("assignee", long="assignee", global=true),
     @argparse.OptionArg("workflow", long="workflow", global=true),
+    @argparse.OptionArg("inputs-file", long="inputs-file", global=true),
     @argparse.OptionArg("branch", long="branch", global=true),
     @argparse.OptionArg("attempt", long="attempt", global=true),
     @argparse.OptionArg(
@@ -177,6 +178,34 @@ async fn read_body(matches : @argparse.Matches) -> String {
       @fs.read_file(path).text()
     }
   }
+}
+
+///|
+async fn read_dispatch_inputs(path : String) -> Map[String, Json] {
+  guard @fs.kind(path, follow_symlink=false) is Regular &&
+    @fs.file_size(path) <= 65535L else {
+    raise Invalid(
+      "inputs file must be a regular UTF-8 JSON file of at most 65,535 bytes",
+    )
+  }
+  let value = @json.parse(@utf8.decode(@fs.read_file(path).binary())) catch {
+    _ => raise Invalid("inputs file must contain valid UTF-8 JSON")
+  }
+  guard value is Object(inputs) &&
+    inputs.length() <= 25 &&
+    inputs
+    .values()
+    .all(value => {
+      match value {
+        String(_) | True | False | Number(_, ..) => true
+        _ => false
+      }
+    }) else {
+    raise Invalid(
+      "inputs file must contain an object of at most 25 string, boolean or number values",
+    )
+  }
+  inputs
 }
 
 ///|
@@ -581,14 +610,16 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         "\{base}/runs/\{id}/logs/\{decimal(required(matches, "attempt"))}?after=\{escape(required(matches, "after"))}",
         None,
       )
-    ("ci", "run") =>
-      (
-        "\{base}/runs",
-        Some({
-          "branch": required(matches, "branch"),
-          "workflow": required(matches, "workflow"),
-        }),
-      )
+    ("ci", "run") => {
+      let fields : Map[String, Json] = {
+        "branch": Json(required(matches, "branch")),
+        "workflow": Json(required(matches, "workflow")),
+      }
+      if option(matches, "inputs-file") is Some(path) {
+        fields["inputs"] = Json(read_dispatch_inputs(path))
+      }
+      ("\{base}/runs", Some(Json(fields)))
+    }
     ("ci", "rerun" | "cancel") => ("\{base}/runs/\{id}/\{action}", Some({}))
     ("inbox", "list") =>
       (

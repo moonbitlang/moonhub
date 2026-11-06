@@ -734,7 +734,17 @@ pub let api_module : @moonback.Module = Module(ctx => {
     "/repos/:owner/:repo/runs",
     api_handler(req => {
       let actor = api_actor(pool, req, "execute")
-      let body = api_body(req, ["branch", "workflow"])
+      // The inputs object may use 65535 bytes before the request wrapper.
+      let body = api_body(
+        req,
+        ["branch", "workflow", "inputs"],
+        body_limit=73728,
+      )
+      let inputs : Map[String, Json] = match body.get("inputs") {
+        None => Map([])
+        Some(Object(values)) => values
+        _ => raise @domain.BadRequest(message="inputs must be a JSON object")
+      }
       run_json(
         @pipeline.create_run(
           pool,
@@ -743,6 +753,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           @web_context.repo_param(req),
           field(body, "branch"),
           field(body, "workflow"),
+          inputs~,
         ),
       )
     }),

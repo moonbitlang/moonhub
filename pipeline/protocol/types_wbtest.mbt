@@ -97,6 +97,8 @@ test "assignment validates string identifiers and bounded timestamps" {
     server_time_ms: "0",
     state: "leased",
     job: {
+      dispatch_inputs: Map([]),
+      event: Map([]),
       outputs: Map([]),
       needs: Map([]),
       context: Map([]),
@@ -172,6 +174,8 @@ test "log and completion requests use explicit string sequence fields" {
 ///|
 test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
+    dispatch_inputs: Map([]),
+    event: Map([]),
     outputs: Map([]),
     needs: Map([]),
     context: Map([]),
@@ -284,5 +288,26 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   let restored : CompleteRequest = @json.from_json(ToJson::to_json(updated))
   assert_eq(restored.outputs.get("literal"), updated.outputs.get("literal"))
   assert_true(action_runtime_version(dataflow_assignment_version))
-  assert_false(action_runtime_version(8))
+  assert_true(action_runtime_version(dispatch_assignment_version))
+  assert_false(action_runtime_version(9))
+}
+
+///|
+test "legacy job plan defaults dispatch snapshot fields" {
+  let plan : JobPlan = @json.from_json(
+    @json.parse(
+      (
+        #|{"id":"legacy","name":"Legacy","runs_on":["self-hosted"],"timeout_minutes":1,"steps":[]}
+      ),
+    ),
+  )
+  assert_true(plan.dispatch_inputs.is_empty())
+  assert_true(plan.event.is_empty())
+  let typed = {
+    ..plan,
+    dispatch_inputs: { "enabled": true, "count": 2.5 },
+    event: { "inputs": { "enabled": "true", "count": "2.5" } },
+  }
+  let restored : JobPlan = @json.from_json(ToJson::to_json(typed))
+  assert_eq(ToJson::to_json(restored), ToJson::to_json(typed))
 }

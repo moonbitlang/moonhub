@@ -47,3 +47,12 @@ pub extend Concurrency with ToJson::{to_json}
 
 ///|
 pub extend Concurrency with @json.FromJson::{from_json}
+
+///|
+pub extend DispatchInput with @debug.Debug::{to_repr}
+
+///|
+pub extend DispatchInput with ToJson::{to_json}
+
+///|
+pub extend DispatchInput with @json.FromJson::{from_json}

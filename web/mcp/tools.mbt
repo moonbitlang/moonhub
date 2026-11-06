@@ -13,6 +13,14 @@ fn Tool::definition(self : Tool) -> Json {
   for key in self.required + self.optional {
     properties[key] = { "type": "string" }
   }
+  if self.name == "moonhub_create_run" {
+    properties["inputs"] = {
+      "type": "object",
+      "description": "Workflow dispatch input values; defaults and types are validated against the selected revision.",
+      "maxProperties": 25,
+      "additionalProperties": { "type": ["string", "boolean", "number"] },
+    }
+  }
   if properties.contains("repository") {
     properties["repository"] = {
       "type": "string",
@@ -61,6 +69,26 @@ fn Tool::validate(self : Tool, args : Map[String, Json]) -> Unit raise {
   for key, value in args {
     guard self.required.contains(key) || self.optional.contains(key) else {
       raise ProtocolError(400, -32602, "Unsupported argument: " + key, None)
+    }
+    if self.name == "moonhub_create_run" && key == "inputs" {
+      guard value is Object(inputs) &&
+        inputs.length() <= 25 &&
+        inputs
+        .values()
+        .all(value => {
+          match value {
+            String(_) | True | False | Number(_, ..) => true
+            _ => false
+          }
+        }) else {
+        raise ProtocolError(
+          400,
+          -32602,
+          "inputs must be an object of string, boolean or number values",
+          None,
+        )
+      }
+      continue
     }
     guard value is String(_) else {
       raise ProtocolError(
@@ -258,7 +286,7 @@ fn tool_catalog() -> Array[Tool] {
       description: "Execute repository workflow code in CI. Requires explicit user intent to execute.",
       permission: "execute",
       required: ["repository", "branch", "workflow"],
-      optional: [],
+      optional: ["inputs"],
     },
     {
       name: "moonhub_rerun_run",
@@ -824,6 +852,12 @@ async fn invoke_tool(
           repo,
           string_arg(args, "branch"),
           string_arg(args, "workflow"),
+          inputs=match args.get("inputs") {
+            None => Map([])
+            Some(Object(values)) => values
+            _ =>
+              raise @domain.BadRequest(message="inputs must be a JSON object")
+          },
         ),
       )
     "moonhub_rerun_run" =>

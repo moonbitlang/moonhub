@@ -6,7 +6,7 @@ async fn validate_options(
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
-      @protocol.dataflow_assignment_version,
+      @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -42,11 +42,14 @@ async fn validate_options(
   guard (assignment.job.matrix.is_empty() && assignment.job.strategy.is_empty()) ||
     [
       @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
+      @protocol.dispatch_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("matrix contexts require assignment version 6")
   }
   guard (assignment.job.outputs.is_empty() && assignment.job.needs.is_empty()) ||
-    assignment.version == @protocol.dataflow_assignment_version else {
+    [
+      @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
+    ].contains(assignment.version) else {
     raise InvalidConfiguration("job dataflow requires assignment version 7")
   }
   guard assignment.job.outputs.length() <= 100 &&
@@ -56,6 +59,30 @@ async fn validate_options(
     @utf8.encode(ToJson::to_json(assignment.job.needs).stringify()).length() <=
     270336 else {
     raise InvalidConfiguration("job dataflow exceeds limits")
+  }
+  guard (
+      assignment.job.dispatch_inputs.is_empty() &&
+      assignment.job.event.is_empty()
+    ) ||
+    assignment.version == @protocol.dispatch_assignment_version else {
+    raise InvalidConfiguration("dispatch context requires assignment version 8")
+  }
+  guard assignment.job.dispatch_inputs.length() <= 25 &&
+    assignment.job.dispatch_inputs
+    .values()
+    .all(value => {
+      match value {
+        String(text) => !text.contains("\u{0000}")
+        True | False => true
+        Number(value, ..) => value.is_finite()
+        _ => false
+      }
+    }) &&
+    @utf8.encode(ToJson::to_json(assignment.job.dispatch_inputs).stringify()).length() <=
+    65535 &&
+    @utf8.encode(ToJson::to_json(assignment.job.event).stringify()).length() <=
+    196608 else {
+    raise InvalidConfiguration("dispatch context exceeds limits")
   }
   let ids : Map[String, Bool] = Map([])
   let mut checkouts = 0
@@ -118,7 +145,7 @@ async fn validate_options(
           [
             @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
             @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
-            @protocol.dataflow_assignment_version,
+            @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -127,6 +154,7 @@ async fn validate_options(
             @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
             @protocol.secret_assignment_version, @protocol.remote_assignment_version,
             @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
+            @protocol.dispatch_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -174,6 +202,7 @@ async fn validate_options(
       [
         @protocol.secret_assignment_version, @protocol.remote_assignment_version,
         @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
+        @protocol.dispatch_assignment_version,
       ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
@@ -886,14 +915,17 @@ async fn execute_assignment(
       outputs: runtime.job_outputs,
     }
     let body = ToJson::to_json(request)
-    if assignment.version != @protocol.dataflow_assignment_version &&
+    if ![
+        @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
+      ].contains(assignment.version) &&
       body is Object(fields) {
       // Older coordinators validate the original completion field set.
       ignore(fields.remove("outputs"))
     }
     let state = Some(runtime.request("complete", body)) catch {
-      Rejected(400) if assignment.version ==
-        @protocol.dataflow_assignment_version &&
+      Rejected(400) if [
+          @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
+        ].contains(assignment.version) &&
         !runtime.job_outputs.is_empty() => {
         // A definitive rejection did not commit the original completion. The
         // shared run output budget is unknown to the runner, so terminate as
