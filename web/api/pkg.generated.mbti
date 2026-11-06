@@ -25,6 +25,8 @@ pub fn mr_json(@collaboration.MergeRequest) -> @json.Json
 
 pub fn run_json(@pipeline.Run) -> @json.Json
 
+pub fn variable_json(@pipeline.RepositoryVariable) -> @json.Json
+
 pub let webhooks_api_module : @moonback.Module
 
 // Errors

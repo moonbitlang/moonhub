@@ -42,7 +42,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
       assert_eq(captured.inputs.get("enabled"), Some(Json::boolean(true)))
       assert_eq(captured.inputs.get("count"), Some(Json::number(3.5)))
       assert_eq(captured.inputs.get("channel"), Some(Json::string("stable")))
-      assert_eq(run.definition_version, 5)
+      assert_eq(run.definition_version, 6)
       let group = pool.with_client(client => {
         client.query_one(
           "SELECT group_key FROM pipeline_run_schedule WHERE run_id=?",
@@ -54,7 +54,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
         "release-stable-refs/heads/pipeline",
       )
       let first = c.claim(provider_secret, claim_request()).unwrap()
-      assert_eq(first.version, @protocol.dispatch_assignment_version)
+      assert_eq(first.version, @protocol.variable_assignment_version)
       assert_eq(first.job.id, "prepare")
       assert_eq(
         ToJson::to_json(first.job.dispatch_inputs),
@@ -217,6 +217,7 @@ async test "version four snapshots and reruns retain the version seven wire cont
             head_ref: "",
             base_ref: "",
             inputs: Map([]),
+            variables: Map([]),
           }),
         )
       })

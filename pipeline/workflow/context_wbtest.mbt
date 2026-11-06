@@ -6,6 +6,7 @@ let mr_context : RunContext = {
   head_ref: "feature/one",
   base_ref: "master",
   inputs: Map([]),
+  variables: Map([]),
 }
 
 ///|
@@ -97,6 +98,7 @@ test "metadata interpolation is not recursive and missing MR fields are empty" {
       head_ref: "",
       base_ref: "",
       inputs: Map([]),
+      variables: Map([]),
     })
     assert_eq(resolved.jobs[0].steps[0].env.get("HEAD"), Some(""))
     assert_eq(resolved.jobs[0].steps[0].env.get("BASE"), Some(""))

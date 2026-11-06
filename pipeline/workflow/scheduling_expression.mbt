@@ -169,6 +169,7 @@ fn ScheduleParser::atom(
   }
   guard [
     "github", "matrix", "strategy", "needs", "steps", "runner", "env", "inputs",
+    "vars",
   ].contains(token) else {
     raise InvalidWorkflow("unsupported scheduling context: " + token)
   }

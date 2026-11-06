@@ -113,14 +113,17 @@ interpolation into shell source can execute shell code.
 
 ## Upgrade and verification
 
-New snapshots use definition version 5 and assignment version 8. Upgrade the
+Dispatch snapshots introduced definition version 5 and assignment version 8.
+Current snapshots use definition version 6 and assignment version 9 for
+[repository variables](repository-variables.md). Upgrade the
 coordinator, provider/controller and runner together; old executors reject the
-new version instead of silently losing inputs. Definition versions 1-4 remain
+new version instead of silently losing inputs. Definition versions 1-5 remain
 readable, and reruns retain their original assignment contracts. Legacy context
 and job-plan JSON defaults missing input/event fields to empty maps. Legacy
 assignments preserve their original expression contexts and do not receive the
-new event file; server scheduling uses the same version boundary. No database
-migration is required: the existing immutable `context_json` stores the values.
+new event file; server scheduling uses the same version boundary. Dispatch inputs
+itself required no database migration: the existing immutable `context_json`
+stores the values. Repository variables separately add migration 036.
 The runner bounds event JSON to 192 KiB, including its stringified input map.
 
 Tests cover schema/type/size validation, numeric YAML normalization, all four
@@ -135,5 +138,5 @@ moon test --strip -j 1
 node --test runner/actions/runtime.test.mjs
 ```
 
-Scheduled triggers, vars, dynamic matrices, environment policy, OIDC and
+Scheduled triggers, dynamic matrices, environment policy, OIDC and
 authenticated release APIs remain separate migration work.

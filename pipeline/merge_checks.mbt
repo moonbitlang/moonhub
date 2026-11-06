@@ -138,6 +138,7 @@ async fn create_merge_check_run(
     head_ref: mr.source,
     base_ref: mr.target,
     inputs: Map([]),
+    variables: Map([]),
   }
   let definition = @workflow.resolve_context(definition, context)
   let pin = "refs/moonhub/pipelines/mr-" + check_id.to_string()

@@ -507,6 +507,15 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
               header_matches(
                 req,
                 "Mcp-Name",
+                "moonhub_set_variable",
+                encoded=true,
+              ) {
+              // A 48-KiB string can expand sixfold through JSON escaping.
+              327680
+            } else if header_matches(req, "Mcp-Method", "tools/call") &&
+              header_matches(
+                req,
+                "Mcp-Name",
                 "moonhub_create_run",
                 encoded=true,
               ) {

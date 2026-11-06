@@ -79,7 +79,7 @@ source placeholder required by upstream checkout's input contract; it cannot
 access either host's authenticated APIs. Actions needing authenticated GitHub APIs
 must be treated as migration gaps, not assumed to work from this placeholder.
 
-In versions 5–8, checkout is under `/workspace/repository`; the job HOME and temporary
+In versions 5–9, checkout is under `/workspace/repository`; the job HOME and temporary
 state are sibling directories, so checkout cleaning cannot delete action runtime
 state. Existing versions keep their old directory layout. Actions with no checkout
 step retain the previous automatic source extraction behavior.
@@ -94,9 +94,10 @@ The current expression interpreter supports string, number, boolean and null
 literals, field / string-key indexing, parentheses, `!`, `==`, `!=`, `&&`, `||`,
 and `success`, `failure`, `cancelled`, `always`, `fromJSON`, `toJSON`, `contains`,
 `startsWith`, `endsWith`, `format`. Boolean operators short circuit. Contexts are
-`github`, `runner`, `env`, `steps`, `needs`, `matrix`, `strategy` and workflow dispatch
-`inputs`. Composite Actions temporarily use their own `inputs`. See
-[dispatch inputs](dispatch-inputs.md) for typed values and the captured event file.
+`github`, `runner`, `env`, `steps`, `needs`, `matrix`, `strategy`, workflow dispatch
+`inputs`, and repository `vars`. Composite Actions temporarily use their own `inputs`. See
+[dispatch inputs](dispatch-inputs.md) for typed values and the captured event file,
+and [repository variables](repository-variables.md) for public configuration snapshots.
 See [workflow scheduling](workflow-scheduling.md) for static matrix expansion and
 persisted workflow concurrency.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
@@ -144,8 +145,10 @@ action. Older definition version 1 remains readable and runnable; reruns preserv
 its saved definition version and legacy assignment selection.
 Historical definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
 Definition-v4 snapshots use assignment version 7 for job dataflow; migration 035
-adds attempt-bound output storage. New definition-v5 snapshots use assignment
-version 8 for immutable dispatch input and event contexts.
+adds attempt-bound output storage. Definition-v5 snapshots use assignment
+version 8 for immutable dispatch input and event contexts. Current definition-v6
+snapshots use assignment version 9 for repository variables; migration 036 adds
+their configuration storage.
 Migration 031 adds durable scheduling state; upgrade coordinator, provider and
 runner together. See [workflow scheduling](workflow-scheduling.md).
 

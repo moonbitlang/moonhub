@@ -77,6 +77,7 @@ async test "push context is taken from durable event and retained on rerun" {
     let actor = @identity.active_user_by_name(pool, "alice")
     let repo = protocol_repo
     let dir = repo.git_dir(root)
+    save_variable(pool, actor, repo, "PUSH_CONFIG", "captured", 0L)
     let sha = @test_support.workflow_commit(dir, context_workflow)
     @repository.set_pipeline_push_enabled(pool, root, actor, repo, true)
     @repository.record_received_transaction(
@@ -102,6 +103,7 @@ async test "push context is taken from durable event and retained on rerun" {
     let context = run.context.unwrap()
     assert_eq(context.sha, sha)
     assert_eq(context.event_name, "push")
+    assert_eq(context.variables.get("PUSH_CONFIG"), Some("captured"))
     assert_true(context.inputs.is_empty())
     assert_eq(context.head_ref, "")
     assert_eq(context.base_ref, "")

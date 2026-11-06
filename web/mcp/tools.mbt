@@ -282,6 +282,27 @@ fn tool_catalog() -> Array[Tool] {
       optional: [],
     },
     {
+      name: "moonhub_list_variables",
+      description: "List readable repository configuration variables and their values. Values are not secrets.",
+      permission: "read",
+      required: ["repository"],
+      optional: [],
+    },
+    {
+      name: "moonhub_set_variable",
+      description: "Save a nonsecret repository configuration variable using its observed version (0 creates). Requires repository owner/admin access; use secrets for credentials.",
+      permission: "write",
+      required: ["repository", "name", "value", "version"],
+      optional: [],
+    },
+    {
+      name: "moonhub_delete_variable",
+      description: "Delete a repository configuration variable using its observed version. Requires repository owner/admin access.",
+      permission: "write",
+      required: ["repository", "name", "version"],
+      optional: [],
+    },
+    {
       name: "moonhub_create_run",
       description: "Execute repository workflow code in CI. Requires explicit user intent to execute.",
       permission: "execute",
@@ -793,6 +814,40 @@ async fn invoke_tool(
         }
         @user_api.mr_json(@collaboration.require_merge_request(pool, scope, id))
       })
+    "moonhub_list_variables" =>
+      {
+        "items": @pipeline.list_variables(pool, actor, repo).map(
+          @user_api.variable_json,
+        ),
+      }
+    "moonhub_set_variable" => {
+      let name = string_arg(args, "name").to_upper()
+      @pipeline.save_variable(
+        pool,
+        actor,
+        repo,
+        name,
+        string_arg(args, "value"),
+        decimal(string_arg(args, "version"), zero=true),
+      )
+      let variable = @pipeline.list_variables(pool, actor, repo)
+        .iter()
+        .find_first(variable => variable.name == name)
+      guard variable is Some(variable) else {
+        raise @domain.NotFound(message="Variable changed. Reload its value.")
+      }
+      @user_api.variable_json(variable)
+    }
+    "moonhub_delete_variable" => {
+      @pipeline.delete_variable(
+        pool,
+        actor,
+        repo,
+        string_arg(args, "name"),
+        decimal(string_arg(args, "version")),
+      )
+      { "ok": true }
+    }
     "moonhub_list_runs" =>
       {
         "items": @pipeline.list_runs(pool, actor, repo)

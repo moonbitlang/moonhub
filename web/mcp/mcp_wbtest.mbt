@@ -234,7 +234,7 @@ async test "MCP 2 discovery and tools work without initialization or connection 
     guard first is { "result": { "tools": Array(tools), .. }, .. } else {
       abort("missing tools")
     }
-    assert_eq(tools.length(), 30)
+    assert_eq(tools.length(), 33)
     assert_true(
       tools
       .iter()

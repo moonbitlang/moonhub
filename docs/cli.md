@@ -307,3 +307,11 @@ mutations, review/merge permissions, CI controls and Inbox, and captures desktop
 and mobile token settings. It requires Node with `node:sqlite` and Playwright on
 its module search path. Evidence remains under `_build/cli-smoke`; it never uses
 production accounts or runs submitted workflow scripts.
+
+## Repository variables
+
+The `variable list/set/delete` commands manage readable, non-secret string
+configuration. Values are supplied through a regular UTF-8 `--body-file` (up to
+48 KiB; empty files are allowed). Create with `--version 0`; updates/deletes use
+the current version. See [repository variables](repository-variables.md) for
+permissions, limits, API routes and immutable execution snapshots.

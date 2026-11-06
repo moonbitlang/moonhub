@@ -576,3 +576,78 @@ test('dispatch runtime defaults new contexts and rejects malformed or oversized 
   }
   for (const event of [[], 'bad', { large: '密'.repeat(66000) }]) assert.throws(() => new ActionRuntime({ ...config, event }));
 });
+
+test('repository variables snapshot preserves strings, missing values and nonrecursive delivery', async t => {
+  const { config } = await fixture(t);
+  config.variables_context = true;
+  config.dispatch_context = true;
+  config.variables = { OPENSEEK_S3_REGION: 'ap-east-1', SWITCH: 'false', COUNT: '2.5', EMPTY: '', LITERAL: '${{ vars.SWITCH }}' };
+  const runtime = new ActionRuntime(config);
+  config.variables.OPENSEEK_S3_REGION = 'changed-after-construction';
+  assert.equal(evaluate('VaRs.openseek_s3_region', runtime.context()), 'ap-east-1');
+  assert.equal(evaluate('vars.MISSING', runtime.context()), '');
+  assert.equal(evaluate('toJSON(vars.SWITCH)', runtime.context()), '"false"');
+  assert.equal(evaluate('toJSON(vars.COUNT)', runtime.context()), '"2.5"');
+  assert.equal(runtime.environment().OPENSEEK_S3_REGION, process.env.OPENSEEK_S3_REGION);
+  assert.deepEqual(runtime.state.masks, []);
+  const step = { id: 'vars', shell: 'bash', run: '', env: {}, inputs: {}, templates: {
+    if: "vars.SWITCH == 'false' && vars.MISSING == ''",
+    'env:REGION': '${{ vars.OPENSEEK_S3_REGION }}',
+    'env:LITERAL': '${{ vars.LITERAL }}',
+    run: `test "$REGION" = ap-east-1; test "$LITERAL" = '$''{{ vars.SWITCH }}'; echo vars=ok >> "$GITHUB_OUTPUT"`,
+  } };
+  const result = await execute({ ...config, variables: runtime.variables, step });
+  assert.equal(result.code, 0);
+  assert.equal(result.state.steps.vars.outputs.vars, 'ok');
+  const outputs = await resolveJobOutputs({ region: '${{ vars.OPENSEEK_S3_REGION }}', missing: '${{ vars.MISSING }}', literal: '${{ vars.LITERAL }}' }, runtime.context());
+  assert.deepEqual({ ...outputs }, { region: 'ap-east-1', literal: '${{ vars.SWITCH }}' });
+});
+
+test('repository variables stay visible through composites and JavaScript pre main post', async t => {
+  const { config } = await fixture(t);
+  config.variables_context = true;
+  config.dispatch_context = true;
+  config.variables = { REGION: 'eu-west-1', RUN: 'yes' };
+  const verify = `const fs=require('fs'), assert=require('assert/strict'); assert.equal(process.env.INPUT_REGION,'eu-west-1'); fs.appendFileSync(process.env.GITHUB_WORKSPACE+'/vars-phases',PHASE+'\\n');`;
+  const uses = await action(config, 'vars-js', "inputs: {region: {}}\nruns: {using: node24, pre: pre.cjs, pre-if: \"vars.RUN == 'yes'\", main: main.cjs, post: post.cjs, post-if: \"vars.RUN == 'yes'\"}", {
+    'pre.cjs': "const PHASE='pre';" + verify,
+    'main.cjs': "const PHASE='main';" + verify,
+    'post.cjs': "const PHASE='post';" + verify,
+  });
+  const composite = await action(config, 'vars-composite', `inputs: {region: {}}
+outputs: {region: {value: '\${{ steps.read.outputs.region }}'}}
+runs:
+  using: composite
+  steps:
+    - uses: ${uses}
+      with: {region: '\${{ vars.REGION }}'}
+    - id: read
+      shell: bash
+      env:
+        REGION: \${{ vars.REGION }}
+        LOCAL: \${{ inputs.region }}
+      run: test "$REGION" = eu-west-1; test "$LOCAL" = local-value; echo region=$REGION >> "$GITHUB_OUTPUT"
+`);
+  const runtime = new ActionRuntime(config);
+  const result = await runtime.action(composite, { region: 'local-value' });
+  assert.equal(result.code, 0);
+  assert.equal(result.outputs.region, 'eu-west-1');
+  assert.equal(await runtime.posts(), 0);
+  assert.equal(await fs.readFile(path.join(config.workspace, 'vars-phases'), 'utf8'), 'pre\nmain\npost\n');
+  assert.equal(runtime.context().vars.REGION, 'eu-west-1');
+});
+
+test('repository variables enforce wire bounds and explicit version capability', async t => {
+  const { config, runtime } = await fixture(t);
+  assert.equal(Object.hasOwn(runtime.context(), 'vars'), false);
+  assert.throws(() => evaluate('vars.MISSING', runtime.context()));
+  assert.throws(() => new ActionRuntime({ ...config, variables: { REGION: 'region' } }));
+  const modern = { ...config, variables_context: true };
+  assert.deepEqual(new ActionRuntime(modern).context().vars, {});
+  assert.equal(evaluate('vars.MISSING', new ActionRuntime(modern).context()), '');
+  assert.equal(new ActionRuntime({ ...modern, variables: { TEXT: 'x'.repeat(49152) } }).context().vars.TEXT.length, 49152);
+  assert.equal(Object.keys(new ActionRuntime({ ...modern, variables: Object.fromEntries(Array.from({ length: 500 }, (_, n) => ['V' + n, ''])) }).context().vars).length, 500);
+  for (const variables of [[], 'bad', { NUM: 1 }, { FLAG: true }, { NESTED: {} }, { NIL: null }, { NULL: 'a\0b' }, { lower: 'case' }, { 'WITH-DASH': '' }, { '1START': '' }, { CONSTRUCTOR: 'bad' }, { GITHUB_TOKEN: 'bad' }, { RUNNER_NAME: 'bad' }, { MOONHUB_NAME: 'bad' }, { TEXT: '密'.repeat(16385) }, Object.fromEntries(Array.from({ length: 501 }, (_, n) => ['V' + n, ''])), Object.fromEntries(Array.from({ length: 6 }, (_, n) => ['V' + n, 'x'.repeat(49152)]))]) {
+    assert.throws(() => new ActionRuntime({ ...modern, variables }));
+  }
+});

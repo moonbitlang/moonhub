@@ -118,6 +118,7 @@ pub async fn run_next_push_event(
             head_ref: "",
             base_ref: "",
             inputs: Map([]),
+            variables: Map([]),
           }
           let definition = @workflow.resolve_context(
             @workflow.parse(source),
