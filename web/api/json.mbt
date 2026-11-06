@@ -57,6 +57,17 @@ fn secret_json(secret : @pipeline.RepositorySecret) -> Json {
 }
 
 ///|
+pub fn variable_json(variable : @pipeline.RepositoryVariable) -> Json {
+  {
+    "name": variable.name,
+    "value": variable.value,
+    "version": variable.version.to_string(),
+    "created_at": variable.created_at,
+    "updated_at": variable.updated_at,
+  }
+}
+
+///|
 async fn api_body(
   req : @moonback.Request,
   allowed : Array[String],

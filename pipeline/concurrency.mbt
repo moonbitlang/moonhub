@@ -5,7 +5,12 @@ fn schedule_run(tx : @database.DbTransaction, run : Run) -> Unit raise {
   guard run.definition.concurrency is Some(policy) else { return }
   let github = run_job_github(tx, run)
   let inputs = run.context.map(ctx => ctx.inputs).unwrap_or(Map([]))
-  let (key, cancel) = policy.resolve(github, inputs~) catch {
+  let variables = if run.definition_version >= 6 {
+    Some(run.context.map(ctx => ctx.variables).unwrap_or(Map([])))
+  } else {
+    None
+  }
+  let (key, cancel) = policy.resolve(github, inputs~, variables~) catch {
     @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
   }
   for

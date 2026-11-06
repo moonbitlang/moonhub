@@ -24,7 +24,7 @@ inspect, openseek, openseek-tools, openseek-protocol and openseek-tui.
 | Cache | cache v4, cache/restore, cache/save; setup-tool caching | Cache Service v2, scoped immutable keys, private storage, LRU/retention and runtime hashFiles are implemented. Original cache v4 save/post/restore and setup-node npm caching pass acceptance; see cache-v4.md for limits. |
 | Artifacts | upload-artifact v4 and cross-job download-artifact v4 | Current-run v4 Results/Block Blob service, scoped runtime credentials, cross-job downloads, overwrite, retention and cleanup are implemented; original upload/download v4 Actions pass acceptance. See artifact-v4.md. Cross-run REST downloads remain separate. |
 | Release identities | `permissions`, `github.token`, gh CLI/API, AWS configure-credentials v5 with OIDC | Repository secret delivery exists. GitHub API compatibility, scoped workflow tokens and OIDC issuer/audience/subject policy remain. Do not forward provider credentials. |
-| Data contexts | `matrix`, `needs` outputs, `vars`, dispatch/event payloads | Public github/runner/env/steps, matrix/strategy, needs outputs, typed dispatch/event inputs and composite inputs are implemented. Vars remain. |
+| Data contexts | `matrix`, `needs` outputs, `vars`, dispatch/event payloads | Public github/runner/env/steps, matrix/strategy, needs outputs, typed dispatch/event inputs, composite inputs and snapshot-based repository vars are implemented. Organization/environment vars remain. |
 | Permissions/container capabilities | Permissions declarations, OS/toolchain/container requirements | contents read/none is enforced on both source transports; Ubuntu selectors use exact provider/image capabilities. Other scopes and container features still fail validation. |
 
 ## Acceptance boundary

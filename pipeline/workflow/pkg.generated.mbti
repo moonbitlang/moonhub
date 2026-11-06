@@ -9,7 +9,7 @@ import {
 // Values
 pub let format_version : Int32
 
-pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
+pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
 
 pub let max_source_bytes : Int32
 
@@ -41,7 +41,7 @@ pub struct Concurrency {
   cancel_in_progress : String
 }
 pub fn Concurrency::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json]) -> (String, Bool) raise InvalidWorkflow
+pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?) -> (String, Bool) raise InvalidWorkflow
 pub fn Concurrency::to_json(Self) -> @json.Json
 pub fn Concurrency::to_repr(Self) -> @debug.Repr
 
@@ -95,6 +95,7 @@ pub(all) struct RunContext {
   head_ref : String
   base_ref : String
   inputs : Map[String, @json.Json]
+  variables : Map[String, String]
 }
 pub fn RunContext::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn RunContext::to_json(Self) -> @json.Json

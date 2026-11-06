@@ -104,7 +104,16 @@ fn insert_run_snapshot(
   event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
   cache_scope_source~ : Int64 = 0L,
+  capture_variables~ : Bool = true,
 ) -> Run raise {
+  let context = if definition_version >= 6 && capture_variables {
+    context.map(context => {
+      ..context,
+      variables: snapshot_variables(tx, repository_id),
+    })
+  } else {
+    context
+  }
   validate_secret_policy(
     tx, repository_id, branch, workflow_path, context, definition,
   )
@@ -249,6 +258,7 @@ pub async fn create_run(
       head_ref: "",
       base_ref: "",
       inputs,
+      variables: Map([]),
     }
     let definition = @workflow.resolve_context(definition, context) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
@@ -358,6 +368,7 @@ pub async fn rerun_run(
           context=previous.context,
           merge_check_id~,
           cache_scope_source=previous.id,
+          capture_variables=false,
         )
       })
     })

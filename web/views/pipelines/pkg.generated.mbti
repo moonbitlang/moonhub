@@ -16,6 +16,8 @@ pub let pipeline_pages_module : @moonback.Module
 
 pub let repository_secrets_module : @moonback.Module
 
+pub let repository_variables_module : @moonback.Module
+
 pub let runner_api_module : @moonback.Module
 
 // Errors

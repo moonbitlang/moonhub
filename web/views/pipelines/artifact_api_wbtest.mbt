@@ -27,6 +27,7 @@ async fn with_artifact_http(
   ) -> Unit,
   workflow~ : String = artifact_http_workflow,
   inputs~ : Map[String, Json] = Map([]),
+  variables~ : Map[String, String] = Map([]),
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
@@ -42,6 +43,16 @@ async fn with_artifact_http(
         [repo],
       ),
     )
+    for name, value in variables {
+      @pipeline.save_variable(
+        pool,
+        @identity.active_user_by_name(pool, "alice"),
+        repo,
+        name,
+        value,
+        0L,
+      )
+    }
     ignore(
       @pipeline.create_run(
         pool,

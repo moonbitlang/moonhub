@@ -58,6 +58,11 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             github,
             context,
             inputs=run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+            variables=if run.definition_version >= 6 {
+              Some(run.context.map(ctx => ctx.variables).unwrap_or(Map([])))
+            } else {
+              None
+            },
             success~,
             failure~,
             cancelled~,

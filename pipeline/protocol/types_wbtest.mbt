@@ -97,6 +97,7 @@ test "assignment validates string identifiers and bounded timestamps" {
     server_time_ms: "0",
     state: "leased",
     job: {
+      variables: Map([]),
       dispatch_inputs: Map([]),
       event: Map([]),
       outputs: Map([]),
@@ -174,6 +175,7 @@ test "log and completion requests use explicit string sequence fields" {
 ///|
 test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
+    variables: Map([]),
     dispatch_inputs: Map([]),
     event: Map([]),
     outputs: Map([]),
@@ -289,7 +291,8 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   assert_eq(restored.outputs.get("literal"), updated.outputs.get("literal"))
   assert_true(action_runtime_version(dataflow_assignment_version))
   assert_true(action_runtime_version(dispatch_assignment_version))
-  assert_false(action_runtime_version(9))
+  assert_true(action_runtime_version(variable_assignment_version))
+  assert_false(action_runtime_version(10))
 }
 
 ///|
@@ -301,6 +304,7 @@ test "legacy job plan defaults dispatch snapshot fields" {
       ),
     ),
   )
+  assert_true(plan.variables.is_empty())
   assert_true(plan.dispatch_inputs.is_empty())
   assert_true(plan.event.is_empty())
   let typed = {
@@ -310,4 +314,29 @@ test "legacy job plan defaults dispatch snapshot fields" {
   }
   let restored : JobPlan = @json.from_json(ToJson::to_json(typed))
   assert_eq(ToJson::to_json(restored), ToJson::to_json(typed))
+}
+
+///|
+test "repository variables wire field defaults for old plans and retains exact strings" {
+  let legacy : JobPlan = @json.from_json(
+    @json.parse(
+      "{\"id\":\"legacy\",\"name\":\"Legacy\",\"runs_on\":[\"self-hosted\"],\"timeout_minutes\":1,\"steps\":[]}",
+    ),
+  )
+  assert_true(legacy.variables.is_empty())
+  let current = {
+    ..legacy,
+    variables: {
+      "REGION": "east",
+      "FALSE": "false",
+      "EMPTY": "",
+      "LITERAL": "${{ vars.REGION }}",
+    },
+  }
+  let restored : JobPlan = @json.from_json(ToJson::to_json(current))
+  assert_eq(
+    ToJson::to_json(restored.variables),
+    ToJson::to_json(current.variables),
+  )
+  assert_true(action_runtime_version(variable_assignment_version))
 }

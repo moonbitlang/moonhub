@@ -4,6 +4,56 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   ctx.get(
+    "/repos/:owner/:repo/variables",
+    api_handler(req => {
+      let variables = @pipeline.list_variables(
+        pool,
+        api_actor(pool, req, "read"),
+        @web_context.repo_param(req),
+      )
+      { "items": variables.map(variable_json) }
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/variables/:variable",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let repo = @web_context.repo_param(req)
+      let name = @web_context.required_param(req, "variable", "variable").to_upper()
+      let body = api_body(req, ["value", "version"], body_limit=327680)
+      @pipeline.save_variable(
+        pool,
+        actor,
+        repo,
+        name,
+        field(body, "value"),
+        number(field(body, "version"), zero=true),
+      )
+      let variable = @pipeline.list_variables(pool, actor, repo)
+        .iter()
+        .find_first(variable => variable.name == name)
+      guard variable is Some(variable) else {
+        raise @domain.NotFound(message="Variable changed. Reload its value.")
+      }
+      variable_json(variable)
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/variables/:variable/delete",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, ["version"])
+      @pipeline.delete_variable(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+        @web_context.required_param(req, "variable", "variable"),
+        number(field(body, "version")),
+      )
+      { "ok": true }
+    }),
+  )
+  ctx.get(
     "/repos/:owner/:repo/secrets",
     api_handler(req => {
       let secrets = @pipeline.list_secrets(

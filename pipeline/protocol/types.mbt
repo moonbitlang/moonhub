@@ -31,10 +31,14 @@ pub let dataflow_assignment_version : Int32 = 7
 pub let dispatch_assignment_version : Int32 = 8
 
 ///|
+// V9 carries the immutable repository configuration variables snapshot.
+pub let variable_assignment_version : Int32 = 9
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
-    dispatch_assignment_version,
+    dispatch_assignment_version, variable_assignment_version,
   ].contains(version)
 }
 
@@ -186,6 +190,7 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 ///|
 #derive(Debug, ToJson)
 pub(all) struct JobPlan {
+  variables : Map[String, String]
   dispatch_inputs : Map[String, Json]
   event : Map[String, Json]
   outputs : Map[String, String]
@@ -207,6 +212,10 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job plan"))
   }
   {
+    variables: @json.from_json(
+      fields.get("variables").unwrap_or(({} : Json)),
+      path=path.add_key("variables"),
+    ),
     dispatch_inputs: @json.from_json(
       fields.get("dispatch_inputs").unwrap_or(({} : Json)),
       path=path.add_key("dispatch_inputs"),

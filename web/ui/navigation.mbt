@@ -133,6 +133,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "settings" => ("Branch protection", "/settings/branches")
         "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
         "secrets" => ("Repository secrets", "/settings/secrets")
+        "variables" => ("Repository variables", "/settings/variables")
         _ => ("Files", "")
       }
       [
@@ -234,6 +235,7 @@ fn render_sidebar(
               "/merge-requests", "merge-requests", "Merge requests", "git-pull-request",
             ),
             ("/pipelines", "pipelines", "Pipelines", "git-commit"),
+            ("/settings/variables", "variables", "Variables", "settings"),
           ] {
           b <+
             "\{render_navigation_item(base + suffix, label, icon, active == key)}"

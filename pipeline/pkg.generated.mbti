@@ -16,6 +16,8 @@ pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain
 
 pub fn delete_secret(@database.Database, @domain.CurrentUser, @domain.RepoId, String, Int64) -> Unit raise
 
+pub fn delete_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, String, Int64) -> Unit raise
+
 pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
 
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
@@ -27,6 +29,8 @@ pub fn list_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, page? 
 pub fn list_secrets(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RepositorySecret] raise
 
 pub fn list_trigger_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[TriggerEvent] raise
+
+pub fn list_variables(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RepositoryVariable] raise
 
 pub let maximum_artifact_block_bytes : Int32
 
@@ -41,6 +45,8 @@ pub async fn run_next_merge_check(@database.Database, String) -> Bool
 pub async fn run_next_push_event(@database.Database, String) -> Bool
 
 pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String?, String, String, Int64) -> Unit
+
+pub fn save_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, Int64) -> Unit raise
 
 pub fn start_merge_checks_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
@@ -227,6 +233,16 @@ pub struct RepositorySecret {
   updated_at : String
 }
 pub fn RepositorySecret::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct RepositoryVariable {
+  name : String
+  value : String
+  version : Int64
+  created_at : String
+  updated_at : String
+}
+pub fn RepositoryVariable::to_repr(Self) -> @debug.Repr
 
 #derive(@debug.Debug)
 pub struct Run {

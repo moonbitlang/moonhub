@@ -67,6 +67,11 @@ fn command() -> @argparse.Command {
     ],
     subcommand_required=true,
     subcommands=[
+      @argparse.Command("variable", subcommand_required=true, subcommands=[
+        @argparse.Command("list"),
+        @argparse.Command("set", positionals=[@argparse.PositionArg("name")]),
+        @argparse.Command("delete", positionals=[@argparse.PositionArg("name")]),
+      ]),
       @argparse.Command("secret", subcommand_required=true, subcommands=[
         @argparse.Command("list"),
         @argparse.Command("set", positionals=[@argparse.PositionArg("name")]),
@@ -206,6 +211,23 @@ async fn read_dispatch_inputs(path : String) -> Map[String, Json] {
     )
   }
   inputs
+}
+
+///|
+async fn read_variable_value(path : String) -> String {
+  guard @fs.kind(path, follow_symlink=false) is Regular &&
+    @fs.file_size(path) <= 49152L else {
+    raise Invalid(
+      "variable file must be a regular UTF-8 file of at most 48 KiB",
+    )
+  }
+  let value = @utf8.decode(@fs.read_file(path).binary()) catch {
+    _ => raise Invalid("variable file must contain valid UTF-8")
+  }
+  guard !value.contains("\u{0000}") else {
+    raise Invalid("variable value must not contain NUL characters")
+  }
+  value
 }
 
 ///|
@@ -361,6 +383,27 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
   }
   let id = option(options, "number").map(decimal).unwrap_or("")
   let (path, body) : (String, Json?) = match (group, action) {
+    ("variable", "list") => ("\{base}/variables", None)
+    ("variable", "set") => {
+      let name = required(options, "name")
+      let version = required(matches, "version")
+      (
+        "\{base}/variables/\{escape(name)}",
+        Some({
+          "value": read_variable_value(required(matches, "body-file")),
+          "version": if version == "0" {
+            "0"
+          } else {
+            decimal(version)
+          },
+        }),
+      )
+    }
+    ("variable", "delete") =>
+      (
+        "\{base}/variables/\{escape(required(options, "name"))}/delete",
+        Some({ "version": decimal(required(matches, "version")) }),
+      )
     ("secret", "list") => ("\{base}/secrets", None)
     ("secret", "set") => {
       let name = required(options, "name")

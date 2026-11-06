@@ -37,6 +37,7 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     server_time_ms: "0",
     state: "leased",
     job: {
+      variables: Map([]),
       dispatch_inputs: Map([]),
       event: Map([]),
       outputs: Map([]),
@@ -214,6 +215,51 @@ async test "malformed assignment strings are rejected before execution" {
           job: {
             ..assignment.job,
             event: { "large": Json::string("x".repeat(196608)) },
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.dispatch_assignment_version,
+          job: { ..assignment.job, variables: { "REGION": "east" }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: { ..assignment.job, variables: { "lower": "east" }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: { ..assignment.job, variables: { "GITHUB_TOKEN": "east" }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: { ..assignment.job, variables: { "VALUE": "nul\u{0000}" }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: { ..assignment.job, variables: { "VALUE": "x".repeat(49153) }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: {
+            ..assignment.job,
+            variables: Map::from_iter(
+              Array::makei(501, n => ("V" + n.to_string(), "")).iter(),
+            ),
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: {
+            ..assignment.job,
+            variables: Map::from_iter(
+              Array::makei(6, n => ("V" + n.to_string(), "x".repeat(49152))).iter(),
+            ),
           },
         },
       ] {

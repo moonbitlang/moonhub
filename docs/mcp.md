@@ -183,3 +183,9 @@ Official specification: [base protocol](https://modelcontextprotocol.io/specific
 [discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover),
 [tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools),
 [version negotiation](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning).
+
+Repository variable tools list and manage public configuration values separately
+from secrets. List operations require repository read access; mutations require
+a write token and repository owner/admin permissions. Variable values are
+readable metadata and must not contain credentials. See
+[repository variables](repository-variables.md).

@@ -8,6 +8,7 @@ pub(all) struct RunContext {
   head_ref : String
   base_ref : String
   inputs : Map[String, Json]
+  variables : Map[String, String]
 }
 
 ///|
@@ -35,6 +36,10 @@ pub impl @json.FromJson for RunContext with fn from_json(json, path) {
     base_ref: @json.from_json(
       fields.get("base_ref").unwrap_or(Json::null()),
       path=path.add_key("base_ref"),
+    ),
+    variables: @json.from_json(
+      fields.get("variables").unwrap_or(({} : Json)),
+      path=path.add_key("variables"),
     ),
     inputs: @json.from_json(
       fields.get("inputs").unwrap_or(({} : Json)),

@@ -97,3 +97,32 @@ test('Windows hashFiles is case insensitive and hashes literal brackets', { skip
     assert.equal(await hashFiles(runtime.workspace,['[[]lock].json']),sum('lock'));
   });
 });
+
+test('Windows repository variables reach PowerShell and JavaScript without automatic environment exports', { skip: !windows }, async () => {
+  await fixture(async (legacy, root) => {
+    const runtime = new ActionRuntime({ ...legacy.config, variables_context: true, dispatch_context: true,
+      variables: { REGION: 'eu-west-1', FLAG: 'false', LITERAL: '${{ vars.REGION }}' } });
+    assert.equal(runtime.context().vars.REGION, 'eu-west-1');
+    assert.equal(runtime.environment().REGION, process.env.REGION);
+    const directory = path.join(runtime.workspace, 'vars');
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'action.yml'), `inputs: {region: {}}
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        VAR_REGION: \${{ vars.region }}
+        LOCAL: \${{ inputs.region }}
+      run: if ($env:VAR_REGION -ne 'eu-west-1' -or $env:LOCAL -ne 'local') { exit 5 }
+    - uses: ./vars-js
+      with: {region: '\${{ vars.REGION }}'}
+`);
+    const jsDirectory = path.join(runtime.workspace, 'vars-js');
+    await fs.mkdir(jsDirectory);
+    await fs.writeFile(path.join(jsDirectory, 'action.yml'), 'inputs: {region: {}}\nruns: {using: node24, main: main.cjs}\n');
+    await fs.writeFile(path.join(jsDirectory, 'main.cjs'), `require('node:assert/strict').equal(process.env.INPUT_REGION, 'eu-west-1');`);
+    const result = await runtime.action('./vars', { region: 'local' });
+    assert.equal(result.code, 0);
+  });
+});

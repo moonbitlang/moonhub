@@ -86,6 +86,16 @@ export class ActionRuntime {
     this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
     this.workspace = path.resolve(config.workspace);
     this.temp = path.resolve(config.temp);
+    this.variablesContext = config.variables_context === true;
+    const variables = mapping(config.variables ?? {}, 'repository variables');
+    if (!this.variablesContext && Object.keys(variables).length) throw new Error('Repository variables require assignment version 9');
+    if (Object.keys(variables).length > 500 || Object.entries(variables).some(([name, value]) =>
+      !/^[A-Z_][A-Z0-9_]{0,99}$/.test(name) || ['__PROTO__', 'PROTOTYPE', 'CONSTRUCTOR'].includes(name) ||
+      ['GITHUB_', 'MOONHUB_', 'RUNNER_'].some(prefix => name.startsWith(prefix)) ||
+      typeof value !== 'string' || value.includes('\0') || Buffer.byteLength(value) > 49152)) throw new Error('Invalid repository variables');
+    const variableSource = JSON.stringify(variables);
+    if (Buffer.byteLength(variableSource) > 262144) throw new Error('Repository variables exceed limits');
+    this.variables = JSON.parse(variableSource);
     this.dispatchContext = config.dispatch_context === true;
     const inputs = mapping(config.dispatch_inputs ?? {}, 'dispatch inputs');
     if (Object.keys(inputs).length > 25 || Object.entries(inputs).some(([name, value]) =>
@@ -112,7 +122,7 @@ export class ActionRuntime {
       event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
-      ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
+      ...(this.variablesContext ? { vars: this.variables } : {}), ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
     if (uses.startsWith('./')) return { directory: await contained(this.workspace, uses), repository: this.config.repository, ref: this.config.sha };
