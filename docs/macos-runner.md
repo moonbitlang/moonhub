@@ -103,7 +103,7 @@ jobs:
 ```
 
 Shells are Bash/sh; native Node20/24 and composite actions share the existing
-version-5 protocol. Docker/service actions and Apple signing credentials are
+Actions runtime (assignment versions 5–7). Docker/service actions and Apple signing credentials are
 outside this first slice.
 
 ## Acceptance and timing

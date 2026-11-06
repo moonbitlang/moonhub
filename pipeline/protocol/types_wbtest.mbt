@@ -97,6 +97,8 @@ test "assignment validates string identifiers and bounded timestamps" {
     server_time_ms: "0",
     state: "leased",
     job: {
+      outputs: Map([]),
+      needs: Map([]),
       context: Map([]),
       contents_read: true,
       matrix: Map([]),
@@ -153,6 +155,7 @@ test "log and completion requests use explicit string sequence fields" {
     version: 1,
     conclusion: "success",
     last_log_sequence: "1",
+    outputs: Map([]),
   }
   assert_true(ToJson::to_json(log) is { "sequence": String("1"), .. })
   assert_true(
@@ -169,6 +172,8 @@ test "log and completion requests use explicit string sequence fields" {
 ///|
 test "wire job plan has no language-specific optional field representation" {
   let plan : JobPlan = {
+    outputs: Map([]),
+    needs: Map([]),
     context: Map([]),
     contents_read: true,
     matrix: Map([]),
@@ -259,4 +264,25 @@ test "MoonBit setup wire versions survive round trip while older steps still dec
       _ => fail("accepted non-string MoonBit version")
     }
   }
+}
+
+///|
+test "dataflow wire messages retain legacy defaults and exact string outputs" {
+  let legacy : CompleteRequest = @json.from_json(
+    @json.parse(
+      "{\"version\":1,\"conclusion\":\"success\",\"last_log_sequence\":\"7\"}",
+    ),
+  )
+  assert_true(legacy.outputs.is_empty())
+  let updated = {
+    ..legacy,
+    outputs: {
+      "version": "1.2.3",
+      "literal": "${{ needs.other.outputs.value }}",
+    },
+  }
+  let restored : CompleteRequest = @json.from_json(ToJson::to_json(updated))
+  assert_eq(restored.outputs.get("literal"), updated.outputs.get("literal"))
+  assert_true(action_runtime_version(dataflow_assignment_version))
+  assert_false(action_runtime_version(8))
 }

@@ -47,9 +47,11 @@ priv struct Runtime {
   mut lease_until : Int64
   mut deadline : Int64
   mut stopped : String
+  mut job_outputs : Map[String, String]
   mut reporting_until : Int64
   mut moon_home : String
   action_node : String
+  action_node20 : String
   action_runtime : String
   action_state_key : String
   action_temp : String

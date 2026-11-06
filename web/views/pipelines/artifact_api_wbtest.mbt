@@ -25,12 +25,11 @@ async fn with_artifact_http(
     @protocol.Assignment,
     String,
   ) -> Unit,
+  workflow~ : String = artifact_http_workflow,
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
-    ignore(
-      @test_support.workflow_commit(repo.git_dir(root), artifact_http_workflow),
-    )
+    ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
     let c = @pipeline.Coordinator::new(pool)
     let token = "a".repeat(64)
     ignore(
@@ -284,6 +283,7 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
           version: 1,
           conclusion: "success",
           last_log_sequence: "0",
+          outputs: Map([]),
         }),
       )
     }
@@ -405,6 +405,7 @@ async test "production artifact mounts keep browser downloads repository authori
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
+        outputs: Map([]),
       }),
     )
     let path = "/alice/demo/actions/runs/\{run.id}/artifacts/\{id}"

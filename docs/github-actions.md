@@ -79,7 +79,7 @@ source placeholder required by upstream checkout's input contract; it cannot
 access either host's authenticated APIs. Actions needing authenticated GitHub APIs
 must be treated as migration gaps, not assumed to work from this placeholder.
 
-In versions 5 and 6, checkout is under `/workspace/repository`; the job HOME and temporary
+In versions 5–7, checkout is under `/workspace/repository`; the job HOME and temporary
 state are sibling directories, so checkout cleaning cannot delete action runtime
 state. Existing versions keep their old directory layout. Actions with no checkout
 step retain the previous automatic source extraction behavior.
@@ -94,7 +94,7 @@ The current expression interpreter supports string, number, boolean and null
 literals, field / string-key indexing, parentheses, `!`, `==`, `!=`, `&&`, `||`,
 and `success`, `failure`, `cancelled`, `always`, `fromJSON`, `toJSON`, `contains`,
 `startsWith`, `endsWith`, `format`. Boolean operators short circuit. Contexts are
-`github`, `runner`, `env`, `steps`, `matrix`, `strategy`, plus `inputs` inside a
+`github`, `runner`, `env`, `steps`, `needs`, `matrix`, `strategy`, plus `inputs` inside a
 composite action.
 See [workflow scheduling](workflow-scheduling.md) for static matrix expansion and
 persisted workflow concurrency.
@@ -108,7 +108,8 @@ records `outcome: failure` and `conclusion: success` in the step context and all
 later steps. Conditional skips are reported as native `skipped` steps and can
 complete successfully. Values exported through `GITHUB_ENV` override inherited
 workflow/job environment; explicit step environment still takes precedence.
-Job-level conditions and outputs are not implemented.
+Job-level conditions, declared outputs and direct dependency contexts are supported;
+see [job dataflow](job-dataflow.md) for evaluation, persistence and limits.
 
 Use `env` to pass branch names, input or other untrusted text to shell scripts.
 As with GitHub Actions, explicitly interpolating that text into `run` can produce
@@ -140,7 +141,9 @@ version 2 always uses assignment version 5, including jobs containing only
 `run` steps, so environment/output files work without an explicit expression or
 action. Older definition version 1 remains readable and runnable; reruns preserve
 its saved definition version and legacy assignment selection.
-New definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
+Historical definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
+New definition-v4 snapshots use assignment version 7 for job dataflow; migration 034
+adds attempt-bound output storage.
 Migration 031 adds durable scheduling state; upgrade coordinator, provider and
 runner together. See [workflow scheduling](workflow-scheduling.md).
 

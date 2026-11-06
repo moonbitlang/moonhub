@@ -41,6 +41,7 @@ async test "log polling stops only after completion and draining the final redac
         version: 1,
         conclusion: "success",
         last_log_sequence: "101",
+        outputs: Map([]),
       }),
     )
     let backlog = coordinator.read_log_page(

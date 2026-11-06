@@ -257,8 +257,8 @@ jobs:
 ```
 
 Windows `run` defaults to `pwsh`; explicit `pwsh`, Git Bash `bash`, and `sh` are
-supported. JavaScript Node20/Node24 and composite actions use the same version-5
-protocol; composites may select `pwsh`. PowerShell errors and native command exit
+supported. JavaScript Node20/Node24 and composite actions use the shared Actions
+runtime (assignment versions 5–7); composites may select `pwsh`. PowerShell errors and native command exit
 codes fail the step. Paths added through `GITHUB_PATH` use Windows separators.
 The existing Action/source/secret/checkout restrictions still apply; macOS workers
 and Hyper-V isolation are not part of this implementation.

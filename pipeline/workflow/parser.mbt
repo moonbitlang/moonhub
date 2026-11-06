@@ -259,7 +259,7 @@ fn parse_job(
     fields,
     [
       "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
-      "permissions",
+      "permissions", "if", "outputs",
     ],
     ctx,
   )
@@ -545,6 +545,11 @@ fn parse_job(
       id,
     ),
     needs: yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
+    condition: parse_job_condition(
+      fields.get("if"),
+      yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
+    ),
+    outputs: parse_job_outputs(fields.get("outputs")),
     runs_on,
     matrix: Map([]),
     strategy: Map([]),

@@ -9,6 +9,8 @@ import {
 // Values
 pub let format_version : Int32
 
+pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
+
 pub let max_source_bytes : Int32
 
 pub fn parse(String) -> Workflow raise InvalidWorkflow
@@ -53,6 +55,8 @@ pub struct Job {
   id : String
   name : String
   needs : Array[String]
+  condition : String
+  outputs : Map[String, String]
   runs_on : Array[String]
   contents_read : Bool
   matrix : Map[String, @json.Json]

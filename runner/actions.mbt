@@ -61,12 +61,15 @@ async fn Runtime::execute_action_step(
   failed : Bool,
 ) -> Int32 {
   let config : Json = {
+    "node20": self.action_node20,
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
     "contents_read": self.assignment.job.contents_read,
     "matrix": ToJson::to_json(self.assignment.job.matrix),
     "strategy": ToJson::to_json(self.assignment.job.strategy),
+    "needs": ToJson::to_json(self.assignment.job.needs),
+    "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "run_id": self.assignment.run_id,
@@ -164,16 +167,20 @@ async fn Runtime::execute_action_posts(
   let timeout = Int64::min(self.deadline - monotonic_ms(), 2147483647L).to_int()
   let config : Json = {
     "phase": "post",
+    "result_file": scratch + "/job-outputs.json",
     "failure": failed,
     "run_id": self.assignment.run_id,
     "job_id": self.assignment.job.id,
     "context": ToJson::to_json(self.assignment.job.context),
+    "node20": self.action_node20,
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
     "contents_read": self.assignment.job.contents_read,
     "matrix": ToJson::to_json(self.assignment.job.matrix),
     "strategy": ToJson::to_json(self.assignment.job.strategy),
+    "needs": ToJson::to_json(self.assignment.job.needs),
+    "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "source_git": if @fs.exists(scratch + "/source.git") {
@@ -194,5 +201,13 @@ async fn Runtime::execute_action_posts(
     env: Map([]),
     remote: self.assignment.job.steps.any(step => step.remote),
   }
-  self.execute_action_runtime(step, filename, timeout, Map([]))
+  let code = self.execute_action_runtime(step, filename, timeout, Map([]))
+  if self.assignment.version == @protocol.dataflow_assignment_version {
+    let bytes = @fs.read_file(scratch + "/job-outputs.json")
+    guard bytes.binary().length() <= 65536 else { raise InvalidResponse }
+    let result = @json.parse(bytes.text())
+    guard result is { "outputs": value, .. } else { raise InvalidResponse }
+    self.job_outputs = @json.from_json(value)
+  }
+  code
 }

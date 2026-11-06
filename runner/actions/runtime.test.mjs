@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { ActionRuntime, execute, metadata } from './runtime.mjs';
+import { ActionRuntime, execute, metadata, resolveJobOutputs } from './runtime.mjs';
 import { evaluate, interpolate, evaluateAsync, interpolateAsync } from './expression.mjs';
 import { parseFileCommands, LogCommands } from './commands.mjs';
 import { reference, extractArchive } from './download.mjs';
@@ -415,4 +415,35 @@ test('downloaded subdirectory Actions resolve entry points within their reposito
   assert.equal(await fs.readFile(path.join(config.workspace,'post-done'),'utf8'),'done');
   await fs.writeFile(path.join(root,'restore/action.yml'),'runs: {using: node24, main: ../../outside.cjs}');
   await assert.rejects(runtime.action('example/cache/restore@sha'),/escapes/);
+});
+
+test('job outputs resolve once after post handlers, carry needs and suppress masked values', async t => {
+  const { config } = await fixture(t);
+  config.needs = { prepare: { result: 'success', outputs: { version: '1.2.3' } } };
+  config.job_outputs = {
+    version: '${{ steps.build.outputs.version }}',
+    forwarded: '${{ needs.prepare.outputs.version }}',
+    unsafe: '${{ steps.build.outputs.secret }}',
+    literal: '${{ steps.build.outputs.literal }}',
+    missing: '${{ steps.absent.outputs.missing }}',
+  };
+  const local = await action(config, 'local', 'runs: {using: node24, main: main.cjs, post: post.cjs}', {
+    'main.cjs': "require('fs').appendFileSync(process.env.GITHUB_OUTPUT,'version=1.2.3\\nsecret=private-value\\nliteral=${{ needs.other.outputs.x }}\\n');",
+    'post.cjs': "console.log('::add-mask::private-value'); require('fs').writeFileSync(process.env.GITHUB_WORKSPACE+'/post-finished','yes');",
+  });
+  const step = { id:'build', remote:true, uses:local, run:'', env:{}, inputs:{}, templates:{'with:unused': '${{ needs.prepare.outputs.version }}'} };
+  const executed = await execute({...config, step});
+  const result = await execute({...config, phase:'post'}, executed.state);
+  assert.equal(result.code, 0);
+  assert.deepEqual({...result.outputs}, {version:'1.2.3', forwarded:'1.2.3', literal:'${{ needs.other.outputs.x }}'});
+  assert.equal(await fs.readFile(path.join(config.workspace, 'post-finished'), 'utf8'), 'yes');
+});
+test('job output limits measure UTF-8 and JSON bytes and reject reserved names and NUL', async () => {
+  const resolve = value => resolveJobOutputs({value}, {});
+  assert.equal((await resolve('x'.repeat(16384))).value.length, 16384);
+  for (const value of ['x'.repeat(16385), '密'.repeat(5462), 'a\0b']) await assert.rejects(resolve(value));
+  await assert.rejects(resolveJobOutputs({a:'"'.repeat(16384)}, {}));
+  await assert.rejects(resolveJobOutputs({constructor:'bad'}, {}));
+  await assert.rejects(resolveJobOutputs(Object.fromEntries(Array.from({length:101}, (_,n) => ['k'+n,''])), {}));
+  await assert.rejects(resolveJobOutputs({a:'x'.repeat(16380), b:'x'.repeat(16380), c:'x'}, {}));
 });

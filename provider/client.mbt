@@ -117,7 +117,7 @@ async fn post_claim(
   }
   let bytes : Array[Byte] = []
   while client.read_some(max_len=4096) is Some(chunk) {
-    guard bytes.length() + chunk.length() <= 65536 else {
+    guard bytes.length() + chunk.length() <= 2097152 else {
       raise InvalidConfiguration("claim response is too large")
     }
     for byte in chunk {

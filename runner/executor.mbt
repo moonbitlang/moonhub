@@ -6,6 +6,7 @@ async fn validate_options(
   guard [
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
+      @protocol.dataflow_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -39,8 +40,22 @@ async fn validate_options(
     raise InvalidConfiguration("step launcher is not executable")
   }
   guard (assignment.job.matrix.is_empty() && assignment.job.strategy.is_empty()) ||
-    assignment.version == @protocol.scheduling_assignment_version else {
+    [
+      @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
+    ].contains(assignment.version) else {
     raise InvalidConfiguration("matrix contexts require assignment version 6")
+  }
+  guard (assignment.job.outputs.is_empty() && assignment.job.needs.is_empty()) ||
+    assignment.version == @protocol.dataflow_assignment_version else {
+    raise InvalidConfiguration("job dataflow requires assignment version 7")
+  }
+  guard assignment.job.outputs.length() <= 100 &&
+    assignment.job.needs.length() <= 16 &&
+    @utf8.encode(ToJson::to_json(assignment.job.outputs).stringify()).length() <=
+    65536 &&
+    @utf8.encode(ToJson::to_json(assignment.job.needs).stringify()).length() <=
+    270336 else {
+    raise InvalidConfiguration("job dataflow exceeds limits")
   }
   let ids : Map[String, Bool] = Map([])
   let mut checkouts = 0
@@ -103,6 +118,7 @@ async fn validate_options(
           [
             @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
             @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
+            @protocol.dataflow_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -110,7 +126,7 @@ async fn validate_options(
           [
             @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
             @protocol.secret_assignment_version, @protocol.remote_assignment_version,
-            @protocol.scheduling_assignment_version,
+            @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -157,7 +173,7 @@ async fn validate_options(
     guard step.secret_env.is_empty() ||
       [
         @protocol.secret_assignment_version, @protocol.remote_assignment_version,
-        @protocol.scheduling_assignment_version,
+        @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
       ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
@@ -696,6 +712,7 @@ async fn execute_assignment(
   source? : async () -> Bytes,
   bundle? : async () -> Bytes,
   action_node~ : String = default_action_node(),
+  action_node20~ : String = default_action_node20(),
   action_runtime~ : String = default_action_runtime(),
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
   artifacts? : async (@protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime,
@@ -733,11 +750,13 @@ async fn execute_assignment(
     deadline: monotonic_ms() +
     assignment.job.timeout_minutes.to_int64() * 60000L,
     stopped: "",
+    job_outputs: Map([]),
     reporting_until: 0L,
     moon_home: "",
     secrets,
     artifacts,
     action_node,
+    action_node20,
     action_runtime,
     action_state_key: execution_nonce() + execution_nonce(),
     action_temp: root + "/.tmp",
@@ -864,10 +883,15 @@ async fn execute_assignment(
       version: @protocol.version,
       conclusion: outcome,
       last_log_sequence: runtime.sequence.to_string(),
+      outputs: runtime.job_outputs,
     }
-    let state = Some(runtime.request("complete", ToJson::to_json(request))) catch {
-      _ => None
+    let body = ToJson::to_json(request)
+    if assignment.version != @protocol.dataflow_assignment_version &&
+      body is Object(fields) {
+      // Older coordinators validate the original completion field set.
+      ignore(fields.remove("outputs"))
     }
+    let state = Some(runtime.request("complete", body)) catch { _ => None }
     match state {
       Some(state) if state.state == "completed" =>
         { conclusion: state.conclusion, reported: true, steps: runtime.steps, }
@@ -886,6 +910,7 @@ pub async fn run(
   token : String,
   options : Options,
   action_node~ : String = default_action_node(),
+  action_node20~ : String = default_action_node20(),
   action_runtime~ : String = default_action_runtime(),
 ) -> Report {
   guard token.length() == 64 &&
@@ -902,6 +927,7 @@ pub async fn run(
     options,
     post,
     action_node~,
+    action_node20~,
     action_runtime~,
     secrets=request => fetch_secrets(options.server, attempt_id, token, request),
     artifacts=request => {
@@ -937,6 +963,15 @@ fn default_action_node() -> String {
     "C:/moonhub/bin/node.exe"
   } else {
     "/usr/local/bin/node"
+  }
+}
+
+///|
+fn default_action_node20() -> String {
+  if @platform.windows() {
+    "C:/moonhub/bin/node20.exe"
+  } else {
+    "/opt/actions/node20/bin/node"
   }
 }
 
