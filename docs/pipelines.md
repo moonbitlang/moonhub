@@ -77,9 +77,10 @@ Supported configuration:
 Workflow/job `permissions` supports enforced read-only contents scope and explicit
 no-source access; unsupported scopes fail validation. All unknown fields are
 rejected before mapping. Workflow `concurrency` and static matrix `strategy`
-are supported; see [workflow scheduling](workflow-scheduling.md). Job-level `if` /
-`continue-on-error`, `container`,
-`services`, and job `outputs`. Downloaded actions accept `with`, and downloaded
+are supported; see [workflow scheduling](workflow-scheduling.md). Job-level `if`,
+outputs and direct `needs` contexts are supported; see [job dataflow](job-dataflow.md).
+Job `continue-on-error`, `container` and `services` remain unsupported.
+Downloaded actions accept `with`, and downloaded
 action/script steps accept step-level `if` and `continue-on-error`; see
 [GitHub Action execution](github-actions.md). Unknown fields are never silently stripped.
 
@@ -135,8 +136,9 @@ and reruns continue to work unchanged. No context is fabricated from live state.
 Migration 018 upgrades the database to schema 18 and protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
 together; an older server binary cannot open schema 18. Simple public context
-references still use ordinary resolved env strings. Current definition-v3 runs use assignment version 6; definition-v2 snapshots
-retain assignment version 5, including jobs containing only shell steps.
+references still use ordinary resolved env strings. Current definition-v4 runs use
+assignment version 7. Definition-v3 snapshots retain version 6 and definition-v2
+snapshots retain version 5, including jobs containing only shell steps.
 Repository secrets retain the separate execution-time channel described below.
 
 ### Repository Secrets
@@ -202,7 +204,9 @@ forms preserve metadata and clear the value field.
 The parser separates secret references from public env before resolving captured
 context, preventing recursive interpolation of branch or repository names. Run
 snapshots, reruns and provider assignments contain only secret names. New runs
-use assignment version 5. Historical runs with definition version 1 and secrets
+use assignment version 7; definition-v2/v3 snapshots retain versions 5 and 6,
+respectively.
+Historical runs with definition version 1 and secrets
 use assignment version 4; other historical jobs retain assignment versions 1–3.
 Upgrade server, provider/controller and task Runner together; older executors
 reject unsupported assignments. Older snapshots without secret fields remain readable.
@@ -401,7 +405,8 @@ Assignment versions are separate from the HTTP request protocol version:
 
 | Saved definition | Assignment version |
 | --- | --- |
-| Current definition version 3, including matrix/strategy contexts | 6 |
+| Current definition version 4, including job outputs and needs | 7 |
+| Historical definition version 3, including matrix/strategy contexts | 6 |
 | Historical definition version 2, including shell-only jobs | 5 |
 | Historical definition version 1 with repository secrets | 4 |
 | Historical definition version 1 with built-in MoonBit setup | 3 |
@@ -414,7 +419,9 @@ claim and result HTTP messages remain V1 under the existing API prefix. Older
 Runners/providers reject unsupported assignments. Upgrade Web, SSH, provider and
 Runner images together. Definition version 3 and assignment version 6 add
 matrix/strategy contexts, and migration 031 adds durable scheduling state.
-Definition version 2 remains readable without reinterpreting its snapshots.
+Definition version 4 and assignment version 7 add job dataflow, with output
+storage in migration 035. Older definitions remain readable without
+reinterpreting their snapshots.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
@@ -672,7 +679,7 @@ require the echoed execution ID and fail closed against an older server.
 The additional `/attempts/:id/steps` endpoint accepts `version`, `step_id`,
 `state`, and `exit_code`. It enforces pending -> running -> terminal transitions,
 ordered execution, and idempotent repeats. Fenced executions cannot report job
-success until every step succeeded (or was conditionally skipped in versions 5/6).
+success until every step succeeded (or was conditionally skipped in versions 5–7).
 Version 5 permits sequential cleanup steps after a failure without allowing that
 failure to become a successful job. Terminalization records interrupted running
 steps and skips pending ones. `Coordinator.read_steps` is repository-scoped;
@@ -680,7 +687,7 @@ the run page exposes persisted per-step state.
 
 ### Execution and Isolation
 
-- Each `run` starts a new shell, with captured environment and, for versions 5/6,
+- Each `run` starts a new shell, with captured environment and, for versions 5–7,
   runtime templates and earlier file-command updates applied. The workspace is
   shared within the job, but shell variables, `cd`, and ordinary exports do not
   leak into later shells.
@@ -771,7 +778,10 @@ not shared across jobs. Trusted local tests use the same source-fetch path.
 
 ## DAG Scheduling and Reruns
 
-Jobs without `needs` enter `queued`; dependent jobs enter `waiting`. After an
+Definition-v4 jobs first evaluate their server-side condition. Eligible roots enter
+`queued`; dependent jobs enter `waiting` until every dependency finishes. See
+[job dataflow](job-dataflow.md) for status guards and cleanup branches. Historical
+definitions retain their original behavior: after an
 attempt completes successfully, its direct dependents become queued when all
 their dependencies succeeded. If any dependency concludes with failure,
 timeout, cancellation, loss, or skip, the dependent job is completed as

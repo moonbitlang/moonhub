@@ -97,7 +97,7 @@ export class ActionRuntime {
       event_name: this.config.context?.event_name || 'workflow_dispatch', token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
-      steps: this.state.steps, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
+      steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
     if (uses.startsWith('./')) return { directory: await contained(this.workspace, uses), repository: this.config.repository, ref: this.config.sha };
@@ -315,7 +315,11 @@ export class ActionRuntime {
 export async function execute(config, state = {}, adapters = {}) {
   const runtime = new ActionRuntime(config, state, adapters);
   await fs.mkdir(runtime.temp, { recursive: true, mode: 0o700 });
-  if (config.phase === 'post') return { code: await runtime.posts(), state: runtime.state };
+  if (config.phase === 'post') {
+    const code = await runtime.posts();
+    const outputs = await resolveJobOutputs(config.job_outputs || {}, runtime.context(), runtime.state.masks);
+    return { code, outputs, state: runtime.state };
+  }
   const previousFailure = runtime.failure;
   const step = config.step, templates = step.templates || {};
   let result, tolerate = false;
@@ -356,10 +360,28 @@ export async function execute(config, state = {}, adapters = {}) {
   return { code: conclusion === 'failure' ? result.code : 0, conclusion, state: runtime.state };
 }
 
+export async function resolveJobOutputs(templates, context, masks = []) {
+  if (!templates || typeof templates !== 'object' || Array.isArray(templates) || Object.keys(templates).length > 100) throw new Error('Invalid job output definitions');
+  const outputs = Object.create(null);
+  for (const [name, template] of Object.entries(templates)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_-]{0,99}$/.test(name) || ['__proto__','prototype','constructor'].includes(name.toLowerCase()) || typeof template !== 'string') throw new Error('Invalid job output definition');
+    const value = await interpolate(template, context);
+    if (value === '') continue;
+    if (masks.some(mask => mask && value.includes(mask))) {
+      process.stderr.write('runner: skipped a job output because it may contain a secret\n');
+      continue;
+    }
+    if (value.includes('\0') || Buffer.byteLength(value) > 16384) throw new Error('Job output exceeds limits');
+    outputs[name] = value;
+    if (Buffer.byteLength(JSON.stringify(outputs)) > 32768) throw new Error('Job outputs exceed limits');
+  }
+  return outputs;
+}
+
 async function main() {
   const filename = process.argv[2], stateFile = process.argv[3];
   if (!filename || !stateFile) throw new Error('Action runtime requires a plan and state path');
-  const config = JSON.parse(await readBounded(filename));
+  const config = JSON.parse(await readBounded(filename, 2097152));
   const key = process.env.MOONHUB_ACTION_STATE_KEY;
   delete process.env.MOONHUB_ACTION_STATE_KEY;
   let state = {};
@@ -375,7 +397,7 @@ async function main() {
     result = { code: 1, state: runtime.state };
   }
   await fs.writeFile(stateFile, encodeState(result.state, key), { mode: 0o600 });
-  if (config.result_file) await fs.writeFile(config.result_file, JSON.stringify({ conclusion: result.conclusion || 'failure' }), { mode: 0o600 });
+  if (config.result_file) await fs.writeFile(config.result_file, JSON.stringify({ conclusion: result.conclusion || 'failure', ...(config.phase === 'post' ? { outputs: result.outputs || {} } : {}) }), { mode: 0o600 });
   process.exitCode = result.code;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

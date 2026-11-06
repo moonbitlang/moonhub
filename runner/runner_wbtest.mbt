@@ -37,6 +37,8 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     server_time_ms: "0",
     state: "leased",
     job: {
+      outputs: Map([]),
+      needs: Map([]),
       context: Map([]),
       contents_read: true,
       matrix: Map([]),
@@ -112,6 +114,10 @@ async fn FakeServer::post(
   } else if operation == "steps" {
     self.events.push(@json.from_json(body))
   } else if operation == "complete" {
+    // This fixture emulates an older strict coordinator; the HTTP dataflow
+    // acceptance test covers completion reports with version-7 outputs.
+    guard body is Object(fields) else { fail("invalid completion") }
+    assert_false(fields.contains("outputs"))
     let request : @protocol.CompleteRequest = @json.from_json(body)
     assert_eq(request.last_log_sequence, self.sequence.to_string())
     conclusion = request.conclusion
@@ -162,6 +168,23 @@ async test "malformed assignment strings are rejected before execution" {
         { ..assignment, job_id: "01", },
         { ..assignment, server_time_ms: "-1", },
         { ..assignment, lease_until_ms: "60001", },
+        {
+          ..assignment,
+          version: @protocol.scheduling_assignment_version,
+          job: { ..assignment.job, outputs: { "value": "literal" }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.dataflow_assignment_version,
+          job: {
+            ..assignment.job,
+            needs: {
+              "prepare": {
+                "outputs": { "value": Json::string("x".repeat(270337)) },
+              },
+            },
+          },
+        },
       ] {
       let server = fake_server()
       try

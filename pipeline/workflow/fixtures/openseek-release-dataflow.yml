@@ -1,0 +1,81 @@
+# Reduced from desktop-release.yml at openseek bff9ae35088250ee8077262a8906ae8ca103130b.
+# Original job IDs, needs, conditions, outputs and job env; execution is stubbed.
+# Dispatch inputs, permissions, checkout/API access, signing and publishing are excluded.
+# The unsupported windows-latest alias is replaced by explicit self-hosted Windows labels.
+name: Desktop release dataflow
+on: workflow_dispatch
+jobs:
+  release-needed:
+    name: Check for updates
+    runs-on: ubuntu-24.04
+    env:
+      OPENSEEK_API_ORIGIN: https://openseek-api.moonbitlang.cn
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: check
+        run: echo release=true >> "$GITHUB_OUTPUT"
+      - id: release
+        run: echo version=1.2.3 >> "$GITHUB_OUTPUT"
+  release-browser:
+    name: Build Browser
+    needs: release-needed
+    if: github.ref == 'refs/heads/main' && needs.release-needed.outputs.release ==
+      'true'
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_VERSION: ${{ needs.release-needed.outputs.version }}
+    steps:
+      - run: echo "$RELEASE_VERSION"
+  release-macos:
+    name: Build, sign, and notarize macOS
+    needs: release-needed
+    if: github.ref == 'refs/heads/main' && needs.release-needed.outputs.release ==
+      'true'
+    runs-on: macos-latest
+    env:
+      APPLE_TEAM_ID: NYZ3LQ5QWC
+      MACOS_SIGNING_IDENTITY: "Developer ID Application: Haoxiang Fei (NYZ3LQ5QWC)"
+      NOTARY_PROFILE: openseek-release
+      RELEASE_VERSION: ${{ needs.release-needed.outputs.version }}
+    steps:
+      - run: echo "$RELEASE_VERSION"
+  release-android:
+    name: Build and sign Android
+    needs:
+      - release-needed
+      - release-browser
+    if: github.ref == 'refs/heads/main' && needs.release-needed.outputs.release ==
+      'true'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.release-needed.outputs.version }}
+    steps:
+      - run: echo "$RELEASE_VERSION"
+  release-windows:
+    name: Build Windows
+    needs: release-needed
+    if: github.ref == 'refs/heads/main' && needs.release-needed.outputs.release ==
+      'true'
+    runs-on: [self-hosted, windows, x64]
+    env:
+      RELEASE_VERSION: ${{ needs.release-needed.outputs.version }}
+    steps:
+      - run: echo "$RELEASE_VERSION"
+  release-publish:
+    name: Publish
+    needs:
+      - release-needed
+      - release-browser
+      - release-windows
+      - release-macos
+      - release-android
+    if: github.ref == 'refs/heads/main' && needs.release-needed.outputs.release ==
+      'true'
+    runs-on: ubuntu-24.04
+    env:
+      OPENSEEK_API_ORIGIN: https://openseek-api.moonbitlang.cn
+      RELEASE_VERSION: ${{ needs.release-needed.outputs.version }}
+    steps:
+      - run: echo "$RELEASE_VERSION"

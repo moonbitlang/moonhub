@@ -5,7 +5,7 @@ let eligible_provider_jobs : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
-  #|AND r.definition_version IN (1, 2, ?)
+  #|AND r.definition_version IN (1, 2, 3, ?)
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_run_schedule s WHERE s.run_id=r.id AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
@@ -78,7 +78,7 @@ pub fn Coordinator::authenticate_attempt(
 
 ///|
 fn attempt_job(row : @database.DbRow) -> @workflow.Job raise {
-  guard [1L, 2L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, 3L, @workflow.format_version.to_int64()].contains(
     row.get_name("definition_version"),
   ) else {
     raise InvalidRecord
@@ -500,7 +500,9 @@ pub fn Coordinator::claim(
           context["base_ref"] = saved.base_ref
         }
         Some({
-          version: if (row.get_name("definition_version") : Int64) >= 3L {
+          version: if (row.get_name("definition_version") : Int64) >= 4L {
+            @protocol.dataflow_assignment_version
+          } else if (row.get_name("definition_version") : Int64) >= 3L {
             @protocol.scheduling_assignment_version
           } else if (row.get_name("definition_version") : Int64) >= 2L {
             @protocol.remote_assignment_version
@@ -524,6 +526,16 @@ pub fn Coordinator::claim(
           server_time_ms: now.to_string(),
           state: row.get_name("status"),
           job: {
+            outputs: if (row.get_name("definition_version") : Int64) >= 4L {
+              job.outputs
+            } else {
+              Map([])
+            },
+            needs: if (row.get_name("definition_version") : Int64) >= 4L {
+              job_needs_context(tx, (row.get_name("run_id") : Int64), job)
+            } else {
+              Map([])
+            },
             context,
             contents_read: job.contents_read,
             matrix: job.matrix,
@@ -669,7 +681,27 @@ pub fn Coordinator::complete(
   }
   self.authenticate_attempt(id, token)
   ignore(self.expire_attempts())
-  let hash = @identity.hash_token(ToJson::to_json(request).stringify())
+  let payload = if request.outputs.is_empty() {
+    (
+      {
+        "version": request.version,
+        "conclusion": request.conclusion,
+        "last_log_sequence": request.last_log_sequence,
+      } : Json)
+  } else {
+    // JSON object order is not part of a completion's meaning. Canonicalize
+    // output entries so a transport can reorder keys during an exact replay.
+    let outputs = request.outputs.to_array()
+    outputs.sort_by((a, b) => a.0.compare(b.0))
+    (
+      {
+        "version": request.version,
+        "conclusion": request.conclusion,
+        "last_log_sequence": request.last_log_sequence,
+        "outputs": ToJson::to_json(outputs),
+      } : Json)
+  }
+  let hash = @identity.hash_token(payload.stringify())
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
@@ -712,6 +744,7 @@ pub fn Coordinator::complete(
         } else {
           request.conclusion
         }
+        publish_job_outputs(tx, row, request.outputs, conclusion)
         finish_attempt(tx, row, conclusion, (self.clock)())
         lease_state(attempt_row(tx, id, token), (self.clock)())
       },

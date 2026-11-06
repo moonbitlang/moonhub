@@ -8,7 +8,7 @@ import {
 }
 
 // Values
-pub async fn run(@protocol.Assignment, String, Options, action_node? : String, action_runtime? : String) -> Report
+pub async fn run(@protocol.Assignment, String, Options, action_node? : String, action_node20? : String, action_runtime? : String) -> Report
 
 // Errors
 pub(all) suberror RunnerError {

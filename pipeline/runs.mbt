@@ -150,10 +150,10 @@ fn insert_run_snapshot(
         run.id,
         job.id,
         ordinal.to_int64(),
-        if job.needs.is_empty() {
-          "queued"
-        } else {
+        if definition_version >= 4 || !job.needs.is_empty() {
           "waiting"
+        } else {
+          "queued"
         },
         job.matrix_group,
         job.max_parallel.to_int64(),
@@ -182,6 +182,13 @@ fn insert_run_snapshot(
     }
   }
   schedule_run(tx, run, merge_check_id)
+  if definition_version >= 4 {
+    advance_run_jobs(tx, run.id)
+    finalize_run(tx, run.id)
+    return Run::from_row(
+      tx.query_one("SELECT * FROM pipeline_run WHERE id=?", params=[run.id]),
+    )
+  }
   run
 }
 

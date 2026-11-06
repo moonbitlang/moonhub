@@ -244,6 +244,7 @@ async test "worker identities share grants but claim independently and drain ato
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
+        outputs: Map([]),
       }),
     )
     c.drain_worker("b".repeat(64), @protocol.parse_decimal(first.id).unwrap())

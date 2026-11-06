@@ -159,12 +159,17 @@ fn ScheduleParser::atom(
       }
       self.expect(")")
     }
-    guard ["contains", "startswith", "endswith", "format"].contains(token) else {
+    guard [
+      "contains", "startswith", "endswith", "format", "success", "failure", "cancelled",
+      "always",
+    ].contains(token) else {
       raise InvalidWorkflow("unsupported scheduling function: " + token)
     }
     return Call(token, args)
   }
-  guard ["github", "matrix", "strategy"].contains(token) else {
+  guard ["github", "matrix", "strategy", "needs", "steps", "runner", "env"].contains(
+    token,
+  ) else {
     raise InvalidWorkflow("unsupported scheduling context: " + token)
   }
   let fields = [token]
@@ -290,6 +295,16 @@ fn ScheduleExpr::evaluate(
       }
     }
     Call(name, args) => {
+      if ["success", "failure", "cancelled", "always"].contains(name) {
+        guard args.is_empty() && context.get("__status") is Some(Object(status)) else {
+          raise InvalidWorkflow("status function unavailable in this context")
+        }
+        return if name == "always" {
+          Json::boolean(true)
+        } else {
+          status.get(name).unwrap_or(Json::boolean(false))
+        }
+      }
       let args = args.map(arg => arg.evaluate(context))
       if name == "format" && args.length() > 0 {
         Json::string(schedule_format(args))
@@ -332,10 +347,25 @@ fn ScheduleExpr::check_context(
       left.check_context(context)
       right.check_context(context)
     }
-    Call(_, args) =>
+    Call(name, args) => {
+      if ["success", "failure", "cancelled", "always"].contains(name) {
+        guard args.is_empty() && context.contains("__status") else {
+          raise InvalidWorkflow("status function unavailable in this context")
+        }
+      }
+      guard (if name == "format" {
+        !args.is_empty()
+      } else if ["success", "failure", "cancelled", "always"].contains(name) {
+        true
+      } else {
+        args.length() == 2
+      }) else {
+        raise InvalidWorkflow("invalid scheduling function arity")
+      }
       for arg in args {
         arg.check_context(context)
       }
+    }
     Value(_) => ()
   }
 }

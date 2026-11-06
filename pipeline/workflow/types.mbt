@@ -11,7 +11,7 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 3
+pub let format_version : Int32 = 4
 
 ///|
 #derive(Debug, ToJson)
@@ -56,6 +56,8 @@ pub struct Job {
   id : String
   name : String
   needs : Array[String]
+  condition : String
+  outputs : Map[String, String]
   runs_on : Array[String]
   contents_read : Bool
   matrix : Map[String, Json]
@@ -84,6 +86,14 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     needs: @json.from_json(
       fields.get("needs").unwrap_or(Json::null()),
       path=path.add_key("needs"),
+    ),
+    condition: @json.from_json(
+      fields.get("condition").unwrap_or(Json::string("success()")),
+      path=path.add_key("condition"),
+    ),
+    outputs: @json.from_json(
+      fields.get("outputs").unwrap_or(({} : Json)),
+      path=path.add_key("outputs"),
     ),
     runs_on: @json.from_json(
       fields.get("runs_on").unwrap_or(Json::null()),

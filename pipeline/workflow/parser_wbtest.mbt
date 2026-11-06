@@ -177,8 +177,7 @@ test "unsupported execution semantics fail closed at every mapping level" {
   }
   for
     field in [
-      "if: false", "container: alpine", "services: {}", "strategy: {unknown: true}",
-      "continue-on-error: true", "outputs: {}",
+      "container: alpine", "services: {}", "strategy: {unknown: true}", "continue-on-error: true",
     ] {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }

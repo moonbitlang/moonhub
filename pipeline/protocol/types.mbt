@@ -23,8 +23,14 @@ pub let remote_assignment_version : Int32 = 5
 pub let scheduling_assignment_version : Int32 = 6
 
 ///|
+// V7 carries declared output templates and completed direct-needs contexts.
+pub let dataflow_assignment_version : Int32 = 7
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
-  [remote_assignment_version, scheduling_assignment_version].contains(version)
+  [
+    remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
+  ].contains(version)
 }
 
 ///|
@@ -122,11 +128,12 @@ pub(all) struct LogRequest {
 }
 
 ///|
-#derive(ToJson, FromJson)
+#derive(ToJson)
 pub(all) struct CompleteRequest {
   version : Int32
   conclusion : String
   last_log_sequence : String
+  outputs : Map[String, String]
 }
 
 ///|
@@ -174,6 +181,8 @@ pub fn Assignment::has_valid_numbers(self : Assignment) -> Bool {
 ///|
 #derive(Debug, ToJson)
 pub(all) struct JobPlan {
+  outputs : Map[String, String]
+  needs : Map[String, Json]
   context : Map[String, String]
   contents_read : Bool
   matrix : Map[String, Json]
@@ -191,6 +200,14 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job plan"))
   }
   {
+    outputs: @json.from_json(
+      fields.get("outputs").unwrap_or(({} : Json)),
+      path=path.add_key("outputs"),
+    ),
+    needs: @json.from_json(
+      fields.get("needs").unwrap_or(({} : Json)),
+      path=path.add_key("needs"),
+    ),
     strategy: @json.from_json(
       fields.get("strategy").unwrap_or(({} : Json)),
       path=path.add_key("strategy"),
@@ -364,4 +381,29 @@ pub(all) struct ArtifactRuntime {
   token : String
   results_url : String
   expires_ms : String
+}
+
+///|
+pub impl @json.FromJson for CompleteRequest with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid completion"))
+  }
+  {
+    version: @json.from_json(
+      fields.get("version").unwrap_or(Json::null()),
+      path=path.add_key("version"),
+    ),
+    conclusion: @json.from_json(
+      fields.get("conclusion").unwrap_or(Json::null()),
+      path=path.add_key("conclusion"),
+    ),
+    last_log_sequence: @json.from_json(
+      fields.get("last_log_sequence").unwrap_or(Json::null()),
+      path=path.add_key("last_log_sequence"),
+    ),
+    outputs: @json.from_json(
+      fields.get("outputs").unwrap_or(({} : Json)),
+      path=path.add_key("outputs"),
+    ),
+  }
 }

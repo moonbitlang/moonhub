@@ -67,8 +67,8 @@ Explicit run cancellation still produces a cancelled run.
 A downstream `needs: build` expands to every instance. It waits until the entire
 matrix finishes; if any instance failed/cancelled/skipped, the ordinary dependent
 job is skipped. Cycles and unknown logical dependencies remain rejected. Job-level
-if/continue-on-error, needs outputs and experimental matrix policy are separate
-features and are not silently accepted.
+conditions and outputs are described in [job dataflow](job-dataflow.md).
+Job-level continue-on-error and experimental matrix policy remain unsupported.
 
 Limits are 16 logical jobs, 16 axes, 256 combinations per matrix, 256 expanded
 jobs per workflow, 4096 expanded steps and a 1-MiB normalized snapshot.
@@ -81,7 +81,9 @@ page distinguishes dependency, concurrency-group and matrix-capacity waits.
 Migration 031 adds concurrency admissions and matrix scheduling columns. Existing
 runs are left independent, with no group, a 256 parallel default and fail-fast
 disabled. Definition versions 1 and 2 remain readable and reruns preserve their
-saved version. New snapshots use definition version 3 and assignment version 6.
+saved version. Historical scheduling snapshots use definition version 3 and assignment version 6.
+Current snapshots use definition version 4 and assignment version 7; see
+[job dataflow](job-dataflow.md).
 Old providers/runners reject V6 instead of executing missing matrix contexts.
 Upgrade coordinator, provider and runner together; downgrade to schema 30 is not
 supported. No existing runs are replayed by the migration.

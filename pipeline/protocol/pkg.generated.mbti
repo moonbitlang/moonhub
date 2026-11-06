@@ -13,6 +13,8 @@ pub fn action_runtime_version(Int32) -> Bool
 
 pub let cancel_grace_ms : Int64
 
+pub let dataflow_assignment_version : Int32
+
 pub let lease_ms : Int64
 
 pub let max_log_bytes : Int64
@@ -88,14 +90,16 @@ pub(all) struct ClaimRequest {
 pub fn ClaimRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn ClaimRequest::to_json(Self) -> @json.Json
 
-#derive(@json.FromJson, @json.ToJson)
+#derive(@json.ToJson)
 pub(all) struct CompleteRequest {
   version : Int32
   conclusion : String
   last_log_sequence : String
+  outputs : Map[String, String]
 }
 pub fn CompleteRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn CompleteRequest::to_json(Self) -> @json.Json
+pub impl @json.FromJson for CompleteRequest
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct ConfigField {
@@ -114,6 +118,8 @@ pub fn ConfigField::to_repr(Self) -> @debug.Repr
 
 #derive(@debug.Debug, @json.ToJson)
 pub(all) struct JobPlan {
+  outputs : Map[String, String]
+  needs : Map[String, @json.Json]
   context : Map[String, String]
   contents_read : Bool
   matrix : Map[String, @json.Json]

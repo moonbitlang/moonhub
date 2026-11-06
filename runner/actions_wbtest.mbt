@@ -362,3 +362,65 @@ async test "typed scheduling plans cannot be smuggled through assignment version
     }
   })
 }
+
+///|
+async test "rejected dataflow outputs report failure without replaying execution or ambiguous completion" {
+  @test_support.with_runner_workspace((root, launcher, _) => {
+    let (code, node) = @process.collect_output_merged("node", [
+      "-p", "process.execPath",
+    ])
+    assert_eq(code, 0)
+    for rejection in [400, 409, 0] {
+      let workspace = root + "/rejected-" + rejection.to_string()
+      @fs.mkdir(workspace)
+      let base = test_assignment([])
+      let assignment = {
+        ..base,
+        version: @protocol.dataflow_assignment_version,
+        job: {
+          ..base.job,
+          steps: [test_step("once", "printf x >> executed")],
+          outputs: { "value": "published-value" },
+        },
+      }
+      let server = fake_server()
+      let completions : Array[@protocol.CompleteRequest] = []
+      let report = execute_assignment(
+        assignment,
+        test_options(launcher, workspace),
+        (operation, body, until) => {
+          if operation == "complete" {
+            let request : @protocol.CompleteRequest = @json.from_json(body)
+            completions.push(request)
+            if completions.length() == 1 {
+              assert_eq(request.conclusion, "success")
+              assert_eq(request.outputs.get("value"), Some("published-value"))
+              if rejection == 0 {
+                raise TransportFailure
+              }
+              raise Rejected(rejection)
+            }
+            assert_true(request.outputs.is_empty())
+            assert_eq(request.conclusion, "failure")
+            guard body is Object(fields) else { fail("invalid completion") }
+            ignore(fields.remove("outputs"))
+          }
+          server.post(operation, body, until)
+        },
+        action_node=node.text().trim().to_owned(),
+        action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+      )
+      assert_eq(report.reported, rejection == 400)
+      assert_eq(
+        report.conclusion,
+        if rejection == 400 {
+          "failure"
+        } else {
+          "success"
+        },
+      )
+      assert_eq(completions.length(), if rejection == 400 { 2 } else { 1 })
+      assert_eq(@fs.read_file(workspace + "/repository/executed").text(), "x")
+    }
+  })
+}

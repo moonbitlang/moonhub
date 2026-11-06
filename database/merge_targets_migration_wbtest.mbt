@@ -4,6 +4,7 @@ async test "target migration backfills revision branch names without replaying a
     pool.with_client(client => {
       client.batch_execute(
         (
+          #|DROP TABLE pipeline_job_output;
           #|ALTER TABLE merge_revision DROP COLUMN target_branch;
           #|INSERT INTO merge_request(id,repository_id,number,author_id,title,source_branch,target_branch,current_version) VALUES(1,1,1,1,'Legacy','feature','main',1);
           #|INSERT INTO merge_revision(merge_request_id,version,source_sha,target_sha,base_sha) VALUES(1,1,'source','target','base');

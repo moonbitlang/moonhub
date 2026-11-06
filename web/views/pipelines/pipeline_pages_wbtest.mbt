@@ -190,6 +190,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
                 version: 1,
                 conclusion: "success",
                 last_log_sequence: "1",
+                outputs: Map([]),
               }),
             )
           }

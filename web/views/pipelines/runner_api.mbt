@@ -343,7 +343,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
           }
           _ => {
             let json = request_json(req, [
-              "version", "conclusion", "last_log_sequence",
+              "version", "conclusion", "last_log_sequence", "outputs",
             ])
             let request : @protocol.CompleteRequest = @json.from_json(json) catch {
               _ =>
