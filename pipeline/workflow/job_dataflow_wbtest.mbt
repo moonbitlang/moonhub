@@ -104,7 +104,7 @@ test "job outputs reject secret references unknown contexts and invalid output n
   for
     source in [
       "token: ${{ secrets.TOKEN }}", "token: ${{ hashFiles('**') }}", "constructor: value",
-      "value: ${{ inputs.version }}", "value: ${{ env.VERSION }}",
+      "value: ${{ vars.version }}", "value: ${{ env.VERSION }}",
     ] {
     try ignore(parse_job_outputs(Some(read_yaml(source)))) catch {
       InvalidWorkflow(_) => ()

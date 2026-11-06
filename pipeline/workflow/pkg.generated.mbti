@@ -9,13 +9,15 @@ import {
 // Values
 pub let format_version : Int32
 
-pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
+pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
 
 pub let max_source_bytes : Int32
 
 pub fn parse(String) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
+
+pub fn resolve_dispatch_inputs(Array[DispatchInput], Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
 
 pub fn scheduling_expression(String, Map[String, @json.Json]) -> @json.Json raise InvalidWorkflow
 
@@ -39,9 +41,22 @@ pub struct Concurrency {
   cancel_in_progress : String
 }
 pub fn Concurrency::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
-pub fn Concurrency::resolve(Self, Map[String, @json.Json]) -> (String, Bool) raise InvalidWorkflow
+pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json]) -> (String, Bool) raise InvalidWorkflow
 pub fn Concurrency::to_json(Self) -> @json.Json
 pub fn Concurrency::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub struct DispatchInput {
+  name : String
+  description : String
+  kind : String
+  required : Bool
+  default : @json.Json?
+  options : Array[String]
+}
+pub fn DispatchInput::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DispatchInput::to_json(Self) -> @json.Json
+pub fn DispatchInput::to_repr(Self) -> @debug.Repr
 
 pub struct EventFilters {
   branches : Array[String]
@@ -72,17 +87,19 @@ pub fn Job::to_json(Self) -> @json.Json
 pub fn Job::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Job
 
-#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+#derive(@debug.Debug, @json.ToJson)
 pub(all) struct RunContext {
   repository : String
   sha : String
   event_name : String
   head_ref : String
   base_ref : String
+  inputs : Map[String, @json.Json]
 }
 pub fn RunContext::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn RunContext::to_json(Self) -> @json.Json
 pub fn RunContext::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for RunContext
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct Step {
@@ -108,6 +125,7 @@ pub impl @json.FromJson for Step
 
 pub struct Triggers {
   dispatch : Bool
+  inputs : Array[DispatchInput]
   push : Bool
   pull_request : Bool
   pull_request_types : Array[String]

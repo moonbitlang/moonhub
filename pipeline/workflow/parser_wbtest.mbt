@@ -187,9 +187,9 @@ test "unsupported execution semantics fail closed at every mapping level" {
   expect_invalid(
     basic_workflow.replace_all(
       old="on: workflow_dispatch",
-      new="on: {workflow_dispatch: {inputs: {}}}",
+      new="on: {workflow_dispatch: {unknown: {}}}",
     ),
-    "inputs are not supported",
+    "on.workflow_dispatch.unknown",
   )
   expect_invalid(
     basic_workflow.replace_all(

@@ -1,12 +1,46 @@
 ///|
 // Captured once, never rebuilt from current branch/MR state.
-#derive(Debug, ToJson, FromJson)
+#derive(Debug, ToJson)
 pub(all) struct RunContext {
   repository : String
   sha : String
   event_name : String
   head_ref : String
   base_ref : String
+  inputs : Map[String, Json]
+}
+
+///|
+pub impl @json.FromJson for RunContext with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid run context"))
+  }
+  {
+    repository: @json.from_json(
+      fields.get("repository").unwrap_or(Json::null()),
+      path=path.add_key("repository"),
+    ),
+    sha: @json.from_json(
+      fields.get("sha").unwrap_or(Json::null()),
+      path=path.add_key("sha"),
+    ),
+    event_name: @json.from_json(
+      fields.get("event_name").unwrap_or(Json::null()),
+      path=path.add_key("event_name"),
+    ),
+    head_ref: @json.from_json(
+      fields.get("head_ref").unwrap_or(Json::null()),
+      path=path.add_key("head_ref"),
+    ),
+    base_ref: @json.from_json(
+      fields.get("base_ref").unwrap_or(Json::null()),
+      path=path.add_key("base_ref"),
+    ),
+    inputs: @json.from_json(
+      fields.get("inputs").unwrap_or(({} : Json)),
+      path=path.add_key("inputs"),
+    ),
+  }
 }
 
 ///|

@@ -501,7 +501,20 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                 None,
               )
             }
-            let bytes = @web_context.read_bounded_body(req, 65536)
+            // Dispatch inputs may use 65535 bytes before the JSON-RPC wrapper.
+            // Metadata validation below binds these headers to the request body.
+            let body_limit = if header_matches(req, "Mcp-Method", "tools/call") &&
+              header_matches(
+                req,
+                "Mcp-Name",
+                "moonhub_create_run",
+                encoded=true,
+              ) {
+              73728
+            } else {
+              65536
+            }
+            let bytes = @web_context.read_bounded_body(req, body_limit)
             let body_text = @utf8.decode(bytes) catch {
               _ => raise ProtocolError(400, -32700, "Invalid UTF-8 JSON", None)
             }

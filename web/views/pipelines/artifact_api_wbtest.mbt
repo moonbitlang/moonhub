@@ -26,6 +26,7 @@ async fn with_artifact_http(
     String,
   ) -> Unit,
   workflow~ : String = artifact_http_workflow,
+  inputs~ : Map[String, Json] = Map([]),
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
@@ -49,6 +50,7 @@ async fn with_artifact_http(
         repo,
         "pipeline",
         ".github/workflows/build.yml",
+        inputs~,
       ),
     )
     let lease = "b".repeat(64)

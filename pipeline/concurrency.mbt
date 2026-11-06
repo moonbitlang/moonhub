@@ -1,38 +1,11 @@
 ///|
 // This is called within the same write transaction that publishes the snapshot.
 // A cancelled holder retains its slot until every leased process is fenced.
-fn schedule_run(
-  tx : @database.DbTransaction,
-  run : Run,
-  merge_check_id : Int64,
-) -> Unit raise {
+fn schedule_run(tx : @database.DbTransaction, run : Run) -> Unit raise {
   guard run.definition.concurrency is Some(policy) else { return }
-  let reference = if merge_check_id != 0L {
-    let number : Int64 = tx
-      .query_one(
-        "SELECT m.number FROM merge_check c JOIN merge_request m ON m.id=c.merge_request_id WHERE c.id=?",
-        params=[merge_check_id],
-      )
-      .get_name("number")
-    "refs/pull/" + number.to_string() + "/merge"
-  } else {
-    "refs/heads/" + run.source_branch
-  }
-  let github : Map[String, Json] = {
-    "workflow": Json::string(run.workflow_name),
-    "ref": Json::string(reference),
-    "repository": Json::string(
-      run.context.map(ctx => ctx.repository).unwrap_or(""),
-    ),
-    "sha": Json::string(run.commit_sha),
-    "head_ref": Json::string(run.context.map(ctx => ctx.head_ref).unwrap_or("")),
-    "base_ref": Json::string(run.context.map(ctx => ctx.base_ref).unwrap_or("")),
-    "event_name": Json::string(
-      run.context.map(ctx => ctx.event_name).unwrap_or("workflow_dispatch"),
-    ),
-    "run_id": Json::string(run.id.to_string()),
-  }
-  let (key, cancel) = policy.resolve(github) catch {
+  let github = run_job_github(tx, run)
+  let inputs = run.context.map(ctx => ctx.inputs).unwrap_or(Map([]))
+  let (key, cancel) = policy.resolve(github, inputs~) catch {
     @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
   }
   for

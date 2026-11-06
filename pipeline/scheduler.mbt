@@ -57,6 +57,7 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             job.condition,
             github,
             context,
+            inputs=run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
             success~,
             failure~,
             cancelled~,

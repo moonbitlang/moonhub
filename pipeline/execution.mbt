@@ -5,7 +5,7 @@ let eligible_provider_jobs : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
-  #|AND r.definition_version IN (1, 2, 3, ?)
+  #|AND r.definition_version IN (1, 2, 3, 4, ?)
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_run_schedule s WHERE s.run_id=r.id AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
@@ -78,7 +78,7 @@ pub fn Coordinator::authenticate_attempt(
 
 ///|
 fn attempt_job(row : @database.DbRow) -> @workflow.Job raise {
-  guard [1L, 2L, 3L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, 3L, 4L, @workflow.format_version.to_int64()].contains(
     row.get_name("definition_version"),
   ) else {
     raise InvalidRecord
@@ -493,14 +493,22 @@ pub fn Coordinator::claim(
           },
           "workflow": captured.get_name("workflow_name"),
         }
+        let mut dispatch_inputs : Map[String, Json] = Map([])
+        let mut event : Map[String, Json] = Map([])
         if (captured.get_name("context_json") : String?) is Some(text) {
           let saved : @workflow.RunContext = @json.from_json(@json.parse(text))
           context["event_name"] = saved.event_name
           context["head_ref"] = saved.head_ref
           context["base_ref"] = saved.base_ref
+          if (row.get_name("definition_version") : Int64) >= 5L {
+            dispatch_inputs = saved.inputs
+            event = run_event_context(saved, event_ref=context["ref"])
+          }
         }
         Some({
-          version: if (row.get_name("definition_version") : Int64) >= 4L {
+          version: if (row.get_name("definition_version") : Int64) >= 5L {
+            @protocol.dispatch_assignment_version
+          } else if (row.get_name("definition_version") : Int64) >= 4L {
             @protocol.dataflow_assignment_version
           } else if (row.get_name("definition_version") : Int64) >= 3L {
             @protocol.scheduling_assignment_version
@@ -526,6 +534,8 @@ pub fn Coordinator::claim(
           server_time_ms: now.to_string(),
           state: row.get_name("status"),
           job: {
+            dispatch_inputs,
+            event,
             outputs: if (row.get_name("definition_version") : Int64) >= 4L {
               job.outputs
             } else {

@@ -26,9 +26,10 @@ Groups may use captured `github.workflow`, `github.ref`, `github.repository`,
 `github.sha`, `github.event_name`, `github.head_ref`, `github.base_ref` and
 `github.run_id`. For an MR, `github.ref` is `refs/pull/NUMBER/merge`, so two MRs
 using the same source branch have different refs. Push/manual refs are the saved
-`refs/heads/BRANCH`. Workflow concurrency supports only the github context;
-secrets, environment and matrix contexts are rejected, even in an unevaluated
-boolean branch. A group is resolved once per saved run, not from later refs.
+`refs/heads/BRANCH`. Current snapshots also expose captured `github.event` and
+typed workflow `inputs`; see [dispatch inputs](dispatch-inputs.md). Secrets,
+environment and matrix contexts are rejected, even in an unevaluated boolean
+branch. A group is resolved once per saved run, not from later refs.
 
 The bounded scheduling expression parser supports scalar literals, field and
 literal-string indexes, `!`, `==`, `!=`, `&&`, `||`, parentheses, `contains`,
@@ -36,7 +37,7 @@ literal-string indexes, `!`, `==`, `!=`, `&&`, `||`, parentheses, `contains`,
 string comparisons ignore case, and booleans short-circuit. Templates interpolate
 once; values containing expression markers are not evaluated recursively.
 Unsupported functions/syntax fail explicitly. Group results require 1-256 UTF-8
-bytes. Job-level concurrency and dispatch-input/vars contexts are not supported.
+bytes. Job-level concurrency and vars contexts are not supported.
 
 ## Static matrices
 
@@ -82,8 +83,9 @@ Migration 031 adds concurrency admissions and matrix scheduling columns. Existin
 runs are left independent, with no group, a 256 parallel default and fail-fast
 disabled. Definition versions 1 and 2 remain readable and reruns preserve their
 saved version. Historical scheduling snapshots use definition version 3 and assignment version 6.
-Current snapshots use definition version 4 and assignment version 7; see
-[job dataflow](job-dataflow.md).
+Job-dataflow snapshots use definition version 4 and assignment version 7; see
+[job dataflow](job-dataflow.md). Current snapshots use definition version 5 and
+assignment version 8 for [dispatch inputs](dispatch-inputs.md).
 Old providers/runners reject V6 instead of executing missing matrix contexts.
 Upgrade coordinator, provider and runner together; downgrade to schema 30 is not
 supported. No existing runs are replayed by the migration.

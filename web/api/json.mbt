@@ -60,6 +60,7 @@ fn secret_json(secret : @pipeline.RepositorySecret) -> Json {
 async fn api_body(
   req : @moonback.Request,
   allowed : Array[String],
+  body_limit~ : Int32 = 65536,
   images? : (
     @database.Database,
     String,
@@ -86,7 +87,7 @@ async fn api_body(
           (if images is Some(_) {
             @attachments.maximum_body_bytes
           } else {
-            65536
+            body_limit
           }) else {
           raise @domain.BadRequest(message="request body is too large")
         }

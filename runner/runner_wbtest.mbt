@@ -37,6 +37,8 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     server_time_ms: "0",
     state: "leased",
     job: {
+      dispatch_inputs: Map([]),
+      event: Map([]),
       outputs: Map([]),
       needs: Map([]),
       context: Map([]),
@@ -183,6 +185,35 @@ async test "malformed assignment strings are rejected before execution" {
                 "outputs": { "value": Json::string("x".repeat(270337)) },
               },
             },
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.dataflow_assignment_version,
+          job: { ..assignment.job, dispatch_inputs: { "enabled": true }, },
+        },
+        {
+          ..assignment,
+          version: @protocol.dispatch_assignment_version,
+          job: {
+            ..assignment.job,
+            dispatch_inputs: { "nested": { "invalid": true } },
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.dispatch_assignment_version,
+          job: {
+            ..assignment.job,
+            dispatch_inputs: { "large": Json::string("x".repeat(65535)) },
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.dispatch_assignment_version,
+          job: {
+            ..assignment.job,
+            event: { "large": Json::string("x".repeat(196608)) },
           },
         },
       ] {

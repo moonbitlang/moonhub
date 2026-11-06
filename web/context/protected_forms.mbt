@@ -31,8 +31,11 @@ pub fn valid_form_token(expected : String, supplied : String) -> Bool {
 }
 
 ///|
-pub async fn read_form(req : @moonback.Request) -> Map[String, String] {
-  let bytes = FixedArray::make(65537, b'\x00')
+pub async fn read_form(
+  req : @moonback.Request,
+  limit~ : Int32 = 65536,
+) -> Map[String, String] {
+  let bytes = FixedArray::make(limit + 1, b'\x00')
   let reader = req.body.reader(no_buffer=true)
   let mut length = 0
   while length < bytes.length() {
@@ -46,7 +49,7 @@ pub async fn read_form(req : @moonback.Request) -> Map[String, String] {
     }
     length = length + count
   }
-  guard length <= 65536 else {
+  guard length <= limit else {
     raise @domain.BadRequest(message="form is too large")
   }
   let body = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
@@ -59,11 +62,12 @@ pub async fn read_form(req : @moonback.Request) -> Map[String, String] {
 pub async fn protected_form(
   req : @moonback.Request,
   scope : String,
+  limit~ : Int32 = 65536,
 ) -> Map[String, String] {
   guard req.headers.get("Sec-Fetch-Site") != Some("cross-site") else {
     raise @domain.Forbidden(message="cross-site request rejected")
   }
-  let form = read_form(req)
+  let form = read_form(req, limit~)
   guard valid_form_token(
     request_form_token(req, scope),
     form.get("csrf_token").unwrap_or(""),

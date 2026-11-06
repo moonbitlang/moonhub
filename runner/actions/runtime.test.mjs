@@ -447,3 +447,132 @@ test('job output limits measure UTF-8 and JSON bytes and reject reserved names a
   await assert.rejects(resolveJobOutputs(Object.fromEntries(Array.from({length:101}, (_,n) => ['k'+n,''])), {}));
   await assert.rejects(resolveJobOutputs({a:'x'.repeat(16380), b:'x'.repeat(16380), c:'x'}, {}));
 });
+
+test('workflow dispatch keeps typed inputs and string event inputs through step templates', async t => {
+  const { config } = await fixture(t);
+  config.dispatch_context = true;
+  config.dispatch_inputs = { enabled: true, attempts: 3.5, name: 'nightly', literal: '\${{ inputs.name }}' };
+  config.event = { inputs: { enabled: 'true', attempts: '3.5', name: 'nightly', literal: '\${{ inputs.name }}' }, ref: 'refs/heads/main' };
+  const make = (id, templates, other = {}) => ({ ...config, step: { id, shell: 'bash', run: '', env: {}, inputs: {}, templates, ...other } });
+  let result = await execute(make('typed', {
+    if: 'inputs.enabled && inputs.attempts == 3.5',
+    'env:ENABLED': '\${{ toJSON(inputs.enabled) }}',
+    'env:ATTEMPTS': '\${{ inputs.attempts }}',
+    'env:EVENT_ENABLED': '\${{ github.event.inputs.enabled }}',
+    'env:EVENT_PATH': '\${{ github.event_path }}',
+    run: `test "$ENABLED" = true; test "$ATTEMPTS" = 3.5; test "$EVENT_ENABLED" = true; test "$EVENT_PATH" = "$GITHUB_EVENT_PATH"; test -f "$GITHUB_EVENT_PATH"; echo typed=yes >> "$GITHUB_OUTPUT"`,
+  }));
+  assert.equal(result.code, 0);
+  assert.equal(result.state.steps.typed.outputs.typed, 'yes');
+  const uses = await action(config, 'dispatch-consumer', 'inputs: {flag: {}, count: {}, literal: {}}\nruns: {using: node24, main: main.cjs}', {
+    'main.cjs': `const fs=require('fs'), assert=require('assert/strict'); assert.equal(process.env.INPUT_FLAG,'true'); assert.equal(process.env.INPUT_COUNT,'3.5'); assert.equal(process.env.INPUT_LITERAL,'\${{ inputs.name }}'); const event=JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')); assert.deepEqual(event.inputs,{enabled:'true',attempts:'3.5',name:'nightly',literal:'\${{ inputs.name }}'}); fs.appendFileSync(process.env.GITHUB_OUTPUT,'received=yes\\n');`,
+  });
+  result = await execute(make('consumer', {
+    'with:flag': '\${{ inputs.enabled }}', 'with:count': '\${{ inputs.attempts }}', 'with:literal': '\${{ inputs.literal }}',
+  }, { remote: true, uses }), result.state);
+  assert.equal(result.code, 0);
+  assert.equal(result.state.steps.consumer.outputs.received, 'yes');
+  const runtime = new ActionRuntime(config);
+  assert.equal(typeof runtime.context().inputs.enabled, 'boolean');
+  assert.equal(typeof runtime.context().inputs.attempts, 'number');
+  assert.equal(typeof runtime.context().github.event.inputs.enabled, 'string');
+});
+
+test('composite action inputs shadow workflow inputs while event inputs remain isolated', async t => {
+  const { config } = await fixture(t);
+  config.dispatch_context = true;
+  config.dispatch_inputs = { message: 'workflow-value', enabled: false };
+  config.event = { inputs: { message: 'workflow-value', enabled: 'false' } };
+  const child = await action(config, 'dispatch-child', `inputs: {message: {}}
+outputs: {message: {value: '\${{ steps.read.outputs.message }}'}}
+runs:
+  using: composite
+  steps:
+    - id: read
+      shell: bash
+      env:
+        MESSAGE: \${{ inputs.message }}
+        WORKFLOW_MESSAGE: \${{ github.event.inputs.message }}
+      run: test "$MESSAGE" = child-value; test "$WORKFLOW_MESSAGE" = workflow-value; echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
+`);
+  const outer = await action(config, 'dispatch-outer', `inputs: {message: {}}
+outputs: {message: {value: '\${{ steps.parent.outputs.message }}'}}
+runs:
+  using: composite
+  steps:
+    - uses: ${child}
+      with: {message: child-value}
+    - id: parent
+      shell: bash
+      env:
+        MESSAGE: \${{ inputs.message }}
+        WORKFLOW_MESSAGE: \${{ github.event.inputs.message }}
+      run: test "$MESSAGE" = action-value; test "$WORKFLOW_MESSAGE" = workflow-value; echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
+`);
+  const runtime = new ActionRuntime(config);
+  const result = await runtime.action(outer, { message: 'action-value' });
+  assert.equal(result.code, 0);
+  assert.equal(result.outputs.message, 'action-value');
+  assert.deepEqual(runtime.context().inputs, config.dispatch_inputs);
+  assert.equal(runtime.context().github.event.inputs.message, 'workflow-value');
+});
+
+test('pre/main/post and later steps receive fresh captured event files', async t => {
+  const { config } = await fixture(t);
+  config.dispatch_context = true;
+  config.dispatch_inputs = { enabled: true };
+  config.event = { inputs: { enabled: 'true' }, ref: 'refs/heads/main' };
+  const verify = `const fs=require('fs'), assert=require('assert/strict'), filename=process.env.GITHUB_EVENT_PATH; assert.ok(filename); const event=JSON.parse(fs.readFileSync(filename,'utf8')); assert.equal(event.inputs.enabled,'true'); assert.equal(event.ref,'refs/heads/main'); fs.appendFileSync(process.env.GITHUB_WORKSPACE+'/event-phases',PHASE+'\\n'); fs.writeFileSync(filename,'{"inputs":{"enabled":"tampered"}}');`;
+  const uses = await action(config, 'dispatch-events', 'runs: {using: node24, pre: pre.cjs, main: main.cjs, post: post.cjs}', {
+    'pre.cjs': "const PHASE='pre';" + verify,
+    'main.cjs': "const PHASE='main';" + verify,
+    'post.cjs': "const PHASE='post';" + verify,
+  });
+  const runtime = new ActionRuntime(config);
+  config.event.inputs.enabled = 'modified-after-construction';
+  assert.equal((await runtime.action(uses)).code, 0);
+  assert.equal(await runtime.posts(), 0);
+  assert.equal(runtime.context().github.event.inputs.enabled, 'true');
+  assert.equal(await fs.readFile(path.join(config.workspace, 'event-phases'), 'utf8'), 'pre\nmain\npost\n');
+  await assert.rejects(fs.stat(runtime.context().github.event_path), { code: 'ENOENT' });
+  const later = await execute({ ...config, event: { inputs: { enabled: 'true' }, ref: 'refs/heads/main' }, step: { id: 'later', remote: true, uses, env: {}, inputs: {} } }, runtime.state);
+  assert.equal(later.code, 0);
+  assert.equal((await execute({ ...config, event: { inputs: { enabled: 'true' }, ref: 'refs/heads/main' }, phase: 'post' }, later.state)).code, 0);
+});
+
+test('legacy action runtimes preserve missing dispatch and event contexts', async t => {
+  const { config, runtime } = await fixture(t);
+  assert.equal(Object.hasOwn(runtime.context(), 'inputs'), false);
+  assert.equal(Object.hasOwn(runtime.context().github, 'event'), false);
+  assert.equal(Object.hasOwn(runtime.context().github, 'event_path'), false);
+  assert.equal(evaluate('!github.event', runtime.context()), true);
+  assert.equal(evaluate("github.event.ref == ''", runtime.context()), true);
+  assert.equal(evaluate("github.event_path == ''", runtime.context()), true);
+  assert.throws(() => evaluate('inputs', runtime.context()));
+  assert.throws(() => new ActionRuntime({ ...config, dispatch_inputs: { enabled: true } }));
+  assert.throws(() => new ActionRuntime({ ...config, event: { ref: 'refs/heads/main' } }));
+  const inheritedEventPath = process.env.GITHUB_EVENT_PATH;
+  assert.equal(runtime.environment().GITHUB_EVENT_PATH, inheritedEventPath);
+  const uses = await action(config, 'legacy-event', 'runs: {using: node24, main: main.cjs}', {
+    'main.cjs': `const fs=require('fs'), assert=require('assert/strict'); assert.equal(process.env.GITHUB_EVENT_PATH,${JSON.stringify(inheritedEventPath)}); assert.deepEqual(fs.readdirSync(process.env.RUNNER_TEMP).filter(name=>name.startsWith('_event-')),[]); fs.appendFileSync(process.env.GITHUB_OUTPUT,'legacy=yes\\n');`,
+  });
+  const result = await execute({ ...config, step: { id: 'legacy', remote: true, uses, env: {}, inputs: {}, templates: { if: '!github.event' } } });
+  assert.equal(result.code, 0);
+  assert.equal(result.state.steps.legacy.outputs.legacy, 'yes');
+});
+
+test('dispatch runtime defaults new contexts and rejects malformed or oversized payloads', async t => {
+  const { config } = await fixture(t);
+  config.dispatch_context = true;
+  const runtime = new ActionRuntime(config);
+  assert.deepEqual(runtime.context().inputs, {});
+  assert.deepEqual(runtime.context().github.event, {});
+  const uses = await action(config, 'empty-event', 'runs: {using: node24, main: main.cjs}', {
+    'main.cjs': `const fs=require('fs'), assert=require('assert/strict'); assert.deepEqual(JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')),{});`,
+  });
+  assert.equal((await runtime.action(uses)).code, 0);
+  for (const dispatch_inputs of [[], 'bad', { nested: {} }, { nullable: null }, { invalid: NaN }, { invalid: Infinity }, { nul: 'a\0b' }, { constructor: 'bad' }, { Name: 'one', name: 'two' }, { 'bad.name': 'bad' }, Object.fromEntries(Array.from({ length: 26 }, (_, n) => ['x' + n, ''])), { large: '密'.repeat(22000) }]) {
+    assert.throws(() => new ActionRuntime({ ...config, dispatch_inputs }));
+  }
+  for (const event of [[], 'bad', { large: '密'.repeat(66000) }]) assert.throws(() => new ActionRuntime({ ...config, event }));
+});

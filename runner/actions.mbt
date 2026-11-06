@@ -70,6 +70,10 @@ async fn Runtime::execute_action_step(
     "strategy": ToJson::to_json(self.assignment.job.strategy),
     "needs": ToJson::to_json(self.assignment.job.needs),
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
+    "dispatch_context": self.assignment.version ==
+    @protocol.dispatch_assignment_version,
+    "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
+    "event": ToJson::to_json(self.assignment.job.event),
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "run_id": self.assignment.run_id,
@@ -181,6 +185,10 @@ async fn Runtime::execute_action_posts(
     "strategy": ToJson::to_json(self.assignment.job.strategy),
     "needs": ToJson::to_json(self.assignment.job.needs),
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
+    "dispatch_context": self.assignment.version ==
+    @protocol.dispatch_assignment_version,
+    "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
+    "event": ToJson::to_json(self.assignment.job.event),
     "sha": self.assignment.commit_sha,
     "server": self.options.server,
     "source_git": if @fs.exists(scratch + "/source.git") {
@@ -202,7 +210,9 @@ async fn Runtime::execute_action_posts(
     remote: self.assignment.job.steps.any(step => step.remote),
   }
   let code = self.execute_action_runtime(step, filename, timeout, Map([]))
-  if self.assignment.version == @protocol.dataflow_assignment_version {
+  if [
+      @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
+    ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }
     let result = @json.parse(bytes.text())

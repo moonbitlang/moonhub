@@ -456,6 +456,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           req.query().get("branch").unwrap_or(""),
         ),
         req.query().get("workflow").unwrap_or(""),
+        Map([]),
         None,
       ),
       headers=@web_context.private_page_headers(),
@@ -465,9 +466,22 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
     require_pipeline_manager(pool, actor, scope)
-    let form = @web_context.protected_form(req, "pipelines:create")
+    // Percent encoding may triple the bounded dispatch input JSON size.
+    let form = @web_context.protected_form(
+      req,
+      "pipelines:create",
+      limit=212992,
+    )
     let branch = form.get("branch").unwrap_or("").trim().to_owned()
     let workflow = form.get("workflow").unwrap_or("").trim().to_owned()
+    let inputs : Map[String, Json] = Map([])
+    let values : Map[String, String] = Map([])
+    for key, value in form {
+      if key.strip_prefix("input:") is Some(name) {
+        inputs[name.to_owned()] = Json(value)
+        values[name.to_owned()] = value
+      }
+    }
     let run = @pipeline.create_run(
       pool,
       root,
@@ -475,6 +489,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
       scope.repo,
       branch,
       workflow,
+      inputs~,
     ) catch {
       @domain.BadRequest(message~) => {
         res.send_html(
@@ -497,6 +512,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
               err => raise err
             },
             workflow,
+            values,
             Some(message),
           ),
           status=400,

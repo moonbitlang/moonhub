@@ -108,6 +108,8 @@ moonhub issue edit 2 --edit-version 3 --title 'Updated' --body-file issue.md --a
 
 moonhub ci list
 moonhub ci run --branch master --workflow .github/workflows/build.yml
+moonhub ci run --branch master --workflow .github/workflows/release.yml \
+  --inputs-file /absolute/path/inputs.json
 moonhub ci view 9 --json
 moonhub ci logs 9 --attempt 14 --after 0 --json
 moonhub ci cancel 9

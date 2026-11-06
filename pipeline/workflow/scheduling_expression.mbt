@@ -167,9 +167,9 @@ fn ScheduleParser::atom(
     }
     return Call(token, args)
   }
-  guard ["github", "matrix", "strategy", "needs", "steps", "runner", "env"].contains(
-    token,
-  ) else {
+  guard [
+    "github", "matrix", "strategy", "needs", "steps", "runner", "env", "inputs",
+  ].contains(token) else {
     raise InvalidWorkflow("unsupported scheduling context: " + token)
   }
   let fields = [token]

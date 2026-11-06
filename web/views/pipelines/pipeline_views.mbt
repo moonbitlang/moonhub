@@ -257,6 +257,7 @@ fn render_pipeline_form(
   csrf : String,
   choices : @pipeline.DispatchChoices,
   workflow : String,
+  values : Map[String, String],
   error : String?,
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) + "/pipelines"
@@ -266,6 +267,9 @@ fn render_pipeline_form(
   } else {
     available.get(0).map(choice => choice.path).unwrap_or("")
   }
+  let selected_choice = available
+    .iter()
+    .find_first(choice => choice.path == selected)
   @web_ui.layout(
     "Run workflow",
     assets,
@@ -276,7 +280,7 @@ fn render_pipeline_form(
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
       b <+
-        "<section class=\"bounded-section\"><form class=\"form-stack\" method=\"get\" data-auto-submit><label class=\"field\"><span>Branch</span><select aria-label=\"Branch\" name=\"branch\" required>"
+        "<section class=\"bounded-section\"><form class=\"form-stack\" method=\"get\" action=\"\{base}/new\" data-auto-submit><label class=\"field\"><span>Branch</span><select aria-label=\"Branch\" name=\"branch\" required>"
       for branch in choices.branches {
         b <+ "<option value=\"\{branch}\""
         if choices.branch == branch {
@@ -289,8 +293,21 @@ fn render_pipeline_form(
         b <+
           "<option selected value=\"\{choices.branch}\">\{choices.branch} — unavailable</option>"
       }
+      b <+ "</select></label>"
+      if !available.is_empty() {
+        b <+
+          "<label class=\"field\"><span>Workflow</span><select aria-label=\"Workflow\" name=\"workflow\" required>"
+        for choice in available {
+          b <+ "<option value=\"\{choice.path}\""
+          if choice.path == selected {
+            b <+ " selected"
+          }
+          b <+ ">\{choice.name} · \{choice.path}</option>"
+        }
+        b <+ "</select></label>"
+      }
       b <+
-        "</select></label><button class=\"secondary-button no-js-submit\" type=\"submit\">Load workflows</button></form>"
+        "<button class=\"secondary-button no-js-submit\" type=\"submit\">Load workflows and inputs</button></form>"
       if choices.commit.is_empty() {
         b <+
           "<div class=\"empty-state\"><h2>\{if choices.branch.is_empty() { "No branches with commits" } else { "Selected branch is unavailable" }}</h2><p>\{if choices.branch.is_empty() { "Push a commit before running a workflow." } else { "Choose another branch to reload available workflows." }}</p></div>"
@@ -302,16 +319,81 @@ fn render_pipeline_form(
             "<div class=\"empty-state\"><h2>No manually runnable workflows</h2><p>Add workflow_dispatch to a valid workflow, or select another branch.</p></div>"
         } else {
           b <+
-            "<form class=\"form-stack\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{choices.branch}\"><label class=\"field\"><span>Workflow</span><select aria-label=\"Workflow\" name=\"workflow\" required>"
-          for choice in available {
-            b <+ "<option value=\"\{choice.path}\""
-            if choice.path == selected {
-              b <+ " selected"
+            "<form class=\"form-stack\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{choices.branch}\"><input type=\"hidden\" name=\"workflow\" value=\"\{selected}\">"
+          if selected_choice is Some(choice) {
+            for input in choice.inputs {
+              let name = input.name
+              let default_value = match input.default {
+                Some(String(text)) => text
+                Some(value) => value.stringify()
+                None =>
+                  match input.kind {
+                    "boolean" => "false"
+                    "number" => if input.required { "" } else { "0" }
+                    "choice" => input.options.get(0).unwrap_or("")
+                    _ => ""
+                  }
+              }
+              let value = values.get(name).unwrap_or(default_value)
+              b <+ "<label class=\"field\"><span>\{name}"
+              if input.required {
+                b <+ " (required)"
+              }
+              b <+ "</span>"
+              if input.kind == "boolean" || input.kind == "choice" {
+                let options = if input.kind == "boolean" {
+                  ["false", "true"]
+                } else {
+                  input.options
+                }
+                b <+ "<select name=\"input:\{name}\""
+                if input.required {
+                  b <+ " required"
+                }
+                b <+ ">"
+                if !options.contains(value) {
+                  b <+
+                    "<option value=\"\{value}\" selected>\{value} (invalid)</option>"
+                }
+                for option in options {
+                  b <+ "<option value=\"\{option}\""
+                  if option == value {
+                    b <+ " selected"
+                  }
+                  b <+ ">\{option}</option>"
+                }
+                b <+ "</select>"
+              } else {
+                b <+ "<input name=\"input:\{name}\" value=\"\{value}\""
+                if input.kind == "number" {
+                  let parsed = @json.parse(value.trim()) catch {
+                    _ => Json::null()
+                  }
+                  if value.is_empty() ||
+                    (
+                      parsed is Number(number, ..) &&
+                      !number.is_nan() &&
+                      !number.is_inf()
+                    ) {
+                    b <+ " type=\"number\" step=\"any\""
+                  } else {
+                    b <+
+                      " type=\"text\" inputmode=\"decimal\" aria-invalid=\"true\""
+                  }
+                }
+                if input.required {
+                  b <+ " required"
+                }
+                b <+ ">"
+              }
+              if !input.description.is_empty() {
+                b <+ "<span class=\"muted\">\{input.description}</span>"
+              }
+              b <+ "</label>"
             }
-            b <+ ">\{choice.name} · \{choice.path}</option>"
           }
           b <+
-            "</select></label><div class=\"form-actions\"><button type=\"submit\">Run workflow</button><a href=\"\{base}\">Cancel</a></div></form>"
+            "<div class=\"form-actions\"><button type=\"submit\">Run workflow</button><a href=\"\{base}\">Cancel</a></div></form>"
         }
         if choices.workflows.any(choice => !choice.reason.is_empty()) {
           b <+
