@@ -1,6 +1,8 @@
 ///|
 pub async fn with_repository_test_app(
   f : async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit,
+  moondiff~ : Bool = false,
+  diff_executor? : @gitops.DiffExecutor,
 ) -> Unit {
   @test_support.with_ssh_test_db(pool => {
     @test_support.with_git_test_repo((root, _) => {
@@ -14,6 +16,15 @@ pub async fn with_repository_test_app(
       let app = @moonback.App(
         @web.app_module,
         config=@moonback.Config(custom=[
+          @moonback.Config::custom(@web_context.diff_enabled_key, moondiff),
+          @moonback.Config::custom(
+            @web_context.diff_executor_key,
+            diff_executor.unwrap_or_else(() => {
+              @gitops.DiffExecutor::new(
+                worker="_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe",
+              )
+            }),
+          ),
           @moonback.Config::custom(@web_context.config_root, root),
           @moonback.Config::custom(
             @web_context.config_assets_root, test_assets_root,

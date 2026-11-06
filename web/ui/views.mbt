@@ -4,6 +4,7 @@ pub fn layout(
   asset_path_map : Map[String, String],
   body : @moonback.Html,
   head_end~ : @moonback.Html = @moonback.Html::raw(""),
+  header_content~ : @moonback.Html? = None,
   body_class~ : String = "",
   current_user~ : @domain.CurrentUser? = None,
   navigation~ : PageNavigation = WorkspaceNavigation("repositories"),
@@ -14,7 +15,9 @@ pub fn layout(
   )
   let shell = current_user is Some(_) ||
     navigation is RepositoryNavigation(_, _, _)
-  let header = render_site_header(current_user, navigation, shell)
+  let header = render_site_header(
+    current_user, navigation, shell, header_content,
+  )
   let main_class = if body_class.is_empty() {
     "page"
   } else {
@@ -41,23 +44,32 @@ fn render_site_header(
   current_user : @domain.CurrentUser?,
   navigation : PageNavigation,
   shell : Bool,
+  content : @moonback.Html?,
 ) -> @moonback.Html {
   Html(b => {
     b <+
-      #|<header class="site-header"><div class="site-header__inner"><div class="brand-area">
-    if shell {
+      "<header class=\"site-header\{if content is Some(_) { " site-header--diff" } else { "" }}\"><div class=\"site-header__inner\">"
+    if content is Some(content) {
       b <+
-        "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
-    }
-    b <+
-      "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
-    if shell {
-      b <+ "\{render_breadcrumbs(navigation)}"
+        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\" title=\"MoonHub\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a>\{content}"
+    } else {
+      b <+ "<div class=\"brand-area\">"
+      if shell {
+        b <+
+          "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
+      }
+      b <+
+        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
+      if shell {
+        b <+ "\{render_breadcrumbs(navigation)}"
+      }
     }
     match current_user {
       Some(user) => {
-        b <+
-          "<a class=\"header-inbox\" href=\"/-/notifications\" aria-label=\"Inbox\" title=\"Inbox\"><span class=\"ui-icon\" data-icon=\"mail\" aria-hidden=\"true\"></span><span>Inbox</span><span class=\"count-badge\" data-inbox-count hidden></span></a>"
+        if content is None {
+          b <+
+            "<a class=\"header-inbox\" href=\"/-/notifications\" aria-label=\"Inbox\" title=\"Inbox\"><span class=\"ui-icon\" data-icon=\"mail\" aria-hidden=\"true\"></span><span>Inbox</span><span class=\"count-badge\" data-inbox-count hidden></span></a>"
+        }
         b <+
           "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/-/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/-/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/-/settings/tokens\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>Access tokens</a><a href=\"/-/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
         if user.is_site_admin {

@@ -435,6 +435,7 @@ fn validate_metadata(
 
 ///|
 pub let mcp_module : @moonback.Module = Module(ctx => {
+  let diff_executor = ctx.require(@web_context.diff_executor_key)
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
@@ -613,7 +614,7 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                 let actor = request_actor(pool, req, tool.permission)
                 try {
                   let data = invoke_tool(
-                    pool, root, coordinator, actor, name, args,
+                    pool, root, coordinator, diff_executor, actor, name, args,
                   )
                   complete_result({
                     "content": [{ "type": "text", "text": data.stringify() }],
@@ -626,6 +627,7 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                       @domain.BadRequest(message~)
                       | @domain.Forbidden(message~)
                       | @domain.NotFound(message~) => message
+                      @gitops.DiffFailure(message) => message
                       @pipeline.Conflict(message) => message
                       @gitops.Failure(message~) =>
                         @domain.public_merge_block_reason(message)

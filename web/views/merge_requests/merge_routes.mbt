@@ -4,6 +4,46 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let addresses = ctx.require(@web_context.config_ssh_addresses)
+  let diff_executor = ctx.require(@web_context.diff_executor_key)
+  let diff_enabled = ctx.require(@web_context.diff_enabled_key)
+  ctx.get("/:owner/:repo/merge-requests/:number/diff", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let scope = @repository.repository_scope(
+      pool,
+      actor,
+      @web_context.repo_param(req),
+    )
+    let mr = @collaboration.require_merge_request(
+      pool,
+      scope,
+      @web_context.positive_resource_number(
+        @web_context.required_param(req, "number", "MR"),
+      ),
+    )
+    let revision = @collaboration.merge_revision(
+      pool,
+      mr,
+      version=@web_context.positive_resource_number(
+        req.query().get("version").unwrap_or(mr.version.to_string()),
+      ),
+    )
+    let dir = @repository.resolve_repository_dir(root, scope.repo)
+    let comparison = @gitops.revision_comparison(
+      dir,
+      revision,
+      req.query().get("commit").filter(s => !s.is_empty()),
+    )
+    let result = diff_executor.structured(
+      dir,
+      comparison.base_sha,
+      comparison.head_sha,
+      @web_context.structured_diff_options(req),
+      page=@web_context.diff_page(req),
+      file_id=req.query().get("file_id").unwrap_or(""),
+    )
+    @repository.authorize_repository(pool, actor, scope.repo, Read)
+    res.send_json(result, headers={ "Cache-Control": "no-store" })
+  })
   ctx.get("/:owner/:repo/merge-requests", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let scope = @repository.repository_scope(
@@ -181,32 +221,92 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         err => raise err
       }
     }
-    let requested_discussion = req
+    let code = req
       .query()
-      .get("discussion")
+      .get("code")
       .map(@web_context.positive_resource_number)
+    let requested_discussion = if code is Some(_) {
+      code
+    } else {
+      req.query().get("discussion").map(@web_context.positive_resource_number)
+    }
+    let mut anchor_error = ""
+    let discussion_filter = req.query().get("filter").unwrap_or("all")
+    guard ["all", "unresolved", "resolved"].contains(discussion_filter) else {
+      raise @domain.BadRequest(message="invalid discussion filter")
+    }
     if requested_discussion is Some(id) {
       let discussion = @collaboration.merge_discussion(
         pool, scope, actor, mr, id,
       )
       if discussion.anchor is Some(anchor) {
+        let mut file_page = @web_context.diff_page(req)
+        let mut file_id = req.query().get("file_id").unwrap_or("")
+        if diff_enabled && (code is Some(_) || !req.query().has("page")) {
+          try {
+            match diff_executor.locate_anchor(git_dir, anchor) {
+              Some((manifest, id)) => {
+                file_page = manifest.page
+                file_id = id
+              }
+              None =>
+                anchor_error = "The commented file is unavailable in this comparison. The saved discussion context is shown below."
+            }
+          } catch {
+            @gitops.DiffFailure(message) => anchor_error = message
+            err => raise err
+          }
+        }
+        @repository.authorize_repository(pool, actor, scope.repo, Read)
         if req.query().get("tab") != Some("changes") ||
+          req.query().get("discussion") != Some(id.to_string()) ||
           req.query().get("version") != Some(discussion.version.to_string()) ||
-          req.query().get("commit").unwrap_or("") != anchor.commit_sha {
+          req.query().get("commit").unwrap_or("") != anchor.commit_sha ||
+          file_page != @web_context.diff_page(req) ||
+          file_id != req.query().get("file_id").unwrap_or("") {
           let comment = req
             .query()
             .get("comment")
             .map(@web_context.positive_resource_number)
-          let page = @web_context.positive_resource_number(
+          let discussion_page = @web_context.positive_resource_number(
             req.query().get("discussion_page").unwrap_or("1"),
           )
-          let suffix = comment
-            .map(id => "&comment=\{id}#comment-\{id}")
-            .unwrap_or("#discussion-\{id}")
+          let commit_page = @web_context.positive_resource_number(
+            req.query().get("commit_page").unwrap_or("1"),
+          )
+          let options = @web_context.structured_diff_options(req)
+          let target = StringBuilder()
+          target.write_string(
+            "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}?tab=changes&version=\{discussion.version}&commit=\{anchor.commit_sha}&discussion=\{id}&discussion_page=\{discussion_page}&commit_page=\{commit_page}&filter=\{discussion_filter}",
+          )
+          // Preserve an omitted file page on errors so a refresh retries locating
+          // notification/legacy links, without creating a redirect loop.
+          if anchor_error.is_empty() || req.query().has("page") {
+            target.write_string("&page=\{file_page}")
+          }
+          if file_id.length() == 64 &&
+            file_id
+            .iter()
+            .all(c => c.is_ascii_digit() || (c >= 'a' && c <= 'f')) {
+            target.write_string("&file_id=\{file_id}")
+          }
+          target.write_string(
+            "&mode=\{options.mode}&ignore_comments=\{(options.ignore_comments).to_string()}&ignore_tests=\{(options.ignore_tests).to_string()}",
+          )
+          if comment is Some(comment) {
+            target.write_string("&comment=\{comment}")
+          }
+          if code is Some(code) {
+            target.write_string("&code=\{code}#diff-code")
+          } else {
+            target.write_string(
+              comment.map(id => "#comment-\{id}").unwrap_or("#discussion-\{id}"),
+            )
+          }
           res.send_void(
             status=303,
             headers=@web_context.private_page_headers(
-              location="\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}?tab=changes&version=\{discussion.version}&commit=\{anchor.commit_sha}&discussion=\{id}&discussion_page=\{page}\{suffix}",
+              location=target.to_string(),
             ),
           )
           return
@@ -239,9 +339,34 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       Some(value) => @web_context.positive_resource_number(value)
       None => 1L
     }
+    let selected_discussion = req
+      .query()
+      .get("discussion")
+      .map(@web_context.positive_resource_number)
+    let selected_comment = req
+      .query()
+      .get("comment")
+      .map(@web_context.positive_resource_number)
+    let discussion_page = match selected_comment {
+      Some(comment) => {
+        guard selected_discussion is Some(discussion) else {
+          raise @domain.BadRequest(
+            message="comment target requires a discussion",
+          )
+        }
+        @collaboration.merge_discussion_comment_page(
+          pool, scope, actor, mr, discussion, comment,
+        )
+      }
+      None =>
+        @web_context.positive_resource_number(
+          req.query().get("discussion_page").unwrap_or("1"),
+        )
+    }
     let mut comparison : @gitops.RevisionComparison? = None
     let mut patch = ""
-    let mut diff_error = ""
+    let mut diff_error = anchor_error
+    let mut structured_view : @moonback.Html? = None
     let mut commits : Array[@gitops.CommitInfo] = []
     if revision is Some(revision) {
       if tab == "changes" || tab == "commits" {
@@ -252,25 +377,66 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
           git_dir, revision, selected_commit,
         )
         comparison = Some(selected)
-        try {
-          patch = @gitops.merge_git(git_dir, [
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--find-renames",
-            "--unified=3",
-            "--no-color",
-            selected.base_sha,
-            selected.head_sha,
-            "--",
-          ])
-        } catch {
-          @domain.BadRequest(message~) | @gitops.Failure(message~) =>
-            diff_error = message
-          err => raise err
+        if anchor_error.is_empty() {
+          try {
+            if diff_enabled {
+              let options = @web_context.structured_diff_options(req)
+              let manifest = diff_executor.manifest(
+                git_dir,
+                selected.base_sha,
+                selected.head_sha,
+                page=@web_context.diff_page(req),
+              )
+              let file = match
+                req.query().get("file_id").filter(id => !id.is_empty()) {
+                Some(id) =>
+                  Some(diff_executor.file(git_dir, manifest, id, options))
+                None => None
+              }
+              let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
+              let query = "?version=\{revision.version}&commit=\{selected_commit.unwrap_or("")}"
+              let page_url = base +
+                query +
+                "&tab=changes&discussion_page=\{discussion_page}&commit_page=\{commit_page}&filter=\{discussion_filter}" +
+                selected_discussion.map(id => "&discussion=\{id}").unwrap_or("") +
+                selected_comment.map(id => "&comment=\{id}").unwrap_or("")
+              let view_url = page_url +
+                "&page=\{manifest.page}" +
+                file.map(result => "&file_id=\{result.file.id}").unwrap_or("") +
+                code.map(id => "&code=\{id}").unwrap_or("")
+              structured_view = Some(
+                @web_ui.render_structured_diff(
+                  manifest,
+                  file,
+                  options,
+                  base + "/diff" + query,
+                  page_url,
+                  view_url~,
+                ),
+              )
+            } else {
+              patch = @gitops.merge_git(git_dir, [
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--find-renames",
+                "--unified=3",
+                "--no-color",
+                selected.base_sha,
+                selected.head_sha,
+                "--",
+              ])
+            }
+          } catch {
+            @domain.BadRequest(message~)
+            | @gitops.Failure(message~)
+            | @gitops.DiffFailure(message) => diff_error = message
+            err => raise err
+          }
         }
       }
     }
+    @repository.authorize_repository(pool, actor, scope.repo, Read)
     let current = if mr.version > 0L {
       Some(@collaboration.merge_revision(pool, mr))
     } else {
@@ -293,32 +459,6 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       raise @domain.BadRequest(message="invalid page")
     }
     let activities = @collaboration.list_merge_activity(pool, mr, activity_page)
-    let discussion_filter = req.query().get("filter").unwrap_or("all")
-    let selected_discussion = req
-      .query()
-      .get("discussion")
-      .map(@web_context.positive_resource_number)
-    let discussion_page = match req.query().get("comment") {
-      Some(comment) => {
-        guard selected_discussion is Some(discussion) else {
-          raise @domain.BadRequest(
-            message="comment target requires a discussion",
-          )
-        }
-        @collaboration.merge_discussion_comment_page(
-          pool,
-          scope,
-          actor,
-          mr,
-          discussion,
-          @web_context.positive_resource_number(comment),
-        )
-      }
-      None =>
-        @web_context.positive_resource_number(
-          req.query().get("discussion_page").unwrap_or("1"),
-        )
-    }
     let discussions = match selected_discussion {
       Some(id) =>
         [
@@ -371,6 +511,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         comparison,
         patch,
         diff_error,
+        structured_view,
         blocker,
         approved,
         @collaboration.required_merge_approvals(pool, scope, mr.target),
@@ -418,34 +559,78 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let mut reply_page = 1L
     let mut reply_id : Int64? = None
     let mut inline_error : String? = None
-    @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
-      let mr = @collaboration.require_merge_request(pool, scope, number)
-      if action == "inline-comment" {
-        let created = @collaboration.create_anchored_merge_discussion(
-          pool,
-          scope,
-          actor,
-          mr,
-          git_dir,
-          @web_context.positive_resource_number(
-            form.get("version").unwrap_or(""),
+    try {
+      let prepared = if action == "inline-comment" {
+        let scope = @repository.repository_scope(pool, actor, repo)
+        let git_dir = @repository.resolve_repository_dir(root, repo)
+        let mr = @collaboration.require_merge_request(pool, scope, number)
+        Some(
+          @collaboration.prepare_anchored_merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            git_dir,
+            @web_context.positive_resource_number(
+              form.get("version").unwrap_or(""),
+            ),
+            form.get("commit").filter(value => !value.is_empty()),
+            form.get("path").unwrap_or(""),
+            form.get("side").unwrap_or(""),
+            @web_context.positive_resource_number(
+              form.get("start_line").unwrap_or(""),
+            ),
+            @web_context.positive_resource_number(
+              form.get("end_line").unwrap_or(""),
+            ),
+            form.get("body").unwrap_or(""),
+            structured?=@web_context.diff_selection(form).map(selection => {
+              (diff_executor, selection)
+            }),
           ),
-          form.get("commit").filter(value => !value.is_empty()),
-          form.get("path").unwrap_or(""),
-          form.get("side").unwrap_or(""),
-          @web_context.positive_resource_number(
-            form.get("start_line").unwrap_or(""),
-          ),
-          @web_context.positive_resource_number(
-            form.get("end_line").unwrap_or(""),
-          ),
-          form.get("body").unwrap_or(""),
         )
-        discussion = Some(created)
-        reply_id = Some(created)
-      } else if action == "reply" {
-        reply_id = Some(
-          @collaboration.reply_merge_discussion(
+      } else {
+        None
+      }
+      @repository.with_repository_write(pool, root, actor, repo, (
+        scope,
+        git_dir,
+      ) => {
+        let mr = @collaboration.require_merge_request(pool, scope, number)
+        if action == "inline-comment" {
+          let created = @collaboration.create_prepared_merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            prepared.unwrap(),
+          )
+          discussion = Some(created)
+          reply_id = Some(created)
+        } else if action == "reply" {
+          reply_id = Some(
+            @collaboration.reply_merge_discussion(
+              pool,
+              scope,
+              actor,
+              mr,
+              @web_context.positive_resource_number(
+                form.get("discussion").unwrap_or(""),
+              ),
+              form.get("body").unwrap_or(""),
+            ),
+          )
+          let thread = @collaboration.merge_discussion(
+            pool,
+            scope,
+            actor,
+            mr,
+            discussion.unwrap(),
+          )
+          reply_page = (thread.reply_count - 1L) / 50L + 1L
+        } else if action == "resolve-discussion" ||
+          action == "reopen-discussion" {
+          @collaboration.set_merge_discussion_resolved(
             pool,
             scope,
             actor,
@@ -453,135 +638,116 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
             @web_context.positive_resource_number(
               form.get("discussion").unwrap_or(""),
             ),
-            form.get("body").unwrap_or(""),
-          ),
-        )
-        let thread = @collaboration.merge_discussion(
-          pool,
-          scope,
-          actor,
-          mr,
-          discussion.unwrap(),
-        )
-        reply_page = (thread.reply_count - 1L) / 50L + 1L
-      } else if action == "resolve-discussion" || action == "reopen-discussion" {
-        @collaboration.set_merge_discussion_resolved(
-          pool,
-          scope,
-          actor,
-          mr,
-          @web_context.positive_resource_number(
-            form.get("discussion").unwrap_or(""),
-          ),
-          @web_context.positive_resource_number(
-            form.get("state_version").unwrap_or(""),
-          ),
-          action == "resolve-discussion",
-        )
-      } else if action == "delete-comment" || action == "restore-comment" {
-        let comment = @web_context.positive_resource_number(
-          form.get("comment").unwrap_or(""),
-        )
-        if discussion is Some(id) {
-          reply_page = @collaboration.merge_discussion_comment_page(
-            pool, scope, actor, mr, id, comment,
+            @web_context.positive_resource_number(
+              form.get("state_version").unwrap_or(""),
+            ),
+            action == "resolve-discussion",
           )
-          reply_id = Some(comment)
-        }
-        @collaboration.set_merge_comment_deleted(
-          pool,
-          scope,
-          actor,
-          mr,
-          @web_context.positive_resource_number(
+        } else if action == "delete-comment" || action == "restore-comment" {
+          let comment = @web_context.positive_resource_number(
             form.get("comment").unwrap_or(""),
-          ),
-          @web_context.positive_resource_number(
-            form.get("version").unwrap_or(""),
-          ),
-          action == "delete-comment",
-        )
-      } else if action == "retarget" {
-        @collaboration.update_merge_request(
-          pool,
-          scope,
-          git_dir,
-          actor,
-          mr,
-          mr.title,
-          mr.description,
-          form.get("target").unwrap_or(""),
-          @web_context.positive_resource_number(
-            form.get("edit_version").unwrap_or(""),
-          ),
-          authorize_checks=true,
-        )
-      } else if action == "request-review" {
-        let current = @collaboration.refresh_merge_request(
-          pool, scope, git_dir, mr,
-        )
-        @collaboration.request_merge_review(
-          pool,
-          actor,
-          scope,
-          current,
-          @web_context.positive_resource_number(
-            form.get("reviewer").unwrap_or(""),
-          ),
-          @web_context.positive_resource_number(
-            form.get("version").unwrap_or(""),
-          ),
-        )
-      } else if action == "review" ||
-        action == "merge" ||
-        action == "approve-checks" {
-        let mr = if action == "review" &&
-          form.get("decision") == Some("comment") {
-          mr
-        } else {
-          @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
-        }
-        let version = @web_context.positive_resource_number(
-          form.get("version").unwrap_or(""),
-        )
-        if action == "merge" {
-          @collaboration.enqueue_merge(pool, scope, actor, mr, version)
-        } else if action == "approve-checks" {
-          @collaboration.approve_merge_checks(pool, scope, actor, mr, version)
-        } else {
-          @collaboration.submit_merge_review(
+          )
+          if discussion is Some(id) {
+            reply_page = @collaboration.merge_discussion_comment_page(
+              pool, scope, actor, mr, id, comment,
+            )
+            reply_id = Some(comment)
+          }
+          @collaboration.set_merge_comment_deleted(
             pool,
+            scope,
             actor,
             mr,
-            version,
-            form.get("decision").unwrap_or("comment"),
-            form.get("body").unwrap_or(""),
+            @web_context.positive_resource_number(
+              form.get("comment").unwrap_or(""),
+            ),
+            @web_context.positive_resource_number(
+              form.get("version").unwrap_or(""),
+            ),
+            action == "delete-comment",
           )
-        }
-      } else {
-        @collaboration.edit_merge_request(
-          pool,
-          scope,
-          actor,
-          mr,
-          action,
-          form.get("title").unwrap_or(""),
-          form.get("description").unwrap_or(""),
-          expected=@web_context.positive_resource_number(
-            form.get("edit_version").unwrap_or(""),
-          ),
-        )
-        if action == "ready" || action == "reopen" {
-          let current = @collaboration.refresh_merge_request(
+        } else if action == "retarget" {
+          @collaboration.update_merge_request(
             pool,
             scope,
             git_dir,
-            @collaboration.require_merge_request(pool, scope, number),
+            actor,
+            mr,
+            mr.title,
+            mr.description,
+            form.get("target").unwrap_or(""),
+            @web_context.positive_resource_number(
+              form.get("edit_version").unwrap_or(""),
+            ),
+            authorize_checks=true,
           )
-          @collaboration.prepare_merge_checks(pool, scope, current, actor~)
+        } else if action == "request-review" {
+          let current = @collaboration.refresh_merge_request(
+            pool, scope, git_dir, mr,
+          )
+          @collaboration.request_merge_review(
+            pool,
+            actor,
+            scope,
+            current,
+            @web_context.positive_resource_number(
+              form.get("reviewer").unwrap_or(""),
+            ),
+            @web_context.positive_resource_number(
+              form.get("version").unwrap_or(""),
+            ),
+          )
+        } else if action == "review" ||
+          action == "merge" ||
+          action == "approve-checks" {
+          let mr = if action == "review" &&
+            form.get("decision") == Some("comment") {
+            mr
+          } else {
+            @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
+          }
+          let version = @web_context.positive_resource_number(
+            form.get("version").unwrap_or(""),
+          )
+          if action == "merge" {
+            @collaboration.enqueue_merge(pool, scope, actor, mr, version)
+          } else if action == "approve-checks" {
+            @collaboration.approve_merge_checks(pool, scope, actor, mr, version)
+          } else {
+            @collaboration.submit_merge_review(
+              pool,
+              actor,
+              mr,
+              version,
+              form.get("decision").unwrap_or("comment"),
+              form.get("body").unwrap_or(""),
+            )
+          }
+        } else {
+          @collaboration.edit_merge_request(
+            pool,
+            scope,
+            actor,
+            mr,
+            action,
+            form.get("title").unwrap_or(""),
+            form.get("description").unwrap_or(""),
+            expected=@web_context.positive_resource_number(
+              form.get("edit_version").unwrap_or(""),
+            ),
+          )
+          if action == "ready" || action == "reopen" {
+            let current = @collaboration.refresh_merge_request(
+              pool,
+              scope,
+              git_dir,
+              @collaboration.require_merge_request(pool, scope, number),
+            )
+            @collaboration.prepare_merge_checks(pool, scope, current, actor~)
+          }
         }
-      }
-    }) catch {
+      })
+    } catch {
       @domain.BadRequest(message~) =>
         if action == "inline-comment" || action == "retarget" {
           inline_error = Some(message)

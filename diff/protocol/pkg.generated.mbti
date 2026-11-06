@@ -1,0 +1,149 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/diff/protocol"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub let cache_entries : Int32
+
+pub let cache_limit : Int32
+
+pub let context_lines : Int32
+
+pub let engine_version : String
+
+pub let graph_limit : UInt32
+
+pub let line_limit : Int32
+
+pub let protocol_version : String
+
+pub let queue_limit : Int32
+
+pub let queue_wait_ms : Int32
+
+pub let request_limit : Int32
+
+pub let result_limit : Int32
+
+pub let source_limit : Int32
+
+pub let stderr_limit : Int32
+
+// Errors
+
+// Types and methods
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Document {
+  protocol : String
+  engine : String
+  options : Options
+  status : String
+  kind : String
+  ignore_reason : String?
+  reordered : Bool
+  old_order : Array[Int32]
+  new_order : Array[Int32]
+  old_eol : String
+  new_eol : String
+  old_final_newline : Bool?
+  new_final_newline : Bool?
+  sections : Array[Section]
+}
+pub fn Document::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Document::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Hunk {
+  id : String
+  rows : Array[Row]
+}
+pub fn Hunk::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Hunk::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Line {
+  number : Int32
+  segments : Array[Segment]
+  intraline : Bool
+}
+pub fn Line::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Line::to_json(Self) -> @json.Json
+
+#derive(Eq, @json.FromJson, @json.ToJson)
+pub(all) struct Options {
+  mode : String
+  ignore_comments : Bool
+  ignore_tests : Bool
+}
+pub fn Options::equal(Self, Self) -> Bool
+pub fn Options::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Options::new(mode? : String, ignore_comments? : Bool, ignore_tests? : Bool) -> Self
+pub fn Options::not_equal(Self, Self) -> Bool
+pub fn Options::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Range {
+  start : Int32
+  length : Int32
+}
+pub fn Range::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Range::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Request {
+  protocol : String
+  old_path : String
+  new_path : String
+  old_source : String?
+  new_source : String?
+  options : Options
+}
+pub fn Request::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Request::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Response {
+  protocol : String
+  document : Document?
+  error : String?
+}
+pub fn Response::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Response::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Row {
+  kind : String
+  old : Line?
+  new : Line?
+}
+pub fn Row::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Row::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Section {
+  id : String
+  kind : String
+  old : Range?
+  new : Range?
+  old_context : String?
+  new_context : String?
+  hunks : Array[Hunk]
+  fallbacks : Array[String]
+}
+pub fn Section::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Section::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Segment {
+  kind : String
+  text : String
+}
+pub fn Segment::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Segment::to_json(Self) -> @json.Json
+
+// Type aliases
+
+// Traits

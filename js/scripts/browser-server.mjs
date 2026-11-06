@@ -36,11 +36,94 @@ try {
   const commit = git(['commit-tree', tree, '-p', 'master', '-m', 'Nested browser fixture']);
   git(['update-ref', 'refs/heads/feature/breadcrumbs', commit]);
   git(['update-ref', 'refs/heads/release', 'master']);
+  const diffTree = (value) => {
+    const source = git(['hash-object', '-w', '--stdin'], value);
+    const test = git(['hash-object', '-w', '--stdin'], 'test { assert_true(true) }\n');
+    const api = git(['hash-object', '-w', '--stdin'], 'pub fn a() -> Int\n');
+    return git(['mktree'], `100644 blob ${source}\tmain.mbt\n100644 blob ${test}\tmain_test.mbt\n100644 blob ${api}\tpkg.generated.mbti\n`);
+  };
+  const diffBase = git(['commit-tree', diffTree('fn a() { 1 }\n\n///|\nfn b() { 2 }\n'), '-p', 'master', '-m', 'MoonDiff base']);
+  const diffHead = git(['commit-tree', diffTree('fn b() { 3 }\n\n///|\nfn a() { 1 }\n'), '-p', diffBase, '-m', 'MoonDiff reordered declarations']);
+  git(['update-ref', 'refs/heads/moondiff-base', diffBase]);
+  git(['update-ref', 'refs/heads/moondiff-feature', diffHead]);
+  const singleTree = (files) => git(['mktree'], Object.entries(files).map(([name, value]) =>
+    `${name === 'metadata.txt' && value.startsWith('after') ? '100755' : '100644'} blob ${git(['hash-object', '-w', '--stdin'], value)}\t${JSON.stringify(name)}\n`).join(''));
+  const stable = 'fn stable() -> Int { 1 }\n';
+  const singleBase = git(['commit-tree', singleTree({
+    'deleted.mbt': 'fn removed_file() -> Int { 42 }\n',
+    'deleted.txt': 'removed text\n\nlast removed line\n',
+    'declarations.mbt': stable + '\n///|\nstruct Removed {\n  value : Int\n}\n',
+    'metadata.txt': 'before\r\n',
+  }), '-p', 'master', '-m', 'One-sided diff base']);
+  const singleFiles = {
+    'added.mbt': 'fn added_file() -> Int { 7 }\n\n///|\nfn another() -> String { "hello" }\n',
+    'added.txt': 'added text\n\n' + 'long '.repeat(100) + '\n',
+    'empty-added.txt': '',
+    'blank-added.txt': '\n',
+    'added_test.mbt': 'test { assert_true(true) }\n',
+    'declarations.mbt': stable + '\n///|\nenum Added {\n  Ready\n}\n',
+    'metadata.txt': 'after\nlast line',
+  };
+  const singleHead = git(['commit-tree', singleTree(singleFiles), '-p', singleBase, '-m', 'MoonDiff single-sided files and declarations']);
+  const { 'empty-added.txt': emptyFile, ...withoutEmpty } = singleFiles;
+  const emptyDeleted = git(['commit-tree', singleTree(withoutEmpty), '-p', singleHead, '-m', 'MoonDiff deleted empty file']);
+  git(['update-ref', 'refs/heads/moondiff-empty-delete', emptyDeleted]);
+  git(['update-ref', 'refs/heads/moondiff-single-base', singleBase]);
+  git(['update-ref', 'refs/heads/moondiff-single', singleHead]);
+  const syntaxFiles = {
+    'sample.js': '// after comment\nconst message = "after";\n',
+    'sample.ts': '// after comment\nconst message: string = "after";\n',
+    'sample.tsx': '// after comment\nconst view = <div title="after">after</div>;\n',
+    'sample.json': '{"message": "after", "enabled": true}\n',
+    'sample.yaml': '# after comment\nmessage: "after"\nenabled: true\n',
+    'sample.py': '# after comment\ndef greet():\n    return "after"\n',
+    'sample.sh': '# after comment\nif true; then\n  echo "after"\nfi\n',
+    'sample.mbt': '// after comment\nfn greet() -> String { "after" }\n',
+    'sample.mbti': '// after comment\npub fn greet_after() -> String\n',
+    'sample.unknown': '// after comment\nconst message = "after";\n',
+    'sample.txt': '// after comment\nconst message = "after";\n',
+    'another.js': '// after comment\nconst message = "after";\n',
+  };
+  const syntaxBase = git(['commit-tree', singleTree(Object.fromEntries(Object.entries(syntaxFiles).map(([name, text]) => [name, text.replaceAll('after', 'before')]))), '-p', 'master', '-m', 'Syntax highlighting base']);
+  const syntaxHead = git(['commit-tree', singleTree(syntaxFiles), '-p', syntaxBase, '-m', 'Syntax highlighting languages']);
+  git(['update-ref', 'refs/heads/moondiff-syntax', syntaxHead]);
+  const pagedOld = Object.fromEntries(Array.from({ length: 105 }, (_, i) => [`a-${100 + i}.txt`, 'before\n']));
+  const pagedNew = Object.fromEntries(Array.from({ length: 105 }, (_, i) => [`a-${100 + i}.txt`, 'after\n']));
+  const moved = 'moved source\nline two\nline three\nline four\nline five\nline six\n';
+  const pagedBase = git(['commit-tree', singleTree({ ...pagedOld, 'z-delete.txt': 'removed\n', 'z-old.txt': moved }), '-p', 'master', '-m', 'Paged browser base']);
+  const validTree = singleTree({ ...pagedNew, 'z-add.txt': 'added source\n', 'z-new.txt': moved.replace('moved', 'changed'), '"bad-\\xff"': 'valid escape-like name\n' });
+  const invalidBlob = git(['hash-object', '-w', '--stdin'], 'invalid path source\n');
+  const validEntries = execFileSync('git', ['--git-dir', join(repos, 'alice/demo.git'), 'ls-tree', '-z', validTree]);
+  const invalidEntries = Buffer.concat([0xff, 0xfe].map(byte => Buffer.concat([Buffer.from(`100644 blob ${invalidBlob}\tbad-`), Buffer.from([byte, 0])])));
+  const pagedTree = git(['mktree', '-z'], Buffer.concat([validEntries, invalidEntries]));
+  const pagedHead = git(['commit-tree', pagedTree, '-p', pagedBase, '-m', 'Paged browser changes']);
+  git(['update-ref', 'refs/heads/moondiff-paged-base', pagedBase]);
+  git(['update-ref', 'refs/heads/moondiff-paged', pagedHead]);
+  const longLineSource = (version) => '///|\nfn greeting(name : String) -> String {\n' +
+    `  let message = "${`${version} long message `.repeat(20)}END-${version}"\n` +
+    '  message + name\n}\n';
+  const longLineBase = git(['commit-tree', singleTree({
+    'long-lines.mbt': longLineSource('before'),
+    'ignored.mbt': '///|\n// before comment\nfn value() -> Int { 1 }\n',
+    'shifted.txt': 'shared header\nremove me\nshared middle\nshared tail\n',
+  }), '-p', 'master', '-m', 'Long lines base']);
+  const longLineHead = git(['commit-tree', singleTree({
+    'long-lines.mbt': longLineSource('after'),
+    'ignored.mbt': '///|\n// after comment\nfn value() -> Int { 2 }\n',
+    'shifted.txt': 'shared header\ninsert one\ninsert two\nshared middle\nshared tail\n',
+  }), '-p', longLineBase, '-m', 'MoonDiff two-sided long lines']);
+  git(['update-ref', 'refs/heads/moondiff-long-lines', longLineHead]);
+  const reviewSource = (version) => '///|\nfn review() -> Int {\n' +
+    Array.from({ length: 135 }, (_, i) => `  let value${i} = ${i + version}\n`).join('') + '  value134\n}\n';
+  const reviewBase = git(['commit-tree', singleTree({ 'main.mbt': reviewSource(0), 'other.txt': 'before\n' }), '-p', 'master', '-m', 'Inline review base']);
+  const reviewHead = git(['commit-tree', singleTree({ 'main.mbt': reviewSource(1), 'other.txt': 'after\n' }), '-p', reviewBase, '-m', 'Inline review long file']);
+  git(['update-ref', 'refs/heads/moondiff-review-base', reviewBase]);
+  git(['update-ref', 'refs/heads/moondiff-review', reviewHead]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',
     '--root-user', 'browser-root', '--root-password', 'browser-test-password'], {
-    cwd: directory, env: { ...process.env, DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
+    cwd: directory, env: { ...process.env, MOONHUB_DIFF_WORKER: join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'), DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.pipe(process.stderr);

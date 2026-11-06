@@ -1,6 +1,28 @@
 ///|
 pub async fn serve(config : Config) -> Unit {
   @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
+  let diff_executor = @gitops.DiffExecutor::new(
+    observe=event => println(event.stringify()),
+    worker=@config.env_value("MOONHUB_DIFF_WORKER").unwrap_or(
+      "moonhub-diff-worker",
+    ),
+    concurrency=@string.parse_int(
+      @config.env_value("MOONHUB_DIFF_CONCURRENCY").unwrap_or("1"),
+    ),
+    deadline_ms=@string.parse_int(
+      @config.env_value("MOONHUB_DIFF_DEADLINE_MS").unwrap_or("5000"),
+    ),
+  )
+  let diff_enabled = @config.env_value("MOONHUB_WEB_MOONDIFF").unwrap_or("true") !=
+    "false"
+  if diff_enabled {
+    diff_executor.verify() catch {
+      _ =>
+        raise @domain.BadRequest(
+          message="MoonDiff worker is unavailable or incompatible; check MOONHUB_DIFF_WORKER",
+        )
+    }
+  }
   @async.with_task_group(group => {
     let pool = @database.new_db_pool(@database.db_config_from_env(), group)
     group.add_defer(() => pool.close())
@@ -35,6 +57,8 @@ pub async fn serve(config : Config) -> Unit {
     @pipeline.start_push_worker(pool, config.root, group)
     @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [
+      @moonback.Config::custom(@web_context.diff_executor_key, diff_executor),
+      @moonback.Config::custom(@web_context.diff_enabled_key, diff_enabled),
       @moonback.Config::custom(
         @web_context.pipeline_coordinator_key, coordinator,
       ),

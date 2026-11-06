@@ -19,6 +19,8 @@ pub async fn run_one_message_smtp_server(@socket.TcpServer, TestSmtpTranscript) 
 
 pub let single_job_workflow : String
 
+pub async fn structured_diff_fixture(String) -> (String, String)
+
 pub let test_mail_outbox_dir : String
 
 pub let test_ssh_public_key : String

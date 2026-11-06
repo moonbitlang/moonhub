@@ -38,6 +38,10 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("decision", long="decision", global=true),
     @argparse.OptionArg("reviewer", long="reviewer", global=true),
     @argparse.OptionArg("comment", long="comment", global=true),
+    ..[
+      "format", "file-id", "mode", "ignore-comments", "ignore-tests", "document-id",
+      "hunk-id", "diff-page",
+    ].map(name => @argparse.OptionArg(name, long=name, global=true)),
     @argparse.OptionArg("commit", long="commit", global=true),
     @argparse.OptionArg("path", long="path", global=true),
     @argparse.OptionArg("side", long="side", global=true),
@@ -436,7 +440,18 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         "\{base}/mrs/\{id}/diff?version=\{decimal(required(matches, "version"))}" +
         option(matches, "commit")
         .map(commit => "&commit=" + escape(commit))
-        .unwrap_or(""),
+        .unwrap_or("") +
+        ["format", "file-id", "mode", "ignore-comments", "ignore-tests"]
+        .iter()
+        .filter_map(name => {
+          option(matches, name).map(value => {
+            "&" + name.replace(old="-", new="_") + "=" + escape(value)
+          })
+        })
+        .collect()
+        .join("") +
+        "&page=" +
+        decimal(required(matches, "page")),
         None,
       )
     ("mr", "checks") => ("\{base}/mrs/\{id}/checks", None)
@@ -458,23 +473,29 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         None,
       )
     }
-    ("mr", "inline-comment") =>
-      (
-        "\{base}/mrs/\{id}/inline-comment",
-        Some({
-          "version": decimal(required(matches, "version")),
-          "commit": option(matches, "commit").unwrap_or(""),
-          "path": required(matches, "path"),
-          "side": required(matches, "side"),
-          "start_line": decimal(required(matches, "start-line")),
-          "end_line": decimal(
-            option(matches, "end-line").unwrap_or(
-              required(matches, "start-line"),
-            ),
-          ),
-          "body": read_body(matches),
-        }),
-      )
+    ("mr", "inline-comment") => {
+      let fields : Map[String, Json] = {
+        "version": decimal(required(matches, "version")),
+        "commit": option(matches, "commit").unwrap_or(""),
+        "path": required(matches, "path"),
+        "side": required(matches, "side"),
+        "start_line": decimal(required(matches, "start-line")),
+        "end_line": decimal(
+          option(matches, "end-line").unwrap_or(required(matches, "start-line")),
+        ),
+        "body": read_body(matches),
+      }
+      for
+        key in [
+          "document-id", "file-id", "hunk-id", "diff-page", "mode", "ignore-comments",
+          "ignore-tests",
+        ] {
+        if option(matches, key) is Some(value) {
+          fields.set(key.replace(old="-", new="_"), Json(value))
+        }
+      }
+      ("\{base}/mrs/\{id}/inline-comment", Some(Json(fields)))
+    }
     ("mr", "reply") =>
       (
         "\{base}/mrs/\{id}/reply",
@@ -641,6 +662,7 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
 ///|
 fn render(json : Json) -> Unit {
   match json {
+    { "protocol": String("moonhub-diff/1"), .. } => render_structured_diff(json)
     { "patch": String(patch), .. } =>
       println(terminal_text(patch, multiline=true))
     { "chunks": Array(chunks), .. } =>
@@ -733,4 +755,99 @@ async fn discover_repo(server : String, explicit : String?) -> String {
     }
   }
   raise Invalid("--repo OWNER/NAME is required outside a matching Git checkout")
+}
+
+///|
+fn render_structured_diff(json : Json) -> Unit {
+  match json {
+    { "files": Array(files), .. } =>
+      for file in files {
+        match file {
+          {
+            "id": String(id),
+            "status": String(status),
+            "old_path": String(old),
+            "new_path": String(new),
+            ..
+          } => {
+            println(terminal_text("\{id}\t\{status}\t\{old} → \{new}"))
+            if file is { "path_error": String(message), .. } {
+              println(terminal_text("  " + message))
+            }
+          }
+          _ => ()
+        }
+      }
+    { "error": String(error), .. } => println(terminal_text(error))
+    { "document": value, .. } => {
+      let document : @diff_protocol.Document = @json.from_json(value) catch {
+        _ => {
+          println(terminal_text(json.stringify()))
+          return
+        }
+      }
+      if json
+        is {
+          "file": {
+            "old_path": String(old),
+            "new_path": String(new),
+            "old_mode": String(old_mode),
+            "new_mode": String(new_mode),
+            ..
+          },
+          ..
+        } {
+        println(
+          terminal_text("\{old} → \{new} · mode \{old_mode} → \{new_mode}"),
+        )
+      }
+      println(terminal_text("\{document.status} · \{document.options.mode}"))
+      if document.reordered {
+        println(
+          "Old declaration order: " +
+          document.old_order.map(i => i.to_string()).join(" → "),
+        )
+        println(
+          "New declaration order: " +
+          document.new_order.map(i => i.to_string()).join(" → "),
+        )
+      }
+      if document.ignore_reason is Some(reason) {
+        println(terminal_text("Filtered: \{reason}"))
+      }
+      if document.old_eol != document.new_eol ||
+        document.old_final_newline != document.new_final_newline {
+        println(
+          terminal_text(
+            "Line endings: \{document.old_eol} → \{document.new_eol}; final newline: \{Repr(document.old_final_newline)} → \{Repr(document.new_final_newline)}",
+          ),
+        )
+      }
+      for section in document.sections {
+        println(
+          terminal_text(
+            "Declaration \{section.id} (\{section.kind}): \{section.old_context.unwrap_or("∅")} → \{section.new_context.unwrap_or("∅")}",
+          ),
+        )
+        for reason in section.fallbacks {
+          println(terminal_text("Fallback: \{reason}"))
+        }
+        for hunk in section.hunks {
+          println(terminal_text("Hunk \{hunk.id}"))
+          for row in hunk.rows {
+            for (side, line) in [("old", row.old), ("new", row.new)] {
+              if line is Some(line) {
+                println(
+                  terminal_text(
+                    "\{side} \{line.number}: \{line.segments.map(s => s.text).join("")}",
+                  ),
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+    _ => println(terminal_text(json.stringify()))
+  }
 }
