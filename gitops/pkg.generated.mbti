@@ -93,6 +93,7 @@ pub fn DiffAnchor::to_json(Self) -> @json.Json
 
 pub(all) struct Revision {
   version : Int64
+  target_branch : String
   source_sha : String
   target_sha : String
   base_sha : String

@@ -472,8 +472,11 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       if option(matches, "body-file") is Some(_) {
         fields["description"] = Json(read_body(matches))
       }
+      if option(matches, "target") is Some(target) {
+        fields["target"] = Json(target)
+      }
       guard fields.length() > 1 else {
-        raise Invalid("mr edit requires --title or --body-file")
+        raise Invalid("mr edit requires --title, --body-file or --target")
       }
       ("\{base}/mrs/\{id}/edit", Some(Json::object(fields)))
     }

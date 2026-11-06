@@ -120,6 +120,8 @@ pub fn unread_notification_count(@database.Database, @domain.CurrentUser) -> Int
 
 pub fn unresolved_merge_discussions(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest) -> Int64 raise
 
+pub async fn update_merge_request(@database.Database, @repository.RepositoryScope, String, @domain.CurrentUser, MergeRequest, String, String, String, Int64, authorize_checks? : Bool) -> Unit
+
 // Errors
 
 // Types and methods
