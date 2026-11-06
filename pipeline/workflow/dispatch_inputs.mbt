@@ -22,12 +22,13 @@ fn dispatch_input_value(
     ("boolean", True | False) => value
     ("boolean", String("true")) => Json::boolean(true)
     ("boolean", String("false")) => Json::boolean(false)
-    ("number", Number(number, ..)) if number.is_finite() => value
+    ("number", Number(number, ..)) if !number.is_nan() && !number.is_inf() =>
+      value
     ("number", String(text)) => {
       let value = @json.parse(text.trim()) catch {
         _ => raise InvalidWorkflow(ctx + " requires a finite number")
       }
-      guard value is Number(number, ..) && number.is_finite() else {
+      guard value is Number(number, ..) && !number.is_nan() && !number.is_inf() else {
         raise InvalidWorkflow(ctx + " requires a finite number")
       }
       value
@@ -120,7 +121,8 @@ fn parse_dispatch_inputs(
           String(text) => Json::string(text)
           Integer(number) =>
             Json::number(number.to_double(), repr=number.to_string())
-          Real(number, ..) if number.is_finite() => Json::number(number)
+          Real(number, ..) if !number.is_nan() && !number.is_inf() =>
+            Json::number(number)
           Boolean(value) => Json::boolean(value)
           _ => raise InvalidWorkflow(ctx + ".default requires a finite scalar")
         }

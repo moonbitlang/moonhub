@@ -135,10 +135,10 @@ test "dispatch rejects unsupported schemas and invalid defaults" {
       "value: {type: choice, options: ['', other]}", "value: {type: choice, options: [1, other]}",
       "value: {options: [one]}", "value: {type: choice, options: [one], default: two}",
       "value: {type: boolean, default: yes}", "value: {type: number, default: .inf}",
-      "value: {type: number, default: .nan}", "value: {default: null}", "value: {default: []}",
-      "value: {default: {}}", "value: {default: true}", "value: {required: true, default: ''}",
-      "__proto__: {}", "constructor: {}", "Value: {}, value: {}", "bad.name: {}",
-      "1value: {}",
+      "value: {type: number, default: -.inf}", "value: {type: number, default: .nan}",
+      "value: {default: null}", "value: {default: []}", "value: {default: {}}", "value: {default: true}",
+      "value: {required: true, default: ''}", "__proto__: {}", "constructor: {}",
+      "Value: {}, value: {}", "bad.name: {}", "1value: {}",
     ] {
     try
       ignore(
@@ -205,5 +205,27 @@ test "YAML numeric defaults normalize to valid JSON numbers" {
     assert_eq(restored, ToJson::to_json(resolved))
     assert_true(resolved.get("count") is Some(Number(_, ..)))
     ignore(@json.parse(ToJson::to_json(definitions).stringify()))
+  }
+}
+
+///|
+test "dispatch numeric validation rejects every nonfinite Double" {
+  let definitions = triggers(
+      "on: {workflow_dispatch: {inputs: {count: {type: number}}}}",
+    ).inputs
+  for bits in [0x7FF0000000000000L, 0xFFF0000000000000L, 0x7FF8000000000000L] {
+    let value = Json::number(bits.reinterpret_as_double())
+    try ignore(resolve_dispatch_inputs(definitions, { "count": value })) catch {
+      InvalidWorkflow(_) => ()
+    } noraise {
+      _ => fail("nonfinite dispatch number accepted")
+    }
+  }
+  for number in [0.0, -0.0, 0x7FEFFFFFFFFFFFFFL.reinterpret_as_double()] {
+    let value = Json::number(number)
+    assert_eq(
+      resolve_dispatch_inputs(definitions, { "count": value }).get("count"),
+      Some(value),
+    )
   }
 }

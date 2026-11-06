@@ -74,7 +74,7 @@ async fn validate_options(
       match value {
         String(text) => !text.contains("\u{0000}")
         True | False => true
-        Number(value, ..) => value.is_finite()
+        Number(value, ..) => !value.is_nan() && !value.is_inf()
         _ => false
       }
     }) &&

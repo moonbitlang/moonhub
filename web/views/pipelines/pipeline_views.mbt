@@ -370,7 +370,11 @@ fn render_pipeline_form(
                     _ => Json::null()
                   }
                   if value.is_empty() ||
-                    (parsed is Number(number, ..) && number.is_finite()) {
+                    (
+                      parsed is Number(number, ..) &&
+                      !number.is_nan() &&
+                      !number.is_inf()
+                    ) {
                     b <+ " type=\"number\" step=\"any\""
                   } else {
                     b <+
