@@ -204,7 +204,8 @@ forms preserve metadata and clear the value field.
 The parser separates secret references from public env before resolving captured
 context, preventing recursive interpolation of branch or repository names. Run
 snapshots, reruns and provider assignments contain only secret names. New runs
-use assignment version 7; definition-v2/v3 snapshots retain versions 5–7.
+use assignment version 7; definition-v2/v3 snapshots retain versions 5 and 6,
+respectively.
 Historical runs with definition version 1 and secrets
 use assignment version 4; other historical jobs retain assignment versions 1–3.
 Upgrade server, provider/controller and task Runner together; older executors
