@@ -551,8 +551,10 @@ test('legacy action runtimes preserve missing dispatch and event contexts', asyn
   assert.throws(() => evaluate('inputs', runtime.context()));
   assert.throws(() => new ActionRuntime({ ...config, dispatch_inputs: { enabled: true } }));
   assert.throws(() => new ActionRuntime({ ...config, event: { ref: 'refs/heads/main' } }));
+  const inheritedEventPath = process.env.GITHUB_EVENT_PATH;
+  assert.equal(runtime.environment().GITHUB_EVENT_PATH, inheritedEventPath);
   const uses = await action(config, 'legacy-event', 'runs: {using: node24, main: main.cjs}', {
-    'main.cjs': `const fs=require('fs'), assert=require('assert/strict'); assert.equal(process.env.GITHUB_EVENT_PATH,undefined); assert.deepEqual(fs.readdirSync(process.env.RUNNER_TEMP).filter(name=>name.startsWith('_event-')),[]); fs.appendFileSync(process.env.GITHUB_OUTPUT,'legacy=yes\\n');`,
+    'main.cjs': `const fs=require('fs'), assert=require('assert/strict'); assert.equal(process.env.GITHUB_EVENT_PATH,${JSON.stringify(inheritedEventPath)}); assert.deepEqual(fs.readdirSync(process.env.RUNNER_TEMP).filter(name=>name.startsWith('_event-')),[]); fs.appendFileSync(process.env.GITHUB_OUTPUT,'legacy=yes\\n');`,
   });
   const result = await execute({ ...config, step: { id: 'legacy', remote: true, uses, env: {}, inputs: {}, templates: { if: '!github.event' } } });
   assert.equal(result.code, 0);
