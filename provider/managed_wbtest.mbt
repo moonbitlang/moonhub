@@ -123,3 +123,26 @@ test "AMI platform is optional for Linux and explicit for Windows" {
   )
   assert_eq(windows[0].platform, Some("windows"))
 }
+
+///|
+test "EC2 startup timestamps accept only valid UTC instants" {
+  for
+    value in [
+      "1970-01-01T00:00:00Z", "1970-01-01T00:00:00+00:00", "1970-01-01T00:00:00.123Z",
+      "1970-01-01T00:00:00.123456+00:00",
+    ] {
+    assert_eq(instance_launch_ms(value), 0L)
+  }
+  assert_eq(instance_launch_ms("1970-01-01T00:00:01Z"), 1000L)
+  for
+    value in [
+      "", "1970-01-01", "1970-01-01T00:00:00+01:00", "1970-01-01T00:00:00.badZ",
+      "1970-01-01T00:00:00.Z", "1970-13-01T00:00:00Z", "1970-01-01T25:00:00Z",
+    ] {
+    try instance_launch_ms(value) catch {
+      _ => ()
+    } noraise {
+      _ => fail("accepted invalid EC2 launch timestamp")
+    }
+  }
+}

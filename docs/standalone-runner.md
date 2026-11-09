@@ -136,6 +136,15 @@ and requests only missing On-Demand capacity. AWS allocation races can temporari
 produce surplus capacity; surplus idle workers are drained. Healthy On-Demand
 workers are not automatically replaced with Spot.
 
+Before registering a newly launched worker, the controller waits for that EC2
+instance to report Online through SSM. Instances that are still starting count
+toward the capacity limit but never count as standby and cannot claim work. The
+startup budget is bounded to 15 minutes from EC2 LaunchTime, survives controller
+restarts, and is separate from the 180-second heartbeat lease of a registered
+worker. Pause and obsolete templates still retire starting instances through the
+ordinary drain/active-attempt checks. Controller IAM additionally needs
+ssm:DescribeInstanceInformation and ec2:DescribeInstances.
+
 Idle workers drain after the configured timeout. Instance/template changes, pause,
 failure and lost heartbeats also trigger draining. Termination requires zero active
 attempts and cleanup acknowledgement, or an expired lost-worker lease. Worker
