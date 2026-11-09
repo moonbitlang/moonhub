@@ -276,6 +276,93 @@ async fn provision_worker(
 }
 
 ///|
+// EC2 LaunchTime is RFC3339 UTC. Parse the calendar through the time library,
+// and reject non-UTC offsets rather than silently extending startup leases.
+fn instance_launch_ms(value : String) -> Int64 raise {
+  guard value.length() >= 20 &&
+    value[4:5] == "-" &&
+    value[7:8] == "-" &&
+    value[10:11] == "T" &&
+    value[13:14] == ":" &&
+    value[16:17] == ":" else {
+    raise InvalidConfiguration("Invalid EC2 launch timestamp.")
+  }
+  let suffix = value[19:]
+  let fraction = if suffix.has_suffix("Z") {
+    suffix.strip_suffix("Z").unwrap()
+  } else if suffix.has_suffix("+00:00") {
+    suffix.strip_suffix("+00:00").unwrap()
+  } else {
+    raise InvalidConfiguration("EC2 launch timestamp must use UTC.")
+  }
+  guard fraction.is_empty() ||
+    (
+      fraction.strip_prefix(".") is Some(digits) &&
+      !digits.is_empty() &&
+      digits.length() <= 9 &&
+      digits.iter().all(c => c.is_ascii_digit())
+    ) else {
+    raise InvalidConfiguration("EC2 launch timestamp must use UTC.")
+  }
+  @time.date_time(
+    @string.parse_int(value[:4].to_owned()),
+    @string.parse_int(value[5:7].to_owned()),
+    @string.parse_int(value[8:10].to_owned()),
+    hour=@string.parse_int(value[11:13].to_owned()),
+    minute=@string.parse_int(value[14:16].to_owned()),
+    second=@string.parse_int(value[17:19].to_owned()),
+    zone=@time.utc_zone,
+  ).to_unix_second() *
+  1000L
+}
+
+///|
+priv enum InstanceStartup {
+  Online
+  Booting
+  TimedOut
+}
+
+///|
+async fn instance_startup(
+  options : ManagedOptions,
+  instance_id : String,
+  now : Int64,
+) -> InstanceStartup {
+  let online : Array[String] = @json.from_json(
+    aws_request(options, [
+      "ssm",
+      "describe-instance-information",
+      "--filters",
+      "Key=InstanceIds,Values=" + instance_id,
+      "Key=PingStatus,Values=Online",
+      "--query",
+      "InstanceInformationList[].InstanceId",
+    ]),
+  )
+  if online.contains(instance_id) {
+    return Online
+  }
+  let launches : Array[String] = @json.from_json(
+    aws_request(options, [
+      "ec2", "describe-instances", "--instance-ids", instance_id, "--query", "Reservations[].Instances[].LaunchTime",
+    ]),
+  )
+  guard launches.length() == 1 else {
+    raise InvalidConfiguration("Cannot establish the EC2 startup deadline.")
+  }
+  let launch = instance_launch_ms(launches[0])
+  guard launch <= now + 30000L else {
+    raise InvalidConfiguration("EC2 launch timestamp is in the future.")
+  }
+  if now - launch < 900000L {
+    Booting
+  } else {
+    TimedOut
+  }
+}
+
+///|
 async fn reconcile_group(
   options : ManagedOptions,
   token : String,
@@ -331,7 +418,33 @@ async fn reconcile_group(
             ),
           )
         } else {
-          provision_worker(options, token, instance, runner_os)
+          let startup = instance_startup(options, instance.id, now)
+          if startup is Booting && !snapshot.paused {
+            // Windows Sysprep can take more than the worker heartbeat lease.
+            // EC2 capacity is counted, but no worker or bootstrap credential
+            // exists until its management channel can deliver the runtime.
+            continue
+          }
+          if startup is Online && !snapshot.paused {
+            provision_worker(options, token, instance, runner_os)
+          } else {
+            // No work was issued to an unreachable/paused instance. Recover
+            // its identity and use ordinary active-attempt/drain safeguards.
+            let (worker, _) = register_instance_worker(
+              options,
+              token,
+              instance.id,
+            )
+            ignore(
+              control_request(
+                options.base.server,
+                "/workers/" + worker.id + "/drain",
+                token,
+                { "version": 1 },
+                allow_http=options.base.allow_http,
+              ),
+            )
+          }
         }
       Some(worker) => {
         let seen = @protocol.parse_decimal(worker.last_seen_ms).unwrap_or(0L)

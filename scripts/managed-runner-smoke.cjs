@@ -32,6 +32,7 @@ if (args[0] === 'ec2') {
   if (args[1] === 'describe-instance-types') result = [{cpus:2,memory_mib:8192,architectures:['x86_64']}];
   else if (args[1] === 'describe-launch-template-versions') result = [{image:'ami-test',tokens:'required',hop:1}];
   else if (args[1] === 'describe-images') result = [{ architecture: 'x86_64', platform: null }];
+  else if (args[1] === 'describe-instances') result = [new Date(Date.now() - 240000).toISOString()];
   else throw Error('unexpected EC2 command');
 } else if (args[0] === 'autoscaling') {
   const name = args[args.indexOf('--auto-scaling-group-name') + 1];
@@ -53,7 +54,8 @@ if (args[0] === 'ec2') {
     }
   } else if (args[1] !== 'set-instance-protection') throw Error('unexpected ASG command');
 } else if (args[0] === 'ssm') {
-  if (args[1] === 'put-parameter' || args[1] === 'send-command') {
+  if (args[1] === 'describe-instance-information') { state.ssmChecks=(state.ssmChecks || 0)+1; result=state.ssmChecks<=2?[]:['i-test']; }
+  else if (args[1] === 'put-parameter' || args[1] === 'send-command') {
     const request = JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json') + 1].slice(7)));
     if (args[1] === 'put-parameter') {assert.equal(request.Type,'SecureString'); state.bootstrap = JSON.parse(request.Value);}
     else {assert.ok(!request.Parameters.commands.join('').includes(state.bootstrap.token)); state.booted = true;}
@@ -101,6 +103,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       } else if (route === '/workers/register') {
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
         assert.notEqual(body.token, providerToken);
+        if (mode === 'asg' && !stale) assert.ok(state().ssmChecks >= 3, 'worker registered before SSM online');
         let worker = workers.find(w => w.key === body.key);
         if (!worker) {worker = {id:String(workers.length + 1),key:body.key,state:stale ? 'busy' : mode === 'asg' ? 'ready' : 'starting',draining:false,applied_revision:'0',last_seen_ms:String(Date.now()),idle_since_ms:String(Date.now()),active_attempts:stale ? 1 : 0}; workers.push(worker);}
         worker.secret = body.token;
@@ -217,6 +220,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       if (exited || Date.now() > deadline) throw Error(`${mode}${claimRace ? ' claim race' : ''} timed out/stopped: ${output}; revisions=${observed}/${applied}/${revision}; claims=${claims}; raceConflicts=${raceConflicts}; runs=${st.runs || 0}; workers=${JSON.stringify(workers.map(({secret,...w}) => w))}; calls=${JSON.stringify(st.calls.map(c => c.slice(0,3)))}`);
       await delay(100);
     }
+    if (mode === 'asg' && !stale) assert.ok(state().ssmChecks >= 3, 'offline SSM startup delay was not exercised');
     if (mode === 'docker' && !failCleanup && !terminal && !claimRace) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
@@ -231,4 +235,4 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {if(process.argv.includes('--asg-boot')) {await scenario('asg');return;}if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});
