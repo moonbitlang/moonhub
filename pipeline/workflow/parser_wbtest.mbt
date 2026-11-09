@@ -166,6 +166,41 @@ test "pull request workflows accept the built-in checkout action" {
 }
 
 ///|
+test "job continue-on-error false preserves default plans for plain and matrix jobs" {
+  for
+    source in [
+      basic_workflow,
+      basic_workflow +
+      "\n    strategy: {fail-fast: false, matrix: {variant: [one, two]}}",
+      basic_workflow + "\n        continue-on-error: true",
+    ] {
+    assert_eq(
+      ToJson::to_json(parse(source + "\n    continue-on-error: false")),
+      ToJson::to_json(parse(source)),
+    )
+  }
+}
+
+///|
+test "job continue-on-error rejects failure tolerance expressions and nonbooleans" {
+  for
+    value in [
+      "true", "'false'", "'true'", "0", "null", "[]", "{}", "'${{ false }}'", "'${{ matrix.allowed }}'",
+    ] {
+    for
+      source in [
+        basic_workflow,
+        basic_workflow + "\n    strategy: {matrix: {allowed: [false]}}",
+      ] {
+      expect_invalid(
+        source + "\n    continue-on-error: " + value,
+        "jobs.build.continue-on-error supports only literal false",
+      )
+    }
+  }
+}
+
+///|
 test "unsupported execution semantics fail closed at every mapping level" {
   for
     (field, fragment) in [
@@ -176,9 +211,7 @@ test "unsupported execution semantics fail closed at every mapping level" {
     expect_invalid(field + basic_workflow, fragment)
   }
   for
-    field in [
-      "container: alpine", "services: {}", "strategy: {unknown: true}", "continue-on-error: true",
-    ] {
+    field in ["container: alpine", "services: {}", "strategy: {unknown: true}"] {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }
   for field in ["with: {}", "unknown: 1"] {

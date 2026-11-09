@@ -259,10 +259,17 @@ fn parse_job(
     fields,
     [
       "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
-      "permissions", "if", "outputs",
+      "permissions", "if", "outputs", "continue-on-error",
     ],
     ctx,
   )
+  match fields.get("continue-on-error") {
+    None | Some(Boolean(false)) => ()
+    _ =>
+      raise InvalidWorkflow(
+        "\{ctx}.continue-on-error supports only literal false",
+      )
+  }
   let runs_on = runner_labels(fields.get("runs-on"), "\{ctx}.runs-on")
   guard runs_on.contains("self-hosted") &&
     runs_on.length() <= 8 &&
