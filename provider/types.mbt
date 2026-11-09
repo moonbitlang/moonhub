@@ -65,7 +65,14 @@ priv struct WorkerBackend {
   fresh_each_job : Bool
   initialize : async () -> Unit
   prepare : async (Options) -> Unit
+  prepare_claim : async (Options) -> Unit
   health : async () -> Unit
   execute : async (Options, @protocol.Assignment, String) -> Unit
   cleanup : async () -> Unit
+}
+
+///|
+priv struct PreparedWorkspace {
+  volume : String
+  container : String
 }

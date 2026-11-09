@@ -185,8 +185,18 @@ async fn execute_assignment(
   options : Options,
   assignment : @protocol.Assignment,
   attempt_token : String,
+  workspace~ : PreparedWorkspace? = None,
 ) -> Unit {
   let attempt_id = assignment.attempt_id
+  let workspace_volume = match workspace {
+    Some(workspace) => workspace.volume
+    None => "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
+  }
+  // A Windows workspace is prepared before claiming. Cleanup owns it as soon
+  // as the claim is consumed, even if the assignment directory cannot be made.
+  defer @async.protect_from_cancel(() => {
+    cleanup_workspace(options, container_name(attempt_id), workspace_volume)
+  })
   let root = options.workspace_root + "/" + attempt_id
   @platform.private_directory(root, readable=@platform.windows()) catch {
     _ => raise DockerFailure(125)
@@ -194,13 +204,14 @@ async fn execute_assignment(
   defer (@async.protect_from_cancel(() => @fs.rmdir(root, recursive=true)) catch {
     _ => ()
   })
-  let workspace_volume = "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
-  // Protect cleanup from both runner failure and provider cancellation. An
-  // uncertain cleanup is fatal: restarting must reconcile before more claims.
-  defer @async.protect_from_cancel(() => {
-    cleanup_assignment(options, attempt_id, workspace_volume)
-  })
-  create_workspace(options, workspace_volume)
+  if workspace is None {
+    guard !@platform.windows() else {
+      raise InvalidConfiguration(
+        "Windows workspace must be prepared before claiming",
+      )
+    }
+    create_workspace(options, workspace_volume, container_name(attempt_id))
+  }
   let assignment_path = root + "/assignment.json"
   @fs.write_file(
     assignment_path,

@@ -227,6 +227,7 @@ async fn run_tart_worker(
     run_backend_worker(base, token, {
       os: "macos",
       fresh_each_job: true,
+      prepare_claim: _ => (),
       initialize: () => {
         guard tart_control(macos, ["--version"]).trim() == "2.41.1" else {
           raise InvalidConfiguration("Use verified Tart 2.41.1")

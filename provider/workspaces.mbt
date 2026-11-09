@@ -23,11 +23,81 @@ async fn docker_control(
 async fn create_workspace(
   options : Options,
   name : String,
+  container : String,
 ) -> Unit raise ProviderError {
   let (code, output) = docker_control(options, [
     "volume", "create", "--label", workspace_label, name,
   ])
   guard code == 0 && output.trim() == name else { raise DockerFailure(code) }
+  if @platform.windows() {
+    // A named volume replaces the image directory's ACL. Initialize only this
+    // fresh job volume before the unprivileged executor receives any input.
+    let isolation = windows_docker_isolation(options)
+    @async.with_timeout(90000, () => {
+      let code = @process.run(
+        options.docker,
+        windows_workspace_initialization_args(
+          options, name, container, isolation,
+        ),
+        inherit_env=false,
+        extra_env=docker_environment(options),
+      )
+      guard code == 0 else { raise DockerFailure(code) }
+    }) catch {
+      _ => raise DockerFailure(125)
+    }
+  }
+}
+
+///|
+async fn prepare_workspace(
+  options : Options,
+) -> PreparedWorkspace raise ProviderError {
+  let nonce = random_hex(16)
+  let workspace = {
+    volume: "moonhub-workspace-prepared-" + nonce,
+    container: "moonhub-pipeline-workspace-" + nonce,
+  }
+  errdefer (@async.protect_from_cancel(() => {
+    cleanup_workspace(options, workspace.container, workspace.volume)
+  }) catch {
+    _ => raise CleanupFailure
+  })
+  create_workspace(options, workspace.volume, workspace.container)
+  workspace
+}
+
+///|
+fn windows_workspace_initialization_args(
+  options : Options,
+  volume : String,
+  container : String,
+  isolation : String,
+) -> Array[String] {
+  [
+    "run",
+    "--rm",
+    "--name",
+    container,
+    "--isolation",
+    isolation,
+    "--network",
+    "none",
+    "--user",
+    "ContainerAdministrator",
+    "--memory",
+    options.memory,
+    "--cpu-count",
+    options.cpus,
+    "--mount",
+    "type=volume,src=\{volume},dst=C:\\workspace",
+    "--entrypoint",
+    "C:\\Windows\\System32\\icacls.exe",
+    options.runner_image,
+    "C:\\workspace",
+    "/grant",
+    "*S-1-5-32-545:(OI)(CI)M",
+  ]
 }
 
 ///|
@@ -52,15 +122,15 @@ async fn remove_workspace(
 }
 
 ///|
-async fn cleanup_assignment(
+async fn cleanup_workspace(
   options : Options,
-  attempt_id : String,
+  container : String,
   workspace_volume : String,
 ) -> Unit raise ProviderError {
   try {
     // --rm normally removed the container already. Docker refuses volume
     // removal while it is still referenced by a container, including stopped ones.
-    ignore(docker_control(options, ["rm", "-f", container_name(attempt_id)]))
+    ignore(docker_control(options, ["rm", "-f", container]))
     remove_workspace(options, workspace_volume)
   } catch {
     _ => {
