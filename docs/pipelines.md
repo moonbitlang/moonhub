@@ -79,7 +79,8 @@ no-source access; unsupported scopes fail validation. All unknown fields are
 rejected before mapping. Workflow `concurrency` and static matrix `strategy`
 are supported; see [workflow scheduling](workflow-scheduling.md). Job-level `if`,
 outputs and direct `needs` contexts are supported; see [job dataflow](job-dataflow.md).
-Job `continue-on-error`, `container` and `services` remain unsupported.
+Job `continue-on-error: false` is accepted with the default failure behavior.
+Job `continue-on-error: true`, expressions, `container` and `services` remain unsupported.
 Downloaded actions accept `with`, and downloaded
 action/script steps accept step-level `if` and `continue-on-error`; see
 [GitHub Action execution](github-actions.md). Unknown fields are never silently stripped.
