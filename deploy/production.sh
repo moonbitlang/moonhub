@@ -282,7 +282,13 @@ case "${1:-help}" in
     web_deploy status
     systemctl show "$SERVICE" -p ActiveState -p SubState
     discover_dind
-    if [ "$DIND_ENABLED" = 1 ]; then prepare_controller; verify_dind; fi
+    if [ "$DIND_ENABLED" = 1 ]; then
+      prepare_controller
+      verify_dind
+      python3 "$ROOT/deploy/production-dind-images.py" check \
+        --socket "$DIND_SOCKET" --image "$LOCAL_RUNNER_IMAGE" --current "$LOCAL_RUNNER_IMAGE" \
+        --startup "$DIND_STARTUP_IMAGE" --state "$DIND_STATE/deployed-images.json"
+    fi
     ;;
   *) printf 'Usage: deploy/production.sh checkout BRANCH | build | publish | controller | upgrade | status\n';;
 esac

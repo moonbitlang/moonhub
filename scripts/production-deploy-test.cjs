@@ -112,6 +112,14 @@ e['MOONHUB_SPOT_ASG']='spot'; assert '--spot-asg' in m.render(e)
   for (const name of ['production-provider-state.cjs','production-readiness.cjs','controller-unit.py','production-dind-state.cjs','production-dind.sh']) {
     fs.writeFileSync(path.join(fixture,'deploy',name),fs.readFileSync('deploy/'+name,'utf8').replaceAll('/etc/systemd/system/',installed+'/'));
   }
+  // The policy helper is exercised against a stateful Docker fixture separately.
+  // Keep this integration fixture focused on upgrade ordering and failure recovery.
+  fs.writeFileSync(path.join(fixture,'deploy/production-dind-images.py'),`import os, sys, json
+with open(os.environ['TEST_LOG'], 'a') as output:
+    output.write(json.dumps(['dind-images', *sys.argv[1:]]) + '\\n')
+if os.environ.get('TEST_DIND_SPACE_FAIL') == '1' and sys.argv[1] == 'prepare':
+    sys.exit('Insufficient DinD import/task headroom')
+`);
   fs.writeFileSync(path.join(fixture,'deploy/deploy.sh'),`#!${process.execPath}
 const fs=require('node:fs'),{DatabaseSync}=require('node:sqlite');
 if(process.argv[2]==='status')process.exit(0);
@@ -312,6 +320,10 @@ const db=new DatabaseSync(process.env.TEST_DB);db.exec("UPDATE pipeline_worker S
   fs.writeFileSync(dindUnit,originalDindUnit);fs.writeFileSync(dindBinary,'stale-controller');
   const dindEnv={TEST_DIND_UNIT:dindUnit,MOONHUB_DIND_START_TIMEOUT:'0',TEST_CONTROLLER:'changed'};
   const dindPaused=()=>upgradeDb.prepare('SELECT paused FROM pipeline_provider WHERE id=2').get().paused;
+  upgraded=runUpgrade({...dindEnv,TEST_DIND_SPACE_FAIL:'1'});
+  assert.notEqual(upgraded.status,0,'insufficient DinD headroom reached the switch');
+  assert.ok(!upgraded.calls.some(a=>a.includes('load') || a.includes('pause-all') || a[0]==='web-upgrade'));
+  assert.equal(dindPaused(),0);
   upgraded=runUpgrade({...dindEnv,TEST_DIND_IMAGE_MISMATCH:'1'});
   assert.notEqual(upgraded.status,0,'loaded an image from another release');
   assert.ok(!upgraded.calls.some(a=>a.includes('pause-all')),'bad image paused production');
@@ -331,13 +343,17 @@ const db=new DatabaseSync(process.env.TEST_DB);db.exec("UPDATE pipeline_worker S
   const dindConfig=JSON.parse(upgradeDb.prepare('SELECT config_json FROM pipeline_provider WHERE id=2').get().config_json);
   assert.deepEqual(dindConfig,{runner_image:'moonhub-runner:'+revision.slice(0,12),cpus:'2',memory_mib:'3584'});
   assert.equal(dindPaused(),0);
-  assert.ok(upgraded.calls.findIndex(a=>a.includes('load'))<upgraded.calls.findIndex(a=>a.includes('pause-all')));
+  assert.ok(upgraded.calls.findIndex(a=>a[0]==='dind-images' && a[1]==='prepare')<upgraded.calls.findIndex(a=>a.includes('pause-all')));
+  assert.ok(!upgraded.calls.some(a=>a.includes('load')),'reimported the already verified target image');
+  const retainedAt=upgraded.calls.findIndex(a=>a[0]==='dind-images' && a[1]==='commit');
+  assert.ok(retainedAt>upgraded.calls.findIndex(a=>a[0]==='systemctl' && a[1]==='start' && a[2]==='moonhub-dind-controller.service'));
   assert.ok(upgraded.calls.findIndex(a=>a[0]==='systemctl'&&a[1]==='stop'&&a[2]==='moonhub-dind-controller.service')<upgraded.calls.findIndex(a=>a.includes('retire')));
   assert.ok(upgraded.calls.findIndex(a=>a.includes('restore'))<upgraded.calls.findIndex(a=>a[0]==='systemctl'&&a[1]==='start'&&a[2]==='moonhub-dind-controller.service'));
   const dindJournals=fs.readdirSync(upgradeEnv.MOONHUB_BACKUP_DIR).map(n=>path.join(upgradeEnv.MOONHUB_BACKUP_DIR,n,'dind','image.json')).filter(p=>fs.existsSync(p));
   assert.equal(JSON.parse(fs.readFileSync(dindJournals[0],'utf8')).previous_image,'moonhub-runner:old');
   upgraded=runUpgrade({...dindEnv,TEST_DIND_NOT_READY:'1'});
   assert.notEqual(upgraded.status,0,'reported success before the replacement controller acknowledged its release');
+  assert.ok(!upgraded.calls.some(a=>a[0]==='dind-images' && a[1]==='commit'),'failed verification advanced image retention');
   assert.equal(dindPaused(),1);
   assert.match(upgraded.stderr,/recovery backup:/);
   upgraded=runUpgrade(dindEnv);

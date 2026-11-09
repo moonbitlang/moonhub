@@ -4,7 +4,7 @@ const { DatabaseSync } = require('node:sqlite');
 let db;
 try {
   const [operation, name, argument, previousController] = process.argv.slice(2);
-  const readOnly = operation === 'verify';
+  const readOnly = operation === 'verify' || operation === 'current-image';
   db = new DatabaseSync(process.env.DB_PATH || '/data/moonhub.db', {readOnly, timeout:5000});
   db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
   const query = db.prepare('SELECT * FROM pipeline_provider WHERE name=?');
@@ -17,7 +17,10 @@ try {
     const active = db.prepare("SELECT COUNT(*) AS count FROM pipeline_job_attempt WHERE provider_id=? AND status<>'completed'").get(provider.id).count;
     if (active) throw new Error('Active Docker attempts prevent controller replacement');
   };
-  if (operation === 'retire') {
+  if (operation === 'current-image') {
+    if (typeof config.runner_image !== 'string' || !config.runner_image || /\s/.test(config.runner_image)) throw new Error('Docker provider has no valid saved runner image');
+    console.log(config.runner_image);
+  } else if (operation === 'retire') {
     // The caller stopped systemd and checked that no task container remains.
     inactive();
     db.prepare("UPDATE pipeline_worker SET state='drained',draining=1 WHERE provider_id=? AND state NOT IN ('drained','failed')").run(provider.id);
@@ -54,7 +57,7 @@ try {
     }
     console.log('Docker controller and saved task image match the deployed release.');
   } else {
-    throw new Error('Expected retire, image, restore-image, pause or verify');
+    throw new Error('Expected current-image, retire, image, restore-image, pause or verify');
   }
   db.exec('COMMIT');
 } catch (error) {

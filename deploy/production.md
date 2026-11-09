@@ -137,6 +137,36 @@ controller binary, updates both the unit's image default and the enrolled
 provider's saved `runner_image`, preserving other execution settings and grants.
 The original pause state is restored before the new controller starts.
 
+DinD release images have a separate retention policy from
+`MOONHUB_BACKUP_KEEP` (which limits complete backup bundles). After successful
+controller verification, the deployment records the current and previous
+successful image in the controller state's private `deployed-images.json` and
+removes older `moonhub-runner:COMMIT` tags from that dedicated daemon. Revision
+labels must match the tags. Images referenced by any container, the saved current
+image and the controller's startup image are protected even if this temporarily
+keeps more than two images. Other repositories, volumes, workspaces and host
+recovery images are never pruned by this policy. An idempotent retry preserves
+the previous successful image; a failed import or switch never advances the journal.
+
+Before importing, matching retention state also permits removal of obsolete
+releases while preserving both successful versions and any already loaded
+candidate. The first upgrade without a journal, or after an operator changes
+the saved image, conservatively keeps existing recovery images until a new
+release succeeds. Repeating the current release without a journal does not
+guess which previous image can be removed.
+
+The import preflight resolves the daemon's actual data directory through its host
+container mount, including a bounded loop filesystem. Root-disk free space alone
+is not sufficient. It requires twice the candidate image's uncompressed size
+(temporary archive plus extraction), another 1 GiB of task headroom, and 65,536
+free inodes. An already loaded matching release is reused and only needs the
+headroom reserve. It logs the actual path, available space and requirements;
+insufficient capacity stops before claims are paused or Web is changed. If
+protected images or task data still prevent an import, explicitly enlarge that
+dedicated filesystem or perform scoped operator cleanup; do not bypass the check
+or use an account-wide Docker/volume prune. `production.sh status` also reports
+and checks this storage reserve without deleting any images.
+
 Upgrade and `status` check the installed binary, unit image, DinD image revision,
 controller lease and observed configuration. An unpaused provider must also have
 applied the new configuration and reported a ready or busy worker. Verification

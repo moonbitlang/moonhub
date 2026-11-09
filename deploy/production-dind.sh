@@ -20,6 +20,7 @@ discover_dind() {
   DIND_BINARY=$(jq -r .binary <<< "$metadata")
   DIND_SOCKET=$(jq -r .docker_host <<< "$metadata")
   DIND_STATE=$(jq -r .state_dir <<< "$metadata")
+  DIND_STARTUP_IMAGE=$(jq -r .runner_image <<< "$metadata")
   DIND_ENABLED=1
 }
 prepare_dind() {
@@ -29,8 +30,14 @@ prepare_dind() {
     printf 'Docker controller start timeout must be 0 through 600 seconds.\n' >&2; return 1;
   }
   python3 "$ROOT/deploy/controller-unit.py" --docker-render "$DIND_UNIT" "$LOCAL_RUNNER_IMAGE" > "$CONTROLLER_STAGE/dind.service"
+  DIND_CURRENT_IMAGE=$(docker exec -i --user git "$PROJECT-web-1" node --no-warnings - current-image "$DIND_NAME" < "$ROOT/deploy/production-dind-state.cjs")
+  python3 "$ROOT/deploy/production-dind-images.py" prepare \
+    --socket "$DIND_SOCKET" --image "$LOCAL_RUNNER_IMAGE" --current "$DIND_CURRENT_IMAGE" \
+    --startup "$DIND_STARTUP_IMAGE" --state "$DIND_STATE/deployed-images.json"
   # Load and verify before pausing claims; preserve the previous image for recovery.
-  docker save "$LOCAL_RUNNER_IMAGE" | docker -H "$DIND_SOCKET" load
+  if [ "$(docker -H "$DIND_SOCKET" image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$LOCAL_RUNNER_IMAGE" 2>/dev/null)" != "$REVISION" ]; then
+    docker save "$LOCAL_RUNNER_IMAGE" | docker -H "$DIND_SOCKET" load
+  fi
   [ "$(docker -H "$DIND_SOCKET" image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$LOCAL_RUNNER_IMAGE")" = "$REVISION" ] || {
     printf 'Local Docker task image does not match the production release.\n' >&2; return 1;
   }
@@ -84,4 +91,9 @@ start_dind() {
   done
   DIND_KEEP_PAUSED=0
   cat "$backup/dind/verification.log"
+  # Only a verified replacement advances retention. Failed imports/switches keep
+  # both previously successful releases, including on an idempotent retry.
+  python3 "$ROOT/deploy/production-dind-images.py" commit \
+    --socket "$DIND_SOCKET" --image "$LOCAL_RUNNER_IMAGE" --current "$DIND_CURRENT_IMAGE" \
+    --startup "$DIND_STARTUP_IMAGE" --state "$DIND_STATE/deployed-images.json"
 }
