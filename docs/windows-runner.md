@@ -37,8 +37,21 @@ an unattended service. The task retries failed startup every minute. Arrange the
 engine's supported startup policy on the deployment PC and verify after a reboot.
 
 Before ready, the worker checks the daemon/image and actually starts/removes a
-credential-free container through the chosen isolation path. Missing/broken
-Hyper-V, incompatible images and uncertain cleanup block readiness and claims.
+credential-free container through the chosen isolation path. It also creates a
+fresh workspace volume, initializes its ACL and verifies that `ContainerUser`
+can create, read and remove files before deleting the probe volume. Missing/broken
+Hyper-V, incompatible images, unusable workspace volumes and uncertain cleanup
+block readiness and claims.
+
+The worker prepares the next fresh volume before advertising ready and claiming
+a job, so initialization does not consume an attempt's start lease. An empty
+claim reuses that still-empty prepared volume; a completed job consumes it and the
+worker creates a new one before returning to ready. The short initialization container
+runs as `ContainerAdministrator` with networking disabled and only that fresh
+volume mounted; it grants the container's Users group inherited Modify access.
+The task executor and job steps continue to run as `ContainerUser`.
+During drain, the worker removes its prepared volume before explicitly reporting
+`drained`; a concurrent `ready` heartbeat does not acknowledge that cleanup.
 
 ## Prepare the bundle and task image
 

@@ -59,6 +59,7 @@ async fn verify_windows_container(
 ) -> Unit raise ProviderError {
   let isolation = windows_docker_isolation(options)
   let name = "moonhub-pipeline-preflight-" + random_hex(16)
+  let workspace = "moonhub-workspace-preflight-" + random_hex(16)
   defer (@async.protect_from_cancel(() => {
     ignore(docker_control(options, ["rm", "-f", name]))
     let (code, remaining) = docker_control(options, [
@@ -68,12 +69,14 @@ async fn verify_windows_container(
       "name=^" + name + "$",
     ])
     guard code == 0 && remaining.trim().is_empty() else { raise CleanupFailure }
+    remove_workspace(options, workspace)
   }) catch {
     _ => raise CleanupFailure
   })
   // A running Windows daemon and a cached image do not prove that Hyper-V is
   // enabled/usable. Verify the real isolation path before advertising ready.
   @async.with_timeout(90000, () => {
+    create_workspace(options, workspace, name)
     let code = @process.run(
       options.docker,
       [
@@ -91,13 +94,15 @@ async fn verify_windows_container(
         options.memory,
         "--cpu-count",
         options.cpus,
+        "--mount",
+        "type=volume,src=\{workspace},dst=C:\\workspace",
         "--entrypoint",
         "cmd.exe",
         options.runner_image,
         "/d",
         "/s",
         "/c",
-        "exit /b 0",
+        "mkdir C:\\workspace\\moonhub-preflight && echo ready>C:\\workspace\\moonhub-preflight\\ready && type C:\\workspace\\moonhub-preflight\\ready >nul && rmdir /s /q C:\\workspace\\moonhub-preflight",
       ],
       inherit_env=false,
       extra_env=docker_environment(options),
@@ -262,6 +267,19 @@ pub async fn run(
   cleanup_stale_containers(options)
   cleanup_stale_workspaces(options)
   for ;; {
+    let workspace = if @platform.windows() {
+      Some(prepare_workspace(options))
+    } else {
+      None
+    }
+    let consumed = Ref(false)
+    defer (@async.protect_from_cancel(() => {
+      if !consumed.val && workspace is Some(prepared) {
+        cleanup_workspace(options, prepared.container, prepared.volume)
+      }
+    }) catch {
+      _ => raise CleanupFailure
+    })
     let assignment = claim(options, provider_token) catch {
       Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
       _ => {
@@ -274,7 +292,13 @@ pub async fn run(
       None => @async.sleep(options.poll_ms)
       Some(claimed) => {
         validate_assignment(claimed.assignment)
-        execute_assignment(options, claimed.assignment, claimed.attempt_token) catch {
+        consumed.val = true
+        execute_assignment(
+          options,
+          claimed.assignment,
+          claimed.attempt_token,
+          workspace~,
+        ) catch {
           CleanupFailure => raise CleanupFailure
           _ => println("pipeline provider: runner container failed")
         }

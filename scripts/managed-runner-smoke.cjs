@@ -73,8 +73,10 @@ if (args[0] === 'ec2') {
   const manifestPath = manifestMount.slice('type=bind,src='.length).split(',dst=')[0];
   assert.equal(fs.statSync(manifestPath).mode & 0o777, 0o444, 'non-root task cannot read a root-owned manifest');
   assert.equal(fs.statSync(require('node:path').dirname(manifestPath)).mode & 0o777, 0o700, 'host assignment directory must remain private');
-  process.stdin.resume(); state.containerArgs = args; state.runs = (state.runs || 0) + 1;
+  process.stdin.resume(); state.containerArgs = args; state.manifestPath = manifestPath; state.runs = (state.runs || 0) + 1;
   result = JSON.stringify({reported:true,conclusion:'success'});
+} else if (args[0] === 'rm') {
+  if (state.manifestPath && !fs.existsSync(state.manifestPath)) state.manifestRemovedBeforeContainer = true;
 } else if (args[0] === 'ps') result = '';
 else if (!['info','image','rm'].includes(args[0])) throw Error('unexpected adapter operation');
 save();
@@ -221,6 +223,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       await delay(100);
     }
     if (mode === 'asg' && !stale) assert.ok(state().ssmChecks >= 3, 'offline SSM startup delay was not exercised');
+    assert.equal(state().manifestRemovedBeforeContainer, undefined, 'assignment mount was removed before container cleanup');
     if (mode === 'docker' && !failCleanup && !terminal && !claimRace) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));

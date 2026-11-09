@@ -9,7 +9,8 @@ const crypto = require('node:crypto');
 const { spawn, execFileSync } = require('node:child_process');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const docker = args => execFileSync('docker.exe', ['--host','npipe:////./pipe/docker_engine',...args], {encoding:'utf8', timeout:30000}).trim();
-const image = process.env.MOONHUB_RUNNER_IMAGE || 'moonhub:runner-windows';
+const baseImage = process.env.MOONHUB_RUNNER_IMAGE || 'moonhub:runner-windows';
+const image = 'moonhub:workspace-acl-smoke-'+crypto.randomBytes(6).toString('hex');
 const binary = path.resolve('.tmp/windows-runner/bin/moonhub-runner.exe');
 const standalone = process.argv.includes('--standalone');
 const secret = crypto.randomBytes(20).toString('hex');
@@ -75,7 +76,9 @@ async function main() {
         workerState=body.state;workerRevision=body.applied_revision;
         if (body.state === 'ready' && completed > readyAfterCleanup) {
           assert.equal(docker(['ps','-aq','--filter','name=^moonhub-pipeline-']), '', 'task container survived readiness');
-          assert.equal(docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']), '', 'workspace survived readiness');
+          const prepared=docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']).split(/\s+/).filter(Boolean);
+          assert.equal(prepared.length,1,'ready requires exactly one fresh prepared workspace');
+          assert.match(prepared[0],/^moonhub-workspace-prepared-/);
           assert.deepEqual(fs.readdirSync(standalone?path.join(install,'workspace'):path.join(root,'workspace')),[], 'assignment directory survived readiness');
           readyAfterCleanup=completed;
         }
@@ -154,6 +157,20 @@ async function main() {
   const quote = value => "'"+value.replaceAll("'","''")+"'";
   let taskInstalled=false;
   try {
+    // Force the source directory to have a SYSTEM/Administrators-only ACL.
+    // Docker versions differ in whether a named volume preserves image ACLs;
+    // readiness and real attempts must work with a restrictive fresh volume.
+    const dockerfile=path.join(root,'workspace.Dockerfile');
+    fs.writeFileSync(dockerfile,[
+      '# escape=`',
+      'ARG BASE_IMAGE',
+      'FROM ${BASE_IMAGE}',
+      'USER ContainerAdministrator',
+      "RUN $acl = [System.Security.AccessControl.DirectorySecurity]::new(); $acl.SetSecurityDescriptorSddlForm('D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'); Set-Acl -LiteralPath C:\\workspace -AclObject $acl",
+      'USER ContainerUser',
+      '',
+    ].join('\n'));
+    execFileSync('docker.exe',['--host','npipe:////./pipe/docker_engine','build','--isolation=process','--build-arg','BASE_IMAGE='+baseImage,'-f',dockerfile,'-t',image,root],{stdio:'inherit',timeout:120000});
     ps(`New-NetFirewallRule -Name '${rule}' -DisplayName '${rule}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} | Out-Null`);
     const bootstrap=path.join(root,'bootstrap.json');
     fs.writeFileSync(bootstrap,JSON.stringify({server:`http://${gateway}:${port}`,token:workerToken,allow_http:true,runner_image:image,runner_os:'windows'}));
@@ -236,6 +253,7 @@ async function main() {
     if(containers.length) docker(['rm','-f',...containers]);
     const volumes=docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']).split(/\s+/).filter(Boolean);
     if(volumes.length) docker(['volume','rm',...volumes]);
+    try {docker(['image','rm',image]);} catch {}
     ps(`Remove-NetFirewallRule -Name '${rule}' -ErrorAction SilentlyContinue`);
     server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
     fs.rmSync(root,{recursive:true,force:true});

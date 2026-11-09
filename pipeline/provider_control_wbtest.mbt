@@ -511,3 +511,48 @@ async test "prepared VM workers acknowledge drain only after explicit cleanup" {
     )
   })
 }
+
+///|
+async test "Windows prepared workspaces require explicit drain acknowledgement" {
+  @test_support.with_repository_test_data((pool, _) => {
+    let c = Coordinator::new(pool)
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let provider = c.create_provider(
+      admin,
+      "managed",
+      "a".repeat(64),
+      ["self-hosted", "windows", "x64"],
+      [],
+    )
+    ignore(c.register_runner("a".repeat(64), control_registration(mode="asg")))
+    let worker = c.register_worker("b".repeat(64), {
+      version: 1,
+      key: "windows",
+      token: "c".repeat(64),
+    })
+    let ready : @protocol.WorkerSyncRequest = {
+      version: 1,
+      state: "ready",
+      applied_revision: "1",
+    }
+    ignore(c.sync_worker("c".repeat(64), ready))
+    c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
+    // A ready request can be in flight while the controller requests drain.
+    // The worker still owns its prepared workspace until it observes the reply.
+    assert_true(c.sync_worker("c".repeat(64), ready).draining)
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "ready",
+    )
+    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "starting", }))
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "starting",
+    )
+    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "drained", }))
+    assert_eq(
+      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      "drained",
+    )
+  })
+}

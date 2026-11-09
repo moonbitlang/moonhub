@@ -51,6 +51,13 @@ fn configured_options(
 
 ///|
 pub async fn run_worker(base : Options, token : String) -> Unit {
+  let workspace : Ref[PreparedWorkspace?] = Ref(None)
+  let release_workspace : async () -> Unit = () => {
+    if workspace.val is Some(prepared) {
+      cleanup_workspace(base, prepared.container, prepared.volume)
+      workspace.val = None
+    }
+  }
   run_backend_worker(base, token, {
     os: if @platform.windows() {
       "windows"
@@ -63,12 +70,22 @@ pub async fn run_worker(base : Options, token : String) -> Unit {
       cleanup_stale_containers(base)
       cleanup_stale_workspaces(base)
     },
-    prepare: current => ensure_runner_image(current),
+    prepare: current => {
+      release_workspace()
+      ensure_runner_image(current)
+    },
+    prepare_claim: current => {
+      if @platform.windows() && workspace.val is None {
+        workspace.val = Some(prepare_workspace(current))
+      }
+    },
     health: () => if @platform.windows() { wait_for_docker(base) },
     execute: (current, assignment, credential) => {
-      execute_assignment(current, assignment, credential)
+      let prepared = workspace.val
+      workspace.val = None
+      execute_assignment(current, assignment, credential, workspace=prepared)
     },
-    cleanup: () => (),
+    cleanup: release_workspace,
   })
 }
 
@@ -166,6 +183,8 @@ async fn run_backend_worker(
         prepared.val = true
       }
       (backend.health)()
+      state.val = "starting"
+      (backend.prepare_claim)(current.val)
       state.val = "ready"
       // Acknowledge readiness only after both cleanup and configuration finish.
       let request : @protocol.WorkerSyncRequest = {
@@ -230,11 +249,11 @@ async fn run_backend_worker(
               raise CleanupFailure
             }
           }
+          // A completed job has consumed the prepared workspace. Replenish
+          // resources before advertising standby or accepting another claim.
+          state.val = "starting"
           if backend.fresh_each_job {
-            state.val = "starting"
             prepared.val = false
-          } else {
-            state.val = "ready"
           }
         }
       }

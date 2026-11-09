@@ -418,7 +418,7 @@ fn authenticate_worker(
 ) -> @database.DbRow raise {
   check_token(token)
   let row = tx.query_opt(
-    "SELECT w.*, p.paused,p.revoked,p.config_revision,p.config_json,p.mode AS provider_mode FROM pipeline_worker w JOIN pipeline_provider p ON p.id=w.provider_id WHERE w.token_hash=? AND p.revoked=0",
+    "SELECT w.*, p.paused,p.revoked,p.config_revision,p.config_json,p.mode AS provider_mode, EXISTS (SELECT 1 FROM pipeline_provider_label l WHERE l.provider_id=p.id AND l.label='windows') AS windows_provider FROM pipeline_worker w JOIN pipeline_provider p ON p.id=w.provider_id WHERE w.token_hash=? AND p.revoked=0",
     params=[@identity.hash_token(token)],
   )
   guard row is Some(row) else {
@@ -467,12 +467,13 @@ pub fn Coordinator::sync_worker(
           raise Conflict("Worker is terminal.")
         }
         let now = (self.clock)()
-        // A prepared VM is still an owned resource while idle. Tart workers
-        // must explicitly acknowledge drained only after stopping/deleting it.
-        // Preserve the historical ready->drained acknowledgement for Docker/ASG.
+        // Prepared VMs and Windows workspace volumes remain owned while idle.
+        // Wait for their workers to explicitly acknowledge resource cleanup.
+        // Linux Docker/ASG workers retain the legacy ready acknowledgement.
         let state = if draining &&
           request.state == "ready" &&
-          (row.get_name("provider_mode") : String) != "tart" {
+          (row.get_name("provider_mode") : String) != "tart" &&
+          !(row.get_name("windows_provider") : Bool) {
           "drained"
         } else {
           request.state
