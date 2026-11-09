@@ -38,6 +38,8 @@ class RetentionTest(unittest.TestCase):
         self.target = self.add_image(3, loaded=False)
         self.startup = self.current
         self.race = False
+        self.history_size = str(2 * GIB)
+        self.history_calls = 0
         self.enterContext(patch.object(images, 'docker', self.docker))
         self.enterContext(patch.object(images.os, 'statvfs', self.statvfs))
         self.enterContext(contextlib.redirect_stdout(io.StringIO()))
@@ -62,6 +64,10 @@ class RetentionTest(unittest.TestCase):
 
     def docker(self, args, host=None):
         if host is None:
+            if args[:2] == ['image', 'history']:
+                self.assertEqual(args, ['image', 'history', '--no-trunc', '--human=false', '--format', '{{.Size}}', self.target])
+                self.history_calls += 1
+                return self.history_size
             if args == ['ps', '-q']:
                 return 'daemon'
             if args == ['inspect', 'daemon']:
@@ -121,6 +127,31 @@ class RetentionTest(unittest.TestCase):
                          {'format': 1, 'current': self.target, 'previous': self.current})
         self.assertEqual(self.state.stat().st_mode & 0o777, 0o600)
 
+    def test_first_production_upgrade_uses_layer_bytes_instead_of_containerd_disk_usage(self):
+        # Failed master deployment 42584500845: three classic-store images, no
+        # journal yet, and a containerd source reporting blobs + unpacked bytes.
+        self.add_image(4)
+        self.free = 5004107776
+        self.inodes = 456331
+        self.host_images[self.target]['Size'] = 2380070031
+        self.history_size = '1000000000\n781686272\n0'
+        self.run_policy('prepare')
+        self.assertFalse(self.removed)
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.history_calls, 1)
+        self.inner[self.target] = self.host_images[self.target]
+        self.run_policy('commit')
+        self.assertEqual(set(self.inner), {self.target, self.current})
+
+    def test_unknown_or_invalid_layer_sizes_fail_closed_before_import(self):
+        for value in ['', 'unknown', '1.78GB', '-1', '0\n0']:
+            with self.subTest(history=value):
+                self.history_size = value
+                with self.assertRaisesRegex(ValueError, 'layer sizes'):
+                    self.run_policy('prepare')
+                self.assertFalse(self.removed)
+                self.assertFalse(self.state.exists())
+
     def test_repeated_deployments_and_retries_keep_current_and_previous(self):
         self.journal()
         self.add_image(4)
@@ -150,6 +181,7 @@ class RetentionTest(unittest.TestCase):
         self.assertEqual(self.removed, [obsolete])
         self.assertIn(self.target, self.inner)
         self.assertEqual(self.checked, [str(self.data)])
+        self.assertEqual(self.history_calls, 0, 'reused image unnecessarily required source history')
 
     def test_in_use_images_unrelated_repositories_and_mismatched_labels_are_preserved(self):
         self.journal()

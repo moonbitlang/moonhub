@@ -106,16 +106,26 @@ def check_space(host, image, directory):
     free_inodes = available.f_favail
     # docker load can temporarily hold the archive and extracted layers together.
     source = inspect_images([image])[0]
-    size = source['Size']
     revision = (source.get('Config', {}).get('Labels') or {}).get('org.opencontainers.image.revision', '')
-    if not isinstance(size, int) or size <= 0 or not re.fullmatch(r'[0-9a-f]{40}', revision):
-        raise ValueError('Candidate image must have a size and full production revision label')
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise ValueError('Candidate image must have a full production revision label')
     loaded = docker(['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], host).splitlines()
     matching = image in loaded and ((inspect_images([image], host)[0].get('Config', {}).get('Labels') or {})
                                    .get('org.opencontainers.image.revision') == revision)
-    required = RESERVE_BYTES if matching else 2 * size + RESERVE_BYTES
+    size = 0
+    if not matching:
+        # Containerd's image-inspect Size includes compressed content as well as
+        # unpacked data. History reports each layer's uncompressed bytes on both
+        # image stores, so summing it avoids double-counting the source blobs.
+        sizes = docker(['image', 'history', '--no-trunc', '--human=false', '--format', '{{.Size}}', image]).splitlines()
+        if not sizes or any(not re.fullmatch(r'[0-9]+', value) for value in sizes):
+            raise ValueError('Cannot determine uncompressed image layer sizes')
+        size = sum(map(int, sizes))
+        if size <= 0:
+            raise ValueError('Candidate image must have positive uncompressed layer sizes')
+    required = 2 * size + RESERVE_BYTES
     print(f'DinD storage {directory}: {free_bytes} bytes and {free_inodes} inodes free; '
-          f'require {required} bytes and {RESERVE_INODES} inodes.', flush=True)
+          f'uncompressed import size {size} bytes; require {required} bytes and {RESERVE_INODES} inodes.', flush=True)
     if free_bytes < required or free_inodes < RESERVE_INODES:
         raise ValueError('Insufficient DinD import/task headroom; free obsolete images or enlarge its dedicated filesystem before retrying. Web remains unchanged')
 
