@@ -192,18 +192,20 @@ async fn execute_assignment(
     Some(workspace) => workspace.volume
     None => "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
   }
+  let root = options.workspace_root + "/" + attempt_id
   // A Windows workspace is prepared before claiming. Cleanup owns it as soon
   // as the claim is consumed, even if the assignment directory cannot be made.
   defer @async.protect_from_cancel(() => {
     cleanup_workspace(options, container_name(attempt_id), workspace_volume)
+    // The directory may still be mounted after a cancelled Docker client.
+    // Remove the container first so Windows can release its bind mount.
+    @fs.rmdir(root, recursive=true) catch {
+      _ => ()
+    }
   })
-  let root = options.workspace_root + "/" + attempt_id
   @platform.private_directory(root, readable=@platform.windows()) catch {
     _ => raise DockerFailure(125)
   }
-  defer (@async.protect_from_cancel(() => @fs.rmdir(root, recursive=true)) catch {
-    _ => ()
-  })
   if workspace is None {
     guard !@platform.windows() else {
       raise InvalidConfiguration(

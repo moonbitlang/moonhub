@@ -50,6 +50,8 @@ worker creates a new one before returning to ready. The short initialization con
 runs as `ContainerAdministrator` with networking disabled and only that fresh
 volume mounted; it grants the container's Users group inherited Modify access.
 The task executor and job steps continue to run as `ContainerUser`.
+During drain, the worker removes its prepared volume before explicitly reporting
+`drained`; a concurrent `ready` heartbeat does not acknowledge that cleanup.
 
 ## Prepare the bundle and task image
 

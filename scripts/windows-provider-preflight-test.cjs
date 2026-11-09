@@ -39,7 +39,8 @@ else if(command==='run') {
     assert.equal(state.runs,1,'unprivileged probe ran before volume initialization');
     assert.match(args.at(-1),/mkdir.*echo ready.*type.*rmdir/);
   }
-  state.runs++;const failed=${JSON.stringify(failureStage)}===(initializing?'initialize':'probe');
+  const stage=initializing?(state.runs===0?'initialize':'prepare'):'probe';
+  state.runs++;const failed=${JSON.stringify(failureStage)}===stage;
   if(failed)state.containers.push(args[args.indexOf('--name')+1]);save();process.exit(failed?1:0);
 } else if(command==='rm') {if(${JSON.stringify(cleanupFails)}) process.exit(1);state.containers=[];save();}
 else if(command==='ps') console.log(state.containers.join('\\n'));
@@ -51,7 +52,7 @@ else if(command==='volume') {
 else throw Error('Unexpected Docker command '+command);
 `;
   for (const command of ['info','image','run','rm','ps','volume']) fs.writeFileSync(path.join(root, command), adapter);
-  let ready=0,claims=0,failed=0,failure;
+  let ready=0,claims=0,failed=0,drained=0,failure;
   const token=crypto.randomBytes(32).toString('hex');
   const server=http.createServer(async(req,res)=>{
     try {
@@ -67,6 +68,11 @@ else throw Error('Unexpected Docker command '+command);
         assert.equal(workspace.runs,3,'ready preceded workspace initialization');
       }
       if(body.state==='failed')failed++;
+      if(body.state==='drained'){
+        drained++;const workspace=JSON.parse(fs.readFileSync(stateFile));
+        assert.deepEqual(workspace.volumes,[],'worker acknowledged drain before releasing its prepared volume');
+        assert.deepEqual(workspace.containers,[],'worker acknowledged drain before removing its initializer');
+      }
       res.writeHead(200,{'Content-Type':'application/json',Connection:'close'});
       res.end(JSON.stringify({version:1,provider_id:'1',worker_id:'1',paused:false,draining:body.state==='ready',config_revision:'1',config:{runner_image:'fixture:windows',cpus:'1',memory_mib:'2048'}}));
     }catch(error){failure=error;res.writeHead(500);res.end('{}');}
@@ -84,6 +90,7 @@ else throw Error('Unexpected Docker command '+command);
     assert.ok(exited,output);await closed;assert.equal(code===0,!failureStage&&!cleanupFails,output);
     if(failureStage||cleanupFails)assert.equal(ready,0);else assert.ok(ready>=1);
     assert.equal(claims,0);assert.equal(failed,failureStage||cleanupFails?1:0);
+    assert.equal(drained,failureStage||cleanupFails?0:1);
     const state=JSON.parse(fs.readFileSync(stateFile));
     assert.equal(state.runs,failureStage==='initialize'?1:failureStage==='probe'?2:3);assert.equal(state.containers.length,cleanupFails?1:0);
     assert.equal(state.volumes.length,cleanupFails?1:0);
@@ -93,4 +100,4 @@ else throw Error('Unexpected Docker command '+command);
     server.closeAllConnections();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async()=>{assert.equal(process.platform,'win32');await scenario('initialize');await scenario('probe');await scenario('probe',true);await scenario(null);})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{assert.equal(process.platform,'win32');await scenario('initialize');await scenario('probe');await scenario('probe',true);await scenario('prepare');await scenario(null);})().catch(error=>{console.error(error);process.exitCode=1;});
