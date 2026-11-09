@@ -130,7 +130,7 @@ pinned node20 entry points. Production defaults still use the prepared Node 20
 runtime. All matrix instances here execute on the local host, not separate
 macOS/Windows release machines.
 
-Dynamic matrices, job continue-on-error, scheduled triggers,
+Dynamic matrices, job continue-on-error other than literal `false`, scheduled triggers,
 OIDC, write permissions and authenticated release APIs remain separate work. See
 [GitHub Actions](github-actions.md), [workflow scheduling](workflow-scheduling.md),
 [Artifact v4](artifact-v4.md) and [Cache v4](cache-v4.md).

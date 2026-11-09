@@ -70,7 +70,9 @@ A downstream `needs: build` expands to every instance. It waits until the entire
 matrix finishes; if any instance failed/cancelled/skipped, the ordinary dependent
 job is skipped. Cycles and unknown logical dependencies remain rejected. Job-level
 conditions and outputs are described in [job dataflow](job-dataflow.md).
-Job-level continue-on-error and experimental matrix policy remain unsupported.
+Job-level `continue-on-error: false` retains the default failure behavior.
+Job-level failure tolerance (`true` or expressions) and experimental matrix
+policy remain unsupported.
 
 Limits are 16 logical jobs, 16 axes, 256 combinations per matrix, 256 expanded
 jobs per workflow, 4096 expanded steps and a 1-MiB normalized snapshot.
