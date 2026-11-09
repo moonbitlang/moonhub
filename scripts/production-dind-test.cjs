@@ -6,6 +6,11 @@ const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {DatabaseSync} = require('node:sqlite');
 
+test('DinD image retention survives repeated releases, retries and bounded storage', () => {
+  const result=spawnSync('python3',['scripts/production-dind-images-test.py'],{encoding:'utf8'});
+  assert.equal(result.status,0,result.stdout+result.stderr);
+});
+
 function fixture(run) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'moonhub-dind-state-'));
   const file = path.join(root,'test.db');
@@ -32,6 +37,15 @@ test('stopped worker retirement requires paused claims and no active attempt', (
   const result=command('retire','dind');assert.equal(result.status,0,result.stderr);
   assert.equal(result.stdout.trim(),'old');
   assert.deepEqual({...db.prepare('SELECT state,draining FROM pipeline_worker').get()},{state:'drained',draining:1});
+}));
+
+test('saved current image is read without pausing claims or changing configuration', () => fixture(({db,command,provider}) => {
+  db.exec('UPDATE pipeline_provider SET paused=0');
+  const before=provider();
+  const result=command('current-image','dind');
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(result.stdout.trim(),'runner:old');
+  assert.deepEqual(provider(),before);
 }));
 
 test('image upgrade and recovery preserve settings and monotonically advance revision', () => fixture(({db,command,provider}) => {
