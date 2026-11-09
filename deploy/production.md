@@ -159,13 +159,29 @@ The import preflight resolves the daemon's actual data directory through its hos
 container mount, including a bounded loop filesystem. Root-disk free space alone
 is not sufficient. It requires twice the candidate image's uncompressed size
 (temporary archive plus extraction), another 1 GiB of task headroom, and 65,536
-free inodes. An already loaded matching release is reused and only needs the
+free inodes. Uncompressed size is the sum of byte sizes from
+`docker image history --no-trunc --human=false`; containerd's `image inspect`
+`Size` may also include compressed blobs and must not be used as an unpacked
+size estimate. Unavailable or invalid layer sizes refuse the import. An already
+loaded matching release is reused and only needs the
 headroom reserve. It logs the actual path, available space and requirements;
 insufficient capacity stops before claims are paused or Web is changed. If
 protected images or task data still prevent an import, explicitly enlarge that
 dedicated filesystem or perform scoped operator cleanup; do not bypass the check
 or use an account-wide Docker/volume prune. `production.sh status` also reports
 and checks this storage reserve without deleting any images.
+
+Legacy hosts may still have an 8 GiB `/srv/moonhub/dind.ext4` even though
+`setup-shared-host.sh` provisions 12 GiB for new installs. The first retained-image
+upgrade has no successful-release journal, so it cannot safely guess which old
+image is the previous successful release. If its capacity check fails, inspect
+the exact DinD mount and image sizes before retrying. Existing root-disk capacity
+does not enlarge a loop filesystem. An operator can grow the backing file and
+its associated loop device, then grow the mounted ext4 filesystem to the documented
+12 GiB, after verifying their association and leaving at least 20 GiB of root
+headroom. Preserve existing contents; never rerun `mkfs` on that backing file.
+Afterward dispatch CI on `master` with deployment selected. The successful upgrade
+initializes retention from the saved running image and prunes older releases.
 
 Upgrade and `status` check the installed binary, unit image, DinD image revision,
 controller lease and observed configuration. An unpaused provider must also have
