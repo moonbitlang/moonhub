@@ -83,6 +83,7 @@ fn DiffExecutor::observe_diff(
   fields["cache_evictions_total"] = Json(self.cache_evictions.to_string())
   fields["cache_skips_total"] = Json(self.cache_skips.to_string())
   fields["cache_hits_total"] = Json(self.cache_hits)
+  fields["coalesced_requests_total"] = Json(self.coalesced_requests.to_string())
   (self.observe)(Json(fields))
 }
 
