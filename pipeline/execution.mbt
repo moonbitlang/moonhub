@@ -513,7 +513,8 @@ pub fn Coordinator::claim(
           }
         }
         Some({
-          version: if (row.get_name("definition_version") : Int64) >= 7L {
+          version: if (row.get_name("definition_version") : Int64) >= 7L &&
+            job.id_token_write {
             @protocol.oidc_assignment_version
           } else if (row.get_name("definition_version") : Int64) >= 6L {
             @protocol.variable_assignment_version

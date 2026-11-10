@@ -54,7 +54,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
         "release-stable-refs/heads/pipeline",
       )
       let first = c.claim(provider_secret, claim_request()).unwrap()
-      assert_eq(first.version, @protocol.oidc_assignment_version)
+      assert_eq(first.version, @protocol.variable_assignment_version)
       assert_eq(first.job.id, "prepare")
       assert_eq(
         ToJson::to_json(first.job.dispatch_inputs),

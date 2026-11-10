@@ -199,3 +199,6 @@ Cache Service v2. The server owns immutable branch/MR scopes, archive publicatio
 and lifecycle. Runtime expressions support asynchronous workspace hashFiles()
 with Actions glob semantics. See [Cache v4](cache-v4.md) for supported flows,
 isolation, limits and original Action acceptance.
+
+Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
+only OIDC-enabled jobs require assignment v10.

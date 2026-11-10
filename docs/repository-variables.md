@@ -117,3 +117,6 @@ moon test --strip -j 1 --deny-warn
 node --test runner/actions/*.test.mjs
 node scripts/check-package-boundaries.cjs
 ```
+
+Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
+only OIDC-enabled jobs require assignment v10.

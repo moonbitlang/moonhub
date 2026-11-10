@@ -295,7 +295,7 @@ async test "step secret delivery binds execution and step masks issued values ac
     let assignment = coordinator
       .claim(provider_secret, claim_request())
       .unwrap()
-    assert_eq(assignment.version, @protocol.oidc_assignment_version)
+    assert_eq(assignment.version, @protocol.variable_assignment_version)
     assert_true(
       !assignment.to_json().stringify().contains("private-token-value"),
     )

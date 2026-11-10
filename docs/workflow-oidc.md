@@ -190,10 +190,12 @@ only through the operator's existing private-secret backup procedure.
 ## Upgrade and acceptance
 
 Apply migration 037 and upgrade coordinator, provider/controller and runner
-together. Definition v7 / assignment v10 add explicit OIDC permission; definition
-versions 1–6 remain readable and their reruns retain saved versions. Historical
-JSON without `id_token_write` decodes to false. Old runners reject v10 rather
-than executing a missing permission contract. The lease/report protocol stays v1.
+together for OIDC-enabled jobs. Definition v7 captures explicit OIDC permission.
+Jobs granting `id-token: write` require assignment v10; other v7 jobs keep the
+v9 contract, so existing independent runners can continue ordinary work.
+Definition versions 1–6 remain readable and reruns retain saved versions.
+Historical JSON without `id_token_write` decodes to false. Old runners reject
+v10 rather than silently running an OIDC-enabled job. The lease/report protocol stays v1.
 
 Build browser assets before Web tests. Ordinary tests cover permission
 replacement, denied legacy snapshots, independent RSA verification, masking,

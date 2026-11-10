@@ -145,3 +145,6 @@ and snapshot reruns do not reload current repository settings.
 Current snapshots use definition v7 / assignment v10 for
 [workflow OIDC](workflow-oidc.md), with migration 037. Historical definition
 versions 1–6 and their assignment contracts remain readable.
+
+Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
+only OIDC-enabled jobs require assignment v10.

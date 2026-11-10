@@ -35,6 +35,7 @@ pub let dispatch_assignment_version : Int32 = 8
 pub let variable_assignment_version : Int32 = 9
 
 ///|
+// V10 grants workflow OIDC. Jobs without that permission retain V9 compatibility.
 pub let oidc_assignment_version : Int32 = 10
 
 ///|
