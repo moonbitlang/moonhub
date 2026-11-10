@@ -7,11 +7,17 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/moonhub-smoke.XXXXXXXX")
 project="moonhub-smoke-$(date +%s)-$$"
 export MOONHUB_SMOKE_SECRET="$tmp/root_password"
 export MOONHUB_SSH_IMPORT_DIR="$tmp/ssh-import"
+export MOONHUB_OIDC_CONFIG_FILE="$tmp/workflow-oidc.json"
 mkdir -p "$MOONHUB_SSH_IMPORT_DIR"
 printf '%s\n' 'bootstrapSmokePassword123' > "$MOONHUB_SMOKE_SECRET"
 chmod 600 "$MOONHUB_SMOKE_SECRET"
+node - "$MOONHUB_OIDC_CONFIG_FILE" <<'JS'
+const fs = require('node:fs'), crypto = require('node:crypto');
+const {privateKey} = crypto.generateKeyPairSync('rsa', {modulusLength:2048});
+fs.writeFileSync(process.argv[2], JSON.stringify({issuer:'https://issuer.example',private_key:privateKey.export({type:'pkcs8',format:'pem'})}), {mode:0o600});
+JS
 compose=(docker compose --env-file /dev/null --project-name "$project"
-  -f "$repo/compose.yaml" -f "$repo/deploy/compose.smoke.yaml")
+  -f "$repo/compose.yaml" -f "$repo/deploy/compose.smoke.yaml" -f "$repo/deploy/compose.oidc.yaml")
 
 cleanup() {
   result=$?
@@ -99,6 +105,12 @@ if [ "${MOONHUB_SMOKE_SKIP_BUILD:-0}" != 1 ]; then
 fi
 "${compose[@]}" up --no-build -d --wait --wait-timeout 180
 refresh_endpoints
+
+"${compose[@]}" exec -T --user git web moonhub oidc-check /run/moonhub/workflow-oidc.json
+"${compose[@]}" exec -T --user git web node -e 'const fs=require("node:fs");const s=fs.statSync("/run/moonhub/workflow-oidc.json");if((s.mode&511)!==384||s.uid!==process.getuid())process.exit(1)'
+curl --fail --silent --show-error "$http/.well-known/openid-configuration" > "$tmp/oidc-discovery"
+node -e 'const d=JSON.parse(require("node:fs").readFileSync(process.argv[1]));if(d.issuer!=="https://issuer.example"||d.jwks_uri!=="https://issuer.example/-/oidc/jwks")process.exit(1)' "$tmp/oidc-discovery"
+curl --fail --silent --show-error "$http/-/oidc/jwks" > "$tmp/oidc-jwks"
 
 status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http_code}' \
   -c "$tmp/cookies" -d 'name_key=root&password=bootstrapSmokePassword123' "$http/-/login")
@@ -285,4 +297,6 @@ if git ls-remote "$url" > "$tmp/denied" 2>&1; then
   printf '%s\n' 'Revoked key authenticated a new connection' >&2
   exit 1
 fi
+curl --fail --silent --show-error "$http/-/oidc/jwks" > "$tmp/oidc-jwks-after"
+cmp "$tmp/oidc-jwks" "$tmp/oidc-jwks-after"
 printf '%s\n' 'Docker SSH smoke test passed: web key management, team repositories, SSH import, host verification, retry, refs, persistence, revocation.'

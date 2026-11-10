@@ -345,6 +345,9 @@ restore_backup() {
      MOONHUB_IMPORT_TIMEOUT_SECONDS: env("web"; "MOONHUB_IMPORT_TIMEOUT_SECONDS"),
      MOONHUB_WEBHOOK_ALLOWED_ORIGINS: env("web"; "MOONHUB_WEBHOOK_ALLOWED_ORIGINS"),
      MOONHUB_BACKUP_DIR: ($state + "/backups")}
+    + (if any(.services.web.volumes[]; .target == "/run/secrets/workflow_oidc") then {
+       MOONHUB_OIDC_CONFIG_FILE: binding("web"; "/run/secrets/workflow_oidc")}
+      else {} end)
     + (if .services["pipeline-provider"] then {
        MOONHUB_PROVIDER_TOKEN_FILE: binding("pipeline-provider"; "/run/secrets/provider_token"),
        MOONHUB_PROVIDER_NAME: $manifest[0].provider_name, MOONHUB_PROVIDER_LABELS: $manifest[0].provider_labels,

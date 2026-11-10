@@ -13,7 +13,7 @@ try {
   fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
-  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
+  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml', 'compose.oidc.yaml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
   for (const file of ['moon.mod', 'moon.pkg', '.dockerignore']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../js', file), path.join(root, 'js', file));
   fs.mkdirSync(path.join(root, 'runner/actions'), { recursive: true });
@@ -40,6 +40,7 @@ try {
     MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
     MOONHUB_SHARED_HOST: '0', MOONHUB_CGROUP_PARENT: '', MOONHUB_DIND_STORAGE_DIR: '',
     MOONHUB_BACKUP_KEEP: '0',
+    MOONHUB_OIDC_CONFIG_FILE: '',
   };
   function run(extra = {}, command = 'upgrade', answer) {
     fs.writeFileSync(log, '');
@@ -103,6 +104,32 @@ try {
   assert.ok(!recovered.services.web.image.includes('new-tag'));
   assert.ok(recovered.services.web.environment.includes('LITERAL=$$not_an_env'));
   assert.ok(recovered.services['pipeline-provider'].environment.some(value => /^MOONHUB_RUNNER_IMAGE=sha256:[a-f0-9]{64}$/.test(value)));
+  const oidcRoot = path.join(root, 'backups/oidc');
+  result = run({ MOONHUB_OIDC_CONFIG_FILE: path.join(root, 'secret'), TEST_OIDC: '1', MOONHUB_BACKUP_DIR: oidcRoot });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.commands.some(line => line.includes('compose.oidc.yaml')));
+  const validation = result.commands.findIndex(line => line.includes('oidc-check'));
+  assert.ok(validation >= 0 && validation < result.commands.findIndex(line => / stop$/.test(line)));
+  assert.ok(result.commands[validation].includes('--network none --read-only'));
+  assert.ok(result.commands.some(line => line.includes('exec -T --user git web node')));
+  const oidcBundle = path.join(oidcRoot, fs.readdirSync(oidcRoot).find(name => !name.startsWith('.')));
+  const oidcSaved = JSON.parse(fs.readFileSync(path.join(oidcBundle, 'compose.json')));
+  assert.ok(oidcSaved.services.web.volumes.some(v => v.target === '/run/secrets/workflow_oidc' && v.read_only));
+  result = run({ TEST_FRESH: '1' }, ['restore', oidcBundle, '--project', 'oidc-restored', '--http-port', '19015', '--ssh-port', '19016', '--pipeline-prefix', '172.30.96']);
+  assert.equal(result.status, 0, result.stderr);
+  const oidcStateRoot = path.join(oidcRoot, 'recovered');
+  const oidcState = path.join(oidcStateRoot, fs.readdirSync(oidcStateRoot).find(name => fs.existsSync(path.join(oidcStateRoot, name, 'upgrade.env'))));
+  assert.match(fs.readFileSync(path.join(oidcState, 'upgrade.env'), 'utf8'), /MOONHUB_OIDC_CONFIG_FILE=.*bindings\/web-/);
+  result = run({ MOONHUB_OIDC_CONFIG_FILE: path.join(root, 'secret'), TEST_FAIL: 'oidc-config' });
+  assert.notEqual(result.status, 0);
+  assert.ok(!result.commands.some(line => / stop$/.test(line)), 'invalid OIDC configuration stopped services');
+  for (const file of ['relative.json', path.join(root, 'missing')]) {
+    result = run({ MOONHUB_OIDC_CONFIG_FILE: file });
+    assert.notEqual(result.status, 0);
+    assert.ok(!result.commands.some(line => / stop$/.test(line)));
+  }
+  result = run({ MOONHUB_OIDC_CONFIG_FILE: path.join(root, 'secret'), TEST_FAIL: 'oidc-health' });
+  assert.notEqual(result.status, 0, 'OIDC verification failure reported a successful deployment');
   execFileSync('shasum', ['-a', '256', '-c', 'SHA256SUMS'], { cwd: bundle, stdio: 'pipe' });
   // Exercise recovery of older backups that did not record a scope setting.
   const manifestPath = path.join(bundle, 'manifest.json');

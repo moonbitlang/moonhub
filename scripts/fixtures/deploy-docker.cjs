@@ -42,6 +42,10 @@ const containers = roles.map((role, i) => ({
   NetworkSettings: { Networks: { old_default: { IPAMConfig: null }, old_pipeline: { IPAMConfig: { IPv4Address: '172.30.90.' + (10 + i) } } } },
 }));
 if (process.env.TEST_BAD_MOUNT === '1') containers[0].Mounts.push(bind('/unsupported-secret'));
+if (process.env.TEST_OIDC === '1') {
+  containers[0].Mounts.push(bind('/run/secrets/workflow_oidc'));
+  containers[0].Config.Env.push('MOONHUB_OIDC_CONFIG=/run/secrets/workflow_oidc');
+}
 if (process.env.TEST_BASIC === '1') for (const c of containers) delete c.NetworkSettings.Networks.old_pipeline;
 if (process.env.TEST_RESOURCE_LIMITS === '1') for (const c of containers) Object.assign(c.HostConfig, {
   CgroupParent: 'moonhub.slice', CgroupnsMode: 'private', NanoCpus: 500000000,
@@ -94,7 +98,8 @@ else if (line.includes('docker.sock save ')) {
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 }
 else if (line.startsWith('save ')) out('image');
-else if (line.startsWith('run ')) { fs.readFileSync(0); if (fail === 'extract') process.exit(1); }
+else if (line.startsWith('run ')) { fs.readFileSync(0); if (fail === 'extract' || (line.includes('oidc-check') && fail === 'oidc-config')) process.exit(1); }
+else if (line.includes('exec -T --user git web node')) { fs.readFileSync(0); if (fail === 'oidc-health') process.exit(1); }
 else if (line.includes(' up ') && fail === 'start') process.exit(1);
 else if (line.includes('exec -T --user git web sh ')) {
   execFileSync('sh', a.slice(a.indexOf('sh') + 1), { input: fs.readFileSync(0) });

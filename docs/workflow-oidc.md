@@ -47,20 +47,30 @@ implementation in bounded, isolated child processes (four concurrent signing
 slots, ten-second queue and signing timeouts). Private material travels through
 stdin, never argv, environment, generated job files or runner assignments.
 
-For Compose, use an operator-owned override to mount the file only in `web`:
+For the tracked deployment scripts, add this host path to the operator-owned
+`deploy/production.env` (or `deploy/deploy.env` for the generic deployment):
 
-```yaml
-services:
-  web:
-    environment:
-      MOONHUB_OIDC_CONFIG: /run/secrets/workflow_oidc
-    volumes:
-      - /absolute/private/oidc.json:/run/secrets/workflow_oidc:ro
+```sh
+MOONHUB_OIDC_CONFIG_FILE=/etc/moonhub/workflow-oidc.json
 ```
 
-The file must be readable by the Web process's configured service user. Keep the
-same issuer and active configuration on every Web replica. No keys are generated
-automatically at startup, so a restart never silently changes issuer identity.
+`deploy/deploy.sh` automatically includes `deploy/compose.oidc.yaml` when the path
+is set. It requires an existing absolute, non-symlink file and mounts it read-only
+only into Web. The root entrypoint copies it to a git-owned mode-0600 runtime
+file before dropping privileges, so the host file can remain root-owned 0600.
+The matching image validates the full issuer/key configuration with
+`moonhub oidc-check` in a network-disabled container before stopping services.
+Startup and `status` verify the served issuer and active public signing key.
+
+Private recovery bundles retain the mounted configuration and restore its path
+into `upgrade.env`, preserving issuer identity through rollback and subsequent
+upgrades. Treat these bundles with the same restrictions as existing password,
+SSH-key and database backups. Ordinary deployments reuse the key file.
+
+For direct Compose use, include `-f deploy/compose.oidc.yaml` and export
+`MOONHUB_OIDC_CONFIG_FILE`. A bare Web process instead takes `MOONHUB_OIDC_CONFIG`
+and must be able to read the file as its service user. Keep the same issuer and
+active configuration on every Web replica. No keys are generated at startup.
 
 ## Workflow permissions and claims
 

@@ -9,7 +9,7 @@ def volume_key($service; $target):
   elif $target == "/var/lib/docker" and $service == "pipeline-docker" then "pipeline-docker-data"
   else error("Unsupported volume destination: " + $service + ":" + $target) end;
 def binding_allowed($service; $target):
-  ($service == "web" and (["/run/secrets/root_password", "/run/secrets/ssh-import"] | index($target)) != null)
+  ($service == "web" and (["/run/secrets/root_password", "/run/secrets/ssh-import", "/run/secrets/workflow_oidc"] | index($target)) != null)
   or ($service == "pipeline-provider" and $target == "/run/secrets/provider_token");
 def mounts:
   . as $container | role as $service |

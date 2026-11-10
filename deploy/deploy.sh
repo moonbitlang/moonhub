@@ -63,9 +63,13 @@ BUILD_IMAGES=${MOONHUB_BUILD_IMAGES:-1}
 USE_CN_MIRRORS=${MOONHUB_USE_CN_MIRRORS:-0}
 REBUILD_BASE=${MOONHUB_BASE_REBUILD:-0}
 SHARED_HOST=${MOONHUB_SHARED_HOST:-0}
+OIDC_FILE=${MOONHUB_OIDC_CONFIG_FILE:-}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
+if [ -n "$OIDC_FILE" ]; then
+  compose+=( -f "$ROOT/deploy/compose.oidc.yaml" )
+fi
 if [ "$ENABLE_PIPELINES" = 1 ]; then
   compose+=( -f "$ROOT/deploy/compose.pipeline.yaml" )
 fi
@@ -131,6 +135,7 @@ export MOONHUB_RUNNER_IMAGE="$RUNNER_IMAGE"
 export MOONHUB_ROOT_PASSWORD_FILE="$ROOT_PASSWORD_FILE"
 export MOONHUB_PROVIDER_TOKEN_FILE="$PROVIDER_TOKEN_FILE"
 export MOONHUB_USE_CN_MIRRORS="$USE_CN_MIRRORS"
+export MOONHUB_OIDC_CONFIG_FILE="$OIDC_FILE"
 
 usage() {
   cat <<'EOF'
@@ -145,6 +150,7 @@ Commands:
             Restore exact saved images and data; --replace first backs up the target.
   status    Show Compose service status.
   config    Validate the resolved Compose configuration.
+  check-oidc Validate the optional OIDC configuration with the matching Web image.
 
 Set MOONHUB_ENABLE_PIPELINES=1 to include DinD, provider and Runner deployment.
 Set MOONHUB_RUNNER_BUILD_TARGET=runner-selfhost for MoonHub's own build workflow.
@@ -171,6 +177,12 @@ require_file() {
 
 validate_inputs() {
   require_file "$ROOT_PASSWORD_FILE" "root password secret"
+  if [ -n "$OIDC_FILE" ]; then
+    [[ "$OIDC_FILE" = /* && "$OIDC_FILE" != *','* && "$OIDC_FILE" != *$'\n'* && "$OIDC_FILE" != *$'\r'* && ! -L "$OIDC_FILE" ]] || {
+      printf 'OIDC configuration must be an absolute, regular non-symlink file path.\n' >&2; exit 1;
+    }
+    require_file "$OIDC_FILE" "OIDC configuration"
+  fi
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     require_file "$PROVIDER_TOKEN_FILE" "provider token secret"
     local token
@@ -181,6 +193,36 @@ validate_inputs() {
     fi
   fi
   "$@"
+}
+
+validate_oidc() {
+  [ -n "$OIDC_FILE" ] || return 0
+  docker run --rm --network none --read-only --pids-limit 64 --memory 128m --cpus 1 \
+    --mount "type=bind,src=$OIDC_FILE,dst=/run/secrets/workflow_oidc,readonly" \
+    --entrypoint moonhub "$RUNTIME_IMAGE" oidc-check /run/secrets/workflow_oidc
+}
+
+verify_oidc() {
+  [ -n "$OIDC_FILE" ] || return 0
+  "${compose[@]}" exec -T --user git web node --no-warnings - <<'JS'
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+(async () => {
+  const config = JSON.parse(fs.readFileSync('/run/moonhub/workflow-oidc.json', 'utf8'));
+  const publicKey = crypto.createPublicKey(config.private_key);
+  const kid = crypto.createHash('sha256').update(publicKey.export({type:'spki',format:'der'})).digest('base64url');
+  const request = async path => {
+    const response = await fetch('http://127.0.0.1:8080' + path, {signal:AbortSignal.timeout(10000)});
+    if (!response.ok) throw Error('OIDC endpoint unavailable');
+    return response.json();
+  };
+  const discovery = await request('/.well-known/openid-configuration');
+  const jwks = await request('/-/oidc/jwks');
+  if (discovery.issuer !== config.issuer || discovery.jwks_uri !== config.issuer + '/-/oidc/jwks' ||
+      !jwks.keys.some(key => key.kid === kid && key.alg === 'RS256' && !key.d)) throw Error('OIDC identity mismatch');
+  console.log('Workflow OIDC issuer and signing key verified');
+})().catch(() => { console.error('Workflow OIDC verification failed'); process.exitCode = 1; });
+JS
 }
 
 validate_compose() {
@@ -279,6 +321,7 @@ start_services() {
   fi
   wait_running web
   wait_running ssh
+  verify_oidc
 }
 
 confirm_pipeline_interruption() {
@@ -341,6 +384,7 @@ upgrade() {
   }
   recovery_requirements
   build_images
+  validate_oidc
   prepare_pipeline_switch
   prepare_backup
   printf 'All images ready. Stopping target services for backup and switch...\n'
@@ -366,6 +410,7 @@ backup() {
 status() {
   validate_compose
   "${compose[@]}" ps
+  verify_oidc
 }
 
 config() {
@@ -380,6 +425,7 @@ case "${1:-upgrade}" in
   backup) backup ;;
   status) status ;;
   config) config ;;
+  check-oidc) validate_inputs true; validate_oidc ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

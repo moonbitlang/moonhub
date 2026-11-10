@@ -48,3 +48,17 @@ assert.equal(provider.networks.pipeline.ipv4_address, '172.30.90.12');
 assert.equal(dind.networks.pipeline.ipv4_address, '172.30.90.11');
 assert.equal(web.networks.pipeline.ipv4_address, '172.30.90.10');
 console.log('Pipeline deployment smoke passed: Compose isolation, secret mount, shared control volume, and privileged boundary verified.');
+const oidc = JSON.parse(execFileSync('docker', [
+  'compose', '-f', 'compose.yaml', '-f', 'deploy/compose.pipeline.yaml', '-f', 'deploy/compose.oidc.yaml',
+  'config', '--format', 'json',
+], { cwd: root, env: { ...env, MOONHUB_OIDC_CONFIG_FILE: '/private/operator/workflow-oidc.json' }, encoding: 'utf8' }));
+assert.equal(oidc.services.web.environment.MOONHUB_OIDC_CONFIG, '/run/secrets/workflow_oidc');
+const oidcMount = oidc.services.web.volumes.find(v => v.target === '/run/secrets/workflow_oidc');
+assert.equal(oidcMount.source, '/private/operator/workflow-oidc.json');
+assert.equal(oidcMount.read_only, true);
+assert.equal(oidcMount.bind.create_host_path, false);
+for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
+  assert.ok(!oidc.services[name].volumes.some(v => v.target === '/run/secrets/workflow_oidc'));
+  assert.ok(!oidc.services[name].environment?.MOONHUB_OIDC_CONFIG);
+}
+console.log('Workflow OIDC Compose mount is read-only and restricted to Web.');
