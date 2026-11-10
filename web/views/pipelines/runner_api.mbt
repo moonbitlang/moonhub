@@ -246,6 +246,20 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     }),
   )
   ctx.post(
+    "/attempts/:id/oidc-runtime",
+    json_handler(req => {
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "attempt"),
+      )
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version", "execution_id"])
+      let request : @protocol.OidcRuntimeRequest = @json.from_json(payload) catch {
+        _ => raise @domain.BadRequest(message="invalid OIDC runtime request")
+      }
+      ToJson::to_json(coordinator.oidc_runtime(id, token, request))
+    }),
+  )
+  ctx.post(
     "/claims",
     json_handler(req => {
       let token = bearer_token(req)

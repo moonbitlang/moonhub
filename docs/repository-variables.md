@@ -64,6 +64,7 @@ jobs:
   publish:
     if: vars.PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-24.04
+    permissions: {contents: read, id-token: write}
     env:
       REGION: ${{ vars.OPENSEEK_S3_REGION }}
     steps:
@@ -92,14 +93,15 @@ new values. Manual, push and approved MR runs follow the same snapshot policy.
 
 This does not introduce dynamic matrices, variable-based `runs-on`/display names,
 organization/environment variable precedence, or environment approval policies.
-The AWS example shows variable delivery only; OIDC credential issuance remains a
-separate service requirement.
+The AWS example requires explicit `id-token: write` and an operator-configured
+issuer; see [workflow OIDC](workflow-oidc.md).
 
 ## Upgrade and validation
 
-Migration 036 adds repository variable storage. New snapshots use definition
-version 6 and assignment version 9. Upgrade coordinator, providers and runners
-together. Historical definition versions 1–5 remain readable; reruns retain their
+Migration 036 adds repository variable storage. Variables introduced definition
+version 6 and assignment version 9. Current snapshots use definition v7 /
+assignment v10 for [workflow OIDC](workflow-oidc.md). Upgrade coordinator, providers
+and runners together. Historical definition versions 1–5 remain readable; reruns retain their
 original contracts and do not acquire a new `vars` context. Older JSON contexts
 and plans default missing variable maps to empty values during decoding.
 

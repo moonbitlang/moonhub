@@ -70,7 +70,7 @@ async test "job outputs publish atomically filter delivered secrets and bind ide
   with_protocol_fixture(
     (c, pool, _, run, _, _) => {
       let a = c.claim(provider_secret, claim_request()).unwrap()
-      assert_eq(a.version, @protocol.variable_assignment_version)
+      assert_eq(a.version, @protocol.oidc_assignment_version)
       assert_eq(a.job.id, "prepare")
       let id = @protocol.parse_decimal(a.attempt_id).unwrap()
       pool.with_client(client => {

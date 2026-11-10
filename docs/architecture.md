@@ -21,7 +21,7 @@ unchanged.
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, Artifact/Cache v4 metadata/storage/capabilities and result persistence |
+| `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, workflow OIDC signing/grants, Artifact/Cache v4 metadata/storage/capabilities and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, local Tart VM workers, config synchronization and execution cleanup; no database or Web dependency |
 | `runner/platform` | OS detection, safe paths, minimal OS environment and private Windows directory ACLs; no database or Web dependency |

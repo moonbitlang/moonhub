@@ -253,6 +253,7 @@ async test "contents none jobs do not fetch source or expose a source token" {
       job: {
         ..base.job,
         contents_read: false,
+        id_token_write: false,
         steps: [
           {
             ..base.job.steps[0],

@@ -220,7 +220,7 @@ fn validate_assignment(
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&

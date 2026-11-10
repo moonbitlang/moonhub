@@ -35,10 +35,13 @@ pub let dispatch_assignment_version : Int32 = 8
 pub let variable_assignment_version : Int32 = 9
 
 ///|
+pub let oidc_assignment_version : Int32 = 10
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
-    dispatch_assignment_version, variable_assignment_version,
+    dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
   ].contains(version)
 }
 
@@ -197,6 +200,7 @@ pub(all) struct JobPlan {
   needs : Map[String, Json]
   context : Map[String, String]
   contents_read : Bool
+  id_token_write : Bool
   matrix : Map[String, Json]
   strategy : Map[String, Json]
   id : String
@@ -239,6 +243,10 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     matrix: @json.from_json(
       fields.get("matrix").unwrap_or(({} : Json)),
       path=path.add_key("matrix"),
+    ),
+    id_token_write: @json.from_json(
+      fields.get("id_token_write").unwrap_or(Json::boolean(false)),
+      path=path.add_key("id_token_write"),
     ),
     contents_read: @json.from_json(
       fields.get("contents_read").unwrap_or(Json::boolean(true)),
@@ -430,4 +438,18 @@ pub impl @json.FromJson for CompleteRequest with fn from_json(json, path) {
       path=path.add_key("outputs"),
     ),
   }
+}
+
+///|
+#derive(ToJson, FromJson)
+pub(all) struct OidcRuntimeRequest {
+  version : Int32
+  execution_id : String
+}
+
+///|
+#derive(ToJson, FromJson)
+pub(all) struct OidcRuntime {
+  token : String
+  request_url : String
 }

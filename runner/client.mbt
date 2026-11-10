@@ -230,17 +230,18 @@ async fn Runtime::request(
 }
 
 ///|
-async fn fetch_artifact_runtime(
+async fn[T : @json.FromJson] fetch_action_grant(
   server : String,
   id : String,
   token : String,
-  request : @protocol.ArtifactRuntimeRequest,
-) -> @protocol.ArtifactRuntime {
+  operation : String,
+  request : Json,
+) -> T {
   let client = @http.Client(server)
   defer client.close()
   let response = client.post(
-    "/-/runner-api/v1/attempts/" + id + "/artifact-runtime",
-    ToJson::to_json(request).stringify(),
+    "/-/runner-api/v1/attempts/" + id + "/" + operation,
+    request.stringify(),
     extra_headers={
       "Authorization": "Bearer " + token,
       "Content-Type": "application/json",

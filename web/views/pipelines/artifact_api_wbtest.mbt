@@ -25,6 +25,7 @@ async fn with_artifact_http(
     @protocol.Assignment,
     String,
   ) -> Unit,
+  oidc~ : Bool = false,
   workflow~ : String = artifact_http_workflow,
   inputs~ : Map[String, Json] = Map([]),
   variables~ : Map[String, String] = Map([]),
@@ -32,7 +33,18 @@ async fn with_artifact_http(
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
-    let c = @pipeline.Coordinator::new(pool)
+    let listener = @moonback.listen(port=0)
+    let oidc = if oidc {
+      let path = root + "/oidc.json"
+      @test_support.create_oidc_config(
+        path,
+        "http://127.0.0.1:" + listener.addr.port().to_string(),
+      )
+      Some(@pipeline.OidcIssuer::load(path, allow_http=true))
+    } else {
+      None
+    }
+    let c = @pipeline.Coordinator::new(pool, oidc?)
     let token = "a".repeat(64)
     ignore(
       c.create_provider(
@@ -79,6 +91,8 @@ async fn with_artifact_http(
     })
     let app = @moonback.App(
       Module(ctx => {
+        ctx.use_(dependencies)
+        ctx.use_(oidc_module)
         ctx.mount(
           "/-/runner-api/v1",
           App(
@@ -119,7 +133,6 @@ async fn with_artifact_http(
     )
     defer app.close()
     @async.with_task_group(group => {
-      let listener = @moonback.listen(port=0)
       let server = group.spawn(() => app.serve(listener))
       defer server.cancel()
       f(listener.addr.port(), c, pool, root, assignment, lease)

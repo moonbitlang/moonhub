@@ -27,6 +27,8 @@ pub let max_log_chunks : Int64
 
 pub let max_source_bytes : Int64
 
+pub let oidc_assignment_version : Int32
+
 pub fn parse_decimal(String) -> Int64?
 
 pub let remote_assignment_version : Int32
@@ -129,6 +131,7 @@ pub(all) struct JobPlan {
   needs : Map[String, @json.Json]
   context : Map[String, String]
   contents_read : Bool
+  id_token_write : Bool
   matrix : Map[String, @json.Json]
   strategy : Map[String, @json.Json]
   id : String
@@ -180,6 +183,22 @@ pub(all) struct LogRequest {
 }
 pub fn LogRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn LogRequest::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct OidcRuntime {
+  token : String
+  request_url : String
+}
+pub fn OidcRuntime::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn OidcRuntime::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct OidcRuntimeRequest {
+  version : Int32
+  execution_id : String
+}
+pub fn OidcRuntimeRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn OidcRuntimeRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct ProviderSnapshot {

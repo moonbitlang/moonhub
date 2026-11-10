@@ -42,7 +42,7 @@ async test "repository variables snapshot atomically and survive edits deletion 
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
     let captured = run.context.unwrap().variables
-    assert_eq(run.definition_version, 6)
+    assert_eq(run.definition_version, 7)
     assert_eq(captured.get("OPENSEEK_S3_REGION"), Some("ap-southeast-1"))
     assert_eq(captured.get("ENABLED"), Some("yes"))
     assert_eq(captured.get("LITERAL"), Some("${{ secrets.NOT_A_SECRET }}"))
@@ -75,7 +75,7 @@ async test "repository variables snapshot atomically and survive edits deletion 
     )
     let c = merge_check_provider(pool)
     let (first, token) = claim_dag_attempt(c, provider_secret)
-    assert_eq(first.version, @protocol.variable_assignment_version)
+    assert_eq(first.version, @protocol.oidc_assignment_version)
     assert_eq(first.job.id, "prepare")
     assert_eq(ToJson::to_json(first.job.variables), ToJson::to_json(captured))
     assert_true(first.job.steps[0].env.get("OPENSEEK_S3_REGION") is None)
@@ -172,7 +172,7 @@ async test "authorized MR checks capture public repository variables" {
       )
       let c = merge_check_provider(pool)
       let (a, _) = claim_dag_attempt(c, provider_secret)
-      assert_eq(a.version, @protocol.variable_assignment_version)
+      assert_eq(a.version, @protocol.oidc_assignment_version)
       assert_eq(a.job.variables.get("ENABLED"), Some("yes"))
       assert_true(a.job.dispatch_inputs.is_empty())
       assert_true(a.job.event.get("inputs") is None)

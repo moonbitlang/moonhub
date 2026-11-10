@@ -64,10 +64,11 @@ automatic branch/path filters and still requires `workflow_dispatch`.
 
 ## Read-only contents permissions
 
-Workflow/job `permissions` accepts only `{contents: read}`, `{contents: none}` or
-`{}`. Job declarations replace workflow declarations. Omitted permissions retain
+Workflow/job `permissions` accepts `contents: read/none` and `id-token: write/none`,
+including an empty mapping. See [workflow OIDC](workflow-oidc.md) for identity
+grants. Job declarations replace workflow declarations. Omitted permissions retain
 the historical read-only source access; missing saved fields decode to that
-legacy default. Other permission scopes and `read-all`/`write-all` remain rejected.
+legacy default. Other API permission scopes and `read-all`/`write-all` remain rejected.
 
 The effective flag is saved in the immutable job definition and assignment.
 `none` denies both authenticated source endpoints even for a live attempt,

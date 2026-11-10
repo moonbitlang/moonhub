@@ -1,17 +1,23 @@
 ///|
 fn read_permissions(
   value : @yaml.Yaml?,
-  inherited : Bool,
+  inherited : (Bool, Bool),
   ctx : String,
-) -> Bool raise InvalidWorkflow {
+) -> (Bool, Bool) raise InvalidWorkflow {
   guard value is Some(value) else { return inherited }
   let fields = yaml_as_obj(value, ctx)
-  check_fields(fields, ["contents"], ctx)
-  match fields.get("contents") {
+  check_fields(fields, ["contents", "id-token"], ctx)
+  let contents = match fields.get("contents") {
     None | Some(String("none")) => false
     Some(String("read")) => true
     _ => raise InvalidWorkflow("\{ctx}.contents supports only read or none")
   }
+  let id_token = match fields.get("id-token") {
+    None | Some(String("none")) => false
+    Some(String("write")) => true
+    _ => raise InvalidWorkflow("\{ctx}.id-token supports only write or none")
+  }
+  (contents, id_token)
 }
 
 ///|

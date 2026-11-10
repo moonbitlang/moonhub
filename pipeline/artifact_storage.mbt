@@ -423,6 +423,12 @@ pub async fn Coordinator::cleanup_artifacts(
         params=[now],
       ),
     )
+    ignore(
+      client.execute(
+        "DELETE FROM pipeline_oidc_runtime WHERE expires_ms<=? AND NOT EXISTS (SELECT 1 FROM pipeline_job_attempt a WHERE a.id=pipeline_oidc_runtime.attempt_id AND a.status IN ('leased','running'))",
+        params=[now],
+      ),
+    )
   })
   let parent = root + "/.pipeline-artifacts"
   if @fs.exists(parent) && @fs.kind(parent, follow_symlink=false) is Directory {

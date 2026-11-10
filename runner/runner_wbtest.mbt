@@ -44,6 +44,7 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
       needs: Map([]),
       context: Map([]),
       contents_read: true,
+      id_token_write: false,
       matrix: Map([]),
       strategy: Map([]),
       id: "build",
@@ -170,6 +171,11 @@ async test "malformed assignment strings are rejected before execution" {
         { ..assignment, run_id: "0", },
         { ..assignment, job_id: "01", },
         { ..assignment, server_time_ms: "-1", },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
+          job: { ..assignment.job, id_token_write: true, },
+        },
         { ..assignment, lease_until_ms: "60001", },
         {
           ..assignment,

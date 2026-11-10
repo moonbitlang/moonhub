@@ -154,7 +154,7 @@ test "contents permissions inherit and override without granting other scopes" {
   assert_true(parse(basic_workflow).jobs[0].contents_read)
   for
     permission in [
-      "read-all", "write-all", "{contents: write}", "{id-token: write}", "{actions: read}",
+      "read-all", "write-all", "{contents: write}", "{id-token: read}", "{actions: read}",
     ] {
     expect_invalid(
       "permissions: " + permission + "\n" + basic_workflow,

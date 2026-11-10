@@ -22,6 +22,11 @@ fn flush_log_tails(
     attempt_id,
   ])
   ignore(
+    tx.execute("DELETE FROM pipeline_oidc_runtime WHERE attempt_id=?", params=[
+      attempt_id,
+    ]),
+  )
+  ignore(
     tx.execute("DELETE FROM pipeline_secret_delivery WHERE attempt_id = ?", params=[
       attempt_id,
     ]),

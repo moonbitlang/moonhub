@@ -7,7 +7,7 @@ async fn validate_options(
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -18,6 +18,10 @@ async fn validate_options(
     assignment.job.steps.length() > 0 &&
     assignment.job.steps.length() <= 64 else {
     raise InvalidConfiguration("runner requires a fresh leased assignment")
+  }
+  guard !assignment.job.id_token_write ||
+    assignment.version == @protocol.oidc_assignment_version else {
+    raise InvalidConfiguration("OIDC permissions require assignment version 10")
   }
   guard assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&
@@ -44,13 +48,14 @@ async fn validate_options(
     [
       @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
+      @protocol.oidc_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("matrix contexts require assignment version 6")
   }
   guard (assignment.job.outputs.is_empty() && assignment.job.needs.is_empty()) ||
     [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("job dataflow requires assignment version 7")
   }
@@ -68,6 +73,7 @@ async fn validate_options(
     ) ||
     [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
+      @protocol.oidc_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("dispatch context requires assignment version 8")
   }
@@ -89,7 +95,9 @@ async fn validate_options(
     raise InvalidConfiguration("dispatch context exceeds limits")
   }
   guard assignment.job.variables.is_empty() ||
-    assignment.version == @protocol.variable_assignment_version else {
+    [@protocol.variable_assignment_version, @protocol.oidc_assignment_version].contains(
+      assignment.version,
+    ) else {
     raise InvalidConfiguration(
       "repository variables require assignment version 9",
     )
@@ -178,7 +186,7 @@ async fn validate_options(
             @protocol.toolchain_assignment_version, @protocol.secret_assignment_version,
             @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
             @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-            @protocol.variable_assignment_version,
+            @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -188,6 +196,7 @@ async fn validate_options(
             @protocol.secret_assignment_version, @protocol.remote_assignment_version,
             @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
             @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
+            @protocol.oidc_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -236,6 +245,7 @@ async fn validate_options(
         @protocol.secret_assignment_version, @protocol.remote_assignment_version,
         @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
         @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
+        @protocol.oidc_assignment_version,
       ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
@@ -283,7 +293,7 @@ async fn validate_options(
         ![
           "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
           "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL", "ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2",
-          "ACTIONS_CACHE_MODE",
+          "ACTIONS_CACHE_MODE", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
         ].contains(name.to_upper()) &&
         !value.contains("\u{0000}") else {
         raise InvalidConfiguration(
@@ -777,6 +787,7 @@ async fn execute_assignment(
   action_node20~ : String = default_action_node20(),
   action_runtime~ : String = default_action_runtime(),
   moonbit_installer~ : async () -> Bytes = fetch_moonbit_installer,
+  oidc? : async (@protocol.OidcRuntimeRequest) -> @protocol.OidcRuntime,
   artifacts? : async (@protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime,
   secrets~ : async (@protocol.SecretRequest) -> @protocol.SecretResponse = _ => {
     raise InvalidConfiguration("secret service unavailable")
@@ -817,6 +828,7 @@ async fn execute_assignment(
     moon_home: "",
     secrets,
     artifacts,
+    oidc,
     action_node,
     action_node20,
     action_runtime,
@@ -950,7 +962,7 @@ async fn execute_assignment(
     let body = ToJson::to_json(request)
     if ![
         @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-        @protocol.variable_assignment_version,
+        @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
       ].contains(assignment.version) &&
       body is Object(fields) {
       // Older coordinators validate the original completion field set.
@@ -959,7 +971,7 @@ async fn execute_assignment(
     let state = Some(runtime.request("complete", body)) catch {
       Rejected(400) if [
           @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-          @protocol.variable_assignment_version,
+          @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
         ].contains(assignment.version) &&
         !runtime.job_outputs.is_empty() => {
         // A definitive rejection did not commit the original completion. The
@@ -1023,7 +1035,22 @@ pub async fn run(
     action_runtime~,
     secrets=request => fetch_secrets(options.server, attempt_id, token, request),
     artifacts=request => {
-      fetch_artifact_runtime(options.server, attempt_id, token, request)
+      fetch_action_grant(
+        options.server,
+        attempt_id,
+        token,
+        "artifact-runtime",
+        ToJson::to_json(request),
+      )
+    },
+    oidc=request => {
+      fetch_action_grant(
+        options.server,
+        attempt_id,
+        token,
+        "oidc-runtime",
+        ToJson::to_json(request),
+      )
     },
     source=() => fetch_source(options.server, attempt_id, token),
     bundle=() => fetch_source(options.server, attempt_id, token, bundle=true),
@@ -1045,7 +1072,7 @@ fn valid_secret_env_name(name : String) -> Bool {
   ![
     "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
     "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL", "ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2",
-    "ACTIONS_CACHE_MODE",
+    "ACTIONS_CACHE_MODE", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
   ].contains(name.to_upper())
 }
 

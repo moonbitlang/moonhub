@@ -112,7 +112,7 @@ fn yaml_to_string_map(
       ![
         "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "NODE_OPTIONS", "ACTIONS_RUNTIME_TOKEN",
         "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_URL", "ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2",
-        "ACTIONS_CACHE_MODE",
+        "ACTIONS_CACHE_MODE", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
       ].contains(key.to_upper()) else {
       raise InvalidWorkflow("\{ctx}.\{key}: invalid or reserved variable name")
     }
@@ -248,7 +248,7 @@ fn parse_job(
   value : @yaml.Yaml,
   workflow_env : Map[String, String],
   defaults : RunDefaults,
-  contents_read : Bool,
+  permissions : (Bool, Bool),
 ) -> Job raise InvalidWorkflow {
   guard valid_identifier(id) else {
     raise InvalidWorkflow("invalid job id: \{id}")
@@ -546,6 +546,11 @@ fn parse_job(
       ),
     })
   }
+  let (contents_read, id_token_write) = read_permissions(
+    fields.get("permissions"),
+    permissions,
+    "\{ctx}.permissions",
+  )
   {
     id,
     name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
@@ -563,11 +568,8 @@ fn parse_job(
     matrix_group: "",
     fail_fast: false,
     max_parallel: 256,
-    contents_read: read_permissions(
-      fields.get("permissions"),
-      contents_read,
-      "\{ctx}.permissions",
-    ),
+    contents_read,
+    id_token_write,
     timeout_minutes: parse_timeout(
       fields.get("timeout-minutes"),
       "\{ctx}.timeout-minutes",
@@ -587,9 +589,9 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   ignore(parse_trigger(fields.get("on")))
   let env = yaml_to_string_map(fields.get("env"), "env")
   let defaults = parse_run_defaults(fields.get("defaults"), "defaults")
-  let contents_read = read_permissions(
+  let permissions = read_permissions(
     fields.get("permissions"),
-    true,
+    (true, false),
     "permissions",
   )
   guard fields.get("jobs") is Some(value) else {
@@ -609,7 +611,7 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
         value,
         env,
         defaults,
-        contents_read,
+        permissions,
         remaining_jobs=256 - jobs.length(),
         remaining_steps=4096 - step_count,
         remaining_bytes=1048576 - plan_bytes,

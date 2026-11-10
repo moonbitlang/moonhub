@@ -73,7 +73,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
         let mut assignment = first
         let mut token = lease
         for i = 0; i < 2; i = i + 1 {
-          assert_eq(assignment.version, @protocol.variable_assignment_version)
+          assert_eq(assignment.version, @protocol.oidc_assignment_version)
           let workspace = root + "/dispatch-" + i.to_string()
           @fs.mkdir(workspace)
           let report = @runner.run(
