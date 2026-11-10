@@ -130,6 +130,16 @@ jobs:
         run: |
           node scripts/windows-runner-smoke.cjs --standalone
           if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows provider smoke failed' }
+      - name: Reclaim temporary Windows 2022 image layers
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          # GitHub-hosted runners are disposable; the earlier image and build
+          # cache are no longer needed after both 2022 lifecycle tests.
+          docker system df
+          docker system prune --all --force
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reclaim CI Docker image layers' }
+          Get-PSDrive C
       - name: Build generic Windows 2025 C++ task environment
         if: matrix.os == 'windows-2025'
         shell: pwsh
