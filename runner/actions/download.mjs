@@ -76,22 +76,40 @@ export async function extractArchive(buffer, directory) {
     if (type === 'g') { const global = paxFields(content); if (Object.keys(global).some(key => !['comment', 'mtime', 'atime', 'ctime'].includes(key))) throw new Error('Unsupported global tar metadata'); continue; }
     const prefix = tarString(header.subarray(257, 263)) === 'ustar' ? tarString(header.subarray(345, 500)) : '';
     let name = attributes.path || [prefix, tarString(header.subarray(0, 100))].filter(Boolean).join('/');
+    const link = attributes.linkpath || tarString(header.subarray(157, 257));
     attributes = {};
     name = name.replace(/\/$/, '');
     const parts = name.split('/');
     if (!name || parts.some(part => !part || ['.', '..', '.git'].includes(part) || /[\x00-\x1f\x7f\\:]/.test(part)) || name.length > 1024) throw new Error('Unsafe action archive path');
     if (!root) root = parts[0];
     if (root !== parts[0]) throw new Error('Action archive has multiple roots');
-    if (!['', '0', '5'].includes(type)) throw new Error('Action archives may contain only regular files and directories');
+    if (!['', '0', '2', '5'].includes(type)) throw new Error('Action archives may contain only regular files, directories and safe file links');
     if (parts.length === 1) continue;
     const relative = parts.slice(1).join('/');
     const key = windows ? relative.toLowerCase() : relative;
     if (!validRelative(relative) || names.has(key) || ++count > 10000) throw new Error('Action archive contains duplicate paths or too many files');
     names.add(key);
     const executable = Number.parseInt(tarString(header.subarray(100, 108)).trim(), 8) & 0o111;
-    entries.push({ relative, type, content, executable });
+    if (type === '2' && size !== 0) throw new Error('Malformed action archive link');
+    entries.push({ relative, type, originalType: type, content, executable, link });
   }
   if (!root || !entries.length) throw new Error('Action archive is empty');
+  // Materialize links as independent regular files. Never create filesystem
+  // links: Windows workers may lack symlink privileges and an archive must not
+  // redirect a later extraction through a link. Only direct in-archive files
+  // are valid targets; reject chains, directories, absolute paths and escapes.
+  const files = new Map(entries.map(entry => [windows ? entry.relative.toLowerCase() : entry.relative, entry]));
+  let expanded = entries.reduce((sum, entry) => sum + entry.content.length, 0);
+  for (const entry of entries) if (entry.type === '2') {
+    if (!entry.link || entry.link.startsWith('/') || /[\x00-\x1f\x7f\\:]/.test(entry.link)) throw new Error('Unsafe action archive link');
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(entry.relative), entry.link));
+    if (!validRelative(target)) throw new Error('Unsafe action archive link');
+    const file = files.get(windows ? target.toLowerCase() : target);
+    if (!file || !['', '0'].includes(file.originalType)) throw new Error('Action archive link must target a regular file');
+    expanded += file.content.length;
+    if (expanded > 268435456) throw new Error('Expanded action archive exceeds 256 MiB');
+    entry.type = '0'; entry.content = file.content; entry.executable = file.executable;
+  }
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   for (const entry of entries) {
     const filename = path.join(directory, entry.relative);
