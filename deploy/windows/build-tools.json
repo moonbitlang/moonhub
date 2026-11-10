@@ -10,7 +10,6 @@
     "sha256": "44a3e7dc44486c945abdc1fae97e7e22de4d05e80f03b00e9302ba4b72c3e0e3"
   },
   "components": [
-    "Microsoft.VisualStudio.Workload.VCTools",
     "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
     "Microsoft.VisualStudio.Component.Windows11SDK.26100"
   ]

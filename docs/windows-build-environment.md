@@ -61,7 +61,7 @@ for the bootstrapper and frozen channel. The build verifies both and checks
 the bootstrapper's Microsoft Authenticode signature. Microsoft's installer
 obtains and validates its own catalog and packages through the frozen channel;
 the build does not claim an independent catalog checksum. It installs the explicit
-C++ Build Tools workload and Windows SDK 26100, accepts the documented success
+C++ compiler component and Windows SDK 26100, accepts the documented success
 codes 0/3010, and verifies the resulting product version, VsDevCmd and SDK.
 The toolchain is Visual Studio Build Tools 2022 17.14.37906.3. Installation is
 unattended under the image build; normal jobs still run as ContainerUser.
