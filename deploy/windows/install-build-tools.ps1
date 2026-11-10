@@ -7,9 +7,9 @@ $downloads = 'C:/moonhub-build-downloads'
 if (Test-Path $downloads) { throw 'Build Tools staging directory already exists' }
 New-Item -ItemType Directory $downloads | Out-Null
 try {
-  foreach ($name in 'bootstrapper', 'channel', 'catalog') {
+  foreach ($name in 'bootstrapper', 'channel') {
     $item = $pin.$name
-    $filename = Join-Path $downloads (@{bootstrapper='vs_Setup.exe';channel='channel.chman';catalog='VisualStudio.vsman'}[$name])
+    $filename = Join-Path $downloads (@{bootstrapper='vs_Setup.exe';channel='channel.chman'}[$name])
     Invoke-WebRequest $item.url -OutFile $filename -UseBasicParsing
     if ((Get-FileHash $filename -Algorithm SHA256).Hash.ToLowerInvariant() -ne $item.sha256) { throw "Build Tools checksum mismatch: $name" }
   }

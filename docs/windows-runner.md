@@ -169,7 +169,7 @@ its provider, executes jobs, verifies volume/container cleanup and cancellation,
 and reinstalls while preserving credentials. A deterministic Windows 11 daemon
 adapter proves Hyper-V selection and that failed preflight/cleanup never claims.
 
-Hosted CI uses Windows Server 2022. It does **not** prove actual Windows 11
+Hosted CI uses Windows Server 2022 and 2025. It does **not** prove actual Windows 11
 Hyper-V operation. Run the same acceptance on a dedicated Windows 11 PC with
 virtualization available, its real daemon and the built bundle/image before
 rolling that host configuration into service:
