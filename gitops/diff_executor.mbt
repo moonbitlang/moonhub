@@ -10,6 +10,9 @@ pub struct DiffExecutor {
   slots : @async.Semaphore
   priv observe : (Json) -> Unit
   priv mut waiting : Int32
+  priv inflight : Map[String, (DiffInFlight, @async.Lazy[DiffCacheValue])]
+  priv mut next_task_id : Int64
+  priv mut coalesced_requests : Int64
   priv mut cache : Map[String, (DiffCacheValue, Int64)]
   priv mut cache_bytes : Int64
   priv cache_limit_bytes : Int64
@@ -47,6 +50,9 @@ pub fn DiffExecutor::new(
     observe,
     slots: @async.Semaphore(concurrency),
     waiting: 0,
+    inflight: Map([]),
+    next_task_id: 0L,
+    coalesced_requests: 0L,
     cache: Map([]),
     cache_bytes: 0L,
     cache_limit_bytes,
@@ -194,36 +200,124 @@ async fn DiffExecutor::compute_cached(
   if self.cached(key, phase) is Some(value) {
     return value
   }
-  let queued_at = @async.now()
-  if !self.slots.try_acquire() {
+  let (state, result) = if self.inflight.get(key) is Some((state, result)) {
     guard self.waiting < @diff_protocol.queue_limit else {
       raise DiffFailure("diff queue is full; retry shortly")
     }
     self.waiting += 1
-    defer {
+    state.waiters += 1
+    self.coalesced_requests += 1L
+    self.observe_diff({ "event": "diff", "phase": phase, "coalesced": true })
+    (state, result)
+  } else {
+    let queued_at = @async.now()
+    // Reserve admission synchronously, before Lazy starts its coroutine. Both
+    // independent queued jobs and extra shared waiters consume waiting capacity.
+    let admitted = self.slots.try_acquire()
+    if !admitted {
+      guard self.waiting < @diff_protocol.queue_limit else {
+        raise DiffFailure("diff queue is full; retry shortly")
+      }
+      self.waiting += 1
+    }
+    self.next_task_id += 1L
+    let state = {
+      id: self.next_task_id,
+      waiters: 1,
+      finished: false,
+      cleaned: @async.Semaphore(1, initial_value=0),
+    }
+    let result = @async.Lazy(() => {
+      let mut acquired = admitted
+      defer {
+        if acquired {
+          self.slots.release()
+        }
+        self.forget_inflight(key, state)
+        state.finished = true
+        state.cleaned.release()
+      }
+      if !admitted {
+        defer {
+          self.waiting -= 1
+        }
+        // Later joiners inherit the original admission deadline.
+        let remaining = @diff_protocol.queue_wait_ms.to_int64() -
+          (@async.now() - queued_at)
+        guard remaining > 0L else {
+          raise DiffFailure("diff queue wait exceeded; retry shortly")
+        }
+        @async.with_timeout(
+          remaining.to_int(),
+          () => {
+            self.slots.acquire()
+            // The timeout scope can still fail or be cancelled after acquire.
+            acquired = true
+          },
+          error=DiffFailure("diff queue wait exceeded; retry shortly"),
+        )
+      }
+      let started = if admitted { queued_at } else { @async.now() }
+      self.compute(key, phase, queued_at, started, load)
+    })
+    self.inflight[key] = (state, result)
+    (state, result)
+  }
+  defer {
+    state.waiters -= 1
+    // Any remaining caller takes the primary position when its predecessor
+    // leaves, so cancelled callers never retain an extra waiting position.
+    if state.waiters > 0 {
       self.waiting -= 1
     }
-    @async.with_timeout(
-      @diff_protocol.queue_wait_ms,
-      () => self.slots.acquire(),
-      error=DiffFailure("diff queue wait exceeded; retry shortly"),
-    )
+    if state.waiters == 0 && !state.finished {
+      // Lazy.wait has already cancelled its worker. Detach before yielding so a
+      // new caller cannot join the dying task, then wait for resource cleanup.
+      self.forget_inflight(key, state)
+      @async.protect_from_cancel(() => state.cleaned.acquire())
+    }
   }
-  let started = @async.now()
+  result.wait()
+}
+
+///|
+priv struct DiffInFlight {
+  id : Int64
+  mut waiters : Int32
+  mut finished : Bool
+  cleaned : @async.Semaphore
+}
+
+///|
+fn DiffExecutor::forget_inflight(
+  self : DiffExecutor,
+  key : String,
+  state : DiffInFlight,
+) -> Unit {
+  if self.inflight.get(key) is Some((current, _)) && current.id == state.id {
+    self.inflight.remove(key)
+  }
+}
+
+///|
+// Only the shared computation records execution metrics and updates the LRU.
+async fn DiffExecutor::compute(
+  self : DiffExecutor,
+  key : String,
+  phase : String,
+  queued_at : Int64,
+  started : Int64,
+  load : async () -> DiffCacheValue,
+) -> DiffCacheValue {
   self.queued_ms += started - queued_at
   let mut termination = "cancelled"
   defer {
     self.execution_ms += @async.now() - started
     self.last_termination = termination
-    self.slots.release()
     self.observe_diff({
       "event": "diff",
       "phase": phase,
-      "cache": if termination == "cached" {
-        "hit"
-      } else {
-        "miss"
-      },
+      "cache": "miss",
       "queue_ms": (started - queued_at).to_string(),
       "execution_ms": (@async.now() - started).to_string(),
       "input_bytes_total": self.input_bytes.to_string(),
@@ -234,19 +328,22 @@ async fn DiffExecutor::compute_cached(
   errdefer {
     self.failures += 1
   }
-  // Another task may have filled this entry while we waited for admission.
-  if self.cached(key, phase) is Some(value) {
-    termination = "cached"
-    return value
-  }
-  let (value, size) = @async.with_timeout(
-    self.deadline_ms,
-    () => {
-      let value = load()
-      (value, value.retained_bytes())
-    },
-    error=DiffFailure("diff \{phase} timed out; retry shortly"),
-  ) catch {
+  let (value, size) = try {
+    // Admission may reserve a permit before Lazy gets scheduled. Include that
+    // time in the execution deadline rather than granting a fresh deadline.
+    let remaining = self.deadline_ms.to_int64() - (@async.now() - started)
+    guard remaining > 0L else {
+      raise DiffFailure("diff \{phase} timed out; retry shortly")
+    }
+    @async.with_timeout(
+      remaining.to_int(),
+      () => {
+        let value = load()
+        (value, value.retained_bytes())
+      },
+      error=DiffFailure("diff \{phase} timed out; retry shortly"),
+    )
+  } catch {
     DiffFailure(reason) => {
       termination = reason
       raise DiffFailure(reason)

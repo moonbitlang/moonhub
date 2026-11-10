@@ -106,7 +106,7 @@ does not import MoonDiff's computation packages.
 | `MOONHUB_DIFF_DEADLINE_MS` | 5000 (allowed 1–60000) |
 | `MOONHUB_DIFF_CACHE_BYTES` | 33554432 (32 MiB retained-memory estimate; 0 disables caching) |
 | `MOONHUB_WEB_MOONDIFF` | `true`; `false` restores Git patch pages |
-| Queue | 16 waiting tasks, 2-second wait |
+| Queue | 16 waiting positions (queued jobs and extra shared callers), 2-second admission wait |
 | Source | 1 MiB / 20,000 lines per side |
 | JSON request / result | 16 MiB / 2 MiB |
 | Retained stderr | 64 KiB, then continue draining |
@@ -132,8 +132,7 @@ and cancellation remain effective.
 
 The executor caches complete sorted manifests by repository, fixed base/head
 SHAs and protocol version; pagination, anchor lookup and file requests reuse
-them. It rechecks the cache after admission. Manifest and file entries share
-one typed LRU per `DiffExecutor` instance. The Web application injects the same
+them. Manifest and file entries share one typed LRU per `DiffExecutor` instance. The Web application injects the same
 executor into browser, API and MCP features, so their manifests and file documents
 share one budget across repositories. Separate applications/executors and processes
 have independent caches; restarting loses all entries. Waiting tasks hold
@@ -151,7 +150,28 @@ reads `MOONHUB_DIFF_CACHE_BYTES` as a decimal Int64 byte count. Invalid, empty,
 overflowing or negative values fail before worker verification and database
 initialization, including when `MOONHUB_WEB_MOONDIFF=false`. Compose forwards the
 setting to the Web service. A zero budget returns computed results normally but
-retains nothing. No disk persistence or in-progress request coalescing is used.
+retains nothing. No disk persistence is used.
+
+After checking the completed cache, identical in-progress requests within one
+executor share a single calculation and its result or error, including when
+caching is disabled or the result exceeds the cache budget. Manifests share
+across pages; different repositories, fixed revisions, files or effective options
+remain independent. Browser, API and MCP requests use the same application
+executor and each caller still rechecks authorization independently. Only the
+first caller supplies the loader and only the shared calculation acquires an
+execution permit. Independent queued calculations and additional shared callers
+consume the same 16 waiting positions; overflow retains the retryable error.
+Later callers inherit the original 2-second admission deadline and the execution
+deadline beginning when a permit is acquired; joining never resets either.
+Queued work reads no blobs and starts no worker.
+
+Cancelling any one caller leaves the calculation running for the others. When
+the last caller leaves, the task stops accepting callers immediately, cancels
+its work and waits for process reaping and permit return before that caller
+finishes. A new request may start a fresh task while the old task is cleaning up.
+All completed, failed and cancelled tasks leave the in-progress table; only
+the budgeted LRU retains completed results. Failures and cancellations are not
+cached.
 
 The budget estimates retained memory with conservative constants, using Int64
 arithmetic throughout. It is not a process RSS limit and excludes temporary
@@ -183,8 +203,11 @@ queue/execution milliseconds,
 cumulative input/output byte counts and termination reason; source content and
 repository paths are excluded. Every such event also includes `cache_entries`,
 `cache_bytes`, `cache_limit_bytes`, `cache_evictions_total`, `cache_skips_total`
-and `cache_hits_total`. Byte counts and the eviction/skip totals are decimal
-strings to preserve Int64 precision. Skips count successful results that cannot
+and `cache_hits_total`. Shared join events include `coalesced: true` and do not
+count as cache hits. All events include the decimal-string
+`coalesced_requests_total`; calculation completions, failures, timings and byte
+counts are recorded once per shared calculation. Byte counts and the
+eviction/skip totals are decimal strings to preserve Int64 precision. Skips count successful results that cannot
 be retained, including when caching is disabled; replacement is not an eviction.
 No persistent process pool is used.
 

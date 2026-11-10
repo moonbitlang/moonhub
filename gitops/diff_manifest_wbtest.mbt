@@ -3,11 +3,13 @@ async test "manifest and file stages share all sixteen wait positions without st
   let executor = DiffExecutor::new()
   executor.slots.acquire()
   let sha = "a".repeat(40)
+  let started = @async.Semaphore(16, initial_value=0)
   @async.with_task_group(group => {
     let tasks = []
     for i in 0..<16 {
       tasks.push(
         group.spawn(() => {
+          started.release()
           if i % 2 == 0 {
             ignore(executor.manifest("missing-repository", sha, sha))
           } else {
@@ -20,8 +22,12 @@ async test "manifest and file stages share all sixteen wait positions without st
         }),
       )
     }
-    @async.sleep(20)
+    for _ in 0..<16 {
+      started.acquire()
+    }
     assert_eq(executor.waiting, 16)
+    assert_eq(executor.inflight.length(), 9)
+    assert_eq(executor.coalesced_requests, 7L)
     try ignore(executor.manifest("missing-repository", sha, sha)) catch {
       DiffFailure(reason) => assert_true(reason.contains("queue is full"))
       err => raise err
@@ -51,24 +57,33 @@ async test "manifest and file stages share all sixteen wait positions without st
 }
 
 ///|
-async test "manifest cache is rechecked after admission and shared across pagination file and anchors" {
+async test "manifest work is coalesced across pagination and cached for files and anchors" {
   @test_support.with_git_test_repo((root, _) => {
     let dir = "\{root}/alice/demo.git"
     let (base, head) = @test_support.structured_diff_fixture(dir)
+    let joined = @async.Semaphore(1, initial_value=0)
     let executor = DiffExecutor::new(
+      observe=event => {
+        if event is { "coalesced": true, .. } {
+          joined.release()
+        }
+      },
       worker="_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe",
     )
     executor.slots.acquire()
     @async.with_task_group(group => {
       let first = group.spawn(() => executor.manifest(dir, base, head))
       let second = group.spawn(() => executor.manifest(dir, base, head, page=2))
-      @async.sleep(20)
+      joined.acquire()
       assert_eq(executor.waiting, 2)
+      assert_eq(executor.inflight.length(), 1)
       executor.slots.release()
       assert_eq(first.wait().files.length(), 100)
       assert_true(second.wait().files.length() > 0)
     })
     assert_eq(executor.completed, 1)
+    assert_eq(executor.coalesced_requests, 1L)
+    assert_eq(executor.cache_hits, 0)
     let second = executor.manifest(dir, base, head, page=2)
     for
       (old_path, new_path, side) in [
