@@ -22,7 +22,17 @@ pub async fn serve(config : Config) -> Unit {
     )
     @collaboration.start_merge_worker(pool, config.root, group)
     @collaboration.start_review_requests_worker(pool, config.root, group)
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let oidc = match @config.env_value("MOONHUB_OIDC_CONFIG") {
+      Some(path) =>
+        Some(
+          @pipeline.OidcIssuer::load(
+            path,
+            node=@config.env_value("MOONHUB_OIDC_NODE").unwrap_or("node"),
+          ),
+        )
+      None => None
+    }
+    let coordinator = @pipeline.Coordinator::new(pool, oidc?)
     coordinator.start_lease_worker(group)
     group.spawn_bg(no_wait=true, () => {
       for ;; {

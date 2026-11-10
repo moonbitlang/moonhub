@@ -102,7 +102,11 @@ pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, A
 pub fn Coordinator::expire_attempts(Self) -> Int32 raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int32) -> @protocol.LeaseState raise
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise
-pub fn Coordinator::new(@database.Database, clock? : () -> Int64) -> Self
+pub fn Coordinator::new(@database.Database, oidc? : OidcIssuer, clock? : () -> Int64) -> Self
+pub fn Coordinator::oidc_discovery(Self) -> @json.Json raise
+pub fn Coordinator::oidc_jwks(Self) -> @json.Json raise
+pub fn Coordinator::oidc_runtime(Self, Int64, String, @protocol.OidcRuntimeRequest) -> @protocol.OidcRuntime raise
+pub async fn Coordinator::oidc_token(Self, Int64, String, String) -> @json.Json
 pub fn Coordinator::provider_control(Self, @domain.CurrentUser, Int64) -> ProviderControl raise
 pub fn Coordinator::queue_reasons(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Map[String, QueueReason] raise
 pub fn Coordinator::read_log_page(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> LogPage raise
@@ -172,6 +176,13 @@ pub struct MergeCheckContext {
   source_sha : String
   target_sha : String
 }
+
+pub struct OidcIssuer {
+  // private fields
+}
+pub fn OidcIssuer::discovery(Self) -> @json.Json
+pub fn OidcIssuer::jwks(Self) -> @json.Json
+pub async fn OidcIssuer::load(String, node? : String, allow_http? : Bool) -> Self
 
 #derive(@debug.Debug)
 pub struct Provider {

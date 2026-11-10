@@ -83,6 +83,8 @@ export class ActionRuntime {
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
     this.artifact = process.env.MOONHUB_ACTION_ARTIFACT_TOKEN ? { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL } : undefined;
     if (this.artifact && !this.state.masks.includes(this.artifact.token)) this.state.masks.push(this.artifact.token);
+    this.oidc = process.env.MOONHUB_ACTION_OIDC_TOKEN ? { token: process.env.MOONHUB_ACTION_OIDC_TOKEN, url: process.env.MOONHUB_ACTION_OIDC_URL } : undefined;
+    if (this.oidc && !this.state.masks.includes(this.oidc.token)) this.state.masks.push(this.oidc.token);
     this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
     this.workspace = path.resolve(config.workspace);
     this.temp = path.resolve(config.temp);
@@ -118,7 +120,7 @@ export class ActionRuntime {
   context(extra = {}) {
     const github = { repository: this.config.repository, sha: this.config.sha, server_url: this.config.server,
       api_url: `${this.config.server}/-/api/v1`, ref: this.config.context?.ref || this.config.sha,
-      workflow: this.config.context?.workflow || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
+      workflow: this.config.context?.workflow || '', actor: this.config.context?.actor || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
       event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.config.contents_read === false ? '' : 'moonhub-local-source',
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
@@ -200,10 +202,17 @@ export class ActionRuntime {
     env.PATH = [...this.state.path, env.PATH].filter(Boolean).join(path.delimiter);
     Object.assign(env, { GITHUB_WORKSPACE: this.workspace, GITHUB_REPOSITORY: this.config.repository, GITHUB_SHA: this.config.sha,
       GITHUB_SERVER_URL: this.config.server, GITHUB_API_URL: `${this.config.server}/-/api/v1`, GITHUB_EVENT_NAME: context.github.event_name, ...(this.dispatchContext ? { GITHUB_EVENT_PATH: this.eventPath } : {}),
+      GITHUB_WORKFLOW: context.github.workflow, GITHUB_ACTOR: context.github.actor,
       GITHUB_REF: context.github.ref, GITHUB_HEAD_REF: context.github.head_ref, GITHUB_BASE_REF: context.github.base_ref,
       GITHUB_ACTIONS: 'true', GITHUB_ACTION: this.config.step?.id || 'post',
       GITHUB_RUN_ID: this.config.run_id || '0', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: this.config.job_id || '',
       RUNNER_OS: context.runner.os, RUNNER_ARCH: context.runner.arch, RUNNER_TEMP: this.temp, RUNNER_TOOL_CACHE: context.runner.tool_cache });
+    delete env.ACTIONS_ID_TOKEN_REQUEST_URL;
+    delete env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+    if (this.oidc) {
+      env.ACTIONS_ID_TOKEN_REQUEST_URL = this.oidc.url;
+      env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = this.oidc.token;
+    }
     if (context.github.action_path) env.GITHUB_ACTION_PATH = context.github.action_path;
     // Source transport redirects this one repository to an immutable local Git
     // bundle. No runner, provider, application or GitHub credential is exposed.

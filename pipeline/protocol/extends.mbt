@@ -116,3 +116,15 @@ pub extend ArtifactRuntime with ToJson::{to_json}
 
 ///|
 pub extend ArtifactRuntime with @json.FromJson::{from_json}
+
+///|
+pub extend OidcRuntimeRequest with ToJson::{to_json}
+
+///|
+pub extend OidcRuntimeRequest with @json.FromJson::{from_json}
+
+///|
+pub extend OidcRuntime with ToJson::{to_json}
+
+///|
+pub extend OidcRuntime with @json.FromJson::{from_json}

@@ -97,8 +97,8 @@ delivered to that attempt, using log-mask variants. These substring checks do
 not guarantee protection against deliberately transformed secrets.
 
 Definition-v4 snapshots use assignment version 7. Dispatch definition-v5 runs use
-assignment version 8 for [dispatch inputs](dispatch-inputs.md). Current runs use
-definition version 6 and assignment version 9 for repository variables. Old
+assignment version 8 for [dispatch inputs](dispatch-inputs.md). Definition-v6 runs use
+assignment version 9 for repository variables. Old
 runners reject unsupported versions. Upgrade coordinator, provider/controller
 and runner together. Definition versions 1-5 and their
 original assignment versions remain supported, including old completion hashes.
@@ -130,12 +130,21 @@ pinned node20 entry points. Production defaults still use the prepared Node 20
 runtime. All matrix instances here execute on the local host, not separate
 macOS/Windows release machines.
 
-Dynamic matrices, job continue-on-error other than literal `false`, scheduled triggers,
-OIDC, write permissions and authenticated release APIs remain separate work. See
-[GitHub Actions](github-actions.md), [workflow scheduling](workflow-scheduling.md),
+Dynamic matrices, job continue-on-error other than literal `false`, scheduled
+triggers, API write permissions and authenticated release APIs remain separate
+work. OIDC identities with `id-token: write` are described in
+[workflow OIDC](workflow-oidc.md). See [GitHub Actions](github-actions.md),
+[workflow scheduling](workflow-scheduling.md),
 [Artifact v4](artifact-v4.md) and [Cache v4](cache-v4.md).
 
 Repository configuration variables are available in job conditions and outputs
 from definition version 6 / assignment version 9; see
 [repository variables](repository-variables.md). Values are captured with the run
 and snapshot reruns do not reload current repository settings.
+
+Current snapshots use definition v7 / assignment v10 for
+[workflow OIDC](workflow-oidc.md), with migration 037. Historical definition
+versions 1–6 and their assignment contracts remain readable.
+
+Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
+only OIDC-enabled jobs require assignment v10.

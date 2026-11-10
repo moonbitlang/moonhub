@@ -651,3 +651,30 @@ test('repository variables enforce wire bounds and explicit version capability',
     assert.throws(() => new ActionRuntime({ ...modern, variables }));
   }
 });
+
+test('OIDC credentials reach scripts, composites and pre/main/post while reserved values cannot replace them', async t => {
+  const {config} = await fixture(t);
+  const oldToken = process.env.MOONHUB_ACTION_OIDC_TOKEN, oldURL = process.env.MOONHUB_ACTION_OIDC_URL;
+  process.env.MOONHUB_ACTION_OIDC_TOKEN = 'oidc-request-token';
+  process.env.MOONHUB_ACTION_OIDC_URL = 'https://issuer.example/token?attempt_id=1';
+  let runtime;
+  try { runtime = new ActionRuntime(config); }
+  finally {
+    if (oldToken === undefined) delete process.env.MOONHUB_ACTION_OIDC_TOKEN; else process.env.MOONHUB_ACTION_OIDC_TOKEN = oldToken;
+    if (oldURL === undefined) delete process.env.MOONHUB_ACTION_OIDC_URL; else process.env.MOONHUB_ACTION_OIDC_URL = oldURL;
+  }
+  const uses = await action(config, 'oidc', 'runs: {using: node24, pre: main.cjs, main: main.cjs, post: main.cjs}', {
+    'main.cjs': `if(process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!=='oidc-request-token'||process.env.ACTIONS_ID_TOKEN_REQUEST_URL!=='https://issuer.example/token?attempt_id=1'||process.env.MOONHUB_ACTION_OIDC_TOKEN)process.exit(3);`,
+  });
+  assert.equal((await runtime.action(uses)).code, 0);
+  assert.equal(await runtime.posts(), 0);
+  assert.equal(runtime.environment({ACTIONS_ID_TOKEN_REQUEST_TOKEN:'spoof'}).ACTIONS_ID_TOKEN_REQUEST_TOKEN, 'oidc-request-token');
+  assert.ok(runtime.state.masks.includes('oidc-request-token'));
+  const unprivileged = new ActionRuntime(config);
+  assert.equal(unprivileged.environment({ACTIONS_ID_TOKEN_REQUEST_TOKEN:'spoof', ACTIONS_ID_TOKEN_REQUEST_URL:'https://evil.example'}).ACTIONS_ID_TOKEN_REQUEST_TOKEN, undefined);
+  assert.equal(unprivileged.environment().ACTIONS_ID_TOKEN_REQUEST_URL, undefined);
+  for (const name of ['ACTIONS_ID_TOKEN_REQUEST_URL', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) {
+    await assert.rejects(runtime.script(`echo '${name}=spoof' >> "$GITHUB_ENV"`, 'bash'), /Reserved or unsafe/);
+    assert.equal(runtime.state.env[name], undefined);
+  }
+});

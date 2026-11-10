@@ -42,7 +42,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
       assert_eq(captured.inputs.get("enabled"), Some(Json::boolean(true)))
       assert_eq(captured.inputs.get("count"), Some(Json::number(3.5)))
       assert_eq(captured.inputs.get("channel"), Some(Json::string("stable")))
-      assert_eq(run.definition_version, 6)
+      assert_eq(run.definition_version, 7)
       let group = pool.with_client(client => {
         client.query_one(
           "SELECT group_key FROM pipeline_run_schedule WHERE run_id=?",

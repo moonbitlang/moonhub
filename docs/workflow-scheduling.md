@@ -88,8 +88,8 @@ disabled. Definition versions 1 and 2 remain readable and reruns preserve their
 saved version. Historical scheduling snapshots use definition version 3 and assignment version 6.
 Job-dataflow snapshots use definition version 4 and assignment version 7; see
 [job dataflow](job-dataflow.md). Dispatch snapshots use definition version 5 and
-assignment version 8 for [dispatch inputs](dispatch-inputs.md). Current snapshots
-use definition version 6 and assignment version 9 for
+assignment version 8 for [dispatch inputs](dispatch-inputs.md). Definition-v6 snapshots
+use assignment version 9 for
 [repository variables](repository-variables.md).
 Old providers/runners reject V6 instead of executing missing matrix contexts.
 Upgrade coordinator, provider and runner together; downgrade to schema 30 is not
@@ -143,3 +143,10 @@ several parallel link workers with `Killed`. Running the same commands with
 changed. One intervening retry failed on a transient package-download TLS error.
 Use a runner whose CPU/parallelism and memory are provisioned together. This is
 Linux matrix-instance acceptance, not a claim of macOS/browser acceptance.
+
+Current snapshots use definition v7 / assignment v10 for
+[workflow OIDC](workflow-oidc.md), with migration 037. Historical definition
+versions 1–6 and their assignment contracts remain readable.
+
+Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
+only OIDC-enabled jobs require assignment v10.

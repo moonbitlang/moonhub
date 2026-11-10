@@ -128,14 +128,14 @@ fn expand_job(
   value : @yaml.Yaml,
   env : Map[String, String],
   defaults : RunDefaults,
-  contents_read : Bool,
+  permissions : (Bool, Bool),
   remaining_jobs~ : Int32 = 256,
   remaining_steps~ : Int32 = 4096,
   remaining_bytes~ : Int32 = 1048576,
 ) -> Array[Job] raise InvalidWorkflow {
   let fields = yaml_as_obj(value, "jobs." + id)
   guard fields.get("strategy") is Some(strategy) else {
-    return [parse_job(id, value, env, defaults, contents_read)]
+    return [parse_job(id, value, env, defaults, permissions)]
   }
   let strategy = yaml_as_obj(strategy, "strategy")
   check_fields(strategy, ["matrix", "fail-fast", "max-parallel"], "strategy")
@@ -205,7 +205,7 @@ fn expand_job(
         }),
       )
     }
-    let job = parse_job(id, @yaml.Map(fields), env, defaults, contents_read)
+    let job = parse_job(id, @yaml.Map(fields), env, defaults, permissions)
     let instance = {
       ..job,
       id: id + "[" + (index + 1).to_string() + "]",

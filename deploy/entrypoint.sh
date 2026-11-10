@@ -32,6 +32,13 @@ case "${1:-web}" in
       install -m 0600 -o git -g git "$MOONHUB_ROOT_PASSWORD_FILE" /run/moonhub/root_password
       export MOONHUB_ROOT_PASSWORD_FILE=/run/moonhub/root_password
     fi
+    if [ -n "${MOONHUB_OIDC_CONFIG:-}" ]; then
+      [ -f "$MOONHUB_OIDC_CONFIG" ] && [ ! -L "$MOONHUB_OIDC_CONFIG" ] || {
+        printf '%s\n' 'Missing or invalid workflow OIDC configuration' >&2; exit 1;
+      }
+      install -m 0600 -o git -g git "$MOONHUB_OIDC_CONFIG" /run/moonhub/workflow-oidc.json
+      export MOONHUB_OIDC_CONFIG=/run/moonhub/workflow-oidc.json
+    fi
     shift
     exec gosu git moonhub /data/repos --assets /app/assets --host 0.0.0.0 --port 8080 "$@"
     ;;

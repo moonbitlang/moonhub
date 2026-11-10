@@ -145,6 +145,7 @@ async fn main {
       | "attachment"
       | "webhook"
       | "secret"
+      | "variable"
     ) => {
       let code = @cli.run(args[1:]) catch {
         @cli.Invalid(message) => {
@@ -168,6 +169,24 @@ async fn main {
         _ => {
           @stdio.stderr.write("moonhub: CLI request failed\n")
           1
+        }
+      }
+      @sys.exit(code)
+    }
+    Some("oidc-check") => {
+      let code = try {
+        guard args.length() == 3 else {
+          raise @domain.BadRequest(
+            message="Usage: moonhub oidc-check CONFIG_FILE",
+          )
+        }
+        ignore(@pipeline.OidcIssuer::load(args[2]))
+        println("Workflow OIDC configuration valid")
+        0
+      } catch {
+        _ => {
+          @stdio.stderr.write("moonhub: invalid workflow OIDC configuration\n")
+          2
         }
       }
       @sys.exit(code)

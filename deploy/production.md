@@ -54,6 +54,18 @@ labels Web, Runner and controller images with the exact commit. It requires
 the commit-tagged task image to the configured ECR repository. Immutable ECR tags
 are recommended. The operator settings file and credentials are excluded from builds.
 
+## Workflow OIDC configuration
+
+To enable workflow identities, generate the private issuer configuration as
+shown in [workflow OIDC](../docs/workflow-oidc.md), outside the source checkout,
+and set `MOONHUB_OIDC_CONFIG_FILE` in the existing private `production.env`.
+Use the public `MOONHUB_SERVER` origin as the issuer. The deployment includes the
+Web-only read-only mount, copies a private runtime file for the service user,
+validates the configuration before downtime and verifies discovery/JWKS after
+the switch. Recovery preserves the signing configuration. Configure the AWS
+OIDC provider and restricted role trust separately; existing GitHub deployment
+trust remains independent.
+
 ## Worker network and public addresses
 
 Workers accept no inbound connections; SSM and task traffic are outbound. They

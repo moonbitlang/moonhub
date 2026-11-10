@@ -1,0 +1,11 @@
+services:
+  web:
+    environment:
+      MOONHUB_OIDC_CONFIG: /run/secrets/workflow_oidc
+    volumes:
+      - type: bind
+        source: ${MOONHUB_OIDC_CONFIG_FILE:?Set the host OIDC configuration path}
+        target: /run/secrets/workflow_oidc
+        read_only: true
+        bind:
+          create_host_path: false

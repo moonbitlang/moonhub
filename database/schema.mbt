@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 36L
+pub let database_schema_version : Int64 = 37L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -30,6 +30,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
     let sql = @fs.read_file("db/base.sql").text()
     pool.with_client(client => client.batch_execute(sql))
   }
+  let oidc_migration = @fs.read_file("db/migrations/037_pipeline_oidc.sql").text()
   let ssh_migration = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
   let repository_migration = @fs.read_file(
     "db/migrations/002_repository_jobs.sql",
@@ -227,7 +228,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 36L {
         tx.driver.exec_script(variables_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 36")
+      if version < 37L {
+        tx.driver.exec_script(oidc_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 37")
     })
   })
 }

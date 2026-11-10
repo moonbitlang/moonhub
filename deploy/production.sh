@@ -196,6 +196,7 @@ upgrade() {
   build
   publish
   prepare_controller
+  web_deploy check-oidc
   discover_dind
   prepare_dind
   local backup unchanged=0

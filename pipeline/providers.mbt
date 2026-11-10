@@ -7,15 +7,17 @@ pub suberror ExecutionError {
 ///|
 pub struct Coordinator {
   priv pool : @database.Database
+  priv oidc : OidcIssuer?
   priv clock : () -> Int64
 }
 
 ///|
 pub fn Coordinator::new(
   pool : @database.Database,
+  oidc? : OidcIssuer,
   clock~ : () -> Int64 = () => @env.now().reinterpret_as_int64(),
 ) -> Coordinator {
-  { pool, clock, }
+  { pool, clock, oidc, }
 }
 
 ///|

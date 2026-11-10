@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub async fn create_oidc_config(String, String) -> Unit
+
 pub let database_test_slot : @semaphore.Semaphore
 
 pub async fn merge_test_commit(String, String, String, String, preserve_files? : Bool) -> String

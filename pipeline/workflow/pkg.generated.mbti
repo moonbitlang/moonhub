@@ -74,6 +74,7 @@ pub struct Job {
   outputs : Map[String, String]
   runs_on : Array[String]
   contents_read : Bool
+  id_token_write : Bool
   matrix : Map[String, @json.Json]
   strategy : Map[String, @json.Json]
   matrix_group : String

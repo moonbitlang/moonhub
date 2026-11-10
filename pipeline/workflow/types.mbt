@@ -11,7 +11,7 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 6
+pub let format_version : Int32 = 7
 
 ///|
 #derive(Debug, ToJson)
@@ -60,6 +60,7 @@ pub struct Job {
   outputs : Map[String, String]
   runs_on : Array[String]
   contents_read : Bool
+  id_token_write : Bool
   matrix : Map[String, Json]
   strategy : Map[String, Json]
   matrix_group : String
@@ -126,6 +127,10 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     max_parallel: @json.from_json(
       fields.get("max_parallel").unwrap_or(ToJson::to_json(256)),
       path=path.add_key("max_parallel"),
+    ),
+    id_token_write: @json.from_json(
+      fields.get("id_token_write").unwrap_or(Json::boolean(false)),
+      path=path.add_key("id_token_write"),
     ),
     contents_read: @json.from_json(
       fields.get("contents_read").unwrap_or(Json::boolean(true)),

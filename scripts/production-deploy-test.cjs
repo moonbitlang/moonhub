@@ -123,6 +123,10 @@ if os.environ.get('TEST_DIND_SPACE_FAIL') == '1' and sys.argv[1] == 'prepare':
   fs.writeFileSync(path.join(fixture,'deploy/deploy.sh'),`#!${process.execPath}
 const fs=require('node:fs'),{DatabaseSync}=require('node:sqlite');
 if(process.argv[2]==='status')process.exit(0);
+if(process.argv[2]==='check-oidc'){
+ fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(['oidc-preflight'])+String.fromCharCode(10));
+ process.exit(process.env.TEST_OIDC_FAIL==='1'?9:0);
+}
 fs.appendFileSync(process.env.TEST_LOG,JSON.stringify(['web-upgrade'])+String.fromCharCode(10));
 const db=new DatabaseSync(process.env.TEST_DB);
 require('node:assert/strict').equal(db.prepare('SELECT COUNT(*) AS count FROM pipeline_provider WHERE paused=0').get().count,0);
@@ -248,6 +252,10 @@ else if(a[0]==='autoscaling'){
   assert.equal(upgraded.status,0,upgraded.stderr);
   assert.equal(paused(),0,'successful upgrade left provider paused');
   assert.ok(upgraded.calls.some(a=>a[0]==='web-upgrade'));
+  assert.ok(upgraded.calls.findIndex(a=>a[0]==='oidc-preflight') < upgraded.calls.findIndex(a=>a.includes('pause-all')));
+  const badOidc=runUpgrade({TEST_OIDC_FAIL:'1'});
+  assert.notEqual(badOidc.status,0);
+  assert.ok(!badOidc.calls.some(a=>a.includes('pause-all')||a[0]==='web-upgrade'),'invalid OIDC paused production');
   assert.ok(!upgraded.calls.some(a=>a[0]==='aws'&&a[1]==='autoscaling'),'unchanged controller required zero ASGs');
   assert.equal(upgradeDb.prepare('SELECT paused FROM pipeline_provider WHERE id=2').get().paused,0,'secondary provider left paused');
   const pauseIndex=upgraded.calls.findIndex(a=>a.includes('pause-all'));
