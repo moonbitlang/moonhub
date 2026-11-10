@@ -56,7 +56,8 @@ assert.equal(oidc.services.web.environment.MOONHUB_OIDC_CONFIG, '/run/secrets/wo
 const oidcMount = oidc.services.web.volumes.find(v => v.target === '/run/secrets/workflow_oidc');
 assert.equal(oidcMount.source, '/private/operator/workflow-oidc.json');
 assert.equal(oidcMount.read_only, true);
-assert.equal(oidcMount.bind.create_host_path, false);
+// Compose versions may omit an explicitly false boolean when rendering JSON.
+assert.notEqual(oidcMount.bind?.create_host_path, true);
 for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
   assert.ok(!oidc.services[name].volumes.some(v => v.target === '/run/secrets/workflow_oidc'));
   assert.ok(!oidc.services[name].environment?.MOONHUB_OIDC_CONFIG);
