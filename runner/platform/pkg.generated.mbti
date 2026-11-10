@@ -2,6 +2,8 @@
 package "hackwaly/moonhub/runner/platform"
 
 // Values
+pub fn architecture() -> String
+
 pub fn environment() -> Map[String, String]
 
 pub fn job_os(Array[String]) -> String
@@ -17,6 +19,8 @@ pub async fn private_directory(String, readable? : Bool) -> Unit
 pub fn valid_relative(String) -> Bool
 
 pub fn windows() -> Bool
+
+pub fn windows_build() -> Int32
 
 pub fn within(String, String) -> Bool
 

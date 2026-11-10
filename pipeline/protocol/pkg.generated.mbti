@@ -17,6 +17,8 @@ pub let dataflow_assignment_version : Int32
 
 pub let dispatch_assignment_version : Int32
 
+pub let environment_assignment_version : Int32
+
 pub let lease_ms : Int64
 
 pub let max_log_bytes : Int64

@@ -14,9 +14,10 @@ Supported host policies are:
 | Host | Task image | Isolation |
 | --- | --- | --- |
 | Windows Server 2022 x64 (build 20348) | Server Core LTSC 2022 x64 | `process` |
+| Windows Server 2025 x64 (build 26100) | Server Core LTSC 2022 or 2025 x64 | `process` |
 | Windows 11 x64, Pro/Enterprise with Hyper-V and Containers enabled | Server Core LTSC 2022 x64 | `hyperv` |
 
-The task OS remains Server 2022 on both hosts. Windows 11 does not become a task
+The task OS follows the configured image. Windows 11 does not become a task
 image, and the provider does not execute jobs directly on the desktop. Windows
 10, Windows ARM64 and other Server releases are not currently allowed by the
 backend. See Microsoft's [host/image compatibility matrix](https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/version-compatibility),
@@ -54,6 +55,10 @@ During drain, the worker removes its prepared volume before explicitly reporting
 `drained`; a concurrent `ready` heartbeat does not acknowledge that cleanup.
 
 ## Prepare the bundle and task image
+
+For a generic MSVC/Windows SDK environment and the `windows-2025` selector,
+see [Windows build environment](windows-build-environment.md). Existing Server
+2022 runtime images remain supported; they do not acquire a 2025 capability.
 
 Build on a Windows x64 machine with Visual Studio C++ Build Tools and the exact
 production MoonBit version from `deploy/base.Dockerfile`:

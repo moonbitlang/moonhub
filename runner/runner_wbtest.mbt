@@ -174,6 +174,14 @@ async test "malformed assignment strings are rejected before execution" {
         {
           ..assignment,
           version: @protocol.variable_assignment_version,
+          job: {
+            ..assignment.job,
+            runs_on: ["self-hosted", "windows", "x64", "windows-2025"],
+          },
+        },
+        {
+          ..assignment,
+          version: @protocol.variable_assignment_version,
           job: { ..assignment.job, id_token_write: true, },
         },
         { ..assignment, lease_until_ms: "60001", },

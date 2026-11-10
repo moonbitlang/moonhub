@@ -1,0 +1,21 @@
+{
+  "environment": "windows-2025",
+  "visual_studio_version": "17.14.37906.3",
+  "bootstrapper": {
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/68e31dc76410d07ee110e16d682e51e054a4cfc8db726f5bf786646a4cec2c7a/vs_Setup.exe",
+    "sha256": "68e31dc76410d07ee110e16d682e51e054a4cfc8db726f5bf786646a4cec2c7a"
+  },
+  "channel": {
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/a788dfa3e6f50a33f7dee8396fd40d2946c69a776c0cfa5208f56d461fd1a825/VisualStudio.17.Release.chman",
+    "sha256": "44a3e7dc44486c945abdc1fae97e7e22de4d05e80f03b00e9302ba4b72c3e0e3"
+  },
+  "catalog": {
+    "url": "https://download.visualstudio.microsoft.com/download/pr/95995f57-8355-4ff5-8d90-a7e1669fb3b3/da49c304df0fff4e75c20849171840a06840e845ce814104d709dfb5cd461668/VisualStudio.vsman",
+    "sha256": "da49c304df0fff4e75c20849171840a06840e845ce814104d709dfb5cd461668"
+  },
+  "components": [
+    "Microsoft.VisualStudio.Workload.VCTools",
+    "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+    "Microsoft.VisualStudio.Component.Windows11SDK.26100"
+  ]
+}

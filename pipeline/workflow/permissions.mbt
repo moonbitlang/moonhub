@@ -27,13 +27,19 @@ fn runner_labels(
 ) -> Array[String] raise InvalidWorkflow {
   let labels = yaml_as_string_list(value, ctx).map(label => label.to_lower())
   if !labels.contains("self-hosted") && labels.length() == 1 {
-    let label = labels[0]
+    // Resolve hosted aliases once while creating the immutable job definition.
+    // Existing snapshots and reruns retain the concrete environment label.
+    let label = if labels[0] == "windows-latest" {
+      "windows-2025"
+    } else {
+      labels[0]
+    }
     if ["macos-latest", "macos-14", "macos-15"].contains(label) {
       return ["self-hosted", "macos", "arm64", label]
     }
     let os = match label {
       "ubuntu-22.04" | "ubuntu-24.04" | "ubuntu-latest" => "linux"
-      "windows-2022" => "windows"
+      "windows-2022" | "windows-2025" => "windows"
       _ => raise InvalidWorkflow("\{ctx}: unsupported runner environment")
     }
     // The exact environment remains a required provider capability; it is not

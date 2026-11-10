@@ -39,10 +39,15 @@ pub let variable_assignment_version : Int32 = 9
 pub let oidc_assignment_version : Int32 = 10
 
 ///|
+// V11 requires independent Windows image-build verification before job code.
+pub let environment_assignment_version : Int32 = 11
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
+    environment_assignment_version,
   ].contains(version)
 }
 

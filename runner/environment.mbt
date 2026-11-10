@@ -40,6 +40,13 @@ fn validate_runner_environment(
 
 ///|
 async fn check_runner_environment(labels : Array[String]) -> Unit {
+  if labels.any(label => ["windows-2022", "windows-2025"].contains(label)) {
+    validate_windows_runner_environment(
+      labels,
+      @platform.windows_build(),
+      @platform.architecture(),
+    )
+  }
   if labels.any(label => label.has_prefix("ubuntu-")) {
     guard !@platform.windows() else {
       raise InvalidConfiguration("Ubuntu jobs require Linux")
@@ -55,5 +62,30 @@ async fn check_runner_environment(labels : Array[String]) -> Unit {
       raise InvalidConfiguration("cannot inspect runner architecture")
     }
     validate_runner_environment(labels, release, arch.text())
+  }
+}
+
+///|
+fn validate_windows_runner_environment(
+  labels : Array[String],
+  build : Int32,
+  architecture : String,
+) -> Unit raise RunnerError {
+  guard architecture == "x64" && !labels.contains("arm64") else {
+    raise InvalidConfiguration(
+      "Windows hosted environments require an x64 executor",
+    )
+  }
+  for label in labels {
+    let expected = match label {
+      "windows-2022" => 20348
+      "windows-2025" => 26100
+      _ => continue
+    }
+    guard build == expected else {
+      raise InvalidConfiguration(
+        "runner image does not match the requested Windows environment",
+      )
+    }
   }
 }
