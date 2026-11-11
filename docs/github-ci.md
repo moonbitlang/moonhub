@@ -31,9 +31,12 @@ Docker SSH keeps `bash scripts/docker-smoke.sh`.
 
 `Windows runner` uses a Server 2022 / Server 2025 matrix. Both instances build
 the Windows worker and legacy task image and verify shells, Actions, process
-cleanup and reusable container workers. The 2025 instance also builds the generic
-C++ environment and executes the original pinned openseek Windows TUI job. Both
-matrix instances must pass the single Windows result in the aggregate gate.
+cleanup and reusable container workers. Both matrix instances must pass the
+single Windows result in the aggregate gate. Application workflows such as
+openseek TUI and Desktop run in their own MoonHub repository; the MoonHub
+required checks do not fetch or execute openseek source or build its C++ task
+environment. The generic build image and opt-in acceptance tools remain available
+for dedicated Windows environment validation.
 Before building an image, CI probes the pinned local Windows Docker API, starts
 the installed Docker service if necessary and waits up to two minutes for API
 readiness. Missing services, unsupported daemon platforms and readiness timeouts

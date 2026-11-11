@@ -97,8 +97,9 @@ Server 2025 matrix instance. Both exercise native policy tests, process cleanup,
 real containers and standalone provider installation. On 2025, the original
 2022 image tests also exercise the supported host/image combination.
 
-The 2025 instance builds the generic C++ image, fetches the pinned openseek
-commit into a single-commit bare repository and executes:
+Application execution is independent of MoonHub's required CI. On a dedicated
+Windows 2025 environment-validation host, build the generic C++ image, prepare
+the pinned source repository and run the opt-in TUI acceptance:
 
     node scripts/openseek-windows-smoke.mjs .tmp/openseek-source.git
 
@@ -113,7 +114,7 @@ The actual job runs as ContainerUser in its own disposable volume, without host
 source mounts or production credentials. The test closes its endpoint and removes
 only its own named container, workspace and temporary firewall rule.
 
-The CI acceptance requires network access and executes upstream Action/toolchain
+The opt-in acceptance requires network access and executes upstream Action/toolchain
 code. Passing YAML parsing or a mocked process call is not sufficient acceptance.
 The normal Windows lifecycle tests additionally cover cancellation, cleanup before
 ready, stale work reconciliation and reuse of a clean worker.
@@ -124,8 +125,8 @@ Proton/CEF installation, caches, packaging, DLL search paths, background-job tes
 and Artifact upload. The acceptance does not alter those commands or replace
 upstream Actions.
 
-The Windows 2025 CI instance also builds the native Desktop HTTP test host before
-reclaiming the host compiler. The opt-in test serves the production coordinator,
+The opt-in Desktop acceptance requires building the native HTTP test host while
+the host compiler is available. The test serves the production coordinator,
 runner, Cache v2, Artifact v4 and Block Blob routes from a disposable SQLite
 database and private artifact directory. A local adapter supplies only the pinned
 Git bundle; no production service or credential is used. The original Desktop job

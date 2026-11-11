@@ -74,7 +74,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -115,12 +115,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Runner cancellation tests failed' }
           node scripts/windows-provider-preflight-test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows 11 preflight regression failed' }
-      - name: Build Desktop protocol acceptance host
-        if: matrix.os == 'windows-2025'
-        shell: pwsh
-        run: |
-          moon test --build-only --target native --strip -j 1 --deny-warn web/views/pipelines/desktop_windows_wbtest.mbt
-          if ($LASTEXITCODE -ne 0) { throw 'Desktop protocol fixture build failed' }
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |
@@ -140,54 +134,6 @@ jobs:
         run: |
           node scripts/windows-runner-smoke.cjs --standalone
           if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows provider smoke failed' }
-      - name: Reclaim temporary Windows 2022 image layers
-        if: matrix.os == 'windows-2025'
-        shell: pwsh
-        run: |
-          # GitHub-hosted runners are disposable; the earlier image and build
-          # cache are no longer needed after both 2022 lifecycle tests.
-          docker system df
-          docker system prune --all --force
-          if ($LASTEXITCODE -ne 0) { throw 'Could not reclaim CI Docker image layers' }
-          # The worker bundle and all host compiler tests have finished. This
-          # disposable VM no longer needs the preinstalled Visual Studio IDEs.
-          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Refusing host cleanup outside GitHub-hosted CI' }
-          Get-Process vctip -ErrorAction SilentlyContinue | Stop-Process -Force
-          foreach ($year in '2022', '2026') {
-            $vs = "${env:ProgramFiles}/Microsoft Visual Studio/$year"
-            if (Test-Path -LiteralPath $vs) {
-              Remove-Item -LiteralPath $vs -Recurse -Force
-            }
-          }
-          Get-PSDrive C
-      - name: Build generic Windows 2025 C++ task environment
-        if: matrix.os == 'windows-2025'
-        shell: pwsh
-        run: |
-          docker build --isolation=process -f deploy/windows/Dockerfile.build -t moonhub:build-windows-2025 .tmp/windows-runner
-          if ($LASTEXITCODE -ne 0) { throw 'Windows 2025 build environment failed' }
-      - name: Execute original pinned openseek Windows TUI job
-        if: matrix.os == 'windows-2025'
-        shell: pwsh
-        run: |
-          git init --bare .tmp/openseek-source.git
-          if ($LASTEXITCODE -ne 0) { throw 'Source repository initialization failed' }
-          git --git-dir .tmp/openseek-source.git fetch --depth=1 --no-tags https://github.com/moonbitlang/openseek.git 62a6fba1dccf92c98d4b3c26f5dcf12a5788a8b5
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned source download failed' }
-          git --git-dir .tmp/openseek-source.git update-ref refs/heads/main FETCH_HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned source reference failed' }
-          node scripts/openseek-windows-smoke.mjs .tmp/openseek-source.git
-          if ($LASTEXITCODE -ne 0) { throw 'Original Windows TUI acceptance failed' }
-      - name: Execute original pinned Desktop Windows job
-        if: matrix.os == 'windows-2025'
-        shell: pwsh
-        run: |
-          $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
-          $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
-          node --test scripts/run-native-test-test.cjs scripts/acceptance-http-proxy-test.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Native acceptance result regressions failed' }
-          node scripts/run-native-test.cjs _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe desktop_windows_wbtest.mbt
-          if ($LASTEXITCODE -ne 0) { throw 'Desktop Windows acceptance failed' }
 
   macos-runner:
     name: macOS runner
@@ -238,6 +184,8 @@ jobs:
       - name: Test build, deployment and Compose scripts
         run: |
           node --test \
+            scripts/acceptance-http-proxy-test.mjs \
+            scripts/run-native-test-test.cjs \
             scripts/apt-config-test.cjs \
             scripts/base-image-test.cjs \
             scripts/deploy-script-test.cjs \
