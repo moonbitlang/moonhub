@@ -74,6 +74,8 @@ are inherited as OS infrastructure for vswhere and other setup tools; job HOME,
 USERPROFILE and AppData paths remain private to the execution workspace.
 MSVC environment initialization is performed by the downloaded upstream Action,
 using the ordinary GITHUB_ENV/GITHUB_PATH file-command implementation.
+The base PATH keeps Windows System32 before Git's Unix tools so native tar
+handles drive-letter archive paths. Git Bash remains available explicitly.
 
 Register a provider whose matching task image actually supplies this environment
 with labels self-hosted,windows,x64,windows-2025 and the intended repository grants.
@@ -136,7 +138,10 @@ image and preparing the single-commit source repository above:
     moon test --build-only --strip -j 1 web/views/pipelines/desktop_windows_wbtest.mbt
     $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
     $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
-    & _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe 'desktop_windows_wbtest.mbt:0-1'
+    node scripts/run-native-test.cjs _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe desktop_windows_wbtest.mbt
+
+The wrapper checks the test result record as well as the process exit code.
+Generated MoonBit test executables can exit zero after reporting a failed test.
 
 This test verifies CI packaging and background-job behavior. It does not establish
 interactive GUI support, signing, publishing or production runner rollout. Any

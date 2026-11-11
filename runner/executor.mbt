@@ -372,7 +372,7 @@ async fn Runtime::execute_script(
     job_env["PATH"] = "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   }
   if @platform.windows() {
-    job_env["PATH"] = "C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/moonhub/git/usr/bin;" +
+    job_env["PATH"] = "C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/Windows/System32;C:/moonhub/git/usr/bin;" +
       env.get("PATH").unwrap_or("C:/Windows/System32;C:/Windows")
     job_env["PROCESSOR_ARCHITECTURE"] = "AMD64"
     job_env["USERPROFILE"] = self.job_home

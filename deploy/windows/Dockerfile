@@ -7,7 +7,7 @@ COPY . C:/moonhub/
 RUN New-Item -ItemType Directory C:/workspace | Out-Null; `
     & icacls.exe C:\workspace /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null; `
     if ($LASTEXITCODE -ne 0) { throw 'Workspace ACL failed' }
-ENV PATH="C:\moonhub\bin;C:\moonhub\pwsh;C:\moonhub\git\cmd;C:\moonhub\git\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+ENV PATH="C:\moonhub\bin;C:\moonhub\pwsh;C:\moonhub\git\cmd;C:\Windows\System32;C:\moonhub\git\usr\bin;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
 USER ContainerUser
 WORKDIR C:/workspace
 ENTRYPOINT ["C:\\moonhub\\bin\\moonhub-runner.exe", "execute"]
