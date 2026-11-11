@@ -42,6 +42,38 @@ test "closing keywords ignore Markdown examples quotes and HTML comments" {
 }
 
 ///|
+test "closing directives respect list-contained fences and literal backticks" {
+  assert_eq(
+    closing_issue_numbers("- ~~~text\n  Closes #1\n  ~~~\n\nCloses #2"),
+    [2L],
+  )
+  assert_eq(closing_issue_numbers("- > Closes #1\n\nFixes #2"), [2L])
+  assert_eq(
+    closing_issue_numbers("A literal unmatched ` character.\n\nCloses #1"),
+    [1L],
+  )
+  assert_eq(closing_issue_numbers("<!-- Example\n    -->\nCloses #1"), [1L])
+  assert_eq(
+    closing_issue_numbers("1. ```text\n   Closes #1\n   ```\n\nCloses #2"),
+    [2L],
+  )
+  assert_eq(
+    closing_issue_numbers("- - ~~~text\n    Closes #1\n    ~~~\n\nFixes #2"),
+    [2L],
+  )
+  assert_eq(closing_issue_numbers("1. > Closes #1\n\nFixes #2"), [2L])
+  assert_eq(closing_issue_numbers("A literal \\` character.\nCloses #1"), [1L])
+  assert_eq(
+    closing_issue_numbers("Unmatched `\n\nCloses #1\n\nAnother ` literal"),
+    [1L],
+  )
+  assert_eq(
+    closing_issue_numbers("Example: `text\nCloses #1\nend`\n\nFixes #2"),
+    [2L],
+  )
+}
+
+///|
 async test "successful merge closes declared issues with activity versions and notifications" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")
