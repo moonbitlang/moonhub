@@ -92,6 +92,13 @@ Both upstream workflow files are retained verbatim in pipeline/workflow/fixtures
 openseek-ci-windows.yml and openseek-desktop-windows.yml. Parser tests cover their
 original selectors, and scheduling tests verify exact provider matching and v11.
 
+Keep the application repository at its chosen commit. A manager can run the
+original `.github/workflows/ci.yml` with `--jobs tui-windows`, or the original
+`.github/workflows/desktop-windows.yml` with `--jobs desktop-package-windows`,
+through MoonHub's selected-job run entry. This records the complete original YAML
+and selected plan without adding dispatch declarations, moving workflow files or
+creating application commits. Provider labels and images remain generic.
+
 GitHub CI keeps the existing Server 2022 worker/container regressions and adds a
 Server 2025 matrix instance. Both exercise native policy tests, process cleanup,
 real containers and standalone provider installation. On 2025, the original

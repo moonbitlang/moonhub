@@ -210,6 +210,7 @@ pub async fn create_run(
   branch : String,
   workflow_path : String,
   inputs~ : Map[String, Json] = Map([]),
+  jobs~ : Array[String] = [],
 ) -> Run {
   ignore(require_run_author(pool, actor, repo))
   validate_workflow_path(workflow_path)
@@ -239,11 +240,11 @@ pub async fn create_run(
       }
     })
     let source = read_workflow_source(git_dir, sha, workflow_path)
-    let definition = @workflow.parse(source) catch {
+    let definition = @workflow.parse(source, jobs~) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
     let triggers = @workflow.triggers(source)
-    guard triggers.dispatch else {
+    guard triggers.dispatch || !jobs.is_empty() else {
       raise @domain.BadRequest(
         message="workflow does not allow manual dispatch",
       )

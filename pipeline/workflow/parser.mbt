@@ -579,7 +579,10 @@ fn parse_job(
 }
 
 ///|
-pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
+pub fn parse(
+  source : String,
+  jobs~ : Array[String] = [],
+) -> Workflow raise InvalidWorkflow {
   let fields = yaml_as_obj(read_yaml(source), "workflow")
   check_fields(
     fields,
@@ -601,10 +604,43 @@ pub fn parse(source : String) -> Workflow raise InvalidWorkflow {
   guard !fields_jobs.is_empty() && fields_jobs.length() <= 16 else {
     raise InvalidWorkflow("workflow requires between 1 and 16 jobs")
   }
+  let selected : Map[String, Bool] = Map([])
+  guard jobs.length() <= 16 else {
+    raise InvalidWorkflow("select at most 16 jobs")
+  }
+  for id in jobs {
+    guard valid_identifier(id) &&
+      fields_jobs.contains(id) &&
+      !selected.contains(id) else {
+      raise InvalidWorkflow("selected jobs must be unique workflow job IDs")
+    }
+    selected[id] = true
+  }
+  // Include the complete dependency closure; selecting a job cannot turn its
+  // declared prerequisites into missing or implicitly successful results.
+  for _ in 0..<16 {
+    let before = selected.length()
+    for id in selected.keys().collect() {
+      let value = yaml_as_obj(fields_jobs[id], "jobs." + id)
+      for
+        need in yaml_as_string_list(value.get("needs"), "jobs." + id + ".needs") {
+        guard fields_jobs.contains(need) else {
+          raise InvalidWorkflow("selected job references an unknown dependency")
+        }
+        selected[need] = true
+      }
+    }
+    if before == selected.length() {
+      break
+    }
+  }
   let jobs : Array[Job] = []
   let mut step_count = 0
   let mut plan_bytes = 0
   for id, value in fields_jobs {
+    if !selected.is_empty() && !selected.contains(id) {
+      continue
+    }
     for
       job in expand_job(
         id,

@@ -1,4 +1,60 @@
 ///|
+async test "run API selects original PR workflow jobs with execute permission and leaves source pinned" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let execute = @identity.create_access_token(
+      pool, actor, "select-jobs", "execute", 1,
+    )
+    let write = @identity.create_access_token(
+      pool, actor, "no-execution", "write", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let source = @test_support.single_job_workflow.replace_all(
+      old="workflow_dispatch",
+      new="pull_request",
+    )
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    let request : Json = {
+      "branch": "pipeline",
+      "workflow": ".github/workflows/build.yml",
+      "jobs": ["build"],
+    }
+    assert_eq(
+      api_test_request(port, "/repos/alice/demo/runs", write, Some(request)).0,
+      403,
+    )
+    for
+      jobs in [
+        Json("build"),
+        Json([1]),
+        Json(["missing"]),
+        Json(["build", "build"]),
+      ] {
+      let (status, _) = api_test_request(
+        port,
+        "/repos/alice/demo/runs",
+        execute,
+        Some({
+          "branch": "pipeline",
+          "workflow": ".github/workflows/build.yml",
+          "jobs": jobs,
+        }),
+      )
+      assert_eq(status, 400)
+    }
+    let (status, _) = api_test_request(
+      port,
+      "/repos/alice/demo/runs",
+      execute,
+      Some(request),
+    )
+    assert_eq(status, 200)
+    assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
+    assert_eq(@pipeline.get_run(pool, actor, repo, 1L).workflow_source, source)
+  })
+}
+
+///|
 async test "run API accepts typed dispatch inputs and rejects invalid input objects" {
   @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
     let actor = @identity.active_user_by_name(pool, "alice")

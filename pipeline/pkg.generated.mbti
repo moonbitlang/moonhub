@@ -12,7 +12,7 @@ import {
 }
 
 // Values
-pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String, inputs? : Map[String, @json.Json]) -> Run
+pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String, inputs? : Map[String, @json.Json], jobs? : Array[String]) -> Run
 
 pub fn delete_secret(@database.Database, @domain.CurrentUser, @domain.RepoId, String, Int64) -> Unit raise
 
@@ -303,6 +303,8 @@ pub struct WorkflowChoice {
   name : String
   reason : String
   inputs : Array[@workflow.DispatchInput]
+  jobs : Array[String]
+  dispatch : Bool
 }
 
 // Type aliases

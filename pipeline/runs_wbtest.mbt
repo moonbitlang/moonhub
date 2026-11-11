@@ -246,6 +246,44 @@ async test "pipeline creation and reads enforce current repository permissions" 
 }
 
 ///|
+async test "manager selected jobs run original PR-only workflow without changing source refs" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let source = sample_workflow.replace_all(
+      old="workflow_dispatch",
+      new="pull_request",
+    )
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    let run = create_run(
+      pool,
+      root,
+      actor,
+      repo,
+      "pipeline",
+      ".github/workflows/build.yml",
+      jobs=["build"],
+    )
+    assert_eq(run.commit_sha, sha)
+    assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
+    pool.with_client(client => {
+      let row = client.query_one(
+        "SELECT workflow_source,definition_json FROM pipeline_run WHERE id=?",
+        params=[run.id],
+      )
+      assert_eq((row.get_name("workflow_source") : String), source)
+      let saved : String = row.get_name("definition_json")
+      let definition : @workflow.Workflow = @json.from_json(@json.parse(saved))
+      assert_eq(definition.jobs.length(), 1)
+      assert_eq(definition.jobs[0].id, "build")
+    })
+    Coordinator::new(pool).cancel_run(actor, repo, run.number)
+    let rerun = rerun_run(pool, root, actor, repo, run.number)
+    assert_eq(rerun.commit_sha, sha)
+  })
+}
+
+///|
 async test "invalid source paths workflows and symlinks leave no runs or pins" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }

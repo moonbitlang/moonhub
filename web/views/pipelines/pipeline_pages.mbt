@@ -476,6 +476,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let workflow = form.get("workflow").unwrap_or("").trim().to_owned()
     let inputs : Map[String, Json] = Map([])
     let values : Map[String, String] = Map([])
+    values["__job"] = form.get("job").unwrap_or("")
     for key, value in form {
       if key.strip_prefix("input:") is Some(name) {
         inputs[name.to_owned()] = Json(value)
@@ -490,6 +491,11 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
       branch,
       workflow,
       inputs~,
+      jobs=if form.get("job").unwrap_or("").is_empty() {
+        []
+      } else {
+        [form.get("job").unwrap()]
+      },
     ) catch {
       @domain.BadRequest(message~) => {
         res.send_html(

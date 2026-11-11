@@ -4,6 +4,8 @@ pub struct WorkflowChoice {
   name : String
   reason : String
   inputs : Array[@workflow.DispatchInput]
+  jobs : Array[String]
+  dispatch : Bool
 }
 
 ///|
@@ -57,7 +59,7 @@ pub async fn dispatch_choices(
   }
   let workflows : Array[WorkflowChoice] = []
   for path in paths {
-    let (name, reason, inputs) = try {
+    let (name, reason, inputs, jobs, dispatch) = try {
       validate_workflow_path(path)
       let source = read_workflow_source(git_dir, commit, path)
       let definition = @workflow.parse(source)
@@ -68,20 +70,28 @@ pub async fn dispatch_choices(
         } else {
           definition.name
         },
-        if trigger.dispatch {
-          ""
-        } else {
-          "Manual dispatch is not enabled"
-        },
+        "",
         trigger.inputs,
+        definition.jobs.fold(init=Array(capacity=16), (ids, job) => {
+          let id = if job.matrix_group.is_empty() {
+            job.id
+          } else {
+            job.matrix_group
+          }
+          if !ids.contains(id) {
+            ids.push(id)
+          }
+          ids
+        }),
+        trigger.dispatch,
       )
     } catch {
       @workflow.InvalidWorkflow(message) | @domain.BadRequest(message~) =>
-        (path, message, [])
-      SnapshotError(_) => (path, "Workflow could not be read", [])
+        (path, message, [], [], false)
+      SnapshotError(_) => (path, "Workflow could not be read", [], [], false)
       err => raise err
     }
-    workflows.push({ path, name, reason, inputs, })
+    workflows.push({ path, name, reason, inputs, jobs, dispatch, })
   }
   ignore(require_run_author(pool, actor, scope.repo))
   { branches, branch, commit, workflows, }
