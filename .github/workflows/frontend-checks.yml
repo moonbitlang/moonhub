@@ -46,17 +46,12 @@ jobs:
           moon update
           node scripts/resolve-dependencies.cjs
       - run: npm ci --prefix js --no-audit --no-fund
-      - name: Use the official Ubuntu archive for browser dependencies
+      - name: Pull the matching Playwright browser image
         run: |
-          # Avoid the hosted image's failing Azure mirror discovery. Keep the
-          # image's suites, components and Ubuntu signature verification.
-          sudo sed -i \
-            -e 's|mirror+file:/etc/apt/apt-mirrors.txt|https://archive.ubuntu.com/ubuntu|g' \
-            -e 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
-            /etc/apt/sources.list.d/ubuntu.sources
-      - name: Install Chromium and system dependencies
-        working-directory: js
-        run: npx playwright install --with-deps chromium
+          version=$(node -p "require('./js/package-lock.json').packages['node_modules/@playwright/test'].version")
+          image="mcr.microsoft.com/playwright:v${version}-noble"
+          docker pull "$image"
+          echo "PLAYWRIGHT_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Build frontend assets
         run: npm run build --prefix js
       - name: Check TypeScript
@@ -64,9 +59,23 @@ jobs:
       - name: Build browser fixture server and diff worker
         run: moon build --target native --strip -j 1 --deny-warn . cmd/moonhub-diff-worker
       - name: Test browser interactions
-        run: npm run test:browser --prefix js -- --reporter=line,html --trace=retain-on-failure
-        env:
-          PLAYWRIGHT_HTML_OPEN: never
+        run: |
+          node js/scripts/browser-server.mjs > "$RUNNER_TEMP/moonhub-browser-fixture.log" 2>&1 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true; wait "$fixture_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/moonhub-browser-fixture.log"' EXIT
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:18092/-/login; then ready=1; break; fi
+            kill -0 "$fixture_pid" || exit 1
+            sleep 1
+          done
+          test "$ready" = 1
+          docker run --rm --init --ipc=host --network=host \
+            --env CI=true --env PLAYWRIGHT_HTML_OPEN=never \
+            --env MOONHUB_TEST_URL=http://127.0.0.1:18092 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace" \
+            --workdir /workspace/js "$PLAYWRIGHT_IMAGE" \
+            npm run test:browser -- --reporter=line,html --trace=retain-on-failure
       - name: Upload browser failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
