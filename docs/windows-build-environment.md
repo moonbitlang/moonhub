@@ -74,8 +74,10 @@ are inherited as OS infrastructure for vswhere and other setup tools; job HOME,
 USERPROFILE and AppData paths remain private to the execution workspace.
 MSVC environment initialization is performed by the downloaded upstream Action,
 using the ordinary GITHUB_ENV/GITHUB_PATH file-command implementation.
-The base PATH keeps Windows System32 before Git's Unix tools so native tar
-handles drive-letter archive paths. Git Bash remains available explicitly.
+The image copies its own Windows tar into the runtime bin directory so it handles
+drive-letter archive paths. Other Git Bash utilities keep their existing order;
+moving all of System32 ahead of them can shadow Unix tools with unrelated Windows
+commands.
 
 Register a provider whose matching task image actually supplies this environment
 with labels self-hosted,windows,x64,windows-2025 and the intended repository grants.
