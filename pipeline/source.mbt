@@ -29,7 +29,7 @@ fn Coordinator::source_snapshot(
 }
 
 ///|
-fn validate_source_tree(tree : String) -> Unit raise {
+fn validate_source_tree(tree : String, symlinks~ : Bool = false) -> Unit raise {
   let mut count = 0
   for entry in tree.split("\u{0000}") {
     if entry.is_empty() {
@@ -39,9 +39,14 @@ fn validate_source_tree(tree : String) -> Unit raise {
     guard count <= 10000 && entry.split_once("\t") is Some((meta, path)) else {
       raise @domain.BadRequest(message="source tree exceeds checkout limits")
     }
-    // V1 archives contain regular blobs only, never symlinks, submodules or
-    // runner-owned paths. This prevents extraction through controller symlinks.
-    guard (meta.has_prefix("100644 blob ") || meta.has_prefix("100755 blob ")) &&
+    // Tar extraction accepts regular files only. Git bundles preserve symlink
+    // blobs without following or extracting them on the server; checkout is
+    // performed by Git inside the isolated job workspace.
+    guard (
+        meta.has_prefix("100644 blob ") ||
+        meta.has_prefix("100755 blob ") ||
+        (symlinks && meta.has_prefix("120000 blob "))
+      ) &&
       path.length() <= 1024 &&
       !path.has_prefix("/") &&
       !path.contains("\\") &&
@@ -138,7 +143,7 @@ pub async fn Coordinator::read_source_bundle(
     guard code == 0 else {
       raise @domain.BadRequest(message="source checkout failed")
     }
-    validate_source_tree(tree)
+    validate_source_tree(tree, symlinks=true)
     let temporary = @fs.tmpdir(prefix="moonhub-source-bundle-")
     defer @fs.rmdir(temporary, recursive=true)
     let repository = temporary + "/source.git"

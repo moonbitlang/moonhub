@@ -72,6 +72,15 @@ redirects Git fetches for this repository to that local source. Upstream
 runner or GitHub credential. The source API rechecks authorization and live lease
 before and after Git I/O and uses `Cache-Control: no-store`.
 
+Repository symlinks are preserved as Git blobs, including dangling and cyclic
+links used by test fixtures. The server never follows them; Git creates the
+checkout inside the job container. Submodules and runner-reserved paths remain
+unsupported. The legacy tar source API accepts regular files only.
+
+If source preparation is rejected because the source is unsupported or unavailable,
+the runner logs the HTTP status and reports a failed job. Expired or invalid attempt
+credentials still fence execution as a lost runner.
+
 This transport currently supplies a shallow single-commit checkout only. It does
 not supply tags, full history, submodules, LFS, other repositories, arbitrary refs,
 push authentication, or a GitHub API token. `github.token` is a noncredential local
