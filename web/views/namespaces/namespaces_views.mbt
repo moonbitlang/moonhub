@@ -1,9 +1,9 @@
 ///|
-/// A namespace page for a user: it lists the repositories of that namespace and
-/// never shows the team membership and invitation views.
+/// Repository discovery for personal namespaces and anonymous visitors. Team
+/// membership and invitations belong to the authenticated team view.
 fn render_namespace(
   assets : Map[String, String],
-  user : @domain.CurrentUser,
+  user : @domain.CurrentUser?,
   team : @identity.TeamSummary,
   repositories : Array[@repository.TeamRepository],
   can_manage : Bool,
@@ -16,7 +16,7 @@ fn render_namespace(
         "<section class=\"page-heading\"><div><h1>\{team.display_name}</h1><p class=\"page-subtitle\">@\{team.name_key}</p></div></section>"
       b <+ "\{@web_ui.render_team_repositories(team, repositories, can_manage)}"
     }),
-    current_user=Some(user),
+    current_user=user,
     navigation=@web_ui.PersonalNavigation(team),
   )
 }

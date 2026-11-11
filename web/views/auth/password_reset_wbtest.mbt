@@ -36,7 +36,7 @@ async test "anonymous password recovery works end to end without authenticating 
     })
     assert_true(!body.contains(code))
     let (private_page, _) = @web_testkit.http_get_path_with_cookie(
-      port, "/", cookie,
+      port, "/-/settings/profile", cookie,
     )
     assert_eq(private_page.code, 303)
     assert_true(private_page.headers.get("location") is Some("/-/login"))

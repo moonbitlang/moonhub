@@ -433,7 +433,7 @@ async fn invoke_tool(
       }
     "moonhub_list_repositories" =>
       return {
-        "items": @repository.visible_repositories(pool, root, actor).map(repo => {
+        "items": @repository.visible_repositories(pool, root, Some(actor)).map(repo => {
           repo.path()
         }),
       }

@@ -16,6 +16,8 @@ pub fn authorize_repository(@database.Database, @domain.CurrentUser, @domain.Rep
 
 pub fn can_access_repository(@database.Database, @domain.CurrentUser, @domain.RepoId, RepoOperation) -> Bool raise
 
+pub fn can_read_repository(@database.Database, @domain.CurrentUser?, @domain.RepoId) -> Bool raise
+
 pub async fn confirm_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String) -> Unit
 
 pub async fn create_managed_repository(@database.Database, String, @domain.RepoId, String, Bool) -> Unit
@@ -38,7 +40,7 @@ pub fn mirror_history(@database.Database, @domain.CurrentUser, @domain.RepoId, I
 
 pub fn mirror_host_fingerprints(String) -> Array[String] raise
 
-pub fn namespace_repositories(@database.Database, @domain.CurrentUser, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
+pub fn namespace_repositories(@database.Database, @domain.CurrentUser?, @identity.TeamSummary, Bool) -> Array[TeamRepository] raise
 
 pub let no_ssh_address_config : SshAddressConfig
 
@@ -100,7 +102,7 @@ pub async fn team_import_credentials(RepoImportConfig, String) -> TeamImportCred
 
 pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[TeamRepository] raise
 
-pub async fn visible_repositories(@database.Database, String, @domain.CurrentUser) -> Array[@domain.RepoId]
+pub async fn visible_repositories(@database.Database, String, @domain.CurrentUser?) -> Array[@domain.RepoId]
 
 pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, @domain.RepoId, async (RepositoryScope, String) -> A) -> A
 
