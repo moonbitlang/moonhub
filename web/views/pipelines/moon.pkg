@@ -26,6 +26,7 @@ import {
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/runner",
+  "hackwaly/moonhub/pipeline/workflow",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",
   "hackwaly/moonhub/test_support",

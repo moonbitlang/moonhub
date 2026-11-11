@@ -114,10 +114,31 @@ code. Passing YAML parsing or a mocked process call is not sufficient acceptance
 The normal Windows lifecycle tests additionally cover cancellation, cleanup before
 ready, stale work reconciliation and reuse of a clean worker.
 
-Desktop Windows is the next acceptance phase. Its workflow owns Node 22,
+The Desktop acceptance uses the same generic image and the original
+desktop-windows.yml at the same pinned revision. Its workflow owns Node 22,
 Proton/CEF installation, caches, packaging, DLL search paths, background-job tests
-and Artifact upload. This slice retains and parses that original YAML, but does
-not claim that Server Core supplies every Desktop/CEF system dependency or that
-the complete Desktop job passed. Validate that compatibility before rollout;
-if it needs a full Windows installation, provide a generic disposable VM backend
-rather than repository-specific behavior or modified workflow steps.
+and Artifact upload. The acceptance does not alter those commands or replace
+upstream Actions.
+
+The Windows 2025 CI instance also builds the native Desktop HTTP test host before
+reclaiming the host compiler. The opt-in test serves the production coordinator,
+runner, Cache v2, Artifact v4 and Block Blob routes from a disposable SQLite
+database and private artifact directory. A local adapter supplies only the pinned
+Git bundle; no production service or credential is used. The original Desktop job
+runs as ContainerUser in a fresh volume. A second job in another fresh volume
+must restore both caches and download the packaged artifact, including runtime
+DLLs and the hidden MoonBit seed receipt. Both task reports and checkout post
+cleanup must succeed before the test removes its resources.
+
+Run the same acceptance on a dedicated Windows build host after building the
+image and preparing the single-commit source repository above:
+
+    moon test --build-only --strip -j 1 web/views/pipelines/desktop_windows_wbtest.mbt
+    $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
+    $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
+    & _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe 'desktop_windows_wbtest.mbt:0-1'
+
+This test verifies CI packaging and background-job behavior. It does not establish
+interactive GUI support, signing, publishing or production runner rollout. Any
+missing operating-system capability must be supplied generically; a workflow
+must not acquire a repository-specific bypass.

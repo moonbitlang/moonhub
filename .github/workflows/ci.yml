@@ -74,7 +74,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -115,6 +115,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Runner cancellation tests failed' }
           node scripts/windows-provider-preflight-test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows 11 preflight regression failed' }
+      - name: Build Desktop protocol acceptance host
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          moon test --build-only --target native --strip -j 1 --deny-warn web/views/pipelines/desktop_windows_wbtest.mbt
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop protocol fixture build failed' }
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |
@@ -172,6 +178,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned source reference failed' }
           node scripts/openseek-windows-smoke.mjs .tmp/openseek-source.git
           if ($LASTEXITCODE -ne 0) { throw 'Original Windows TUI acceptance failed' }
+      - name: Execute original pinned Desktop Windows job
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
+          $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
+          & _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe 'desktop_windows_wbtest.mbt:0-1'
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop Windows acceptance failed' }
 
   macos-runner:
     name: macOS runner

@@ -1,0 +1,30 @@
+on: workflow_dispatch
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.proton/store
+            ~/.proton/helpers
+          key: proton-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('desktop/app/moon.mod') }}
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: desktop/target/moonbit/cache
+          key: moonbit-seed-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('desktop/.moonbit-version') }}
+          fail-on-cache-miss: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: SeekMoon-windows-x64
+          path: restored-app
+      - shell: pwsh
+        run: |
+          if (-not (Get-ChildItem "$env:USERPROFILE/.proton/store" -Recurse -Filter *.dll)) { throw 'Proton cache did not restore runtime DLLs' }
+          if (-not (Get-ChildItem desktop/target/moonbit/cache -Filter *.zip)) { throw 'MoonBit seed cache did not restore' }
+          if (-not (Get-ChildItem restored-app -Recurse -Filter *.exe)) { throw 'Artifact contains no executable' }
+          if (-not (Get-ChildItem restored-app -Recurse -Filter libcef.dll)) { throw 'Artifact contains no CEF runtime' }
+          if (-not (Get-ChildItem restored-app -Recurse -Force -Filter .openseek-moonbit-seed-version)) { throw 'Artifact lost hidden toolchain receipt' }
