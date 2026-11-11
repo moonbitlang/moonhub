@@ -1,5 +1,8 @@
 ///|
-pub let maximum_artifact_bytes : Int64 = 536870912L
+pub let maximum_artifact_bytes : Int64 = 2147483648L
+
+///|
+pub let maximum_artifact_blocks : Int32 = 256
 
 ///|
 pub let maximum_artifact_block_bytes : Int32 = 8388608

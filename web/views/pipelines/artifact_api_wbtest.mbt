@@ -190,9 +190,19 @@ async test "artifact HTTP mounts validate credentials Twirp fields and Azure blo
     let upload = client.put(path + "&comp=block&blockid=YQ%3D%3D", b"archive")
     assert_eq(upload.code, 201)
     ignore(client.read_all())
+    let entries : Array[String] = ["<Latest>YQ==</Latest>"]
+    for i = 1; i < 256; i = i + 1 {
+      let block = "part" + i.to_string()
+      let staged = client.put(path + "&comp=block&blockid=" + block, b"x")
+      assert_eq(staged.code, 201)
+      ignore(client.read_all())
+      entries.push("<Latest>" + block + "</Latest>")
+    }
     let commit = client.put(
       path + "&comp=blocklist",
-      "<?xml version=\"1.0\" encoding=\"utf-8\"?><BlockList><Latest>YQ==</Latest></BlockList>",
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?><BlockList>" +
+      entries.join("") +
+      "</BlockList>",
     )
     assert_eq(commit.code, 201)
     assert_true(commit.headers.get("etag") is Some(_))
@@ -207,15 +217,24 @@ async test "artifact HTTP mounts validate credentials Twirp fields and Azure blo
 test "Azure block list parser rejects arbitrary XML and preserves block order" {
   assert_eq(
     artifact_block_list(
+      "<BlockList>" + "<Latest>YQ==</Latest>".repeat(256) + "</BlockList>",
+    ).length(),
+    256,
+  )
+  assert_eq(
+    artifact_block_list(
       "<?xml version=\"1.0\"?><BlockList><Latest>Yg==</Latest><Latest>YQ==</Latest></BlockList>",
     ),
     ["Yg==", "YQ=="],
   )
   for
     text in [
-      "<BlockList><Latest>YQ==</Latest><Other/></BlockList>", "<!DOCTYPE x><BlockList></BlockList>",
-      "<BlockList><Latest>&x;</Latest></BlockList>", "<BlockList><Latest>../bad</Latest></BlockList>",
+      "<BlockList><Latest>YQ==</Latest><Other/></BlockList>",
+      "<!DOCTYPE x><BlockList></BlockList>",
+      "<BlockList><Latest>&x;</Latest></BlockList>",
+      "<BlockList><Latest>../bad</Latest></BlockList>",
       "<BlockList></BlockList>tail",
+      "<BlockList>" + "<Latest>YQ==</Latest>".repeat(257) + "</BlockList>",
     ] {
     try ignore(artifact_block_list(text)) catch {
       @domain.BadRequest(_) => ()

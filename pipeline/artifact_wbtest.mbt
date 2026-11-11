@@ -439,6 +439,129 @@ async test "later jobs download same-run artifacts while old credentials and oth
 }
 
 ///|
+async test "artifact upload exceeds the old byte and block limits while cache limits remain bounded" {
+  with_protocol_fixture((c, pool, root, _, _, _) => {
+    let (a, grant) = artifact_test_start(c)
+    let (id, sig) = artifact_test_url(
+      c.artifact_rpc(
+        grant.token,
+        "CreateArtifact",
+        artifact_test_request(a, { "name": "desktop", "version": 4 }),
+      ),
+      "signed_upload_url",
+    )
+    c.stage_artifact_block(root, id, sig, "first", b"x")
+    // Account for a large staged block without allocating a multi-GiB fixture.
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE pipeline_artifact_block SET size=2147483647 WHERE artifact_id=?",
+          params=[id],
+        ),
+      )
+    })
+    c.stage_artifact_block(root, id, sig, "second", b"x")
+    try c.stage_artifact_block(root, id, sig, "third", b"x") catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("artifact exceeded its 2 GiB limit")
+    }
+    c.stage_artifact_block(root, id, sig, "first", b"x")
+    let blocks = ["first", "second"]
+    for i = 2; i < 256; i = i + 1 {
+      let block = "part" + i.to_string()
+      c.stage_artifact_block(root, id, sig, block, b"x")
+      blocks.push(block)
+    }
+    try c.stage_artifact_block(root, id, sig, "overflow", b"x") catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("accepted a 257th artifact block")
+    }
+    // Retrying an existing block is legal even at the block-count limit.
+    c.stage_artifact_block(root, id, sig, "first", b"x")
+    c.commit_artifact_blocks(root, id, sig, blocks)
+    let hash = "sha256:" +
+      @crypto.bytes_to_hex_string(@crypto.sha256(@utf8.encode("x".repeat(256))))
+    ignore(
+      c.artifact_rpc(
+        grant.token,
+        "FinalizeArtifact",
+        artifact_test_request(a, {
+          "name": "desktop",
+          "size": "256",
+          "hash": hash,
+        }),
+      ),
+    )
+    let (download, read_sig) = artifact_test_url(
+      c.artifact_rpc(
+        grant.token,
+        "GetSignedArtifactURL",
+        artifact_test_request(a, { "name": "desktop" }),
+      ),
+      "signed_url",
+    )
+    assert_eq(
+      @fs.read_file(c.artifact_blob(root, download, read_sig).path).text(),
+      "x".repeat(256),
+    )
+    let (cache, cache_sig) = artifact_test_url(
+      c.cache_rpc(
+        grant.token,
+        "CreateCacheEntry",
+        cache_test_request("bounded"),
+      ),
+      "signed_upload_url",
+    )
+    c.stage_artifact_block(root, cache, cache_sig, "first", b"x")
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE pipeline_artifact_block SET size=536870912 WHERE artifact_id=?",
+          params=[cache],
+        ),
+      )
+    })
+    try c.stage_artifact_block(root, cache, cache_sig, "second", b"x") catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("cache exceeded its 512 MiB limit")
+    }
+    c.stage_artifact_block(root, cache, cache_sig, "first", b"x")
+    for i = 1; i < 64; i = i + 1 {
+      c.stage_artifact_block(
+        root,
+        cache,
+        cache_sig,
+        "part" + i.to_string(),
+        b"x",
+      )
+    }
+    try c.stage_artifact_block(root, cache, cache_sig, "overflow", b"x") catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("cache accepted a 65th block")
+    }
+    try c.commit_artifact_blocks(root, cache, cache_sig, blocks) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("cache accepted an oversized block list")
+    }
+    assert_true(
+      pool.with_client(client => {
+        client.query_all("PRAGMA foreign_key_check").is_empty()
+      }),
+    )
+  })
+}
+
+///|
 async test "artifact storage enforces limits and reaps expired and cascade-orphaned data" {
   with_protocol_fixture((c, pool, root, _, _, clock) => {
     let (a, grant) = artifact_test_start(c)
