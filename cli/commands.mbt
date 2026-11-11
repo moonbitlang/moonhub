@@ -131,7 +131,7 @@ fn command() -> @argparse.Command {
                 "edit" =>
                   "Edit MR metadata with --edit-version. Add/remove Closes #123 in --body-file to change which issues close after successful merge."
                 "merge" =>
-                  "Submit the observed --version for merge. Successful merge closes issues declared by Closes/Fixes/Resolves #123 in the description; inspect closing_issue_numbers with mr view --json first."
+                  "Submit the observed --version for merge. Successful merge closes issues declared by Closes/Fixes/Resolves #123 in the description; inspect closing_issue_numbers with mr view --json first and pass its --edit-version to confirm these closures."
                 "view" =>
                   "View an MR; --json includes closing_issue_numbers parsed from its description. Missing/already closed issues are skipped at merge."
                 _ => ""
@@ -637,7 +637,16 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
           "reviewer": decimal(required(matches, "reviewer")),
         }),
       )
-    ("mr", "merge" | "approve-checks") =>
+    ("mr", "merge") => {
+      let fields : Map[String, Json] = {
+        "version": Json(decimal(required(matches, "version"))),
+      }
+      if option(matches, "edit-version") is Some(expected) {
+        fields["edit_version"] = Json(decimal(expected))
+      }
+      ("\{base}/mrs/\{id}/merge", Some(Json(fields)))
+    }
+    ("mr", "approve-checks") =>
       (
         "\{base}/mrs/\{id}/\{action}",
         Some({ "version": decimal(required(matches, "version")) }),

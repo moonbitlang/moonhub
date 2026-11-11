@@ -124,7 +124,9 @@ argument schemas expose this distinction directly to agents.
 
 MR objects in tool results include `closing_issue_numbers` (decimal strings
 parsed from the description). Inspect this field with `moonhub_get_merge_request`
-before invoking `moonhub_merge_merge_request` with explicit user intent. A successful
+before invoking `moonhub_merge_merge_request` with explicit user intent. Pass the
+observed `edit_version` alongside `version` to confirm a nonempty declaration;
+missing or stale metadata confirmation is rejected. A successful
 merge closes existing open issues in the same repository; missing/already closed
 issues are skipped. Submission queues a merge and does not itself close anything.
 Read MR state and issue activity afterward to confirm completion. Closing an

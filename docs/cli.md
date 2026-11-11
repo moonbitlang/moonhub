@@ -264,7 +264,10 @@ the description count. Titles, comments and code examples do not count. A relate
 issue link alone does not close an issue. Missing/already closed issues are skipped,
 and failed merges or closing an unmerged MR leave issues open. Check issue
 status/activity after the merge worker completes; submitting a merge only queues
-it. See [closing directives](collaboration.md#issues) for full syntax and lifecycle.
+it. For a nonempty declaration, merge with both observed versions, for example
+`moonhub mr merge 4 --version 1 --edit-version 2`. Missing or stale metadata
+confirmation is rejected; reload the MR before retrying. See
+[closing directives](collaboration.md#issues) for full syntax and lifecycle.
 
 Descriptions/comments use `--body-file` (regular UTF-8 file, at most 16 MiB).
 Inline Markdown images using `data:image/png;base64,...` (also JPEG, GIF and WebP)

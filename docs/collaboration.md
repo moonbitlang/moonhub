@@ -68,6 +68,14 @@ array of canonical decimal strings parsed from the description. This is the
 declaration, not a record of actual closures: entries may be missing or already
 closed. Read issue status/activity to confirm completion.
 
+When the declaration is nonempty, merge submission requires the MR's observed
+`edit_version` as well as its code `version`. Description edits do not change
+the code version; stale/missing metadata confirmation must not silently close
+newly declared issues. Browser merge forms send both values. CLI callers pass
+`--edit-version`, and API/MCP callers pass `edit_version`. MRs without closing
+directives retain the existing version-only merge interface; a supplied stale
+`edit_version` is always rejected.
+
 ## Merge Requests
 
 Contributors create MRs between existing local branches with a single common

@@ -26,7 +26,7 @@ pub fn create_prepared_merge_discussion(@database.Database, @repository.Reposito
 
 pub fn edit_merge_request(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, String, String, expected? : Int64) -> Unit raise
 
-pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
+pub fn enqueue_merge(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64, edit_version? : Int64?) -> Unit raise
 
 pub fn inbox_groups(@database.Database, @domain.CurrentUser, String, Int64) -> Array[InboxGroup] raise
 

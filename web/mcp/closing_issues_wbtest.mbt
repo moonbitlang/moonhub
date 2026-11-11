@@ -122,10 +122,28 @@ async test "MCP agents can discover declare preview edit and confirm merge closu
         ..
       },
     )
+    for
+      args in [
+        {
+          "repository": Json("alice/demo"),
+          "number": Json("1"),
+          "version": Json("1"),
+        },
+        {
+          "repository": Json("alice/demo"),
+          "number": Json("1"),
+          "version": Json("1"),
+          "edit_version": Json("1"),
+        },
+      ] {
+      let (_, data) = mcp_tool(port, token, "moonhub_merge_merge_request", args)
+      assert_true(data is { "result": { "isError": True, .. }, .. })
+    }
     let (_, data) = mcp_tool(port, token, "moonhub_merge_merge_request", {
       "repository": Json("alice/demo"),
       "number": Json("1"),
       "version": Json("1"),
+      "edit_version": Json("2"),
     })
     assert_true(
       data

@@ -78,6 +78,71 @@ test "closing directives respect list-contained fences and literal backticks" {
 }
 
 ///|
+async test "issue-closing merge requires the observed metadata version even when code is unchanged" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let number = create_issue(pool, scope, alice, "Confirm closure", "", 0L)
+    let dir = repo.git_dir(root)
+    ignore(
+      @test_support.merge_test_commit(
+        dir,
+        "confirm",
+        @gitops.branch_sha(dir, "master"),
+        "fix\n",
+      ),
+    )
+    let original = create_merge_request(
+      pool, scope, dir, alice, "Confirm closure", "", "confirm", "master", false,
+    )
+    edit_merge_request(
+      pool,
+      scope,
+      alice,
+      original,
+      "edit",
+      original.title,
+      "Closes #\{number}",
+    )
+    let current = require_merge_request(pool, scope, original.number)
+    assert_eq(current.version, original.version)
+    for expected in [None, Some(original.edit_version)] {
+      try
+        enqueue_merge(
+          pool,
+          scope,
+          alice,
+          current,
+          original.version,
+          edit_version=expected,
+        )
+      catch {
+        @domain.BadRequest(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("merge accepted unseen closing directives")
+      }
+    }
+    assert_eq(
+      require_merge_request(pool, scope, original.number).job_status,
+      "",
+    )
+    assert_eq(require_issue(pool, scope, number).status, "open")
+    enqueue_merge(
+      pool,
+      scope,
+      alice,
+      current,
+      current.version,
+      edit_version=Some(current.edit_version),
+    )
+    assert_true(run_next_merge_job(pool, root))
+    assert_eq(require_issue(pool, scope, number).status, "closed")
+  })
+}
+
+///|
 async test "successful merge closes declared issues with activity versions and notifications" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")
@@ -128,7 +193,14 @@ async test "successful merge closes declared issues with activity versions and n
       issue=linked,
     )
     assert_eq(require_issue(pool, scope, first).status, "open")
-    enqueue_merge(pool, scope, admin, mr, mr.version)
+    enqueue_merge(
+      pool,
+      scope,
+      admin,
+      mr,
+      mr.version,
+      edit_version=Some(mr.edit_version),
+    )
     assert_eq(require_issue(pool, scope, first).status, "open")
     assert_true(run_next_merge_job(pool, root))
     let merged = require_merge_request(pool, scope, mr.number)
@@ -218,7 +290,14 @@ async test "MR edits replace closing directives and failed or closed MRs leave i
       "Fixes #\{replacement}",
     )
     let current = require_merge_request(pool, scope, mr.number)
-    enqueue_merge(pool, scope, alice, current, current.version)
+    enqueue_merge(
+      pool,
+      scope,
+      alice,
+      current,
+      current.version,
+      edit_version=Some(current.edit_version),
+    )
     ignore(@test_support.merge_test_commit(dir, "fix", source, "changed\n"))
     assert_true(run_next_merge_job(pool, root))
     assert_eq(
@@ -233,7 +312,14 @@ async test "MR edits replace closing directives and failed or closed MRs leave i
       dir,
       require_merge_request(pool, scope, mr.number),
     )
-    enqueue_merge(pool, scope, alice, current, current.version)
+    enqueue_merge(
+      pool,
+      scope,
+      alice,
+      current,
+      current.version,
+      edit_version=Some(current.edit_version),
+    )
     assert_true(run_next_merge_job(pool, root))
     assert_eq(require_issue(pool, scope, original).status, "open")
     assert_eq(require_issue(pool, scope, replacement).status, "closed")
@@ -261,7 +347,14 @@ async test "issue closure rolls back with merge finalization and recovery comple
       "master",
       false,
     )
-    enqueue_merge(pool, scope, alice, mr, mr.version)
+    enqueue_merge(
+      pool,
+      scope,
+      alice,
+      mr,
+      mr.version,
+      edit_version=Some(mr.edit_version),
+    )
     pool.with_client(client => {
       ignore(
         client.execute(

@@ -59,11 +59,23 @@ async test "MR API exposes closing declarations through create read edit list an
     )
     assert_eq(status, 200)
     assert_true(data is { "closing_issue_numbers": [String("2")], .. })
+    for
+      body in (
+        [{ "version": "1" }, { "version": "1", "edit_version": "1" }] :
+        Array[Json]) {
+      let (status, _) = api_test_request(
+        port,
+        "/repos/alice/demo/mrs/1/merge",
+        token,
+        Some(body),
+      )
+      assert_eq(status, 400)
+    }
     let (status, data) = api_test_request(
       port,
       "/repos/alice/demo/mrs/1/merge",
       token,
-      Some({ "version": "1" }),
+      Some({ "version": "1", "edit_version": "2" }),
     )
     assert_eq(status, 200)
     assert_true(

@@ -59,6 +59,12 @@ fn Tool::definition(self : Tool) -> Json {
       "description": "Optional related issue number as a canonical decimal string. This only links the issue; use Closes #123 in description to close it on merge.",
     }
   }
+  if self.name == "moonhub_merge_merge_request" {
+    properties["edit_version"] = {
+      "type": "string",
+      "description": "Observed MR metadata version as a canonical decimal string. Required when closing_issue_numbers is nonempty, to confirm the issue closures inspected with moonhub_get_merge_request. Stale metadata is rejected.",
+    }
+  }
   {
     "name": self.name,
     "description": self.description +
@@ -371,10 +377,10 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_merge_merge_request",
-      description: "Submit an MR merge for the explicitly observed version, subject to branch rules and checks. Successful merge closes existing open same-repository issues declared by Closes/Fixes/Resolves #123 in description; inspect closing_issue_numbers first. Requires explicit user intent to merge.",
+      description: "Submit an MR merge for the explicitly observed version, subject to branch rules and checks. Successful merge closes existing open same-repository issues declared by Closes/Fixes/Resolves #123 in description; inspect closing_issue_numbers and pass the observed edit_version to confirm closures. Requires explicit user intent to merge.",
       permission: "merge",
       required: ["repository", "number", "version"],
-      optional: [],
+      optional: ["edit_version"],
     },
   ]
 }
@@ -930,6 +936,11 @@ async fn invoke_tool(
               actor,
               mr,
               decimal(string_arg(args, "version")),
+              edit_version=if args.contains("edit_version") {
+                Some(decimal(string_arg(args, "edit_version")))
+              } else {
+                None
+              },
             )
         }
         @user_api.mr_json(@collaboration.require_merge_request(pool, scope, id))

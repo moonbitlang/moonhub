@@ -153,3 +153,12 @@ test "CLI help discovers closing directives and the merge preview" {
   }
   assert_true(help.contains("closing_issue_numbers"))
 }
+
+///|
+test "CLI merge accepts the observed metadata version to confirm closures" {
+  let parsed = command().parse(argv=[
+    "mr", "merge", "1", "--version", "2", "--edit-version", "3",
+  ])
+  assert_eq(option(parsed, "version"), Some("2"))
+  assert_eq(option(parsed, "edit-version"), Some("3"))
+}
