@@ -74,17 +74,42 @@ before and after Git I/O and uses `Cache-Control: no-store`.
 
 Repository symlinks are preserved as Git blobs, including dangling and cyclic
 links used by test fixtures. The server never follows them; Git creates the
-checkout inside the job container. Submodules and runner-reserved paths remain
-unsupported. The legacy tar source API accepts regular files only.
+checkout inside the job container. Submodule gitlinks and `.gitmodules` are
+preserved without fetching their repositories on the server. Use an upstream
+checkout step to initialize public submodules inside the job:
+
+```yaml
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - run: bash scripts/ci/preflight.sh
+```
+
+Submodule URLs must be reachable from the job. Public HTTPS URLs need no
+repository credential; private or SSH submodules need separately configured
+job credentials and host verification. The local-source placeholder does not
+authenticate submodule downloads. Prefer absolute HTTPS URLs; submodules in
+other private MoonHub repositories do not inherit the parent attempt's source
+authorization. Runner-reserved paths remain unsupported, and the legacy tar
+source API still rejects symlinks and submodules.
 
 If source preparation is rejected because the source is unsupported or unavailable,
 the runner logs the HTTP status and reports a failed job. Expired or invalid attempt
 credentials still fence execution as a lost runner.
 
 This transport currently supplies a shallow single-commit checkout only. It does
-not supply tags, full history, submodules, LFS, other repositories, arbitrary refs,
-push authentication, or a GitHub API token. `github.token` is a noncredential local
-source placeholder required by upstream checkout's input contract; it cannot
+not supply tags, full history, submodule repository objects or credentials, LFS,
+alternate source repositories, arbitrary refs, push authentication, or a GitHub
+API token. `github.token` is a noncredential local source placeholder required
+by upstream checkout's input contract; it cannot
 access either host's authenticated APIs. Actions needing authenticated GitHub APIs
 must be treated as migration gaps, not assumed to work from this placeholder.
 
