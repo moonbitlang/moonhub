@@ -166,7 +166,7 @@ test('file path links work with JavaScript disabled', async ({ browser, baseURL 
   await context.close();
 });
 
-test('authenticated navigation creates one issue, remounts editors and logs out without reloading', async ({ page }) => {
+test('authenticated navigation creates and edits one issue, remounts editors and logs out without reloading', async ({ page }) => {
   const errors: string[] = [];
   const documents: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -190,6 +190,25 @@ test('authenticated navigation creates one issue, remounts editors and logs out 
   await expect(page.getByRole('heading', { name: /Hydrated issue/ })).toBeVisible();
   await expect(page.locator('.markdown-body strong').first()).toHaveText('SPA description');
   expect(created).toBe(1);
+  await page.getByRole('link', { name: 'Edit issue', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Edit issue', exact: true })).toBeVisible();
+  await expect(page.locator('[name=edit_version]')).toHaveValue('1');
+  await page.locator('[name=title]').fill('Edited hydrated issue');
+  await page.locator('.CodeMirror').evaluate((node: any) => node.CodeMirror.setValue('**Edited SPA description**'));
+  await page.getByRole('combobox', { name: 'Assignee', exact: true }).selectOption('1');
+  let edits = 0;
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/alice/demo/issues/1/edit') edits++; });
+  await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await expect(page).toHaveURL(/\/issues\/1$/);
+  await expect(page.getByRole('heading', { name: /Edited hydrated issue/ })).toBeVisible();
+  await expect(page.locator('.discussion-description strong')).toHaveText('Edited SPA description');
+  await expect(page.getByText('Opened by Alice · Assigned to Alice', { exact: true })).toBeVisible();
+  expect(edits).toBe(1);
+  await page.getByRole('link', { name: 'Edit issue', exact: true }).click();
+  await expect(page.locator('[name=title]')).toHaveValue('Edited hydrated issue');
+  await expect(page.locator('[name=description]')).toHaveValue('**Edited SPA description**');
+  await expect(page.locator('[name=assignee]')).toHaveValue('1');
+  await expect(page.locator('[name=edit_version]')).toHaveValue('2');
   await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
   await page.getByRole('link', { name: 'New issue', exact: true }).click();
   await expect(page.locator('.CodeMirror')).toHaveCount(1);

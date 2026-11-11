@@ -223,66 +223,68 @@ pub let issues_module : @moonback.Module = Module(ctx => {
       headers=@web_context.private_page_headers(),
     )
   })
-  ctx.post("/:owner/:repo/issues/:number/:action", async fn(req, res) {
-    let actor = @web_context.require_current_user(req)
-    let scope = @repository.repository_scope(
-      pool,
-      actor,
-      @web_context.repo_param(req),
-    )
-    let form = @web_context.protected_form(req, "issues")
-    let issue = @collaboration.require_issue(
-      pool,
-      scope,
-      @web_context.positive_resource_number(
-        @web_context.required_param(req, "number", "issue"),
-      ),
-    )
-    let action = @web_context.required_param(req, "action", "action")
-    let expected = if action == "comment" {
-      issue.edit_version
-    } else {
-      @web_context.positive_resource_number(
-        form.get("edit_version").unwrap_or(""),
+  // Moonback selects a path before its method; register POST /edit alongside GET.
+  for action in ["edit", "comment", "close", "reopen"] {
+    ctx.post("/:owner/:repo/issues/:number/" + action, async fn(req, res) {
+      let actor = @web_context.require_current_user(req)
+      let scope = @repository.repository_scope(
+        pool,
+        actor,
+        @web_context.repo_param(req),
       )
-    }
-    @collaboration.mutate_issue(
-      pool,
-      scope,
-      actor,
-      issue,
-      expected,
-      action,
-      form.get("title").unwrap_or(""),
-      form.get("description").unwrap_or(""),
-      issue_assignee_value(form),
-      form.get("body").unwrap_or(""),
-    ) catch {
-      @domain.BadRequest(message~) if action == "edit" => {
-        res.send_html(
-          render_issue_form(
-            assets,
-            actor,
-            scope,
-            Some(issue),
-            @collaboration.issue_assignees(pool, scope),
-            @web_context.request_form_token(req, "issues"),
-            form,
-            Some(message),
-            manager=@identity.can_manage_team(pool, actor, scope.team_id),
-          ),
-          status=400,
-          headers=@web_context.private_page_headers(),
+      let form = @web_context.protected_form(req, "issues")
+      let issue = @collaboration.require_issue(
+        pool,
+        scope,
+        @web_context.positive_resource_number(
+          @web_context.required_param(req, "number", "issue"),
+        ),
+      )
+      let expected = if action == "comment" {
+        issue.edit_version
+      } else {
+        @web_context.positive_resource_number(
+          form.get("edit_version").unwrap_or(""),
         )
-        return
       }
-      err => raise err
-    }
-    res.send_void(
-      status=303,
-      headers=@web_context.private_page_headers(
-        location="\{@web_ui.repo_link(scope.repo)}/issues/\{issue.number}",
-      ),
-    )
-  })
+      @collaboration.mutate_issue(
+        pool,
+        scope,
+        actor,
+        issue,
+        expected,
+        action,
+        form.get("title").unwrap_or(""),
+        form.get("description").unwrap_or(""),
+        issue_assignee_value(form),
+        form.get("body").unwrap_or(""),
+      ) catch {
+        @domain.BadRequest(message~) if action == "edit" => {
+          res.send_html(
+            render_issue_form(
+              assets,
+              actor,
+              scope,
+              Some(issue),
+              @collaboration.issue_assignees(pool, scope),
+              @web_context.request_form_token(req, "issues"),
+              form,
+              Some(message),
+              manager=@identity.can_manage_team(pool, actor, scope.team_id),
+            ),
+            status=400,
+            headers=@web_context.private_page_headers(),
+          )
+          return
+        }
+        err => raise err
+      }
+      res.send_void(
+        status=303,
+        headers=@web_context.private_page_headers(
+          location="\{@web_ui.repo_link(scope.repo)}/issues/\{issue.number}",
+        ),
+      )
+    })
+  }
 })
