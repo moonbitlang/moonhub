@@ -890,6 +890,14 @@ async fn execute_assignment(
               runtime.prepare_source_git(scratch)
             } catch {
               Stopped(reason) => raise Stopped(reason)
+              Rejected(code) if [400, 403, 404, 413, 422].contains(code) => {
+                runtime.upload(
+                  "",
+                  "stderr",
+                  "runner: source bundle request rejected (HTTP \{code}); source could not be prepared\n",
+                )
+                raise Stopped("failure")
+              }
               TransportFailure | Rejected(_) | InvalidResponse =>
                 raise Stopped("lost")
               _ => {

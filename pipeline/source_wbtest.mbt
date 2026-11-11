@@ -86,6 +86,7 @@ test "checkout rejects reserved paths symlinks and submodules" {
       "100644 blob \{hash}\t.home/.moon/config",
       "100644 blob \{hash}\t.tmp/file",
       "100644 blob \{hash}\t.git/config",
+      "120000 blob \{hash}\t.git/config",
       "100644 blob \{hash}\t../outside",
       "100644 blob \{hash}\t/absolute",
       "100644 blob \{hash}\ta\nfile",
@@ -96,16 +97,81 @@ test "checkout rejects reserved paths symlinks and submodules" {
     } noraise {
       _ => fail("unsafe checkout tree accepted")
     }
+    if entry != "120000 blob \{hash}\tlink" {
+      try validate_source_tree(entry + "\u{0000}", symlinks=true) catch {
+        @domain.BadRequest(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("unsafe bundle tree accepted")
+      }
+    }
   }
 }
 
 ///|
-async test "source bundle restores exactly one pinned commit without repository history" {
-  with_protocol_fixture((coordinator, _, root, run, _, _) => {
+async test "source bundle preserves symlinks in exactly one pinned commit without repository history" {
+  with_protocol_fixture((coordinator, pool, root, original, _, _) => {
+    let dir = protocol_repo.git_dir(root)
+    let github = @gitops.merge_git(dir, [
+        "rev-parse",
+        original.commit_sha + ":.github",
+      ])
+      .trim()
+      .to_owned()
+    let target = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input=".github/workflows/build.yml",
+      )
+      .trim()
+      .to_owned()
+    let loop_blob = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input="loop",
+      )
+      .trim()
+      .to_owned()
+    let dangling = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input="missing",
+      )
+      .trim()
+      .to_owned()
+    let tree = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="040000 tree \{github}\t.github\n120000 blob \{target}\tREADME.md\n120000 blob \{loop_blob}\tloop\n120000 blob \{dangling}\tdangling\n",
+      )
+      .trim()
+      .to_owned()
+    let sha = @gitops.merge_git(dir, [
+        "commit-tree",
+        tree,
+        "-p",
+        original.commit_sha,
+        "-m",
+        "Symlink fixture",
+      ])
+      .trim()
+      .to_owned()
+    ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/pipeline", sha]))
+    let actor = @identity.active_user_by_name(pool, "alice")
+    coordinator.cancel_run(actor, protocol_repo, original.number)
+    let run = create_run(
+      pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
+    )
     let id = @protocol.parse_decimal(
       coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
     ignore(coordinator.start(id, attempt_secret, 1))
+    try ignore(coordinator.read_source(root, id, attempt_secret)) catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("tar source accepted symlinks")
+    }
     let bundle = coordinator.read_source_bundle(root, id, attempt_secret)
     let scratch = @fs.tmpdir(prefix="moonhub-bundle-test-")
     defer @fs.rmdir(scratch, recursive=true)
@@ -142,6 +208,30 @@ async test "source bundle restores exactly one pinned commit without repository 
     ])
     assert_eq(code, 0)
     assert_eq(content.text(), run.workflow_source)
+    for
+      (path, target) in [
+        ("README.md", ".github/workflows/build.yml"),
+        ("loop", "loop"),
+        ("dangling", "missing"),
+      ] {
+      let (code, content) = @process.collect_output_merged("git", [
+        "--git-dir",
+        scratch + "/restored.git",
+        "show",
+        run.commit_sha + ":" + path,
+      ])
+      assert_eq(code, 0)
+      assert_eq(content.text(), target)
+      let (code, mode) = @process.collect_output_merged("git", [
+        "--git-dir",
+        scratch + "/restored.git",
+        "ls-tree",
+        run.commit_sha,
+        path,
+      ])
+      assert_eq(code, 0)
+      assert_true(mode.text().has_prefix("120000 blob "))
+    }
     let (code, parents) = @process.collect_output_merged("git", [
       "--git-dir",
       scratch + "/restored.git",

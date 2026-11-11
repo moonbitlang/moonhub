@@ -425,3 +425,38 @@ async test "rejected dataflow outputs report failure without replaying execution
     }
   })
 }
+
+///|
+async test "source bundle rejection reports a failed job before executing steps" {
+  @test_support.with_runner_workspace((root, launcher, _) => {
+    for rejection in [400, 403, 404, 413, 422, 401, 409] {
+      let workspace = root + "/source-rejected-" + rejection.to_string()
+      @fs.mkdir(workspace)
+      let assignment = {
+        ..test_assignment([test_step("never", "touch executed")]),
+        version: @protocol.remote_assignment_version,
+      }
+      let server = fake_server()
+      let report = execute_assignment(
+        assignment,
+        test_options(launcher, workspace),
+        (operation, body, until) => server.post(operation, body, until),
+        bundle=() => raise Rejected(rejection),
+      )
+      let fenced = rejection == 401 || rejection == 409
+      assert_eq(report.conclusion, if fenced { "lost" } else { "failure" })
+      assert_eq(report.reported, !fenced)
+      assert_true(report.steps.all(step => step.state == "skipped"))
+      assert_false(@fs.exists(workspace + "/repository/executed"))
+      if !fenced {
+        assert_true(
+          server.logs.any(log => {
+            log.stream == "stderr" &&
+            log.text.contains("source bundle request rejected") &&
+            log.text.contains(rejection.to_string())
+          }),
+        )
+      }
+    }
+  })
+}
