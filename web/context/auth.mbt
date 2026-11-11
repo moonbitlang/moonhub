@@ -197,9 +197,35 @@ pub fn require_login_middleware() -> @moonback.Middleware {
         match current_user_from_request(req) {
           Some(_) => next(req, res)
           None =>
-            res.send_void(status=303, headers=redirect_headers("/-/login"))
+            if anonymous_browser_read(req) {
+              next(req, res)
+            } else {
+              res.send_void(status=303, headers=redirect_headers("/-/login"))
+            }
         }
       }
     }
   })
+}
+
+///|
+// Only repository browsing and discovery bypass the login gate. The handlers
+// still enforce repository visibility; writes and account/team features do not.
+fn anonymous_browser_read(req : @moonback.Request) -> Bool {
+  guard req.meth is (Get | Head) else { return false }
+  if req.path == "/" {
+    return true
+  }
+  let parts = req.path.split("/").collect()
+  match parts {
+    ["", owner] if !owner.is_empty() && owner != "-" =>
+      req.query().get("tab").unwrap_or("repositories") == "repositories"
+    ["", owner, repo, ..] if !owner.is_empty() &&
+      owner != "-" &&
+      !repo.is_empty() &&
+      repo != "-" =>
+      parts.length() == 3 ||
+      ["tree", "blob", "commits", "commit"].contains(parts[3].to_owned())
+    _ => false
+  }
 }

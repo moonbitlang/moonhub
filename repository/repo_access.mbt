@@ -49,13 +49,39 @@ pub fn authorize_repository(
 }
 
 ///|
+/// Anonymous readers may only see registered, ready, public repositories.
+/// Authenticated readers retain the existing active-account and membership policy.
+pub fn can_read_repository(
+  pool : @database.Database,
+  actor : @domain.CurrentUser?,
+  repo : @domain.RepoId,
+) -> Bool raise {
+  match actor {
+    Some(actor) => can_access_repository(pool, actor, repo, Read)
+    None =>
+      pool.with_client(client => {
+        client.query_opt(
+          (
+            #|SELECT repository.id FROM repository
+            #|JOIN team ON team.id = repository.team_id
+            #|WHERE team.name_key = ? AND repository.name = ?
+            #|  AND repository.ready = 1 AND repository.visibility = 'public'
+          ),
+          params=[repo.owner, repo.name],
+        )
+        is Some(_)
+      })
+  }
+}
+
+///|
 pub async fn visible_repositories(
   pool : @database.Database,
   root : String,
-  actor : @domain.CurrentUser,
+  actor : @domain.CurrentUser?,
 ) -> Array[@domain.RepoId] {
   let repos = @gitops.list_repositories(root)
-  repos.filter(repo => can_access_repository(pool, actor, repo, Read))
+  repos.filter(repo => can_read_repository(pool, actor, repo))
 }
 
 ///|
@@ -63,7 +89,7 @@ pub async fn visible_repositories(
 /// names that are still being prepared, so their status page stays reachable.
 pub fn namespace_repositories(
   pool : @database.Database,
-  actor : @domain.CurrentUser,
+  actor : @domain.CurrentUser?,
   team : @identity.TeamSummary,
   can_manage : Bool,
 ) -> Array[TeamRepository] raise {
@@ -72,12 +98,10 @@ pub fn namespace_repositories(
     repositories
   } else {
     repositories.filter(repo => {
-      can_access_repository(
-        pool,
-        actor,
-        { owner: team.name_key, name: repo.name, },
-        Read,
-      )
+      can_read_repository(pool, actor, {
+        owner: team.name_key,
+        name: repo.name,
+      })
     })
   }
 }
