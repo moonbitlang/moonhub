@@ -103,7 +103,7 @@ async function main() {
             "foreach ($launcher in (Get-Process -Name moonhub-runner-step)) { foreach ($access in @(0x1,0x40,0x40000)) { if ([ProcessProbe]::OpenProcess($access, $false, $launcher.Id) -ne [IntPtr]::Zero) { throw 'Launcher termination, handles or DACL are accessible to task code' } } }",
             ...(claims===2 ? ["if (-not $env:SMOKE_SECRET) { throw 'Secret delivery failed' }; Write-Output $env:SMOKE_SECRET"] : []),
             "if ($env:RUNNER_OS -ne 'Windows') { throw 'Runner OS missing' }",
-            "if ((Get-Command tar.exe -CommandType Application | Select-Object -First 1).Source -ne ($env:SYSTEMROOT + '\\System32\\tar.exe')) { throw 'Git GNU tar shadows Windows tar' }",
+            "$tar = (Get-Command tar.exe -CommandType Application | Select-Object -First 1).Source; $tarVersion = & tar.exe --version; if ($LASTEXITCODE -ne 0 -or $tarVersion -notmatch 'bsdtar') { throw ('Unexpected tar: ' + $tar + '; version: ' + $tarVersion + '; PATH: ' + $env:PATH) }",
             "$archive = Join-Path $env:RUNNER_TEMP 'absolute-path.tar'; $extract = Join-Path $env:RUNNER_TEMP 'absolute-extract'; New-Item -ItemType Directory $extract | Out-Null",
             "& tar.exe -cf $archive -C $pwd source.txt; if ($LASTEXITCODE -ne 0) { throw 'Windows tar create failed' }",
             "& tar.exe -xf $archive -C $extract; if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $extract 'source.txt'))) { throw 'Windows tar absolute-path extraction failed' }",

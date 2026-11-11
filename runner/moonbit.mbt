@@ -113,7 +113,7 @@ async fn Runtime::setup_moonbit(
         "MOON_HOME": toolchain,
         "PATH": if @platform.windows() {
           toolchain +
-          "/bin;C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/moonhub/git/usr/bin;" +
+          "/bin;C:/moonhub/bin;C:/moonhub/pwsh;C:/moonhub/git/cmd;C:/Windows/System32;C:/moonhub/git/usr/bin;" +
           @platform.environment()
           .get("PATH")
           .unwrap_or("C:/Windows/System32;C:/Windows")
