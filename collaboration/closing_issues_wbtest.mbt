@@ -71,6 +71,10 @@ test "closing directives respect list-contained fences and literal backticks" {
     closing_issue_numbers("Example: `text\nCloses #1\nend`\n\nFixes #2"),
     [2L],
   )
+  assert_eq(
+    closing_issue_numbers("```text\n- ```\nCloses #1\n```\n\nFixes #2"),
+    [2L],
+  )
 }
 
 ///|

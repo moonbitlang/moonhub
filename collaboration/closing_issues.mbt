@@ -73,6 +73,7 @@ fn closing_issue_clause(chars : Array[Char], start : Int32) -> Array[Int64] {
 fn closing_markdown_content_start(
   chars : Array[Char],
   indent_limit~ : Int32 = 3,
+  strip_lists~ : Bool = true,
 ) -> Int32? {
   let mut cursor = 0
   while cursor < chars.length() && chars[cursor] == ' ' {
@@ -81,7 +82,7 @@ fn closing_markdown_content_start(
   if cursor > indent_limit || chars.get(cursor) == Some('\t') {
     return None
   }
-  while cursor < chars.length() {
+  while strip_lists && cursor < chars.length() {
     if chars[cursor] == '>' {
       return None
     }
@@ -194,6 +195,7 @@ pub fn closing_issue_numbers(description : String) -> Array[Int64] {
     let content = closing_markdown_content_start(
       chars,
       indent_limit=if fence is Some(_) { fence_indent + 3 } else { 3 },
+      strip_lists=fence is None,
     )
     if cursor == 0 &&
       !comment &&
