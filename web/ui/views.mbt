@@ -79,7 +79,9 @@ fn render_site_header(
         b <+
           "<form class=\"logout-form\" method=\"post\" action=\"/-/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
       }
-      None => ()
+      None =>
+        b <+
+          "<a class=\"header-sign-in button-link secondary-button\" href=\"/-/login\">Sign in</a>"
     }
     b <+ "</div></header>"
   })

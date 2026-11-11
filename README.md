@@ -46,8 +46,12 @@ Run HTTP and Git-over-SSH services with Docker Compose. See
 [Docker deployment](deploy/README.md) for bootstrap secrets, key registration,
 repository creation/import, persistence, and the end-to-end smoke test.
 
-Repositories must be registered in the database before authenticated users can
-access them. The same repository permissions apply to SSH and browser access.
+Repositories must be registered in the database before they can be accessed.
+Public, ready repositories can be browsed without signing in: files, directories,
+commit history and diffs, plus repository listings on the home and namespace pages.
+Private repositories stay hidden from anonymous visitors. Repository writes,
+collaboration features, account settings and team administration require login.
+SSH access continues to require an authenticated identity and repository permission.
 Signed-in users can add, inspect, and revoke their own SSH keys from the
 **SSH keys** link in the site header (`/-/settings/ssh-keys`), and change their
 display name from **Profile** (`/-/settings/profile`). Usernames identify

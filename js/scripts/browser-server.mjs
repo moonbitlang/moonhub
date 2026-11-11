@@ -135,6 +135,7 @@ try {
   const reviewHead = git(['commit-tree', singleTree({ 'main.mbt': reviewSource(1), 'other.txt': 'after\n' }), '-p', reviewBase, '-m', 'Inline review long file']);
   git(['update-ref', 'refs/heads/moondiff-review-base', reviewBase]);
   git(['update-ref', 'refs/heads/moondiff-review', reviewHead]);
+  execFileSync('git', ['clone', '--bare', '--no-hardlinks', '--quiet', join(repos, 'alice/demo.git'), join(repos, 'alice/public.git')]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',
@@ -165,7 +166,7 @@ try {
     db.prepare('INSERT INTO user (id, name_key, display_name, password_hash) VALUES (2, ?, ?, ?)').run('outsider', 'Outside user', password_hash);
     db.exec(`INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'alice', 'Alice', 'personal');
       INSERT INTO team_member (team_id, user_id, role) VALUES (1, 1, 'owner');
-      INSERT INTO repository (id, team_id, name, visibility, default_branch) VALUES (1, 1, 'demo', 'private', 'master');`);
+      INSERT INTO repository (id, team_id, name, visibility, default_branch) VALUES (1, 1, 'demo', 'private', 'master'), (2, 1, 'public', 'public', 'master');`);
   } finally { db.close(); }
   console.log('MoonHub browser fixture ready');
 } catch (error) {

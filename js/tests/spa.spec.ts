@@ -133,6 +133,8 @@ test('file breadcrumbs and parent links keep the revision through SPA and keyboa
   await expect(page).toHaveURL(base + '/src/' + directory);
   await page.getByRole('link', { name: 'Parent directory', exact: true }).click();
   await expect(page).toHaveURL(base + '/src');
+  // History changes before rendering and the navigation's focus reset finish.
+  await expect(page.locator('html')).not.toHaveAttribute('aria-busy', 'true');
   const files = trail.getByRole('link', { name: 'Files', exact: true });
   await files.focus();
   await expect(files).toBeFocused();

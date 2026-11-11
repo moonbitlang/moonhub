@@ -60,22 +60,24 @@ let services_module : @moonback.Module = Module(ctx => {
       @repository.visible_repositories(
         pool,
         root,
-        @web_context.require_current_user(req),
+        @web_context.current_user_from_request(req),
       )
     },
     personal_owner: req => {
-      @identity.personal_namespace(pool, @web_context.require_current_user(req)).map(team => {
-          team.name_key
-        },
-      )
+      match @web_context.current_user_from_request(req) {
+        Some(actor) =>
+          @identity.personal_namespace(pool, actor).map(team => team.name_key)
+        None => None
+      }
     },
     authorize: (req, repo) => {
-      @repository.authorize_repository(
+      guard @repository.can_read_repository(
         pool,
-        @web_context.require_current_user(req),
+        @web_context.current_user_from_request(req),
         repo,
-        Read,
-      )
+      ) else {
+        raise @domain.NotFound(message="repository not found or access denied")
+      }
     },
     clone_url: repo => {
       @repository.effective_ssh_endpoint(pool, addresses).map(endpoint => {
@@ -83,13 +85,12 @@ let services_module : @moonback.Module = Module(ctx => {
       })
     },
     manager: (req, repo) => {
-      match @identity.get_team_by_name_key(pool, repo.owner) {
-        Some(team) =>
-          @identity.can_manage_team(
-            pool,
-            @web_context.require_current_user(req),
-            team.id,
-          )
+      match @web_context.current_user_from_request(req) {
+        Some(actor) =>
+          match @identity.get_team_by_name_key(pool, repo.owner) {
+            Some(team) => @identity.can_manage_team(pool, actor, team.id)
+            None => false
+          }
         None => false
       }
     },

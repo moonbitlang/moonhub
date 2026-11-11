@@ -88,6 +88,7 @@ html[data-ui-enhanced] [hidden][data-filter-control], html[data-ui-enhanced] [hi
 .breadcrumbs .breadcrumb-separator { width: 14px; height: 14px; flex: 0 0 14px; color: var(--color-subtle); }
 .site-header .breadcrumbs ol { flex-wrap: nowrap; }
 .site-header .breadcrumbs a { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.header-sign-in { flex-shrink: 0; margin-left: auto; white-space: nowrap; }
 .account-menu { position: relative; flex-shrink: 0; margin-left: auto; }
 .account-menu > summary { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 3px 5px; border-radius: 6px; cursor: pointer; list-style: none; }
 .account-menu > summary:hover { background: var(--color-surface-subtle); }

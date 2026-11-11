@@ -8,10 +8,13 @@ pub let namespaces_module : @moonback.Module = Module(ctx => {
   let assets = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
   ctx.get("/:owner", async fn(req, res) {
-    let actor = @web_context.require_current_user(req)
+    let actor = @web_context.current_user_from_request(req)
     let team = @web_context.require_owner_namespace(pool, req)
-    let can_manage = @identity.can_manage_team(pool, actor, team.id)
-    if team.kind == "personal" {
+    let can_manage = match actor {
+      Some(actor) => @identity.can_manage_team(pool, actor, team.id)
+      None => false
+    }
+    if team.kind == "personal" || actor is None {
       res.send_html(
         render_namespace(
           assets,
@@ -25,6 +28,7 @@ pub let namespaces_module : @moonback.Module = Module(ctx => {
       return
     }
     // Member and invitation views stay private to the team.
+    let actor = @web_context.require_current_user(req)
     @identity.require_team_member_access(pool, actor, team)
     let members = @identity.list_team_members(pool, team)
     let invitations = @identity.list_invitations(pool, team)
