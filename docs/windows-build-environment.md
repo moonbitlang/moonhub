@@ -67,6 +67,13 @@ The toolchain is Visual Studio Build Tools 2022 17.14.37906.3. Installation is
 unattended under the image build; normal jobs still run as ContainerUser.
 Operators are responsible for the applicable Microsoft software licensing terms.
 
+Both Windows task images install the x64 VC++ Redistributable system-wide before
+switching to ContainerUser. runtime.json pins its immutable Microsoft download URL,
+version and SHA-256; the bundle build downloads it and the image build verifies
+the checksum again before installation. A newer runtime from a base image is
+accepted. The worker's adjacent runtime DLLs remain available for host execution,
+but downloaded job tools must also work when their installers replace PATH.
+
 The image includes no source checkout, project dependency or cloud credential.
 Job setup Actions choose Node and MoonBit versions. The runtime supplies Node
 20/24 for Action entrypoints, Git and PowerShell 7. Standard Program Files paths
@@ -103,6 +110,18 @@ GitHub CI keeps the existing Server 2022 worker/container regressions and adds a
 Server 2025 matrix instance. Both exercise native policy tests, process cleanup,
 real containers and standalone provider installation. On 2025, the original
 2022 image tests also exercise the supported host/image combination.
+
+GitHub CI runs scripts/windows-moonbit-runtime-smoke.cjs against the Server 2022
+task image on both Windows hosts. The smoke test installs the production MoonBit
+version as ContainerUser, restricts PATH to MoonBit's bin alone, checks all four
+core bundles, checks a small project for all targets and builds/runs it on
+wasm-gc. This catches a successful-looking install that left core unbuilt
+because moon.exe could not load the VC++ runtime with the installer's PATH.
+
+On a dedicated Windows 2025 host, run the same runtime check after building the
+generic C++ image:
+
+    node scripts/windows-moonbit-runtime-smoke.cjs moonhub:build-windows-2025
 
 Application execution is independent of MoonHub's required CI. On a dedicated
 Windows 2025 environment-validation host, build the generic C++ image, prepare

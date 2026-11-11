@@ -124,6 +124,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows Docker daemon is not ready' }
           docker build --isolation=process -f deploy/windows/Dockerfile -t moonhub:runner-windows .tmp/windows-runner
           if ($LASTEXITCODE -ne 0) { throw 'Windows task image build failed' }
+      - name: Verify MoonBit core with restricted PATH in Windows 2022
+        shell: pwsh
+        run: |
+          node scripts/windows-moonbit-runtime-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows 2022 MoonBit runtime regression failed' }
       - name: Exercise reusable Windows worker with real containers
         shell: pwsh
         run: |

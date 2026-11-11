@@ -23,8 +23,8 @@ Copy-Item '_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe' "$ou
 & cl.exe /nologo /W4 /WX /O2 /MT runner/step-launcher.c "/Fe:$outputRoot/bin/moonhub-runner-step.exe" "/Fo:$outputRoot/bin/step-launcher.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Windows launcher build failed' }
 Remove-Item "$outputRoot/bin/step-launcher.obj"
-# The MoonBit executable may use the dynamic MSVC runtime. Ship the redistributable
-# DLLs beside it, not any development tools or a developer's environment/config.
+# Keep the host worker self-contained. Task images also install the runtime
+# system-wide for downloaded tools whose setup scripts replace PATH.
 $crt = Get-ChildItem "$env:VCToolsRedistDir/x64/Microsoft.VC*.CRT" -Directory | Select-Object -First 1
 if (-not $crt) { throw 'MSVC x64 redistributable directory is missing' }
 Copy-Item "$($crt.FullName)/*.dll" "$outputRoot/bin/"
@@ -35,13 +35,14 @@ Copy-Item runner/actions/node_modules "$outputRoot/actions/" -Recurse
 Copy-Item LICENSE "$outputRoot/licenses/MoonHub.txt"
 Copy-Item vendor/yaml/LICENSE "$outputRoot/licenses/yaml.txt"
 Copy-Item deploy/windows/runtime.json "$outputRoot/runtime.json"
+Copy-Item deploy/windows/install-vc-runtime.ps1 $outputRoot
 Copy-Item deploy/windows/build-tools.json, deploy/windows/install-build-tools.ps1 $outputRoot
 Copy-Item deploy/windows/install-worker.ps1, deploy/windows/install-provider.ps1, deploy/windows/run-provider.ps1, deploy/windows/installation-path.ps1 $outputRoot
 $downloads = Join-Path $outputRoot '.downloads'
 New-Item -ItemType Directory $downloads | Out-Null
 try {
   $pins = Get-Content deploy/windows/runtime.json -Raw | ConvertFrom-Json
-  foreach ($name in 'node24', 'node20', 'powershell', 'git') {
+  foreach ($name in 'node24', 'node20', 'powershell', 'git', 'vcredist') {
     $dependency = $pins.$name
     $archive = Join-Path $downloads ([IO.Path]::GetFileName($dependency.url))
     for ($attempt = 1; ; $attempt++) {
@@ -67,6 +68,7 @@ try {
         Copy-Item "$($directory.FullName)/node.exe" "$outputRoot/bin/node20.exe"
       }
       powershell { Expand-Archive $archive "$outputRoot/pwsh" }
+      vcredist { Copy-Item $archive "$outputRoot/vc_redist.x64.exe" }
       git {
         & $archive -y "-o$outputRoot/git" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Portable Git extraction failed' }
