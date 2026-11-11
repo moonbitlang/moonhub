@@ -13,9 +13,9 @@ $hostOS = Get-CimInstance Win32_OperatingSystem
 $build = [int]$hostOS.BuildNumber
 $isolation = if ($hostOS.ProductType -eq 1 -and $build -ge 22000) {
   'hyperv'
-} elseif ($hostOS.ProductType -ne 1 -and $build -eq 20348) {
+} elseif ($hostOS.ProductType -ne 1 -and $build -in 20348,26100) {
   'process'
-} else { throw 'Use Windows 11 x64 or Windows Server 2022 x64' }
+} else { throw 'Use Windows 11 x64 or Windows Server 2022/2025 x64' }
 # Pin the local Windows engine; do not inherit a developer's remote/Linux context.
 $docker = (Get-Command docker.exe -CommandType Application -ErrorAction Stop).Source
 $endpoint = 'npipe:////./pipe/docker_engine'
@@ -43,7 +43,8 @@ if ($inspectCode -ne 0) {
   $imageJson = & $docker --host $endpoint image inspect --format '{{json .}}' $RunnerImage
 }
 $image = $imageJson | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or $image.Os -ne 'windows' -or $image.Architecture -ne 'amd64' -or ([version]$image.OsVersion).Build -ne 20348) { throw 'Use a Windows Server 2022 x64 task image' }
+if ($LASTEXITCODE -ne 0 -or $image.Os -ne 'windows' -or $image.Architecture -ne 'amd64' -or $image.OsVersion -notmatch '^10\.0\.(20348|26100)\.(0|[1-9][0-9]*)$') { throw 'Use a Windows Server 2022/2025 x64 task image' }
+if (([version]$image.OsVersion).Build -eq 26100 -and ($hostOS.ProductType -eq 1 -or $build -ne 26100)) { throw 'A Server 2025 task image requires a Server 2025 host' }
 $probe = 'moonhub-pipeline-install-' + [guid]::NewGuid().ToString('N')
 try {
   & $docker --host $endpoint run --rm --name $probe --isolation $isolation --network none --user ContainerUser --memory 2048m --cpu-count 1 --entrypoint cmd.exe $RunnerImage /d /s /c 'exit /b 0'

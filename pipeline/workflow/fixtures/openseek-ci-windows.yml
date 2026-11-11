@@ -1,0 +1,350 @@
+name: CI
+
+on:
+  pull_request:
+
+# Validate before merging; a newer PR head supersedes its older checks.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflows:
+    name: bundled workflow checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          version="$(cat "$GITHUB_WORKSPACE/desktop/.moonbit-version")"
+          test -n "$version"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$version"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Update MoonBit package registry
+        run: moon update
+
+      # Standalone scripts resolve their own declared imports. Check all of them
+      # without executing their main functions or setting up Desktop's runtime.
+      - name: Check all bundled workflow scripts
+        run: moon run scripts/check-workflows.mbtx
+
+  # The macOS sandbox job lives in sandbox.yml, which skips pull requests that
+  # only change other applications.
+
+  check:
+    name: check (${{ matrix.moonbit-channel }}, ${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      # Run stable targets independently (fail-fast: false), while the
+      # native/JS/wasm split lets the three test suites run in parallel.
+      fail-fast: false
+      matrix:
+        moonbit-channel: [stable]
+        target: [native, js, wasm]
+        include:
+          - moonbit-channel: stable
+            deny-warn: "--deny-warn"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit (${{ matrix.moonbit-channel }})
+        run: |
+          version="$(cat "$GITHUB_WORKSPACE/desktop/.moonbit-version")"
+          test -n "$version"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$version"
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Show MoonBit version
+        run: |
+          moon version --all
+
+      - name: Update MoonBit package registry
+        run: moon update
+
+      - name: Check generated prompts
+        if: matrix.moonbit-channel == 'stable' && matrix.target == 'native'
+        run: |
+          moon run scripts/md_to_mbt_string -- --check prompt/default_prompt.mbt.md prompt/generated_default_prompt.mbt
+          moon run scripts/md_to_mbt_string -- --check prompt/moonbit_syntax_and_api.mbt.md prompt/generated_moonbit_syntax_and_api.mbt
+
+      - name: Check formatting
+        # Run the repository's one canonical formatter once on stable/native.
+        # A second toolchain channel could require a different committed form.
+        if: matrix.moonbit-channel == 'stable' && matrix.target == 'native'
+        run: moon fmt --check
+
+      - name: Check ${{ matrix.target }} target
+        # This is the local-dependency integration check: desktop must compile
+        # against the editor member from this checkout. Keeping the target
+        # explicit also makes each matrix row own one complete check/test pair;
+        # stable denies warnings across the complete integrated workspace.
+        run: moon check --target ${{ matrix.target }} ${{ matrix.deny-warn }}
+
+      - name: Check generated interfaces
+        # Generated interfaces are toolchain-versioned, so compare them only
+        # with the stable channel that owns the committed `.mbti`. This covers
+        # the editor's public interfaces from the same checkout too. Ignore
+        # blank-only formatter drift, but still reject content changes and new
+        # `.mbti`.
+        if: matrix.target == 'native'
+        run: |
+          moon info
+          untracked_mbti="$(git ls-files --others --exclude-standard -- '*.mbti')"
+          if [ -n "$untracked_mbti" ] ||
+            ! git diff --quiet --ignore-blank-lines -- '*.mbti'; then
+            git status --short -- '*.mbti'
+            git diff --ignore-blank-lines -- '*.mbti'
+            exit 1
+          fi
+
+      - name: Bundled workflows (offline child contract)
+        if: matrix.target == 'native'
+        run: moon run tests/integration/workflows
+
+      - name: Test native target
+        # The Proton window host builds in its own desktop/app/moon.work, so
+        # nothing in this workspace links libproton or needs the CEF runtime.
+        if: matrix.target == 'native'
+        run: moon test --target native
+
+      - name: Test JS target
+        # Run JS-only package tests from the same root workspace.
+        if: matrix.target == 'js'
+        run: moon test --target js
+
+      - name: Test wasm target
+        # The portability gate for every package carrying `+wasm` in its
+        # `supported_targets`. Nothing here links native FFI, so what
+        # this row proves is that the workspace's own portable logic behaves
+        # under moonrun exactly as it does natively.
+        if: matrix.target == 'wasm'
+        run: moon test --target wasm
+
+      - name: Build and launch the wasm TUI
+        if: matrix.target == 'wasm'
+        run: |
+          moon build --target wasm --release openseek_tui/cmd/openseek_tui
+          moonrun _build/wasm/release/build/moonbitlang/openseek_tui/cmd/openseek_tui/openseek_tui.wasm -- --help
+
+      - name: openseek_tui versions in lockstep with openseek
+        # openseek_tui@X runs openseek@X as its default engine; its own test
+        # (openseek_tui/cmd/tui/engine_version_wbtest.mbt) ties the module
+        # version to that pin, and this ties both to the root version.
+        if: matrix.target == 'native'
+        run: |
+          root="$(sed -n 's/^version = "\(.*\)"$/\1/p' moon.mod)"
+          tui="$(sed -n 's/^version = "\(.*\)"$/\1/p' openseek_tui/moon.mod)"
+          if [ -z "$root" ] || [ "$root" != "$tui" ]; then
+            echo "moon.mod is $root but openseek_tui/moon.mod is $tui; release them together"
+            exit 1
+          fi
+
+      - name: Cram (offline CLI docs)
+        if: matrix.target == 'native'
+        run: |
+          moon cram test tests/cram
+          moon cram test openseek_tui/tests/cram
+
+      - name: App-server launch, turn lifecycle and subagents (offline CLI)
+        if: matrix.target == 'native'
+        run: |
+          # A native child that dies on a signal leaves a core here, named by
+          # its executable path (`/` spelled `!`), for the backtrace step.
+          mkdir -p "$RUNNER_TEMP/cores"
+          sudo sysctl -w kernel.core_pattern="$RUNNER_TEMP/cores/core.%E.%p"
+          ulimit -c unlimited
+          moon build . desktop/backend/server --target native
+          moon run tests/integration/app_server.mbtx _build/native/debug/build/openseek_desktop/backend/server/server.exe
+          moon run tests/integration/turn_finish.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/subagents.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/review_workflow.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/subagent_send.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/workers.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/approval_review.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/directory_workers.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+          moon run tests/integration/directory_recovery.mbtx _build/native/debug/build/moonbitlang/openseek/openseek.exe
+
+      - name: Backtraces of crashed native processes
+        id: cores
+        if: failure() && matrix.target == 'native'
+        run: |
+          shopt -s nullglob
+          cores=("$RUNNER_TEMP"/cores/core.*)
+          if [ "${#cores[@]}" -eq 0 ]; then
+            echo "No core dumps."
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          command -v gdb >/dev/null ||
+            { sudo apt-get update -qq && sudo apt-get install -y -qq gdb; }
+          mkdir -p "$RUNNER_TEMP/cores/bin"
+          for core in "${cores[@]}"; do
+            name="${core##*/core.}"
+            exe="${name%.*}"
+            exe="${exe//!//}"
+            echo "=== $core ($exe)"
+            if [ -f "$exe" ]; then
+              cp --update=none "$exe" "$RUNNER_TEMP/cores/bin/" || true
+              gdb -batch -nx -ex 'info threads' -ex 'thread apply all bt' "$exe" "$core" || true
+            else
+              echo "Executable $exe is gone; core kept without a backtrace."
+            fi
+          done
+
+      - name: Upload core dumps
+        if: failure() && steps.cores.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-cores-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cores
+          retention-days: 3
+
+  # The terminal UI kills the engine's whole process tree, which has its own
+  # Windows implementation. Check and test only the openseek_tui packages:
+  # they build against this checkout's openseek, protocol and editor members
+  # like every other workspace member. Formatting, generated interfaces and
+  # the cram suite (POSIX `sh`) stay on the Linux check job.
+  tui-windows:
+    name: openseek_tui (stable, native, windows)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MSVC
+        # The native backend compiles its C output with the MSVC toolchain.
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up MoonBit
+        shell: pwsh
+        run: |
+          $env:MOONBIT_INSTALL_VERSION = (Get-Content desktop/.moonbit-version -Raw).Trim()
+          if (-not $env:MOONBIT_INSTALL_VERSION) { throw "desktop/.moonbit-version is empty" }
+          Invoke-RestMethod https://cli.moonbitlang.com/install/powershell.ps1 | Invoke-Expression
+          "$env:USERPROFILE\.moon\bin" >> $env:GITHUB_PATH
+
+      - name: Show MoonBit version
+        run: moon version --all
+
+      - name: Update MoonBit package registry
+        run: moon update
+
+      - name: Check and test the openseek_tui packages
+        shell: pwsh
+        run: |
+          $packages = @(git ls-files -- 'openseek_tui/*moon.pkg' | ForEach-Object { Split-Path -Parent $_ })
+          if ($packages.Count -eq 0) { throw "no openseek_tui packages found" }
+          moon check --target native --deny-warn @packages
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          moon test --target native @packages
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # cmd/viz_app is a separate MoonBit module and owns its browser test runner.
+  # Keep it out of Desktop's recipe so either application can be tested alone.
+  viz-e2e:
+    name: viz e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Keep this version in sync with cmd/viz_app/e2e/package.json and its lockfile.
+      PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          version="$(cat "$GITHUB_WORKSPACE/desktop/.moonbit-version")"
+          test -n "$version"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$version"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cmd/viz_app/e2e/package-lock.json
+
+      - name: Update MoonBit dependencies
+        run: moon update
+
+      - name: Install E2E dependencies
+        working-directory: cmd/viz_app/e2e
+        run: npm ci
+
+      - name: Pull preinstalled Playwright browsers
+        run: docker pull "$PLAYWRIGHT_IMAGE"
+
+      - name: Build session viewer
+        working-directory: cmd/viz_app
+        run: moon build --target js
+
+      - name: Run session viewer E2E tests
+        working-directory: cmd/viz_app/e2e
+        env:
+          OPENSEEK_VIZ_BROWSER_BASE_URL: http://127.0.0.1:5176
+        # The browser image has no MoonBit toolchain, so the fixture server
+        # runs on the runner and tests reach it over the host network.
+        run: |
+          setsid moon run ../../../scripts/serve-static.mbtx ../../.. 5176 &
+          server_pid=$!
+          trap 'kill -- "-$server_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --retry 120 --retry-connrefused --retry-delay 1 \
+            --output /dev/null "$OPENSEEK_VIZ_BROWSER_BASE_URL/web/index.html"
+          docker run --rm --init --ipc=host --network host \
+            --env CI=true \
+            --env OPENSEEK_VIZ_BROWSER_BASE_URL \
+            --volume "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" \
+            --workdir "$GITHUB_WORKSPACE/cmd/viz_app/e2e" \
+            "$PLAYWRIGHT_IMAGE" npm test
+
+      # A published moonbitlang/inspect embeds the viewer (scripts/publish.mjs
+      # inspect) so `moonx` can run it with no files beside the wasm. Build that
+      # shape from this checkout and serve it from a directory outside it: the
+      # shell and bundle must come from the binary, byte for byte, with the
+      # --watch setting injected.
+      - name: Serve inspect with the embedded viewer
+        run: |
+          bundle=_build/js/release/build/moonbitlang/openseek-viz-app/openseek-viz-app.js
+          moon build --target js --release cmd/viz_app
+          node scripts/embed_inspect_assets.mjs web/index.html "$bundle" inspect/generated_assets.mbt
+          moon check --target wasm --deny-warn inspect
+          moon build --target wasm --release inspect
+          dir="$RUNNER_TEMP/inspect-smoke"
+          mkdir -p "$dir"
+          cp _build/wasm/release/build/moonbitlang/inspect/inspect.wasm "$dir/"
+          (cd "$dir" && moonrun inspect.wasm -- --watch --host 127.0.0.1 --port 18731 > server.log 2>&1 &)
+          for _ in $(seq 1 50); do
+            curl -fsS -o /dev/null http://127.0.0.1:18731/ && break
+            sleep 0.2
+          done
+          cat "$dir/server.log"
+          grep -q 'shell from the copy built into this binary' "$dir/server.log"
+          grep -q 'bundle from the copy built into this binary' "$dir/server.log"
+          curl -fsS http://127.0.0.1:18731/ | grep -q 'window.__OPENSEEK_WATCH_MS__ = 1000;'
+          curl -fsS http://127.0.0.1:18731/viz_app.js | cmp - "$bundle"
+          pkill -f 'moonrun inspect.wasm' || true
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: viz-playwright-report
+          path: |
+            cmd/viz_app/e2e/playwright-report
+            cmd/viz_app/e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7

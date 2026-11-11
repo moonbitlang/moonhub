@@ -164,11 +164,6 @@ test "Windows container isolation follows the actual daemon host" {
       },
       {
         ..server,
-        kernel_version: "10.0.26100.1",
-        operating_system: "Windows Server 2025",
-      },
-      {
-        ..server,
         kernel_version: "garbled",
         operating_system: "Windows 11 Pro",
       },

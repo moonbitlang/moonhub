@@ -35,6 +35,7 @@ Copy-Item runner/actions/node_modules "$outputRoot/actions/" -Recurse
 Copy-Item LICENSE "$outputRoot/licenses/MoonHub.txt"
 Copy-Item vendor/yaml/LICENSE "$outputRoot/licenses/yaml.txt"
 Copy-Item deploy/windows/runtime.json "$outputRoot/runtime.json"
+Copy-Item deploy/windows/build-tools.json, deploy/windows/install-build-tools.ps1 $outputRoot
 Copy-Item deploy/windows/install-worker.ps1, deploy/windows/install-provider.ps1, deploy/windows/run-provider.ps1, deploy/windows/installation-path.ps1 $outputRoot
 $downloads = Join-Path $outputRoot '.downloads'
 New-Item -ItemType Directory $downloads | Out-Null

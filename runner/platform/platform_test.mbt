@@ -25,3 +25,13 @@ test "Windows paths reject device files and normalize realpath spellings" {
     assert_true(!@platform.valid_relative(path))
   }
 }
+
+///|
+test "native environment metadata has a supported architecture and platform-specific Windows build" {
+  assert_true(["x64", "arm64"].contains(@platform.architecture()))
+  if @platform.windows() {
+    assert_true(@platform.windows_build() > 0)
+  } else {
+    assert_eq(@platform.windows_build(), 0)
+  }
+}

@@ -1,0 +1,18 @@
+# escape=`
+# Generic Windows Server 2025 C++ build environment. Job-level setup Actions
+# choose Node/MoonBit versions; no repository source or dependency is baked in.
+FROM mcr.microsoft.com/dotnet/framework/runtime:4.8.1-windowsservercore-ltsc2025@sha256:ea04423e4c33a46b2402f073865d7489484f51dd08357884a72409516f7a7b0a AS toolchain
+SHELL ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+COPY build-tools.json install-build-tools.ps1 C:/build-setup/
+RUN & C:/build-setup/install-build-tools.ps1; Remove-Item C:/build-setup -Recurse -Force
+
+FROM toolchain AS runner
+COPY . C:/moonhub/
+RUN New-Item -ItemType Directory C:/workspace | Out-Null; `
+    & icacls.exe C:\workspace /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null; `
+    if ($LASTEXITCODE -ne 0) { throw 'Workspace ACL failed' }
+ENV PATH="C:\moonhub\bin;C:\moonhub\pwsh;C:\moonhub\git\cmd;C:\moonhub\git\usr\bin;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+LABEL io.moonhub.runner.environment="windows-2025"
+USER ContainerUser
+WORKDIR C:/workspace
+ENTRYPOINT ["C:\\moonhub\\bin\\moonhub-runner.exe", "execute"]

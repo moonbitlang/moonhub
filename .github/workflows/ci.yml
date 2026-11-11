@@ -68,9 +68,13 @@ jobs:
         run: bash scripts/docker-smoke.sh
 
   windows-runner:
-    name: Windows runner
-    runs-on: windows-2022
-    timeout-minutes: 45
+    name: Windows runner (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -126,6 +130,44 @@ jobs:
         run: |
           node scripts/windows-runner-smoke.cjs --standalone
           if ($LASTEXITCODE -ne 0) { throw 'Standalone Windows provider smoke failed' }
+      - name: Reclaim temporary Windows 2022 image layers
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          # GitHub-hosted runners are disposable; the earlier image and build
+          # cache are no longer needed after both 2022 lifecycle tests.
+          docker system df
+          docker system prune --all --force
+          if ($LASTEXITCODE -ne 0) { throw 'Could not reclaim CI Docker image layers' }
+          # The worker bundle and all host compiler tests have finished. This
+          # disposable VM no longer needs the preinstalled Visual Studio IDEs.
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Refusing host cleanup outside GitHub-hosted CI' }
+          Get-Process vctip -ErrorAction SilentlyContinue | Stop-Process -Force
+          foreach ($year in '2022', '2026') {
+            $vs = "${env:ProgramFiles}/Microsoft Visual Studio/$year"
+            if (Test-Path -LiteralPath $vs) {
+              Remove-Item -LiteralPath $vs -Recurse -Force
+            }
+          }
+          Get-PSDrive C
+      - name: Build generic Windows 2025 C++ task environment
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          docker build --isolation=process -f deploy/windows/Dockerfile.build -t moonhub:build-windows-2025 .tmp/windows-runner
+          if ($LASTEXITCODE -ne 0) { throw 'Windows 2025 build environment failed' }
+      - name: Execute original pinned openseek Windows TUI job
+        if: matrix.os == 'windows-2025'
+        shell: pwsh
+        run: |
+          git init --bare .tmp/openseek-source.git
+          if ($LASTEXITCODE -ne 0) { throw 'Source repository initialization failed' }
+          git --git-dir .tmp/openseek-source.git fetch --depth=1 --no-tags https://github.com/moonbitlang/openseek.git 62a6fba1dccf92c98d4b3c26f5dcf12a5788a8b5
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned source download failed' }
+          git --git-dir .tmp/openseek-source.git update-ref refs/heads/main FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned source reference failed' }
+          node scripts/openseek-windows-smoke.mjs .tmp/openseek-source.git
+          if ($LASTEXITCODE -ne 0) { throw 'Original Windows TUI acceptance failed' }
 
   macos-runner:
     name: macOS runner

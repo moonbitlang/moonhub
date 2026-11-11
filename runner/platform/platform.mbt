@@ -14,6 +14,21 @@ pub fn windows() -> Bool {
 pub extern "C" fn macos() -> Bool = "moonhub_platform_macos"
 
 ///|
+pub extern "C" fn windows_build() -> Int32 = "moonhub_platform_windows_build"
+
+///|
+extern "C" fn architecture_code() -> Int32 = "moonhub_platform_architecture"
+
+///|
+pub fn architecture() -> String {
+  match architecture_code() {
+    1 => "x64"
+    2 => "arm64"
+    _ => "unknown"
+  }
+}
+
+///|
 pub fn os() -> String {
   if windows() {
     "windows"
@@ -46,7 +61,8 @@ pub fn environment() -> Map[String, String] {
   for key, value in @env.get_env_vars() {
     if [
         "path", "systemroot", "windir", "systemdrive", "comspec", "pathext", "temp",
-        "tmp",
+        "tmp", "programfiles", "programfiles(x86)", "programw6432", "programdata",
+        "commonprogramfiles", "commonprogramfiles(x86)", "commonprogramw6432",
       ].contains(key.to_lower()) {
       result[key.to_upper()] = value
     }

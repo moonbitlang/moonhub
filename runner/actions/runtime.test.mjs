@@ -138,14 +138,26 @@ test('remote action references reject URL, path, ref and shell injection', () =>
   for (const value of ['https://github.com/actions/cache@v4', 'a/b/../evil@v1', 'a/b@--upload-pack=evil', 'a/b@x;echo', 'a/b@foo..bar', 'a/b@', 'a/b@x@evil', 'a/b//nested@v1']) assert.throws(() => reference(value), value);
 });
 
-test('real tar archives extract bounded files and reject links', async t => {
+test('real tar archives copy safe file links and reject unsafe links', async t => {
   const { root } = await fixture(t);
   const source = path.join(root, 'archive-root'); await fs.mkdir(source); await fs.writeFile(path.join(source, 'action.yml'), 'runs: {using: node24, main: main.cjs}');
   const bytes = execFileSync('tar', ['--format=ustar', '--no-xattrs', '-cf', '-', '-C', root, 'archive-root'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
   await extractArchive(bytes, path.join(root, 'extracted'));
   assert.match(await fs.readFile(path.join(root, 'extracted/action.yml'), 'utf8'), /node24/);
+  await fs.mkdir(path.join(source, 'bin'));
+  await fs.symlink('../action.yml', path.join(source, 'bin', 'safe'));
+  const pack = () => execFileSync('tar', ['--format=ustar', '--no-xattrs', '-cf', '-', '-C', root, 'archive-root'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
+  await extractArchive(pack(), path.join(root, 'safe-extracted'));
+  assert.match(await fs.readFile(path.join(root, 'safe-extracted/bin/safe'), 'utf8'), /node24/);
+  assert.ok((await fs.lstat(path.join(root, 'safe-extracted/bin/safe'))).isFile());
+  await fs.symlink('bin/safe', path.join(source, 'chain'));
+  await assert.rejects(extractArchive(pack(), path.join(root, 'chain-extracted')), /target a regular file/);
+  await fs.unlink(path.join(source, 'chain'));
   await fs.symlink('/etc/passwd', path.join(source, 'unsafe'));
-  await assert.rejects(extractArchive(execFileSync('tar', ['--format=ustar', '--no-xattrs', '-cf', '-', '-C', root, 'archive-root'], { env: { ...process.env, COPYFILE_DISABLE: '1' } }), path.join(root, 'unsafe-extracted')), /regular files/);
+  await assert.rejects(extractArchive(pack(), path.join(root, 'unsafe-extracted')), /Unsafe action archive link/);
+  await fs.unlink(path.join(source, 'unsafe'));
+  await fs.symlink('../../outside', path.join(source, 'unsafe'));
+  await assert.rejects(extractArchive(pack(), path.join(root, 'escape-extracted')), /Unsafe action archive link/);
 });
 
 test('top-level steps pass outputs through with/env/run, skip after failures and retain outcome', async t => {

@@ -7,7 +7,7 @@ async fn validate_options(
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -20,8 +20,14 @@ async fn validate_options(
     raise InvalidConfiguration("runner requires a fresh leased assignment")
   }
   guard !assignment.job.id_token_write ||
-    assignment.version == @protocol.oidc_assignment_version else {
+    [
+      @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+    ].contains(assignment.version) else {
     raise InvalidConfiguration("OIDC permissions require assignment version 10")
+  }
+  guard !assignment.job.runs_on.contains("windows-2025") ||
+    assignment.version == @protocol.environment_assignment_version else {
+    raise InvalidConfiguration("Windows 2025 requires assignment version 11")
   }
   guard assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&
@@ -48,14 +54,14 @@ async fn validate_options(
     [
       @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
-      @protocol.oidc_assignment_version,
+      @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("matrix contexts require assignment version 6")
   }
   guard (assignment.job.outputs.is_empty() && assignment.job.needs.is_empty()) ||
     [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("job dataflow requires assignment version 7")
   }
@@ -73,7 +79,7 @@ async fn validate_options(
     ) ||
     [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
-      @protocol.oidc_assignment_version,
+      @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("dispatch context requires assignment version 8")
   }
@@ -95,9 +101,9 @@ async fn validate_options(
     raise InvalidConfiguration("dispatch context exceeds limits")
   }
   guard assignment.job.variables.is_empty() ||
-    [@protocol.variable_assignment_version, @protocol.oidc_assignment_version].contains(
-      assignment.version,
-    ) else {
+    [
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+    ].contains(assignment.version) else {
     raise InvalidConfiguration(
       "repository variables require assignment version 9",
     )
@@ -187,6 +193,7 @@ async fn validate_options(
             @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
             @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
             @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+            @protocol.environment_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -196,7 +203,7 @@ async fn validate_options(
             @protocol.secret_assignment_version, @protocol.remote_assignment_version,
             @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
             @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
-            @protocol.oidc_assignment_version,
+            @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -245,7 +252,7 @@ async fn validate_options(
         @protocol.secret_assignment_version, @protocol.remote_assignment_version,
         @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
         @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
-        @protocol.oidc_assignment_version,
+        @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
@@ -369,6 +376,8 @@ async fn Runtime::execute_script(
       env.get("PATH").unwrap_or("C:/Windows/System32;C:/Windows")
     job_env["PROCESSOR_ARCHITECTURE"] = "AMD64"
     job_env["USERPROFILE"] = self.job_home
+    job_env["APPDATA"] = self.job_home + "/AppData/Roaming"
+    job_env["LOCALAPPDATA"] = self.job_home + "/AppData/Local"
     job_env["TEMP"] = self.action_temp
     job_env["TMP"] = self.action_temp
   }
@@ -963,6 +972,7 @@ async fn execute_assignment(
     if ![
         @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
         @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+        @protocol.environment_assignment_version,
       ].contains(assignment.version) &&
       body is Object(fields) {
       // Older coordinators validate the original completion field set.
@@ -972,6 +982,7 @@ async fn execute_assignment(
       Rejected(400) if [
           @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
           @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+          @protocol.environment_assignment_version,
         ].contains(assignment.version) &&
         !runtime.job_outputs.is_empty() => {
         // A definitive rejection did not commit the original completion. The

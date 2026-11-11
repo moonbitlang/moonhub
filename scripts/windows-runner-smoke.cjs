@@ -112,7 +112,7 @@ async function main() {
           if (claims===2) steps.push(step('action','', '',{uses:'./action',remote:true}));
           const record={token:body.attempt_token,artifactTokens:[],execution:'',sequence:0n,logs:'',conclusion:'',cancel,started:now};
           attempts.set(id,record); console.log('Claimed Windows attempt '+id);
-          reply={version:1,assignment:{version:claims===2?5:3,attempt_id:id,run_id:id,job_id:id,repository:'test/probe',commit_sha:sha,state:'leased',lease_until_ms:String(now+60000),server_time_ms:String(now),job:{id:'build',name:'Build',runs_on:['self-hosted','windows'],timeout_minutes:8,steps}}};
+          reply={version:1,assignment:{version:claims===2?5:3,attempt_id:id,run_id:id,job_id:id,repository:'test/probe',commit_sha:sha,state:'leased',lease_until_ms:String(now+60000),server_time_ms:String(now),job:{id:'build',name:'Build',runs_on:['self-hosted','windows','x64','windows-2022'],timeout_minutes:8,steps}}};
         }
       } else {
         assert.ok(attempt,'unknown attempt');

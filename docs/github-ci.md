@@ -29,9 +29,13 @@ tests and build with `--strip -j 1`, then the managed Docker/ASG lifecycle
 acceptance with local adapters (including cleanup failure and stale-worker drain).
 Docker SSH keeps `bash scripts/docker-smoke.sh`.
 
-`Windows runner` runs on Windows Server 2022, builds the Windows worker and task
-image, and verifies shells, Actions, process cleanup and reusable container workers.
-See [Windows runner setup](standalone-runner.md#windows-x64-workers).
+`Windows runner` uses a Server 2022 / Server 2025 matrix. Both instances build
+the Windows worker and legacy task image and verify shells, Actions, process
+cleanup and reusable container workers. The 2025 instance also builds the generic
+C++ environment and executes the original pinned openseek Windows TUI job. Both
+matrix instances must pass the single Windows result in the aggregate gate.
+See [Windows runner setup](standalone-runner.md#windows-x64-workers) and the
+[Windows build environment](windows-build-environment.md).
 
 `macOS runner` builds an ARM64 guest bundle on macOS and tests the native
 runtime and prepared-slot lifecycle. Full VM acceptance runs separately on a

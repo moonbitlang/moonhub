@@ -6,6 +6,10 @@ The first openseek acceptance target is the unmodified Tools SDK workflow at
 
 ## Runner selectors
 
+Windows 2025 x64 is available as `windows-2025`; scalar `windows-latest` resolves
+to that concrete label in the saved job definition. It requires assignment v11
+and a matching real environment. See [Windows build environment](windows-build-environment.md).
+
 Single environment selectors `ubuntu-22.04`, `ubuntu-24.04`, `ubuntu-latest` and
 `windows-2022` normalize to `self-hosted`, their OS, `x64`, and the **unchanged
 exact environment label**. All labels must match a registered provider. A generic

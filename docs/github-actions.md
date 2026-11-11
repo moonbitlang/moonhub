@@ -132,8 +132,10 @@ plaintext persistence, not the privileges of deliberately executed repository co
 Limits include 64 MiB compressed / 256 MiB expanded downloads, 10,000 archive
 entries, 64 MiB per file, 64 KiB metadata, nesting depth 8, 256 action invocations
 per top-level step, 1 MiB per command file, 4 MiB serialized state and 1 MiB total
-local summaries. Archives reject links, unsafe paths, duplicate paths and unsupported
-file types. YAML aliases and duplicate keys are rejected. Environment command files
+local summaries. Archive file links may only point directly to regular files inside
+the same archive; they are materialized as copies. Unsafe paths, link chains,
+duplicate paths and unsupported file types are rejected. YAML aliases and duplicate
+keys are rejected. Environment command files
 cannot overwrite reserved executor or shell/loader-injection variables.
 
 ## Deployment and validation

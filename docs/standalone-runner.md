@@ -190,7 +190,7 @@ boot and Spot availability need separate deployment acceptance.
 
 Windows supports standalone PCs through `--mode docker` as well as the existing
 ASG controller. See [standalone Windows deployment](windows-runner.md) for Windows
-11/Server 2022 installation without AWS. Keep Linux and Windows in separate
+11/Server 2022/2025 installation without AWS. Keep Linux and Windows in separate
 providers; register the Windows provider with `self-hosted,windows,x64` and
 explicitly request those labels in workflows. Jobs without an OS label retain
 Linux semantics. There is no `--worker-os` flag: the controller resolves the
@@ -200,8 +200,11 @@ in ASG mode. A standalone provider detects the local Windows daemon directly.
 The controller itself may remain on Linux. Claims include the worker's actual OS;
 old clients that omit it remain Linux and cannot claim from a Windows provider.
 
-The task image is **Windows Server 2022 x64** (build 20348). Server 2022 hosts
-use process isolation; Windows 11 hosts use Hyper-V isolation. The worker checks
+Task images support **Windows Server 2022 x64** (build 20348) and **Server 2025
+x64** (build 26100). Server 2022 hosts use their matching image; Server 2025 hosts
+support both images with process isolation. Windows 11 hosts use the 2022 image
+with Hyper-V isolation. See the [generic C++ build environment](windows-build-environment.md)
+for the 2025 image and fixed environment selectors. The worker checks
 the real daemon platform, image and container startup before acknowledging
 readiness. Linux Docker daemons cannot run these images.
 For ASG deployment, prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
@@ -267,16 +270,17 @@ jobs:
 
 Windows `run` defaults to `pwsh`; explicit `pwsh`, Git Bash `bash`, and `sh` are
 supported. JavaScript Node20/Node24 and composite actions use the shared Actions
-runtime (assignment versions 5–7); composites may select `pwsh`. PowerShell errors and native command exit
+runtime (assignment versions 5–11); composites may select `pwsh`. PowerShell errors and native command exit
 codes fail the step. Paths added through `GITHUB_PATH` use Windows separators.
-The existing Action/source/secret/checkout restrictions still apply; macOS workers
-and Hyper-V isolation are not part of this implementation.
+The existing Action/source/secret/checkout restrictions still apply. Actual
+Windows 11 Hyper-V operation requires acceptance on a compatible dedicated PC.
 
 `Windows runner` in GitHub CI builds the native Windows worker and task image on
-`windows-2022`. It exercises real shells, JavaScript/composite actions, escaping
+`windows-2022` and `windows-2025`. It exercises real shells, JavaScript/composite actions, escaping
 junctions and detached-child cleanup. Its container acceptance runs three attempts
 on one worker, verifies fresh volumes and cleanup before ready, checks cancellation,
-and drains the worker. This is separate from booting an EC2 AMI and validating
+and drains the worker. The 2025 instance also builds the generic C++ environment
+and runs the pinned original openseek TUI job. This is separate from booting an EC2 AMI and validating
 operator-specific IAM/network/registry access, which require deployment acceptance.
 
 ## macOS local VM workers

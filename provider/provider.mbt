@@ -1,7 +1,7 @@
 ///|
 async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
   if @platform.windows() {
-    ignore(windows_docker_isolation(options))
+    ignore(windows_container_isolation(windows_docker_info(options)))
     return
   }
   let code = @process.run(
@@ -37,18 +37,6 @@ async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
     guard pulled == 0 else { raise DockerFailure(pulled) }
   }
   if @platform.windows() {
-    let (code, image) = docker_control(options, [
-      "image",
-      "inspect",
-      "--format",
-      "{{.Os}}/{{.Architecture}}/{{.OsVersion}}",
-      options.runner_image,
-    ])
-    guard code == 0 && image.trim().has_prefix("windows/amd64/10.0.20348.") else {
-      raise InvalidConfiguration(
-        "Runner image must target Windows Server 2022 x64 (build 20348).",
-      )
-    }
     verify_windows_container(options)
   }
 }
@@ -121,25 +109,56 @@ async fn verify_windows_container(
 }
 
 ///|
-async fn windows_docker_isolation(
+async fn windows_docker_info(
   options : Options,
-) -> String raise ProviderError {
+) -> DockerPlatform raise ProviderError {
   let (code, output) = docker_control(options, [
     "info", "--format", "{{json .}}",
   ])
   guard code == 0 else { raise DockerFailure(code) }
-  let info : DockerPlatform = @json.from_json(@json.parse(output)) catch {
+  @json.from_json(@json.parse(output)) catch {
     _ =>
       raise InvalidConfiguration(
         "Docker returned invalid platform information.",
       )
   }
-  windows_container_isolation(info)
+}
+
+///|
+async fn windows_docker_isolation(
+  options : Options,
+) -> String raise ProviderError {
+  let info = windows_docker_info(options)
+  let (code, image) = docker_control(options, [
+    "image",
+    "inspect",
+    "--format",
+    "{{.Os}}/{{.Architecture}}/{{.OsVersion}}",
+    options.runner_image,
+  ])
+  guard code == 0 else { raise DockerFailure(code) }
+  let image_build = windows_task_image_build(image.trim().to_owned())
+  windows_container_isolation(info, image_build~)
+}
+
+///|
+fn windows_task_image_build(image : String) -> Int64 raise ProviderError {
+  for build in [20348L, 26100L] {
+    let prefix = "windows/amd64/10.0." + build.to_string() + "."
+    if image.strip_prefix(prefix) is Some(revision) &&
+      @protocol.parse_decimal(revision.to_owned()) is Some(_) {
+      return build
+    }
+  }
+  raise InvalidConfiguration(
+    "Runner image must target Windows Server 2022 or 2025 x64.",
+  )
 }
 
 ///|
 fn windows_container_isolation(
   info : DockerPlatform,
+  image_build~ : Int64 = 20348L,
 ) -> String raise ProviderError {
   guard info.os_type == "windows" &&
     ["x86_64", "amd64"].contains(info.architecture) else {
@@ -155,7 +174,12 @@ fn windows_container_isolation(
   } else {
     None
   }
-  if build == Some(20348L) {
+  if (build == Some(20348L) && image_build == 20348L) ||
+    (
+      build == Some(26100L) &&
+      [20348L, 26100L].contains(image_build) &&
+      info.operating_system.to_lower().contains("server")
+    ) {
     return "process"
   }
   let operating_system = info.operating_system.to_lower()
@@ -168,11 +192,12 @@ fn windows_container_isolation(
     ) &&
     !operating_system.contains("server") &&
     build is Some(build) &&
-    build >= 22000L {
+    build >= 22000L &&
+    image_build == 20348L {
     return "hyperv"
   }
   raise InvalidConfiguration(
-    "Use Windows Server 2022 x64 or Windows 11 x64 with Hyper-V and Windows containers enabled.",
+    "Use a compatible Windows Server 2022/2025 x64 host and image, or Windows 11 with a Server 2022 Hyper-V image.",
   )
 }
 
@@ -220,7 +245,7 @@ fn validate_assignment(
       @protocol.version, @protocol.action_assignment_version, @protocol.toolchain_assignment_version,
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
-      @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
+      @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
