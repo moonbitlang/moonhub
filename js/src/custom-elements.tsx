@@ -1,3 +1,4 @@
+import "./structured-diff";
 import {
   type CodeViewDiffItem,
   parsePatchFiles,

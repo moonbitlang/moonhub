@@ -3,7 +3,9 @@ package "hackwaly/moonhub/web/context"
 
 import {
   "hackwaly/moonhub/database",
+  "hackwaly/moonhub/diff/protocol",
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
@@ -42,6 +44,14 @@ pub let config_ssh_addresses : @moonback.TypedKey[@repository.SshAddressConfig]
 pub fn current_invitation_from_request(@moonback.Request) -> @identity.InvitationSession?
 
 pub fn current_user_from_request(@moonback.Request) -> @domain.CurrentUser?
+
+pub let diff_enabled_key : @moonback.TypedKey[Bool]
+
+pub let diff_executor_key : @moonback.TypedKey[@gitops.DiffExecutor]
+
+pub fn diff_page(@moonback.Request) -> Int32 raise
+
+pub fn diff_selection(Map[String, String]) -> @gitops.DiffSelection? raise
 
 pub fn form_csrf_token(String, String) -> String
 
@@ -94,6 +104,8 @@ pub fn rev_param(@moonback.Request) -> String raise @domain.AppError
 pub fn session_cookie(String) -> @http.Cookie
 
 pub let session_cookie_name : String
+
+pub fn structured_diff_options(@moonback.Request) -> @protocol.Options raise
 
 pub fn url_escape_path(String) -> String
 

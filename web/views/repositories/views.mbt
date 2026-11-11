@@ -60,11 +60,27 @@ async fn stream_commit_detail(
   b : @moonback.HtmlBuilder,
   git_dir : String,
   commit : String,
+  structured_view~ : @moonback.Html? = None,
 ) -> Unit {
   let args = @gitops.git_args(git_dir, [
-    "show", "--no-color", "--no-ext-diff", "--no-textconv", "--format=medium", "--diff-algorithm=histogram",
-    "--diff-merges=first-parent", "--patch", "--find-renames", "--src-prefix=a/",
-    "--dst-prefix=b/", "--date=iso-strict", commit, "--",
+    "show",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--format=medium",
+    "--diff-algorithm=histogram",
+    "--diff-merges=first-parent",
+    if structured_view is Some(_) {
+      "--no-patch"
+    } else {
+      "--patch"
+    },
+    "--find-renames",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "--date=iso-strict",
+    commit,
+    "--",
   ])
   @async.with_task_group(group => {
     let (reader, writer) = @process.read_from_process()
@@ -81,7 +97,9 @@ async fn stream_commit_detail(
       None => ""
     }
     b <+ "<pre>\{summary_text}</pre><h2>Changes</h2>"
-    if reader.read_some(max_len=8192) is Some(first_chunk) {
+    if structured_view is Some(view) {
+      b <+ "\{view}"
+    } else if reader.read_some(max_len=8192) is Some(first_chunk) {
       let first_chunk = @moonback.Html::raw_utf8_chunk(
         escape_html_text_chunk(first_chunk),
       )
@@ -271,11 +289,12 @@ async fn render_commits(
 
 ///|
 async fn render_commit(
+  diff_view~ : @moonback.Html? = None,
+  diff_toolbar~ : @moonback.Html? = None,
   root~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   commit~ : String,
-  clone_url~ : String? = None,
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
 ) -> @moonback.Html {
@@ -289,11 +308,14 @@ async fn render_commit(
     "\{repo.path()} \{commit}",
     asset_path_map,
     Html(b => {
-      b <+ "\{@web_ui.render_repo_nav(repo, commit, clone_url)}"
-      b <+ "<h2 class=\"path\">\{commit}</h2>"
-      stream_commit_detail(b, git_dir, commit)
+      if diff_toolbar is Some(_) {
+        b <+
+          "<button class=\"icon-button mobile-menu-button diff-navigation\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
+      }
+      stream_commit_detail(b, git_dir, commit, structured_view=diff_view)
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map, code_view=true),
+    header_content=diff_toolbar,
     current_user~,
     navigation=@web_ui.RepositoryNavigation(repo, "commits", manager),
   )

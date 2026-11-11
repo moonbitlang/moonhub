@@ -2,17 +2,23 @@
 package "hackwaly/moonhub/gitops"
 
 import {
+  "hackwaly/moonhub/diff/protocol",
   "hackwaly/moonhub/domain",
   "moonbitlang/async/fs",
+  "moonbitlang/async/semaphore",
   "moonbitlang/core/json",
 }
 
 // Values
 pub async fn branch_sha(String, String) -> String
 
+pub async fn commit_comparison(String, String) -> (String, String)
+
 pub async fn compare_branches(String, String, String) -> Revision
 
 pub async fn default_ref(String) -> String
+
+pub fn diff_options(mode? : String, ignore_comments? : String, ignore_tests? : String) -> @protocol.Options raise
 
 pub fn git_args(String, Array[String]) -> Array[String]
 
@@ -53,6 +59,10 @@ pub fn valid_commit_sha(String) -> Bool
 pub async fn validate_diff_anchor(String, Revision, String?, String, String, Int64, Int64) -> DiffAnchor
 
 // Errors
+pub(all) suberror DiffFailure {
+  DiffFailure(String)
+}
+
 pub(all) suberror GitError {
   GitCommandFailed(code~ : Int32, output~ : String)
 }
@@ -90,6 +100,81 @@ pub struct DiffAnchor {
 }
 pub fn DiffAnchor::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn DiffAnchor::to_json(Self) -> @json.Json
+
+pub struct DiffExecutor {
+  worker : String
+  deadline_ms : Int32
+  slots : @semaphore.Semaphore
+  mut completed : Int32
+  mut cache_hits : Int32
+  mut failures : Int32
+  mut queued_ms : Int64
+  mut execution_ms : Int64
+  mut input_bytes : Int64
+  mut output_bytes : Int64
+  mut last_termination : String
+  // private fields
+}
+pub async fn DiffExecutor::execute(Self, String, async () -> @protocol.Request) -> @protocol.Document
+pub async fn DiffExecutor::file(Self, String, DiffManifest, String, @protocol.Options) -> FileDiff
+pub async fn DiffExecutor::locate_anchor(Self, String, DiffAnchor) -> (DiffManifest, String)?
+pub async fn DiffExecutor::manifest(Self, String, String, String, page? : Int32) -> DiffManifest
+pub fn DiffExecutor::new(worker? : String, concurrency? : Int32, deadline_ms? : Int32, observe? : (@json.Json) -> Unit, cache_limit_bytes? : Int64) -> Self raise
+pub async fn DiffExecutor::structured(Self, String, String, String, @protocol.Options, page? : Int32, file_id? : String) -> @json.Json
+pub async fn DiffExecutor::validate_anchor(Self, String, Revision, String?, DiffSelection, String, String, Int64, Int64) -> DiffAnchor
+pub async fn DiffExecutor::verify(Self) -> Unit
+
+#derive(@json.FromJson, @json.ToJson)
+pub struct DiffFile {
+  id : String
+  status : String
+  old_path : String
+  new_path : String
+  old_mode : String
+  new_mode : String
+  old_blob : String
+  new_blob : String
+  path_error : String?
+}
+pub fn DiffFile::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffFile::to_json(Self) -> @json.Json
+
+#derive(@json.FromJson, @json.ToJson)
+pub struct DiffManifest {
+  protocol : String
+  engine : String
+  comparison_id : String
+  base_sha : String
+  head_sha : String
+  page : Int32
+  has_more : Bool
+  files : Array[DiffFile]
+}
+pub fn DiffManifest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffManifest::to_json(Self) -> @json.Json
+
+pub(all) struct DiffSelection {
+  document_id : String
+  file_id : String
+  hunk_id : String
+  page : Int32
+  options : @protocol.Options
+}
+
+#derive(@json.FromJson)
+pub struct FileDiff {
+  protocol : String
+  engine : String
+  comparison_id : String
+  document_id : String
+  file : DiffFile
+  options : @protocol.Options
+  document : @protocol.Document?
+  error : String?
+}
+pub fn FileDiff::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn FileDiff::to_json(Self) -> @json.Json
+pub impl @json.ToJson for FileDiff
 
 pub(all) struct Revision {
   version : Int64

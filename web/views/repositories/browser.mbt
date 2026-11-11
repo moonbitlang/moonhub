@@ -24,6 +24,8 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
   let clone_url = access.clone_url
   let manager = access.manager
   let root = ctx.require(@web_context.config_root)
+  let diff_executor = ctx.require(@web_context.diff_executor_key)
+  let diff_enabled = ctx.require(@web_context.diff_enabled_key)
   ctx.get("/:owner/:repo", async fn(req, res) {
     let repo = resolve_repo(root, req, authorize)
     let git_dir = repo.git_dir(root)
@@ -151,16 +153,77 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let _ = resolve_repo(root, req, authorize)
     raise @domain.NotFound(message="commit not found")
   })
+  ctx.get("/:owner/:repo/commit/:commit/diff", async fn(req, res) {
+    let repo = resolve_repo(root, req, authorize)
+    let dir = repo.git_dir(root)
+    let (base, head) = @gitops.commit_comparison(
+      dir,
+      @web_context.commit_param(req),
+    )
+    let result = diff_executor.structured(
+      dir,
+      base,
+      head,
+      @web_context.structured_diff_options(req),
+      page=@web_context.diff_page(req),
+      file_id=req.query().get("file_id").unwrap_or(""),
+    )
+    authorize(req, repo)
+    res.send_json(result, headers={ "Cache-Control": "no-store" })
+  })
   ctx.get("/:owner/:repo/commit/:commit", async fn(req, res) {
     let repo = resolve_repo(root, req, authorize)
     let commit = @web_context.commit_param(req)
+    let (diff_view, diff_toolbar) = if diff_enabled {
+      let dir = repo.git_dir(root)
+      let (base, head) = @gitops.commit_comparison(dir, commit)
+      let options = @web_context.structured_diff_options(req)
+      let manifest = diff_executor.manifest(
+        dir,
+        base,
+        head,
+        page=@web_context.diff_page(req),
+      )
+      let selected = match
+        req.query().get("file_id").filter(id => !id.is_empty()) {
+        Some(id) => Some(diff_executor.file(dir, manifest, id, options))
+        None => None
+      }
+      authorize(req, repo)
+      let url = "\{@web_ui.repo_link(repo)}/commit/\{head}"
+      let view_url = url +
+        "?fixed=1&page=\{manifest.page}" +
+        selected.map(file => "&file_id=\{file.file.id}").unwrap_or("")
+      (
+        Some(
+          @web_ui.render_structured_diff(
+            manifest,
+            selected,
+            options,
+            url + "/diff?fixed=1",
+            url + "?fixed=1",
+            view_url~,
+            toolbar_target="commit-diff-toolbar",
+          ),
+        ),
+        Some(
+          @moonback.Html(b => {
+            b <+
+              "<moonhub-diff-toolbar id=\"commit-diff-toolbar\"><div data-toolbar-fallback>\{@web_ui.render_diff_options(options, view_url)}</div></moonhub-diff-toolbar>"
+          }),
+        ),
+      )
+    } else {
+      (None, None)
+    }
     res.send_html(
       render_commit(
         root~,
         asset_path_map~,
         repo~,
         commit~,
-        clone_url=clone_url(repo),
+        diff_view~,
+        diff_toolbar~,
         current_user=@web_context.current_user_from_request(req),
         manager=manager(req, repo),
       ),

@@ -355,7 +355,7 @@ pub fn merge_discussion_comment_page(
 }
 
 ///|
-pub async fn create_anchored_merge_discussion(
+pub async fn prepare_anchored_merge_discussion(
   pool : @database.Database,
   scope : @repository.RepositoryScope,
   actor : @domain.CurrentUser,
@@ -368,7 +368,8 @@ pub async fn create_anchored_merge_discussion(
   start_line : Int64,
   end_line : Int64,
   body : String,
-) -> Int64 {
+  structured? : (@gitops.DiffExecutor, @gitops.DiffSelection),
+) -> PreparedDiscussion {
   require_discussion_access(pool, scope, actor, mr, true)
   let body = body.trim().to_owned()
   guard !body.is_empty() && body.length() <= 20000 else {
@@ -377,10 +378,60 @@ pub async fn create_anchored_merge_discussion(
     )
   }
   let revision = merge_revision(pool, mr, version~)
-  let anchor = @gitops.validate_diff_anchor(
-    git_dir, revision, commit, path, side, start_line, end_line,
-  )
+  let anchor = match structured {
+    Some((executor, selection)) =>
+      executor.validate_anchor(
+        git_dir, revision, commit, selection, path, side, start_line, end_line,
+      )
+    None =>
+      @gitops.validate_diff_anchor(
+        git_dir, revision, commit, path, side, start_line, end_line,
+      )
+  }
   require_discussion_access(pool, scope, actor, mr, true)
+  {
+    actor_id: actor.id,
+    scope_id: scope.id,
+    mr_id: mr.id,
+    version,
+    revision,
+    anchor,
+    body,
+  }
+}
+
+///|
+pub struct PreparedDiscussion {
+  priv actor_id : Int64
+  priv scope_id : Int64
+  priv mr_id : Int64
+  priv version : Int64
+  priv revision : MergeRevision
+  priv anchor : @gitops.DiffAnchor
+  priv body : String
+}
+
+///|
+pub fn create_prepared_merge_discussion(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  prepared : PreparedDiscussion,
+) -> Int64 raise {
+  require_discussion_access(pool, scope, actor, mr, true)
+  let { actor_id, scope_id, mr_id, version, revision, anchor, body, } = prepared
+  let current = merge_revision(pool, mr, version~)
+  guard actor.id == actor_id &&
+    scope.id == scope_id &&
+    mr.id == mr_id &&
+    current.base_sha == revision.base_sha &&
+    current.source_sha == revision.source_sha &&
+    current.target_sha == revision.target_sha else {
+    raise @domain.BadRequest(
+      message="comparison changed; refresh before commenting",
+    )
+  }
   // Root trigger, anchor and notifications commit atomically.
   pool.with_client(client => {
     client.with_transaction(tx => {
@@ -409,4 +460,28 @@ pub async fn create_anchored_merge_discussion(
       id
     })
   })
+}
+
+///|
+// Compatibility entry point. Callers controlling repository locks should prepare
+// first, then call create_prepared_merge_discussion inside their write section.
+pub async fn create_anchored_merge_discussion(
+  pool : @database.Database,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  mr : MergeRequest,
+  git_dir : String,
+  version : Int64,
+  commit : String?,
+  path : String,
+  side : String,
+  start_line : Int64,
+  end_line : Int64,
+  body : String,
+) -> Int64 {
+  let prepared = prepare_anchored_merge_discussion(
+    pool, scope, actor, mr, git_dir, version, commit, path, side, start_line, end_line,
+    body,
+  )
+  create_prepared_merge_discussion(pool, scope, actor, mr, prepared)
 }

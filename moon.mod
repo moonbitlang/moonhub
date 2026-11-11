@@ -23,6 +23,7 @@ import {
   "moonbitlang/moonback@0.8.5",
   "moonbit-community/rabbita@0.17.0",
   "moonbit-community/email@0.0.1",
+  "moonbit-community/moondiff@0.1.3",
 }
 
 preferred_target = "native"

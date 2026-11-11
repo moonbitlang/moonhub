@@ -53,8 +53,8 @@ jobs:
         run: npm run build --prefix js
       - name: Check TypeScript
         run: npm run check --prefix js
-      - name: Build browser fixture server
-        run: moon build --target native --strip -j 1 --deny-warn .
+      - name: Build browser fixture server and diff worker
+        run: moon build --target native --strip -j 1 --deny-warn . cmd/moonhub-diff-worker
       - name: Test browser interactions
         run: npm run test:browser --prefix js -- --reporter=line,html --trace=retain-on-failure
         env:
