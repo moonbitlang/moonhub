@@ -245,6 +245,27 @@ MR state actions also include `draft`, `ready` and `reopen`, each requiring
 submits a review or merge against a version the user did not select. Reload the
 MR/Issue after a stale-version response before retrying.
 
+To close issues when an MR successfully merges, include `Closes #123`,
+`Fixes #123` or `Resolves #123` in the description passed via `--body-file` to
+`mr create` or `mr edit`. Example `description.md`:
+
+```text
+Fix the save failure.
+
+Closes #123, #124
+```
+
+Inspect `moonhub mr view 4 --json` before merging: `mr.closing_issue_numbers`
+lists the parsed issue numbers as decimal strings. Create/edit/list responses
+also include `closing_issue_numbers` on each MR object. Adding/removing directives
+through `mr edit --body-file description.md --edit-version N` changes the eventual
+closures. Keywords are case-insensitive; only same-repository `#N` references in
+the description count. Titles, comments and code examples do not count. A related
+issue link alone does not close an issue. Missing/already closed issues are skipped,
+and failed merges or closing an unmerged MR leave issues open. Check issue
+status/activity after the merge worker completes; submitting a merge only queues
+it. See [closing directives](collaboration.md#issues) for full syntax and lifecycle.
+
 Descriptions/comments use `--body-file` (regular UTF-8 file, at most 16 MiB).
 Inline Markdown images using `data:image/png;base64,...` (also JPEG, GIF and WebP)
 are stored by the server and rewritten to managed image URLs. Each image is at

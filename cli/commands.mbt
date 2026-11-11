@@ -28,7 +28,12 @@ fn command() -> @argparse.Command {
       global=true,
     ),
     @argparse.OptionArg("title", long="title", global=true),
-    @argparse.OptionArg("body-file", long="body-file", global=true),
+    @argparse.OptionArg(
+      "body-file",
+      long="body-file",
+      global=true,
+      about="UTF-8 description/comment file. MR descriptions: Closes #123, Fixes #123 or Resolves #123 closes same-repository issues after a successful merge; mr view --json exposes closing_issue_numbers.",
+    ),
     @argparse.OptionArg("file", long="file", global=true),
     @argparse.OptionArg("delivery", long="delivery", global=true),
     @argparse.OptionArg("source", long="source", global=true),
@@ -106,19 +111,33 @@ fn command() -> @argparse.Command {
       ]),
       @argparse.Command(
         "mr",
+        about="Manage merge requests. Use Closes #123, Fixes #123 or Resolves #123 in the description to close same-repository issues after successful merge. Inspect closing_issue_numbers with mr view --json.",
         subcommand_required=true,
         subcommands=[
           @argparse.Command("list"),
-          @argparse.Command("create"),
+          @argparse.Command(
+            "create",
+            about="Create an MR. Use --body-file with Closes #123 to close the issue after successful merge.",
+          ),
           ..[
             "view", "diff", "checks", "comment", "review", "request-review", "merge",
             "approve-checks", "close", "reopen", "draft", "ready", "edit", "delete-comment",
             "restore-comment", "discussions", "inline-comment", "reply", "resolve-discussion",
             "reopen-discussion",
           ].map(action => {
-            @argparse.Command(action, positionals=[
-              @argparse.PositionArg("number"),
-            ])
+            @argparse.Command(
+              action,
+              about=match action {
+                "edit" =>
+                  "Edit MR metadata with --edit-version. Add/remove Closes #123 in --body-file to change which issues close after successful merge."
+                "merge" =>
+                  "Submit the observed --version for merge. Successful merge closes issues declared by Closes/Fixes/Resolves #123 in the description; inspect closing_issue_numbers with mr view --json first."
+                "view" =>
+                  "View an MR; --json includes closing_issue_numbers parsed from its description. Missing/already closed issues are skipped at merge."
+                _ => ""
+              },
+              positionals=[@argparse.PositionArg("number")],
+            )
           }),
         ],
       ),
