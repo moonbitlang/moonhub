@@ -184,7 +184,7 @@ jobs:
         run: |
           $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
           $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
-          node --test scripts/run-native-test-test.cjs
+          node --test scripts/run-native-test-test.cjs scripts/acceptance-http-proxy-test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Native acceptance result regressions failed' }
           node scripts/run-native-test.cjs _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe desktop_windows_wbtest.mbt
           if ($LASTEXITCODE -ne 0) { throw 'Desktop Windows acceptance failed' }

@@ -9,6 +9,7 @@ import http from 'node:http';
 import {execFileSync, spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {forwardAcceptanceRequest} from './acceptance-http-proxy.mjs';
 const {parse} = createRequire(new URL('../runner/actions/package.json',import.meta.url))('yaml');
 const config = JSON.parse(await fs.readFile(process.argv[2],'utf8'));
 assert.equal(process.platform,'win32'); assert.equal(process.arch,'x64');
@@ -54,18 +55,13 @@ const server = http.createServer(async (req,res) => {
       process.stdout.write(log.text);
     }
     requests++;
-    const upstream=http.request({hostname:backend.hostname,port:backend.port,path:req.url,method:req.method,headers:{...req.headers,host:backend.host}},response=>{
-      res.writeHead(response.statusCode,response.headers);response.pipe(res);
-      response.on('error',error=>{failure=error;res.destroy();});
-    });
-    upstream.on('error',error=>{failure=error;res.destroy();});
-    req.on('aborted',()=>upstream.destroy());res.on('close',()=>{if(!res.writableFinished)upstream.destroy();});
-    if(body)upstream.end(body);else req.pipe(upstream);
+    forwardAcceptanceRequest(req,res,backend,{body,onError:error=>{failure=error;}});
   } catch(error) {failure=error;if(!res.headersSent)res.writeHead(500);res.end('acceptance transport failed');}
 });
 await new Promise(resolve=>server.listen(0,'0.0.0.0',resolve));
 const origin='http://'+gateway+':'+server.address().port;
 async function execute(index) {
+  console.log('DESKTOP_ACCEPTANCE_JOB:'+index+':claim');
   const response=await fetch(config.server+'/-/acceptance/next',{method:'POST',headers:{Authorization:'Bearer '+config.token}});
   assert.equal(response.status,200);
   const {assignment,token}=await response.json();
@@ -100,6 +96,7 @@ async function execute(index) {
     assert.ok(report.steps.every(step=>step.state==='success'));
     const gitconfig=docker('run','--rm','--network','none','--isolation','process','--user','ContainerUser','--mount','type=volume,src='+name+',dst=C:\\workspace','--entrypoint','C:\\moonhub\\pwsh\\pwsh.exe',image,'-NoProfile','-Command','Get-Content C:/workspace/repository/.git/config -Raw');
     assert.doesNotMatch(gitconfig,/extraheader/i);
+    console.log('DESKTOP_ACCEPTANCE_JOB:'+index+':success');
   } finally {
     clearTimeout(timer);if(child)child.kill('SIGKILL');try{docker('rm','--force',name);}catch{}if(closed)await closed.catch(()=>{});
     docker('volume','rm',name);
