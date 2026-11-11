@@ -74,10 +74,14 @@ async test "checkout requires a live authorized attempt and denies stale source 
 }
 
 ///|
-test "checkout rejects reserved paths symlinks and submodules" {
+test "tar rejects symlinks and submodules while both formats reject unsafe paths" {
   let hash = "a".repeat(40)
   validate_source_tree(
     "100644 blob \{hash}\tREADME.md\u{0000}100755 blob \{hash}\tbin/build\u{0000}",
+  )
+  validate_source_tree(
+    "120000 blob \{hash}\tlink\u{0000}160000 commit \{hash}\tsrc/parser\u{0000}",
+    git_bundle=true,
   )
   for
     entry in [
@@ -87,6 +91,15 @@ test "checkout rejects reserved paths symlinks and submodules" {
       "100644 blob \{hash}\t.tmp/file",
       "100644 blob \{hash}\t.git/config",
       "120000 blob \{hash}\t.git/config",
+      "160000 commit \{hash}\t.home/module",
+      "160000 commit \{hash}\t.tmp/module",
+      "160000 commit \{hash}\tsrc/.git/module",
+      "160000 commit \{hash}\t../module",
+      "160000 commit \{hash}\t/absolute-module",
+      "160000 commit \{hash}\tsrc\\module",
+      "160000 commit \{hash}\tsrc\nmodule",
+      "040000 tree \{hash}\tdirectory",
+      "160000 blob \{hash}\twrong-type",
       "100644 blob \{hash}\t../outside",
       "100644 blob \{hash}\t/absolute",
       "100644 blob \{hash}\ta\nfile",
@@ -97,8 +110,9 @@ test "checkout rejects reserved paths symlinks and submodules" {
     } noraise {
       _ => fail("unsafe checkout tree accepted")
     }
-    if entry != "120000 blob \{hash}\tlink" {
-      try validate_source_tree(entry + "\u{0000}", symlinks=true) catch {
+    if entry != "120000 blob \{hash}\tlink" &&
+      entry != "160000 commit \{hash}\tmodule" {
+      try validate_source_tree(entry + "\u{0000}", git_bundle=true) catch {
         @domain.BadRequest(_) => ()
         err => raise err
       } noraise {
@@ -109,7 +123,7 @@ test "checkout rejects reserved paths symlinks and submodules" {
 }
 
 ///|
-async test "source bundle preserves symlinks in exactly one pinned commit without repository history" {
+async test "source bundle preserves symlinks and gitlinks without fetching submodules or history" {
   with_protocol_fixture((coordinator, pool, root, original, _, _) => {
     let dir = protocol_repo.git_dir(root)
     let github = @gitops.merge_git(dir, [
@@ -139,10 +153,27 @@ async test "source bundle preserves symlinks in exactly one pinned commit withou
       )
       .trim()
       .to_owned()
+    let modules = "[submodule \"parser\"]\n\tpath = src/parser\n\turl = https://example.invalid/parser.git\n"
+    let modules_blob = @gitops.merge_git(
+        dir,
+        ["hash-object", "-w", "--stdin"],
+        input=modules,
+      )
+      .trim()
+      .to_owned()
+    // This commit deliberately does not exist in the parent repository.
+    let submodule_sha = "b".repeat(40)
+    let source_tree = @gitops.merge_git(
+        dir,
+        ["mktree"],
+        input="160000 commit \{submodule_sha}\tparser\n",
+      )
+      .trim()
+      .to_owned()
     let tree = @gitops.merge_git(
         dir,
         ["mktree"],
-        input="040000 tree \{github}\t.github\n120000 blob \{target}\tREADME.md\n120000 blob \{loop_blob}\tloop\n120000 blob \{dangling}\tdangling\n",
+        input="040000 tree \{github}\t.github\n100644 blob \{modules_blob}\t.gitmodules\n120000 blob \{target}\tREADME.md\n120000 blob \{loop_blob}\tloop\n120000 blob \{dangling}\tdangling\n040000 tree \{source_tree}\tsrc\n",
       )
       .trim()
       .to_owned()
@@ -240,6 +271,31 @@ async test "source bundle preserves symlinks in exactly one pinned commit withou
     ])
     assert_eq(code, 0)
     assert_eq(parents.text().trim(), run.commit_sha)
+    let (code, restored_modules) = @process.collect_output_merged("git", [
+      "--git-dir",
+      scratch + "/restored.git",
+      "show",
+      run.commit_sha + ":.gitmodules",
+    ])
+    assert_eq(code, 0)
+    assert_eq(restored_modules.text(), modules)
+    let (code, gitlink) = @process.collect_output_merged("git", [
+      "--git-dir",
+      scratch + "/restored.git",
+      "ls-tree",
+      run.commit_sha,
+      "src/parser",
+    ])
+    assert_eq(code, 0)
+    assert_eq(gitlink.text(), "160000 commit \{submodule_sha}\tsrc/parser\n")
+    let (code, _) = @process.collect_output_merged("git", [
+      "--git-dir",
+      scratch + "/restored.git",
+      "cat-file",
+      "-e",
+      submodule_sha,
+    ])
+    assert_true(code != 0)
   })
 }
 
