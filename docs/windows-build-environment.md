@@ -144,6 +144,8 @@ image and preparing the single-commit source repository above:
 
 The wrapper checks the test result record as well as the process exit code.
 Generated MoonBit test executables can exit zero after reporting a failed test.
+On GitHub it suspends outer workflow-command parsing while streaming task logs,
+so commands emitted by nested Actions retain their container-local meaning.
 
 This test verifies CI packaging and background-job behavior. It does not establish
 interactive GUI support, signing, publishing or production runner rollout. Any
