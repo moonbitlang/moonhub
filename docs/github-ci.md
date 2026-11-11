@@ -34,6 +34,10 @@ the Windows worker and legacy task image and verify shells, Actions, process
 cleanup and reusable container workers. The 2025 instance also builds the generic
 C++ environment and executes the original pinned openseek Windows TUI job. Both
 matrix instances must pass the single Windows result in the aggregate gate.
+Before building an image, CI probes the pinned local Windows Docker API, starts
+the installed Docker service if necessary and waits up to two minutes for API
+readiness. Missing services, unsupported daemon platforms and readiness timeouts
+fail the job; a Docker CLI on PATH alone does not establish readiness.
 See [Windows runner setup](standalone-runner.md#windows-x64-workers) and the
 [Windows build environment](windows-build-environment.md).
 

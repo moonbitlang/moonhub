@@ -118,6 +118,10 @@ jobs:
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |
+          node --test scripts/prepare-windows-docker-test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Docker readiness regressions failed' }
+          node scripts/prepare-windows-docker.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Docker daemon is not ready' }
           docker build --isolation=process -f deploy/windows/Dockerfile -t moonhub:runner-windows .tmp/windows-runner
           if ($LASTEXITCODE -ne 0) { throw 'Windows task image build failed' }
       - name: Exercise reusable Windows worker with real containers
