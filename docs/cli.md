@@ -75,6 +75,15 @@ accept `--page` where supported; MR/Issue/Inbox pages contain at most 50 entries
 CI lists use the server's existing latest-run limit. Human-readable lists strip
 terminal control characters from repository content.
 
+`ci run --jobs build,test` selects original logical job IDs and their complete
+dependency closure, including all matrix children. Explicit selection lets a
+repository manager run a PR-only workflow without adding `workflow_dispatch` or
+changing Git refs. Omitting `--jobs` retains the normal dispatch requirement.
+The saved source YAML and commit are unchanged; reruns retain the selected plan.
+The REST run request accepts the same selection as a `jobs` array. Browser Run
+workflow offers a Job selector. Existing execute-token and manager authorization
+remain required; selecting jobs never satisfies or reruns an MR's required check.
+
 ## Commands
 
 ```sh
@@ -108,6 +117,7 @@ moonhub issue edit 2 --edit-version 3 --title 'Updated' --body-file issue.md --a
 
 moonhub ci list
 moonhub ci run --branch master --workflow .github/workflows/build.yml
+moonhub ci run --branch main --workflow .github/workflows/ci.yml --jobs tui-windows
 moonhub ci run --branch master --workflow .github/workflows/release.yml \
   --inputs-file /absolute/path/inputs.json
 moonhub ci view 9 --json

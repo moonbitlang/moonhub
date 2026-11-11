@@ -321,6 +321,19 @@ fn render_pipeline_form(
           b <+
             "<form class=\"form-stack\" method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{choices.branch}\"><input type=\"hidden\" name=\"workflow\" value=\"\{selected}\">"
           if selected_choice is Some(choice) {
+            b <+ "<label class=\"field\"><span>Job</span><select name=\"job\">"
+            if choice.dispatch {
+              b <+ "<option value=\"\">All workflow jobs</option>"
+            }
+            for id in choice.jobs {
+              b <+ "<option value=\"\{id}\""
+              if values.get("__job") == Some(id) {
+                b <+ " selected"
+              }
+              b <+ ">\{id}</option>"
+            }
+            b <+
+              "</select><span class=\"muted\">Selected jobs include their dependencies. The original workflow and source commit are saved unchanged.</span></label>"
             for input in choice.inputs {
               let name = input.name
               let default_value = match input.default {

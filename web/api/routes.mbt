@@ -844,13 +844,23 @@ pub let api_module : @moonback.Module = Module(ctx => {
       // The inputs object may use 65535 bytes before the request wrapper.
       let body = api_body(
         req,
-        ["branch", "workflow", "inputs"],
+        ["branch", "workflow", "inputs", "jobs"],
         body_limit=73728,
       )
       let inputs : Map[String, Json] = match body.get("inputs") {
         None => Map([])
         Some(Object(values)) => values
         _ => raise @domain.BadRequest(message="inputs must be a JSON object")
+      }
+      let jobs : Array[String] = match body.get("jobs") {
+        None => []
+        Some(value) =>
+          @json.from_json(value) catch {
+            _ =>
+              raise @domain.BadRequest(
+                message="jobs must be an array of job IDs",
+              )
+          }
       }
       run_json(
         @pipeline.create_run(
@@ -861,6 +871,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           field(body, "branch"),
           field(body, "workflow"),
           inputs~,
+          jobs~,
         ),
       )
     }),

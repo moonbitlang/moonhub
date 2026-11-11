@@ -31,9 +31,12 @@ Docker SSH keeps `bash scripts/docker-smoke.sh`.
 
 `Windows runner` uses a Server 2022 / Server 2025 matrix. Both instances build
 the Windows worker and legacy task image and verify shells, Actions, process
-cleanup and reusable container workers. The 2025 instance also builds the generic
-C++ environment and executes the original pinned openseek Windows TUI job. Both
-matrix instances must pass the single Windows result in the aggregate gate.
+cleanup and reusable container workers. Both matrix instances must pass the
+single Windows result in the aggregate gate. Application workflows such as
+openseek TUI and Desktop run in their own MoonHub repository; the MoonHub
+required checks do not fetch or execute openseek source or build its C++ task
+environment. The generic build image and opt-in acceptance tools remain available
+for dedicated Windows environment validation.
 Before building an image, CI probes the pinned local Windows Docker API, starts
 the installed Docker service if necessary and waits up to two minutes for API
 readiness. Missing services, unsupported daemon platforms and readiness timeouts
@@ -50,10 +53,12 @@ Self-check or sharing its build outputs:
 
 - `.github/workflows/frontend-checks.yml` runs TypeScript (`npm run check --prefix js`)
   and Playwright in the same Ubuntu 24.04 job. The browser job installs and
-  verifies the production MoonBit pin, resolves dependencies, installs Chromium
-  and its system libraries, builds browser assets, checks TypeScript against the
-  generated MoonBit client declarations, builds the native fixture server, then
-  runs all tests in `js/tests`. Failed runs upload the HTML report, traces and
+  verifies the production MoonBit pin, resolves dependencies, builds browser
+  assets, checks TypeScript against the generated MoonBit client declarations,
+  and builds the native fixture server. The matching locked Playwright version's
+  official Noble image supplies Chromium and system libraries; the host runs
+  the fixture while the container runs all tests in `js/tests`. This avoids the
+  hosted image's unavailable APT mirror. Failed runs upload the HTML report, traces and
   test results for seven days.
 - `Build and deployment regressions` in `ci.yml` runs the eight build/deployment
   script regressions (`apt-config`, `base-image`, `deploy-script`, `github-deploy`,

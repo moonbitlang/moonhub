@@ -76,6 +76,39 @@ async fn with_dispatch_form_app(
 }
 
 ///|
+async test "browser selects PR-only jobs without changing workflow or branch" {
+  @web_testkit.with_repository_test_app((port, pool, root, cookie, _) => {
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let source = @test_support.single_job_workflow.replace_all(
+      old="workflow_dispatch",
+      new="pull_request",
+    )
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    let (_, body) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/pipelines/new?branch=pipeline", cookie,
+    )
+    assert_true(body.contains("<select name=\"job\">"))
+    assert_true(body.contains("value=\"build\""))
+    assert_false(body.contains("All workflow jobs"))
+    let csrf = @web_testkit.extract_attr(
+      body, "name=\"csrf_token\"", "value=\"",
+    )
+    let (response, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/alice/demo/pipelines",
+      "csrf_token=" +
+      csrf +
+      "&branch=pipeline&workflow=.github/workflows/build.yml&job=build",
+      cookie,
+    )
+    assert_eq(response.code, 303)
+    assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
+    let actor = @identity.active_user_by_name(pool, "alice")
+    assert_eq(@pipeline.get_run(pool, actor, repo, 1L).workflow_source, source)
+  })
+}
+
+///|
 async test "browser dispatch GET reloads selected workflow schema and escapes defaults" {
   with_dispatch_form_app((port, _, cookie, _) => {
     let route = "/alice/demo/pipelines/new?branch=pipeline"

@@ -1046,13 +1046,18 @@ async test "MCP CI tools create query cancel rerun and reject out of scope log r
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let dir = repo.git_dir(root)
     let base = @test_support.workflow_commit(
-      dir, @test_support.single_job_workflow,
+      dir,
+      @test_support.single_job_workflow.replace_all(
+        old="workflow_dispatch",
+        new="pull_request",
+      ),
     )
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/master", base]))
     let (_, data) = mcp_tool(port, execute, "moonhub_create_run", {
       "repository": Json("alice/demo"),
       "branch": Json("master"),
       "workflow": Json(".github/workflows/build.yml"),
+      "jobs": ["build"],
     })
     guard data
       is {

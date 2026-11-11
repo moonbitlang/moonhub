@@ -13,7 +13,7 @@ pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], i
 
 pub let max_source_bytes : Int32
 
-pub fn parse(String) -> Workflow raise InvalidWorkflow
+pub fn parse(String, jobs? : Array[String]) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 

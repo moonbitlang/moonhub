@@ -92,3 +92,11 @@ test('PR cancellation and production serialization have independent scopes', () 
   assert.match(deploy, /group: moonhub-production\n      cancel-in-progress: false/);
   assert.match(deploy, /environment: production/);
 });
+
+// Application acceptance belongs to its own repository, not the product gate.
+test('required MoonHub CI does not execute openseek application workflows', () => {
+  assert.doesNotMatch(ci, /openseek|MOONHUB_DESKTOP_WINDOWS_SMOKE|desktop_windows_wbtest|Dockerfile[.]build/);
+  assert.match(ci, /node scripts[\/]windows-runner-smoke[.]cjs/);
+  assert.match(ci, /scripts[\/]acceptance-http-proxy-test[.]mjs/);
+  assert.match(ci, /scripts[\/]run-native-test-test[.]cjs/);
+});

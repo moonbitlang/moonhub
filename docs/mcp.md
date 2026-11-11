@@ -86,8 +86,12 @@ Tool results provide `structuredContent` and the same JSON as text in `content`.
 Arguments follow the published JSON Schema 2020-12 schemas. IDs, versions, pages
 and `draft: "true"` are strings. `moonhub_create_run` also accepts an optional
 `inputs` object containing up to 25 string, boolean or number values; workflow
-input definitions validate names, types, required values and choices. Other
-non-string arguments, unknown fields and missing required fields are rejected. Schemas have no
+input definitions validate names, types, required values and choices. An
+optional `jobs` array selects up to 16 original logical job IDs and their complete
+dependency closure, including matrix children. Explicit job selection permits
+manager execution of PR-only workflows while preserving the repository commit
+and YAML. Other non-string arguments, unknown fields and missing required fields
+are rejected. Schemas have no
 external references or `x-mcp-header` parameters. The `Mcp-Name` Base64
 sentinel encoding is supported and validated against the body.
 

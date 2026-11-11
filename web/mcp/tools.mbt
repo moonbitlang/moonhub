@@ -14,6 +14,12 @@ fn Tool::definition(self : Tool) -> Json {
     properties[key] = { "type": "string" }
   }
   if self.name == "moonhub_create_run" {
+    properties["jobs"] = {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "type": "string" },
+      "description": "Original workflow job IDs to run, including dependencies, without modifying repository files.",
+    }
     properties["inputs"] = {
       "type": "object",
       "description": "Workflow dispatch input values; defaults and types are validated against the selected revision.",
@@ -69,6 +75,19 @@ fn Tool::validate(self : Tool, args : Map[String, Json]) -> Unit raise {
   for key, value in args {
     guard self.required.contains(key) || self.optional.contains(key) else {
       raise ProtocolError(400, -32602, "Unsupported argument: " + key, None)
+    }
+    if self.name == "moonhub_create_run" && key == "jobs" {
+      guard value is Array(jobs) &&
+        jobs.length() <= 16 &&
+        jobs.all(job => job is String(_)) else {
+        raise ProtocolError(
+          400,
+          -32602,
+          "jobs must be an array of up to 16 job IDs",
+          None,
+        )
+      }
+      continue
     }
     if self.name == "moonhub_create_run" && key == "inputs" {
       guard value is Object(inputs) &&
@@ -313,7 +332,7 @@ fn tool_catalog() -> Array[Tool] {
       description: "Execute repository workflow code in CI. Requires explicit user intent to execute.",
       permission: "execute",
       required: ["repository", "branch", "workflow"],
-      optional: ["inputs"],
+      optional: ["inputs", "jobs"],
     },
     {
       name: "moonhub_rerun_run",
@@ -995,6 +1014,10 @@ async fn invoke_tool(
           repo,
           string_arg(args, "branch"),
           string_arg(args, "workflow"),
+          jobs=match args.get("jobs") {
+            None => []
+            Some(value) => @json.from_json(value)
+          },
           inputs=match args.get("inputs") {
             None => Map([])
             Some(Object(values)) => values

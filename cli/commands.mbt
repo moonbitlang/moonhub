@@ -52,6 +52,7 @@ fn command() -> @argparse.Command {
     @argparse.OptionArg("assignee", long="assignee", global=true),
     @argparse.OptionArg("workflow", long="workflow", global=true),
     @argparse.OptionArg("inputs-file", long="inputs-file", global=true),
+    @argparse.OptionArg("jobs", long="jobs", global=true),
     @argparse.OptionArg("branch", long="branch", global=true),
     @argparse.OptionArg("attempt", long="attempt", global=true),
     @argparse.OptionArg(
@@ -681,6 +682,11 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       }
       if option(matches, "inputs-file") is Some(path) {
         fields["inputs"] = Json(read_dispatch_inputs(path))
+      }
+      if option(matches, "jobs") is Some(value) {
+        fields["jobs"] = ToJson::to_json(
+          value.split(",").map(id => id.trim().to_owned()).collect(),
+        )
       }
       ("\{base}/runs", Some(Json(fields)))
     }

@@ -16,7 +16,9 @@ async test "manual workflow choices use real branches and validate workflow disp
       ),
     )
     let choices = dispatch_choices(pool, root, actor, repo, "pipeline")
-    assert_eq(choices.workflows[0].reason, "Manual dispatch is not enabled")
+    assert_eq(choices.workflows[0].reason, "")
+    assert_false(choices.workflows[0].dispatch)
+    assert_eq(choices.workflows[0].jobs, ["build", "test"])
     ignore(
       @gitops.merge_git(repo.git_dir(root), [
         "symbolic-ref", "HEAD", "refs/heads/absent",
