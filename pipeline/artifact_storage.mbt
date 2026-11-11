@@ -194,7 +194,13 @@ pub async fn Coordinator::stage_artifact_block(
             bytes.length().to_int64() - old_size,
           )
         }
-        guard own + bytes.length().to_int64() <= maximum_artifact_bytes &&
+        let is_cache = (row.get_name("kind") : String) == "cache"
+        let byte_limit = if is_cache {
+          maximum_cache_bytes
+        } else {
+          maximum_artifact_bytes
+        }
+        guard own + bytes.length().to_int64() <= byte_limit &&
           (
             (row.get_name("kind") : String) == "cache" ||
             total - old_size + bytes.length().to_int64() <= 4294967296L
@@ -207,7 +213,12 @@ pub async fn Coordinator::stage_artifact_block(
             params=[id],
           )
           .get_name("count")
-        guard count < 64L ||
+        let block_limit = if is_cache {
+          64L
+        } else {
+          maximum_artifact_blocks.to_int64()
+        }
+        guard count < block_limit ||
           tx.query_opt(
             "SELECT block_id FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
             params=[id, block],
@@ -243,7 +254,7 @@ pub async fn Coordinator::commit_artifact_blocks(
   sig : String,
   blocks : Array[String],
 ) -> Unit {
-  guard !blocks.is_empty() && blocks.length() <= 64 else {
+  guard !blocks.is_empty() && blocks.length() <= maximum_artifact_blocks else {
     raise @domain.BadRequest(message="invalid artifact block list")
   }
   let seen : Map[String, Bool] = Map([])
@@ -255,43 +266,53 @@ pub async fn Coordinator::commit_artifact_blocks(
   }
   let order = ToJson::to_json(blocks).stringify()
   let generation = @identity.random_hex(32)
-  let pending : (String, Array[(String, Int64)])? = self.pool.with_client(client => {
-    client.with_transaction(
-      tx => {
-        let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
-        let state : String = row.get_name("state")
-        if ["uploaded", "ready"].contains(state) &&
-          (row.get_name("block_order") : String) == order {
-          return None
-        }
-        guard state == "pending" else {
-          raise Conflict("artifact commit already started")
-        }
-        let files = blocks.map(block => {
-          let entry = tx.query_opt(
-            "SELECT file_key,size FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
-            params=[id, block],
-          )
-          guard entry is Some(entry) else {
-            raise @domain.BadRequest(message="artifact block missing")
+  let pending : (String, Array[(String, Int64)], Int64)? = self.pool.with_client(client => {
+      client.with_transaction(
+        tx => {
+          let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
+          let is_cache = (row.get_name("kind") : String) == "cache"
+          guard !is_cache || blocks.length() <= 64 else {
+            raise @domain.BadRequest(message="cache block count exceeded")
           }
-          (
-            (entry.get_name("file_key") : String),
-            (entry.get_name("size") : Int64),
+          let byte_limit = if is_cache {
+            maximum_cache_bytes
+          } else {
+            maximum_artifact_bytes
+          }
+          let state : String = row.get_name("state")
+          if ["uploaded", "ready"].contains(state) &&
+            (row.get_name("block_order") : String) == order {
+            return None
+          }
+          guard state == "pending" else {
+            raise Conflict("artifact commit already started")
+          }
+          let files = blocks.map(block => {
+            let entry = tx.query_opt(
+              "SELECT file_key,size FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
+              params=[id, block],
+            )
+            guard entry is Some(entry) else {
+              raise @domain.BadRequest(message="artifact block missing")
+            }
+            (
+              (entry.get_name("file_key") : String),
+              (entry.get_name("size") : Int64),
+            )
+          })
+          ignore(
+            tx.execute(
+              "UPDATE pipeline_artifact SET state='assembling',generation=?,block_order=? WHERE id=? AND state='pending'",
+              params=[generation, order, id],
+            ),
           )
-        })
-        ignore(
-          tx.execute(
-            "UPDATE pipeline_artifact SET state='assembling',generation=?,block_order=? WHERE id=? AND state='pending'",
-            params=[generation, order, id],
-          ),
-        )
-        Some(((row.get_name("storage_key") : String), files))
-      },
-      immediate=true,
-    )
-  })
-  guard pending is Some((key, files)) else { return }
+          Some(((row.get_name("storage_key") : String), files, byte_limit))
+        },
+        immediate=true,
+      )
+    },
+  )
+  guard pending is Some((key, files, byte_limit)) else { return }
   let directory = artifact_directory(root, key)
   let output_path = directory + "/archive-" + generation
   let mut success = false
@@ -328,7 +349,7 @@ pub async fn Coordinator::commit_artifact_blocks(
     }
     while input.read_some(max_len=65536) is Some(chunk) {
       total += chunk.length().to_int64()
-      guard total <= maximum_artifact_bytes else {
+      guard total <= byte_limit else {
         raise @domain.BadRequest(message="artifact exceeds byte limit")
       }
       hasher.update(chunk)

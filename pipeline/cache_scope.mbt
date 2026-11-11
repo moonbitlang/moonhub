@@ -1,4 +1,7 @@
 ///|
+let maximum_cache_bytes : Int64 = 536870912L
+
+///|
 fn snapshot_cache_scope(
   tx : @database.DbTransaction,
   run : Run,
@@ -116,7 +119,7 @@ async fn Coordinator::make_cache_space(
             params=[id, block],
           )
           .get_name("size")
-        guard own + size <= maximum_artifact_bytes else {
+        guard own + size <= maximum_cache_bytes else {
           raise @domain.BadRequest(message="cache archive byte quota exceeded")
         }
         let repository : Int64 = row.get_name("repository_id")

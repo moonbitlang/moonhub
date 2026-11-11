@@ -113,7 +113,7 @@ fn artifact_block_list(text : String) -> Array[String] raise {
       raise @domain.BadRequest(message="invalid block list XML")
     }
     result.push(value.to_owned())
-    guard result.length() <= 64 else {
+    guard result.length() <= @pipeline.maximum_artifact_blocks else {
       raise @domain.BadRequest(message="artifact block count exceeded")
     }
     rest = after.trim().to_owned()

@@ -2,10 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function login(page: Page) {
   await page.goto('/-/login');
+  await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
   await page.locator('[name=name_key]').fill('alice');
   await page.locator('[name=password]').fill('browser-test-password');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  // Password verification can outlast the default five-second assertion on a
+  // loaded CI host. Still require the successful redirect before diff checks.
+  await expect(page).toHaveURL(/\/$/, { timeout: 15000 });
 }
 
 async function commitPage(page: Page) {

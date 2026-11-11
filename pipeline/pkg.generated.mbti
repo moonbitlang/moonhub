@@ -34,6 +34,8 @@ pub fn list_variables(@database.Database, @domain.CurrentUser, @domain.RepoId) -
 
 pub let maximum_artifact_block_bytes : Int32
 
+pub let maximum_artifact_blocks : Int32
+
 pub let maximum_artifact_bytes : Int64
 
 pub fn merge_check_context(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> MergeCheckContext? raise

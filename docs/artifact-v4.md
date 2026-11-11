@@ -75,9 +75,10 @@ This link continues to work for authorized repository readers after the job ends
 
 ## Limits and lifecycle
 
-The initial limits are 512 MiB per ZIP, 8 MiB per staged block, 64 blocks per ZIP,
+The limits are 2 GiB per ZIP, 8 MiB per staged block, 256 blocks per ZIP,
 4 GiB of staged bytes per run, and 500 stored artifact records per run. Deleted
-records/blocks still consume quota until their files are removed. Retention
+records/blocks still consume quota until their files are removed. Cache archives
+retain their separate 512 MiB and 64-block limits. Retention
 is seven days by default and at most 90 days; the original Action handles its
 `retention-days` input. Each attempt can have at most 128 live runtime grants
 and 4,096 unexpired signed capabilities across those grants.
