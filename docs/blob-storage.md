@@ -142,7 +142,9 @@ Its ten-minute grace period allows in-flight transfers to stop before removal.
 
 The existing cleanup worker reclaims expired/deleted records and retries due
 deletion intents. Successful remote deletion precedes metadata reclamation;
-failure leaves tombstones or intents for retry. Namespace cleanup removes staged
+failure leaves tombstones or intents for retry. Failed work is deferred for at
+least one minute and moves behind older untried work, so a full failed batch
+cannot starve healthy destinations in later sweeps. Namespace cleanup removes staged
 objects, assembled archives and unfinished multipart uploads. Configure the
 bucket to abort incomplete multipart uploads after one day as an additional
 crash safeguard. Do not apply a fixed-age expiry to finalized cache objects:

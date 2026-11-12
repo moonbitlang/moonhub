@@ -423,16 +423,15 @@ pub async fn Coordinator::cleanup_artifacts(
       ),
     )
     client.query_all(
-      "SELECT id,storage_key FROM pipeline_artifact WHERE state='deleted' ORDER BY id LIMIT 100",
+      "SELECT a.id,a.storage_key,COALESCE(l.location,'legacy-fs') AS location FROM pipeline_artifact a LEFT JOIN pipeline_artifact_location l ON l.artifact_id=a.id LEFT JOIN pipeline_blob_garbage g ON g.location=COALESCE(l.location,'legacy-fs') AND g.key=a.storage_key AND g.kind='namespace' WHERE a.state='deleted' AND (g.not_before_ms IS NULL OR g.not_before_ms<=?) ORDER BY COALESCE(g.not_before_ms,0),a.id LIMIT 100",
+      params=[now],
     )
   })
   for row in rows {
     let id : Int64 = row.get_name("id")
     let key : String = row.get_name("storage_key")
+    let location : String = row.get_name("location")
     try {
-      let location = self.pool.with_client(client => {
-        client.with_transaction(tx => blob_location(tx, id))
-      })
       self.blob_store(root, location).remove_namespace(key)
       self.pool.with_client(client => {
         client.with_transaction(tx => {
@@ -451,7 +450,14 @@ pub async fn Coordinator::cleanup_artifacts(
         })
       })
     } catch {
-      _ => complete = false
+      _ => {
+        complete = false
+        self.pool.with_client(client => {
+          client.with_transaction(tx => {
+            defer_blob_cleanup(tx, location, key, "namespace", (self.clock)())
+          })
+        })
+      }
     }
   }
   self.pool.with_client(client => {

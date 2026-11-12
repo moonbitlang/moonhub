@@ -72,6 +72,24 @@ fn release_blob(
 }
 
 ///|
+fn defer_blob_cleanup(
+  tx : @database.DbTransaction,
+  location : String,
+  key : String,
+  kind : String,
+  now : Int64,
+) -> Unit raise {
+  // Move failed work behind untried work in later batches. Preserve any longer
+  // upload/cascade grace period already recorded by a concurrent operation.
+  ignore(
+    tx.execute(
+      "INSERT INTO pipeline_blob_garbage(location,key,kind,not_before_ms) VALUES(?,?,?,?) ON CONFLICT(location,key,kind) DO UPDATE SET not_before_ms=MAX(pipeline_blob_garbage.not_before_ms,excluded.not_before_ms)",
+      params=[location, key, kind, now + 60000L],
+    ),
+  )
+}
+
+///|
 pub async fn ArtifactBlob::with_reader(
   self : ArtifactBlob,
   consume : async (@storage.Reader) -> Unit,
@@ -115,7 +133,14 @@ async fn Coordinator::cleanup_blob_garbage(
         )
       })
     } catch {
-      _ => complete = false
+      _ => {
+        complete = false
+        self.pool.with_client(client => {
+          client.with_transaction(tx => {
+            defer_blob_cleanup(tx, location, key, kind, (self.clock)())
+          })
+        })
+      }
     }
   }
   complete

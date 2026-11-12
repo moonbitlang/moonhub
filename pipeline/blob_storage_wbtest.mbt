@@ -163,6 +163,7 @@ async test "cascade deletion retains storage cleanup intent and retries failed d
     )
     @fs.remove(root + "/.pipeline-artifacts")
     @fs.rename(root + "/blobs-offline", root + "/.pipeline-artifacts")
+    clock.val += 60000L
     c.cleanup_artifacts(root)
     assert_false(@fs.exists(artifact_directory(root, key)))
     assert_true(
@@ -300,7 +301,159 @@ async test "one unavailable backend does not block reclaiming another backend" {
       )
     })
     @fs.remove(root + "/bad-root/bad")
+    clock.val += 60000L
     c.cleanup_artifacts(root)
+    assert_true(
+      pool.with_client(client => {
+        client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
+      }),
+    )
+  })
+}
+
+///|
+async test "failed garbage batch yields to later healthy destinations and retries after recovery" {
+  with_protocol_fixture((c, pool, root, _, _, clock) => {
+    @fs.mkdir(root + "/offline-data")
+    @fs.symlink(target=root + "/offline-data", root + "/offline-root")
+    @fs.mkdir(root + "/healthy-root")
+    @fs.mkdir(root + "/healthy-root/healthy")
+    let bad = @storage.filesystem(root + "/offline-root").location()
+    let good = @storage.filesystem(root + "/healthy-root").location()
+    for i in 0..<100 {
+      let key = "bad-" + i.to_string()
+      @fs.mkdir(root + "/offline-data/" + key)
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "INSERT INTO pipeline_blob_garbage(location,key,kind,not_before_ms) VALUES(?,?,'namespace',?)",
+            params=[bad, key, clock.val - 1L],
+          ),
+        )
+      })
+    }
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "INSERT INTO pipeline_blob_garbage(location,key,kind,not_before_ms) VALUES(?,'healthy','namespace',?)",
+          params=[good, clock.val],
+        ),
+      )
+    })
+    try c.cleanup_artifacts(root) catch {
+      _ => ()
+    } noraise {
+      _ => fail("failed batch was reported as clean")
+    }
+    assert_true(@fs.exists(root + "/healthy-root/healthy"))
+    // Even when failed work is due again, older untried work must get a turn.
+    clock.val += 60000L
+    ignore(c.cleanup_artifacts(root)) catch {
+      _ => ()
+    }
+    assert_false(@fs.exists(root + "/healthy-root/healthy"))
+    assert_eq(
+      pool.with_client(client => {
+        (
+          client
+          .query_one("SELECT count(*) AS n FROM pipeline_blob_garbage")
+          .get_name("n") : Int64)
+      }),
+      100L,
+    )
+    @fs.remove(root + "/offline-root")
+    @fs.rename(root + "/offline-data", root + "/offline-root")
+    clock.val += 60000L
+    c.cleanup_artifacts(root)
+    assert_true(
+      pool.with_client(client => {
+        client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
+      }),
+    )
+  })
+}
+
+///|
+async test "failed artifact tombstone batch yields to later healthy storage" {
+  with_protocol_fixture((c, pool, root, _, _, clock) => {
+    @fs.mkdir(root + "/offline-data")
+    @fs.symlink(target=root + "/offline-data", root + "/offline-root")
+    @fs.mkdir(root + "/healthy-root")
+    let bad = @storage.filesystem(root + "/offline-root").location()
+    let good = @storage.filesystem(root + "/healthy-root").location()
+    let (a, grant) = artifact_test_start(c)
+    let mut healthy_key = ""
+    for i in 0..<101 {
+      let (id, _) = artifact_test_url(
+        c.artifact_rpc(
+          grant.token,
+          "CreateArtifact",
+          artifact_test_request(a, {
+            "name": "cleanup-" + i.to_string(),
+            "version": 4,
+          }),
+        ),
+        "signed_upload_url",
+      )
+      let key = pool.with_client(client => {
+        (
+          client
+          .query_one("SELECT storage_key FROM pipeline_artifact WHERE id=?", params=[
+            id,
+          ])
+          .get_name("storage_key") : String)
+      })
+      let location = if i < 100 { bad } else { good }
+      if i < 100 {
+        @fs.mkdir(root + "/offline-data/" + key)
+      } else {
+        @fs.mkdir(root + "/healthy-root/" + key)
+        healthy_key = key
+      }
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "INSERT INTO pipeline_artifact_location(artifact_id,location) VALUES(?,?)",
+            params=[id, location],
+          ),
+        )
+        ignore(
+          client.execute(
+            "UPDATE pipeline_artifact SET state='deleted' WHERE id=?",
+            params=[id],
+          ),
+        )
+      })
+    }
+    try c.cleanup_artifacts(root) catch {
+      _ => ()
+    } noraise {
+      _ => fail("failed batch was reported as clean")
+    }
+    assert_true(@fs.exists(root + "/healthy-root/" + healthy_key))
+    clock.val += 60000L
+    ignore(c.cleanup_artifacts(root)) catch {
+      _ => ()
+    }
+    assert_false(@fs.exists(root + "/healthy-root/" + healthy_key))
+    assert_eq(
+      pool.with_client(client => {
+        (
+          client
+          .query_one("SELECT count(*) AS n FROM pipeline_artifact")
+          .get_name("n") : Int64)
+      }),
+      100L,
+    )
+    @fs.remove(root + "/offline-root")
+    @fs.rename(root + "/offline-data", root + "/offline-root")
+    clock.val += 60000L
+    c.cleanup_artifacts(root)
+    assert_true(
+      pool.with_client(client => {
+        client.query_all("SELECT * FROM pipeline_artifact").is_empty()
+      }),
+    )
     assert_true(
       pool.with_client(client => {
         client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
