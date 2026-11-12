@@ -156,8 +156,7 @@ fn render_pipeline_list(
         for event in events {
           b <+
             "<li><div class=\"record-title\"><code>\{event.reference}</code><span class=\"muted\">\{event.state}</span></div><p><a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{event.commit_sha}\">\{event.commit_sha[:12].to_owned()}</a> · <a href=\"\{base}?tab=runs&amp;branch=\{@web_context.url_escape_path(event.reference.strip_prefix("refs/heads/").unwrap_or(event.reference).to_owned())}\">View branch runs</a></p>"
-          b <+
-            "<time datetime=\"\{event.created_at}\" title=\"\{event.created_at} UTC\" data-relative-time>\{event.created_at} UTC</time>"
+          b <+ "\{@web_ui.timestamp(event.created_at, relative=true)}"
           for run in event.runs {
             let result = pipeline_result(run.state, run.conclusion)
             b <+
@@ -206,7 +205,7 @@ fn render_pipeline_list(
           }
           let result = pipeline_result(run.state, run.conclusion)
           b <+
-            "<li><div class=\"run-identity\"><span class=\"mr-state\" data-state=\"\{result}\">\{pipeline_display_state(result)}</span><div><a class=\"record-title\" href=\"\{base}/\{run.number.to_string()}\">#\{run.number.to_string()} · \{run.workflow_name}</a><p class=\"record-meta\"><span>\{run.source_branch}</span><a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{run.commit_sha}\">\{run.commit_sha[:12].to_owned()}</a></p></div></div><time data-relative-time datetime=\"\{run.created_at}Z\" title=\"\{run.created_at} UTC\">\{run.created_at} UTC</time></li>"
+            "<li><div class=\"run-identity\"><span class=\"mr-state\" data-state=\"\{result}\">\{pipeline_display_state(result)}</span><div><a class=\"record-title\" href=\"\{base}/\{run.number.to_string()}\">#\{run.number.to_string()} · \{run.workflow_name}</a><p class=\"record-meta\"><span>\{run.source_branch}</span><a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{run.commit_sha}\">\{run.commit_sha[:12].to_owned()}</a></p></div></div>\{@web_ui.timestamp(run.created_at, relative=true)}</li>"
         }
         if runs.is_empty() {
           b <+
@@ -449,7 +448,7 @@ fn render_pipeline_detail(
       b <+
         "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Pipelines</a> / #\{run.number.to_string()}</p><h1>\{pipeline_html(run.workflow_name)}</h1></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{pipeline_display_state(result)}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
       b <+
-        "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha[:12].to_owned())}</span> · created \{pipeline_html(run.created_at)}</p>"
+        "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha[:12].to_owned())}</span> · created \{@web_ui.timestamp(run.created_at)}</p>"
       if merge is Some(merge) {
         b <+
           "<p><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{merge.number.to_string()}?version=\{merge.version.to_string()}\">Merge request !\{merge.number.to_string()}, version \{merge.version.to_string()}</a></p><p class=\"muted mr-shas\"><span>Source <code>\{merge.source_sha[:12].to_owned()}</code></span><span>Target <code>\{merge.target_sha[:12].to_owned()}</code></span></p>"

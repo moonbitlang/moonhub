@@ -50,6 +50,64 @@ async test "users change their own display name and never their username" {
 }
 
 ///|
+async test "profile time zones persist in sessions and invalid submissions preserve both fields" {
+  @web_testkit.with_ssh_settings_app((port, pool, alice, bob, _) => {
+    let token = @web_testkit.profile_form_token(port, alice)
+    let (saved, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/settings/profile",
+      "csrf_token=\{token}&display_name=Alice&time_zone=Asia%2FKathmandu",
+      alice,
+    )
+    assert_eq(saved.code, 303)
+    let (_, page) = @web_testkit.http_get_path_with_cookie(
+      port, "/-/settings/profile", alice,
+    )
+    assert_true(page.contains("data-time-zone=\"Asia/Kathmandu\""))
+    assert_true(page.contains("value=\"Asia/Kathmandu\" selected=\"\""))
+    let (_, foreign_page) = @web_testkit.http_get_path_with_cookie(
+      port, "/-/settings/profile", bob,
+    )
+    assert_true(foreign_page.contains("data-time-zone=\"\""))
+    let (invalid, error_page) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/settings/profile",
+      "csrf_token=\{token}&display_name=Unsaved&time_zone=Unknown%2FZone",
+      alice,
+    )
+    assert_eq(invalid.code, 400)
+    assert_true(error_page.contains("Choose a valid display time zone."))
+    assert_true(error_page.contains("value=\"Unsaved\""))
+    assert_true(error_page.contains("value=\"Unknown/Zone\" selected=\"\""))
+    let user = @identity.active_user_by_name(pool, "alice")
+    assert_eq(@identity.user_profile(pool, user).display_name, "Alice")
+    assert_eq(
+      @identity.user_profile(pool, user).time_zone,
+      Some("Asia/Kathmandu"),
+    )
+    let (legacy, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/settings/profile",
+      "csrf_token=\{token}&display_name=Alice",
+      alice,
+    )
+    assert_eq(legacy.code, 303)
+    assert_eq(
+      @identity.user_profile(pool, user).time_zone,
+      Some("Asia/Kathmandu"),
+    )
+    let (cleared, _) = @web_testkit.http_post_path_with_cookie(
+      port,
+      "/-/settings/profile",
+      "csrf_token=\{token}&display_name=Alice&time_zone=",
+      alice,
+    )
+    assert_eq(cleared.code, 303)
+    assert_eq(@identity.user_profile(pool, user).time_zone, None)
+  })
+}
+
+///|
 async test "profile updates reject empty oversized or tokenless submissions" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, bob, _) => {
     let token = @web_testkit.profile_form_token(port, alice)

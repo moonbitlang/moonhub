@@ -141,7 +141,9 @@ Use the system sans stack for UI and the existing monospace stack for source,
 logs, paths and hashes. The frontmatter records shared headline, title, body,
 label, metadata and log roles. Small UI headings use body-sized semibold text.
 Code views retain their existing syntax theme. Numeric counts and times use
-tabular numerals; relative-time enhancements retain exact UTC information.
+tabular numerals. Exact timestamps use the account’s display time zone, following
+the device by default; relative times retain the exact time and time zone in
+their title. Unenhanced timestamps keep an explicit UTC marker or source offset.
 
 Discussion Markdown has line spacing (1.7) and an (80ch) maximum reading width,
 with headings, lists, quotes, links and code rendered without arbitrary HTML.

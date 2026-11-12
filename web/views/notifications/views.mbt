@@ -79,7 +79,7 @@ fn render_inbox(
                 b <+ " · v\{event.version.to_string()}"
               }
               b <+
-                " · <time data-relative-time datetime=\"\{event.created_at}Z\" title=\"\{event.created_at} UTC\">\{event.created_at} UTC</time></span></li>"
+                " · \{@web_ui.timestamp(event.created_at, relative=true)}</span></li>"
             }
             b <+
               "</ol><p class=\"muted\">Showing up to 10 recent events. Open the discussion for its full history.</p></details>"

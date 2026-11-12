@@ -28,9 +28,10 @@ fn render_deploy_keys(
             b <+ "<span class=\"ssh-key-state muted\">Revoked</span>"
           }
           b <+
-            "<span class=\"ssh-key-state\">\{if key.write_access { "Read / write" } else { "Read-only" }}</span></div><code class=\"ssh-key-fingerprint\">\{key.fingerprint}</code><dl class=\"ssh-key-metadata\"><div><dt>Added by</dt><dd>\{key.creator}</dd></div><div><dt>Added</dt><dd>\{key.created_at} UTC</dd></div><div><dt>Last used</dt><dd>\{key.last_used_at.map(time => time + " UTC").unwrap_or("Never")}</dd></div>"
+            "<span class=\"ssh-key-state\">\{if key.write_access { "Read / write" } else { "Read-only" }}</span></div><code class=\"ssh-key-fingerprint\">\{key.fingerprint}</code><dl class=\"ssh-key-metadata\"><div><dt>Added by</dt><dd>\{key.creator}</dd></div><div><dt>Added</dt><dd>\{@web_ui.timestamp(key.created_at)}</dd></div><div><dt>Last used</dt><dd>\{match key.last_used_at { Some(time) => @web_ui.timestamp(time); None => @moonback.Html::raw("Never") }}</dd></div>"
           if key.revoked_at is Some(time) {
-            b <+ "<div><dt>Revoked</dt><dd>\{time} UTC</dd></div>"
+            b <+
+              "<div><dt>Revoked</dt><dd>\{@web_ui.timestamp(time)}</dd></div>"
           }
           b <+ "</dl>"
           if key.revoked_at is None {

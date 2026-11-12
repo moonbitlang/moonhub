@@ -11,7 +11,7 @@ fn render_discussion_comment(
 ) -> @moonback.Html {
   Html(b => {
     b <+
-      "<div class=\"discussion-comment\" id=\"comment-\{item.id.to_string()}\"><div class=\"mr-event-heading\"><strong>\{item.actor}</strong><time>\{item.created_at}</time><a href=\"\{base}?discussion=\{discussion.to_string()}&amp;comment=\{item.id.to_string()}#comment-\{item.id.to_string()}\">#\{item.id.to_string()}</a></div>"
+      "<div class=\"discussion-comment\" id=\"comment-\{item.id.to_string()}\"><div class=\"mr-event-heading\"><strong>\{item.actor}</strong>\{@web_ui.timestamp(item.created_at)}<a href=\"\{base}?discussion=\{discussion.to_string()}&amp;comment=\{item.id.to_string()}#comment-\{item.id.to_string()}\">#\{item.id.to_string()}</a></div>"
     if item.kind == "comment_deleted" {
       b <+ "<p class=\"muted\">Comment deleted.</p>"
     } else {
@@ -86,7 +86,7 @@ fn render_merge_discussion(
     }
     if !discussion.state_actor.is_empty() {
       b <+
-        "<p class=\"muted\">\{if discussion.resolved { "Resolved" } else { "Reopened" }} by \{discussion.state_actor} · <time>\{discussion.state_changed_at}</time></p>"
+        "<p class=\"muted\">\{if discussion.resolved { "Resolved" } else { "Reopened" }} by \{discussion.state_actor} · \{@web_ui.timestamp(discussion.state_changed_at)}</p>"
     }
     b <+
       "\{render_discussion_comment(repo, base, csrf, user, discussion.root, id, contributor, manager)}"

@@ -41,7 +41,7 @@ fn render_issue_list(
       for i, issue in issues {
         if i < 50 {
           b <+
-            "<li><div class=\"mr-list-title\"><a href=\"\{base}/\{issue.number.to_string()}\">\{issue.title}</a><span class=\"mr-state\" data-state=\"\{issue.status}\">\{issue.status}</span></div><p class=\"muted\">#\{issue.number.to_string()} by \{issue.author} · \{if issue.assignee.is_empty() { "Unassigned" } else { issue.assignee }} · \{issue.updated_at}</p></li>"
+            "<li><div class=\"mr-list-title\"><a href=\"\{base}/\{issue.number.to_string()}\">\{issue.title}</a><span class=\"mr-state\" data-state=\"\{issue.status}\">\{issue.status}</span></div><p class=\"muted\">#\{issue.number.to_string()} by \{issue.author} · \{if issue.assignee.is_empty() { "Unassigned" } else { issue.assignee }} · \{@web_ui.timestamp(issue.updated_at, relative=true)}</p></li>"
         }
       }
       if issues.is_empty() {
@@ -177,7 +177,7 @@ fn render_issue_detail(
           let body = item.body
           let created_at = item.created_at
           b <+
-            "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind}</span><time>\{created_at}</time></div>"
+            "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind}</span>\{@web_ui.timestamp(created_at)}</div>"
           if !body.is_empty() {
             b <+
               "<div class=\"mr-comment markdown-body\">\{@web_ui.markdown(body, repo=Some(scope.repo))}</div>"

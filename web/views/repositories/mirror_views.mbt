@@ -33,7 +33,8 @@ fn render_mirrors(
           b <+
             "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2><a href=\"\{base}/\{mirror.id.to_string()}\">\{mirror.url}</a></h2><span class=\"ssh-key-state\">\{mirror_status(mirror.status)}</span></div><p class=\"muted\">Branches and tags · Force updates: \{if mirror.force_push {"allowed"} else {"off"}} · Delete remote refs: \{if mirror.prune {"on"} else {"off"}}</p>"
           if mirror.last_success_at is Some(time) {
-            b <+ "<p class=\"muted\">Last successful sync: \{time} UTC</p>"
+            b <+
+              "<p class=\"muted\">Last successful sync: \{@web_ui.timestamp(time)}</p>"
           } else {
             b <+ "<p class=\"muted\">No successful sync yet.</p>"
           }
@@ -41,7 +42,7 @@ fn render_mirrors(
             b <+ "<p role=\"status\">\{mirror.error}</p>"
             if mirror.status == "pending" {
               b <+
-                "<p class=\"muted\">Retry scheduled: \{mirror.next_attempt_at} UTC · Attempt \{mirror.attempts.to_string()} of 5</p>"
+                "<p class=\"muted\">Retry scheduled: \{@web_ui.timestamp(mirror.next_attempt_at)} · Attempt \{mirror.attempts.to_string()} of 5</p>"
             }
           }
           b <+
@@ -194,7 +195,7 @@ fn render_mirror_form(
           b <+ "<ul class=\"ssh-key-list\" aria-label=\"Sync attempts\">"
           for attempt in history {
             b <+
-              "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><strong>\{mirror_status(attempt.status)}</strong><p class=\"muted\">Started \{attempt.started_at} UTC</p>"
+              "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><strong>\{mirror_status(attempt.status)}</strong><p class=\"muted\">Started \{@web_ui.timestamp(attempt.started_at)}</p>"
             if !attempt.error.is_empty() {
               b <+ "<p>\{attempt.error}</p>"
             }

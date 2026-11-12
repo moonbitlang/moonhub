@@ -25,14 +25,15 @@ fn render_user_ssh_keys(
             Some(_) => b <+ "<span class=\"ssh-key-state muted\">Revoked</span>"
           }
           b <+
-            "</div><code class=\"ssh-key-fingerprint\">\{key.fingerprint}</code><dl class=\"ssh-key-metadata\"><div><dt>Added</dt><dd>\{key.created_at} UTC</dd></div><div><dt>Last used</dt><dd>"
+            "</div><code class=\"ssh-key-fingerprint\">\{key.fingerprint}</code><dl class=\"ssh-key-metadata\"><div><dt>Added</dt><dd>\{@web_ui.timestamp(key.created_at)}</dd></div><div><dt>Last used</dt><dd>"
           match key.last_used_at {
-            Some(time) => b <+ "\{time} UTC"
+            Some(time) => b <+ "\{@web_ui.timestamp(time)}"
             None => b <+ "Never"
           }
           b <+ "</dd></div>"
           if key.revoked_at is Some(time) {
-            b <+ "<div><dt>Revoked</dt><dd>\{time} UTC</dd></div>"
+            b <+
+              "<div><dt>Revoked</dt><dd>\{@web_ui.timestamp(time)}</dd></div>"
           }
           b <+ "</dl></div>"
           if key.revoked_at is None {
