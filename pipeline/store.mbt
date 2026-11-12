@@ -36,6 +36,7 @@ pub struct Run {
   requested_by_user_id : Int64
   workflow_path : String
   workflow_name : String
+  display_title : String
   source_branch : String
   commit_sha : String
   source_ref : String
@@ -112,7 +113,7 @@ fn decode_conclusion(value : String?) -> Conclusion? raise {
 ///|
 fn Run::from_row(row : @database.DbRow) -> Run raise {
   let version : Int64 = row.get_name("definition_version")
-  guard [1L, 2L, 3L, 4L, 5L, 6L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, 3L, 4L, 5L, 6L, 7L, @workflow.format_version.to_int64()].contains(
     version,
   ) else {
     raise InvalidRecord
@@ -127,6 +128,7 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
     requested_by_user_id: row.get_name("requested_by_user_id"),
     workflow_path: row.get_name("workflow_path"),
     workflow_name: row.get_name("workflow_name"),
+    display_title: row.get_name("display_title"),
     source_branch: row.get_name("source_branch"),
     commit_sha: row.get_name("commit_sha"),
     source_ref: row.get_name("source_ref"),
@@ -238,5 +240,63 @@ pub fn list_jobs(
         attempt_id: row.get_name("attempt_id"),
       }
     })
+  })
+}
+
+///|
+// GitHub-compatible release automation needs bounded pagination and exact totals.
+pub fn workflow_run_history(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  workflow : String,
+  page~ : Int64 = 1L,
+  per_page~ : Int64 = 30L,
+  status~ : String = "",
+  branch~ : String = "",
+) -> (Int64, Array[Run]) raise {
+  guard page >= 1L &&
+    page <= 100000L &&
+    per_page >= 1L &&
+    per_page <= 100L &&
+    [
+      "", "queued", "running", "completed", "success", "failure", "cancelled", "timed_out",
+      "lost", "skipped",
+    ].contains(status) else {
+    raise @domain.BadRequest(
+      message="invalid workflow run pagination or status",
+    )
+  }
+  let scope = @repository.repository_scope(pool, actor, repo)
+  let select = " FROM pipeline_run WHERE repository_id=? AND workflow_path=? AND (?='' OR status=? OR conclusion=?) AND (?='' OR source_branch=?)"
+  pool.with_client(c => {
+    let count : Int64 = c
+      .query_one("SELECT count(*) n" + select, params=[
+        scope.id,
+        workflow,
+        status,
+        status,
+        status,
+        branch,
+        branch,
+      ])
+      .get_name("n")
+    let rows = c
+      .query_all(
+        "SELECT *" + select + " ORDER BY number DESC LIMIT ? OFFSET ?",
+        params=[
+          scope.id,
+          workflow,
+          status,
+          status,
+          status,
+          branch,
+          branch,
+          per_page,
+          (page - 1L) * per_page,
+        ],
+      )
+      .map(Run::from_row)
+    (count, rows)
   })
 }

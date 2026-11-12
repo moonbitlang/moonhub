@@ -128,7 +128,7 @@ fn expand_job(
   value : @yaml.Yaml,
   env : Map[String, String],
   defaults : RunDefaults,
-  permissions : (Bool, Bool),
+  permissions : (Bool, Bool, Int32),
   remaining_jobs~ : Int32 = 256,
   remaining_steps~ : Int32 = 4096,
   remaining_bytes~ : Int32 = 1048576,

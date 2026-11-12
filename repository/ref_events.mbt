@@ -71,6 +71,7 @@ pub fn record_received_transaction(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
+      check_release_tag_updates(tx, scope.id, phase, updates)
       record_mirror_refs(tx, scope.id, source_key, phase, updates)
       record_webhook_refs(tx, scope, actor.id, source_key, phase, updates)
       let enabled : Bool = tx

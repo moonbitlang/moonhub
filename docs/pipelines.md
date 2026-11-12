@@ -1001,3 +1001,7 @@ and Docker SSH smoke run separately from this script.
 
 For Windows ASG workers, platform inference, host/image preparation, PowerShell
 and lifecycle verification, see [Windows runner setup](standalone-runner.md#windows-x64-workers).
+
+## Release automation
+
+Repository releases, `contents: write`, `actions: read`, live job API tokens, `run-name` and opt-in UTC schedules are documented in [Releases](releases.md). Publishing uses independent durable assets rather than CI artifact retention. Schedule execution is disabled by default.

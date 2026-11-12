@@ -104,7 +104,7 @@ async function toolchainEnvironment(root, { env = process.env, run = runStage } 
 
 async function main() {
   const root = path.resolve(__dirname, '..');
-  const env = await toolchainEnvironment(root);
+  const env = { ...await toolchainEnvironment(root), MOONHUB_RELEASE_GH: '1' };
   const run = (name, command, args, timeoutMs = 300000) => runStage(name, command, args, { cwd: root, timeoutMs, env });
   await run('Toolchain versions', 'moon', ['version', '--all'], 30000);
   await run('Mooncakes index', 'moon', ['update']);

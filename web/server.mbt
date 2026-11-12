@@ -58,6 +58,30 @@ pub async fn serve(config : Config) -> Unit {
         )
       None => None
     }
+    let releases = @releases.Service::new(pool, config.root, storage?)
+    let release_origin = @config.env_value("MOONHUB_RELEASE_ORIGIN").unwrap_or(
+      "",
+    )
+    if !release_origin.is_empty() {
+      guard release_origin.has_prefix("https://") &&
+        !release_origin.has_suffix("/") &&
+        !release_origin[8:].contains("/") &&
+        !release_origin.contains("@") &&
+        !release_origin.contains("?") &&
+        !release_origin.contains("#") else {
+        raise @domain.BadRequest(
+          message="MOONHUB_RELEASE_ORIGIN requires an HTTPS origin",
+        )
+      }
+    }
+    group.spawn_bg(no_wait=true, () => {
+      for ;; {
+        releases.cleanup() catch {
+          _ => println("release cleanup failed; will retry")
+        }
+        @async.sleep(60000)
+      }
+    })
     let coordinator = @pipeline.Coordinator::new(pool, oidc?, storage?)
     coordinator.start_lease_worker(group)
     group.spawn_bg(no_wait=true, () => {
@@ -68,9 +92,19 @@ pub async fn serve(config : Config) -> Unit {
         @async.sleep(60000)
       }
     })
+    group.spawn_bg(no_wait=true, () => {
+      for ;; {
+        @pipeline.run_due_schedules(pool, config.root) catch {
+          _ => println("scheduled workflow scan failed; will retry")
+        }
+        @async.sleep(15000)
+      }
+    })
     @pipeline.start_push_worker(pool, config.root, group)
     @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [
+      @moonback.Config::custom(@web_context.release_service_key, releases),
+      @moonback.Config::custom(@web_context.release_origin_key, release_origin),
       @moonback.Config::custom(@web_context.diff_executor_key, diff_executor),
       @moonback.Config::custom(@web_context.diff_enabled_key, diff_enabled),
       @moonback.Config::custom(

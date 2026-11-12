@@ -225,7 +225,9 @@ fn anonymous_browser_read(req : @moonback.Request) -> Bool {
       !repo.is_empty() &&
       repo != "-" =>
       parts.length() == 3 ||
-      ["tree", "blob", "commits", "commit"].contains(parts[3].to_owned())
+      ["tree", "blob", "commits", "commit", "releases"].contains(
+        parts[3].to_owned(),
+      )
     _ => false
   }
 }

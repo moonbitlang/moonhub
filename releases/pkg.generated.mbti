@@ -1,0 +1,75 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/releases"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/storage",
+}
+
+// Values
+pub fn access(@domain.RepoId, @domain.CurrentUser?, recheck? : (Bool) -> Unit raise) -> Access
+
+// Errors
+pub suberror Conflict {
+  Conflict(String)
+}
+
+// Types and methods
+pub struct Access {
+  repo : @domain.RepoId
+  actor : @domain.CurrentUser?
+  recheck : (Bool) -> Unit raise
+}
+
+pub(all) struct Asset {
+  id : Int64
+  release_id : Int64
+  name : String
+  label : String
+  media_type : String
+  size : Int64
+  digest : String
+  created_at : String
+  // private fields
+}
+
+pub(all) struct Release {
+  id : Int64
+  tag : String
+  commit_sha : String
+  title : String
+  body : String
+  draft : Bool
+  prerelease : Bool
+  revision : Int64
+  author : String
+  created_at : String
+  published_at : String?
+  assets : Array[Asset]
+}
+
+pub struct Service {
+  pool : @database.Database
+  root : String
+  storage : @storage.Config?
+  clock : () -> Int64
+}
+pub fn Service::by_tag(Self, Access, String) -> Release raise
+pub async fn Service::cleanup(Self) -> Unit
+pub async fn Service::create(Self, Access, String, String, String, String, draft? : Bool, prerelease? : Bool, latest? : Bool) -> Release
+pub fn Service::delete(Self, Access, Int64) -> Unit raise
+pub fn Service::delete_asset(Self, Access, Int64) -> Unit raise
+pub async fn Service::download(Self, Access, Int64, async (Asset, @storage.Reader, () -> Unit raise) -> Unit) -> Unit
+pub async fn Service::edit(Self, Access, Int64, target? : String, title? : String, body? : String, draft? : Bool, prerelease? : Bool, latest? : Bool) -> Release
+pub fn Service::get(Self, Access, Int64) -> Release raise
+pub fn Service::get_asset(Self, Access, Int64) -> Asset raise
+pub fn Service::latest(Self, Access) -> Release raise
+pub fn Service::list(Self, Access, page? : Int32, per_page? : Int32) -> Array[Release] raise
+pub fn Service::new(@database.Database, String, storage? : @storage.Config, clock? : () -> Int64) -> Self
+pub async fn Service::publish(Self, Access, Int64, latest? : Bool) -> Release
+pub async fn Service::upload(Self, Access, Int64, String, String, String, async () -> Bytes?) -> Asset
+
+// Type aliases
+
+// Traits

@@ -8,6 +8,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
+  "hackwaly/moonhub/releases",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/webhooks",
   "moonbitlang/async/http",
@@ -80,6 +81,10 @@ pub async fn read_bounded_body(@moonback.Request, Int32) -> Bytes
 pub async fn read_form(@moonback.Request, limit? : Int32) -> Map[String, String]
 
 pub fn redirect_headers(String) -> @moonback.Headers
+
+pub let release_origin_key : @moonback.TypedKey[String]
+
+pub let release_service_key : @moonback.TypedKey[@releases.Service]
 
 pub fn repo_param(@moonback.Request) -> @domain.RepoId raise @domain.AppError
 

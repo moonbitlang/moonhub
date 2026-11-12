@@ -7,6 +7,8 @@ import {
 }
 
 // Values
+pub fn cron_matches(String, Int32, Int32, Int32, Int32, Int32) -> Bool raise InvalidWorkflow
+
 pub let format_version : Int32
 
 pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
@@ -75,6 +77,7 @@ pub struct Job {
   runs_on : Array[String]
   contents_read : Bool
   id_token_write : Bool
+  api_permissions : Int32
   matrix : Map[String, @json.Json]
   strategy : Map[String, @json.Json]
   matrix_group : String
@@ -126,6 +129,7 @@ pub fn Step::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Step
 
 pub struct Triggers {
+  schedules : Array[String]
   dispatch : Bool
   inputs : Array[DispatchInput]
   push : Bool
@@ -139,6 +143,7 @@ pub fn Triggers::matches_push(Self, String, paths? : Array[String]?) -> Bool
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct Workflow {
+  run_name : String
   name : String
   concurrency : Concurrency?
   jobs : Array[Job]

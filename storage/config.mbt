@@ -2,6 +2,7 @@
 pub struct Config {
   artifacts : String
   caches : String
+  releases : String
   priv node : String
   priv helper : String
 }
@@ -13,7 +14,9 @@ pub fn Config::parse(
   helper~ : String = "storage/s3/bridge.mjs",
 ) -> Config raise {
   guard value is Object(fields) &&
-    fields.keys().all(k => ["artifacts", "caches", "backends"].contains(k)) &&
+    fields
+    .keys()
+    .all(k => ["artifacts", "caches", "releases", "backends"].contains(k)) &&
     fields.get("backends") is Some(Object(backends)) &&
     !backends.is_empty() &&
     backends.length() <= 16 &&
@@ -34,7 +37,13 @@ pub fn Config::parse(
     locations.get(caches) is Some(caches) else {
     raise InvalidConfiguration
   }
-  { artifacts, caches, node, helper, }
+  let releases = match fields.get("releases") {
+    None => artifacts
+    Some(String(name)) =>
+      locations.get(name).unwrap_or_else(() => raise InvalidConfiguration)
+    _ => raise InvalidConfiguration
+  }
+  { artifacts, caches, releases, node, helper, }
 }
 
 ///|
@@ -52,7 +61,7 @@ pub async fn Config::load(
     helper~,
   )
   // Fail at startup for a missing/incompatible SDK bridge, not on the first job.
-  for location in [config.artifacts, config.caches] {
+  for location in [config.artifacts, config.caches, config.releases] {
     let store = config.resolve(location, legacy_root="")
     if store.backend is S3 {
       ignore(store.s3_command("verify", {}, b""))

@@ -8,7 +8,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 # runner. Build with --platform linux/amd64 for the ubuntu-24.04 x64 capability.
 FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b AS environment
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl git build-essential libssl-dev util-linux \
+    bash ca-certificates curl git gh build-essential libssl-dev util-linux \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \

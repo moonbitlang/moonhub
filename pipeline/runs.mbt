@@ -123,14 +123,44 @@ fn insert_run_snapshot(
       params=[repository_id],
     )
     .get_name("number")
+  let display_title = if definition.run_name.is_empty() {
+    workflow_name
+  } else {
+    let github : Map[String, Json] = {
+      "repository": context.map(c => c.repository).unwrap_or(""),
+      "sha": sha,
+      "event_name": context
+      .map(c => c.event_name)
+      .unwrap_or("workflow_dispatch"),
+      "ref": "refs/heads/" + branch,
+      "actor": (
+        tx
+        .query_one("SELECT name_key FROM user WHERE id=?", params=[actor_id])
+        .get_name("name_key") : String),
+      "workflow": workflow_name,
+    }
+    let title = @workflow.scheduling_template(definition.run_name, {
+      "github": ToJson::to_json(github),
+      "inputs": ToJson::to_json(context.map(c => c.inputs).unwrap_or(Map([]))),
+    }) catch {
+      @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
+    }
+    guard !title.is_empty() &&
+      @utf8.encode(title).length() <= 512 &&
+      !title.contains("\u0000") else {
+      raise @domain.BadRequest(message="run-name requires 1 to 512 UTF-8 bytes")
+    }
+    title
+  }
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, '')) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, '')) RETURNING *",
     params=[
       repository_id,
       number,
       actor_id,
       workflow_path,
       workflow_name,
+      display_title,
       branch,
       sha,
       pin,
@@ -212,10 +242,53 @@ pub async fn create_run(
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
 ) -> Run {
+  create_run_event(
+    pool,
+    root,
+    actor,
+    repo,
+    branch,
+    workflow_path,
+    inputs~,
+    jobs~,
+  )
+}
+
+///|
+async fn create_run_event(
+  pool : @database.Database,
+  root : String,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  branch : String,
+  workflow_path : String,
+  inputs~ : Map[String, Json] = Map([]),
+  jobs~ : Array[String] = [],
+  scheduled_minute~ : Int64 = -1L,
+) -> Run {
   ignore(require_run_author(pool, actor, repo))
   validate_workflow_path(workflow_path)
   @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
     ignore(require_run_author(pool, actor, repo))
+    if scheduled_minute >= 0L {
+      let previous = pool.with_client(c => {
+        let config = c.query_opt(
+          "SELECT actor_id FROM pipeline_schedule_config WHERE repository_id=? AND enabled=1",
+          params=[scope.id],
+        )
+        guard config is Some(config) &&
+          (config.get_name("actor_id") : Int64) == actor.id else {
+          raise @domain.Forbidden(message="scheduled execution is disabled")
+        }
+        c.query_opt(
+          "SELECT r.* FROM pipeline_schedule_tick t JOIN pipeline_run r ON r.id=t.run_id WHERE t.repository_id=? AND t.workflow_path=? AND t.minute=?",
+          params=[scope.id, workflow_path, scheduled_minute],
+        )
+      })
+      if previous is Some(previous) {
+        return Run::from_row(previous)
+      }
+    }
     let sha = @gitops.branch_sha(git_dir, branch)
     let pin = "refs/moonhub/pipelines/" + @identity.random_hex(16)
     let mut committed = false
@@ -244,18 +317,53 @@ pub async fn create_run(
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
     let triggers = @workflow.triggers(source)
-    guard triggers.dispatch || !jobs.is_empty() else {
+    guard scheduled_minute >= 0L || triggers.dispatch || !jobs.is_empty() else {
       raise @domain.BadRequest(
         message="workflow does not allow manual dispatch",
       )
     }
-    let inputs = @workflow.resolve_dispatch_inputs(triggers.inputs, inputs) catch {
+    if scheduled_minute >= 0L {
+      let utc = pool.with_client(c => {
+        c.query_one(
+          "SELECT CAST(strftime('%M',?*60,'unixepoch') AS INTEGER) minute,CAST(strftime('%H',?*60,'unixepoch') AS INTEGER) hour,CAST(strftime('%d',?*60,'unixepoch') AS INTEGER) day,CAST(strftime('%m',?*60,'unixepoch') AS INTEGER) month,CAST(strftime('%w',?*60,'unixepoch') AS INTEGER) weekday",
+          params=[
+            scheduled_minute, scheduled_minute, scheduled_minute, scheduled_minute,
+            scheduled_minute,
+          ],
+        )
+      })
+      guard triggers.schedules.any(cron => {
+        @workflow.cron_matches(
+          cron,
+          (utc.get_name("minute") : Int64).to_int(),
+          (utc.get_name("hour") : Int64).to_int(),
+          (utc.get_name("day") : Int64).to_int(),
+          (utc.get_name("month") : Int64).to_int(),
+          (utc.get_name("weekday") : Int64).to_int(),
+        )
+      }) else {
+        raise @domain.BadRequest(
+          message="workflow schedule changed before snapshot",
+        )
+      }
+    }
+    let inputs = try {
+      if scheduled_minute >= 0L {
+        Map([])
+      } else {
+        @workflow.resolve_dispatch_inputs(triggers.inputs, inputs)
+      }
+    } catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
     let context : @workflow.RunContext = {
       repository: repo.owner + "/" + repo.name,
       sha,
-      event_name: "workflow_dispatch",
+      event_name: if scheduled_minute >= 0L {
+        "schedule"
+      } else {
+        "workflow_dispatch"
+      },
       head_ref: "",
       base_ref: "",
       inputs,
@@ -274,7 +382,16 @@ pub async fn create_run(
     }
     let run = pool.with_client(client => {
       client.with_transaction(tx => {
-        insert_run_snapshot(
+        if scheduled_minute >= 0L {
+          guard tx.query_opt(
+              "SELECT s.repository_id FROM pipeline_schedule_config s JOIN repository r ON r.id=s.repository_id WHERE s.repository_id=? AND s.enabled=1 AND s.actor_id=? AND r.default_branch=?",
+              params=[scope.id, actor.id, branch],
+            )
+            is Some(_) else {
+            raise @domain.Forbidden(message="schedule changed before snapshot")
+          }
+        }
+        let run = insert_run_snapshot(
           tx,
           scope.id,
           actor.id,
@@ -287,6 +404,15 @@ pub async fn create_run(
           definition,
           context=Some(context),
         )
+        if scheduled_minute >= 0L {
+          ignore(
+            tx.execute(
+              "INSERT INTO pipeline_schedule_tick(repository_id,workflow_path,minute,run_id) VALUES(?,?,?,?)",
+              params=[scope.id, workflow_path, scheduled_minute, run.id],
+            ),
+          )
+        }
+        run
       })
     })
     committed = true

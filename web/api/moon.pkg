@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/releases",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/attachments",
   "hackwaly/moonhub/database",
@@ -17,6 +18,8 @@ import {
 }
 
 import {
+  "moonbitlang/async/process",
+  "moonbitlang/core/env",
   "hackwaly/moonhub/test_support",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async/http",

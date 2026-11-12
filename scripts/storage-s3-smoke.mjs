@@ -38,6 +38,7 @@ try {
   }
   await tests(['storage'], 5);
   await tests(['pipeline', '--filter', 'S3 live*'], 1);
+  await tests(['releases/s3_wbtest.mbt'], 1);
   await tests(['web/views/pipelines/artifact_api_wbtest.mbt'], 9);
   const objects = await client.send(new ListObjectsV2Command({ Bucket: 'moonhub-storage-test', Prefix: 'acceptance/' }));
   assert.ok(objects.KeyCount > 0, 'upstream Actions did not create any remote objects');
