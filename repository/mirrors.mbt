@@ -25,11 +25,13 @@ pub(all) struct MirrorAttempt {
 }
 
 ///|
-pub fn require_mirror_manager(
+#alias(require_mirror_manager)
+pub fn require_repository_admin(
   pool : @database.Database,
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
 ) -> RepositoryScope raise {
+  let actor = mirror_actor(pool, actor.id)
   let scope = repository_scope(pool, actor, repo)
   guard @identity.can_manage_team(pool, actor, scope.team_id) else {
     raise @domain.Forbidden(message="repository owner or admin required")
@@ -43,7 +45,7 @@ pub fn push_mirrors(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
 ) -> Array[PushMirror] raise {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   pool.with_client(client => {
     client
     .query_all(
@@ -79,7 +81,7 @@ pub fn mirror_history(
   repo : @domain.RepoId,
   id : Int64,
 ) -> Array[MirrorAttempt] raise {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   pool.with_client(client => {
     client
     .query_all(
@@ -140,12 +142,12 @@ pub async fn save_push_mirror(
   force_push : Bool,
   prune : Bool,
 ) -> Int64 {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   let target = parse_ssh_import_source(url.trim().to_owned())
   // Configuration writes serialize with a claimed transfer. A busy transfer can be retried.
   let lock = mirror_lock(root, id)
   defer lock.close()
-  ignore(require_mirror_manager(pool, actor, repo))
+  ignore(require_repository_admin(pool, actor, repo))
   let inherited : String = if id != 0L {
     let previous = pool.with_client(client => {
       guard client.query_opt(
@@ -184,7 +186,7 @@ pub async fn save_push_mirror(
   } else {
     None
   }
-  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
+  ignore(require_repository_admin(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(
@@ -287,10 +289,10 @@ pub async fn push_mirror_action(
   version : Int64,
   action : String,
 ) -> Unit {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
-  ignore(require_mirror_manager(pool, actor, repo))
+  ignore(require_repository_admin(pool, actor, repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(

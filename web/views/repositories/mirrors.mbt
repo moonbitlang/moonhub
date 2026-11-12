@@ -7,7 +7,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
   ctx.get("/:owner/:repo/settings/mirrors", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
-    let scope = @repository.require_mirror_manager(pool, actor, repo)
+    let scope = @repository.require_repository_admin(pool, actor, repo)
     res.send_html(
       render_mirrors(
         assets,
@@ -28,7 +28,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
     ctx.get(route, async fn(req, res) {
       let actor = @web_context.require_current_user(req)
       let repo = @web_context.repo_param(req)
-      let scope = @repository.require_mirror_manager(pool, actor, repo)
+      let scope = @repository.require_repository_admin(pool, actor, repo)
       let mirror = if editing {
         find_mirror(
           @repository.push_mirrors(pool, actor, repo),
@@ -63,7 +63,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
     ) {
       let actor = @web_context.require_current_user(req)
       let repo = @web_context.repo_param(req)
-      let scope = @repository.require_mirror_manager(pool, actor, repo)
+      let scope = @repository.require_repository_admin(pool, actor, repo)
       let form = @web_context.protected_form(req, "mirrors:\{scope.id}")
       let id = if editing {
         @web_context.positive_resource_number(
@@ -146,7 +146,7 @@ pub let mirrors_module : @moonback.Module = Module(ctx => {
     ) {
       let actor = @web_context.require_current_user(req)
       let repo = @web_context.repo_param(req)
-      let scope = @repository.require_mirror_manager(pool, actor, repo)
+      let scope = @repository.require_repository_admin(pool, actor, repo)
       let form = @web_context.protected_form(req, "mirrors:\{scope.id}")
       let id = @web_context.positive_resource_number(
         @web_context.required_param(req, "mirror", "mirror"),

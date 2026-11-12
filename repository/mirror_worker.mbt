@@ -23,7 +23,7 @@ fn mirror_actor(
         params=[creator_id],
       )
       is Some(row) else {
-      raise @domain.Forbidden(message="mirror owner is no longer active")
+      raise @domain.Forbidden(message="repository manager is no longer active")
     }
     {
       id: row.get_name("id"),
@@ -64,7 +64,7 @@ fn claim_mirror(pool : @database.Database, id : Int64) -> MirrorJob? raise {
         name: row.get_name("name"),
       }
       let actor = mirror_actor(pool, row.get_name("creator_id"))
-      let scope = require_mirror_manager(pool, actor, repo)
+      let scope = require_repository_admin(pool, actor, repo)
       let generation : Int64 = row.get_name("generation")
       let lease = @identity.random_hex(16)
       ignore(
@@ -124,7 +124,7 @@ async fn transfer_mirror(
     let dir = resolve_repository_dir(root, job.scope.repo)
     let lock = @gitops.repository_write_lock(dir)
     defer lock.close()
-    ignore(require_mirror_manager(pool, job.actor, job.scope.repo))
+    ignore(require_repository_admin(pool, job.actor, job.scope.repo))
     recover_ref_events_locked(pool, job.scope, dir)
     // Copy objects rather than sharing them: source GC cannot invalidate an in-flight snapshot.
     run_repository_command(
@@ -148,7 +148,7 @@ async fn transfer_mirror(
   }
   // Recheck the current account and namespace permission immediately before external I/O.
   ignore(
-    require_mirror_manager(
+    require_repository_admin(
       pool,
       mirror_actor(pool, job.actor.id),
       job.scope.repo,

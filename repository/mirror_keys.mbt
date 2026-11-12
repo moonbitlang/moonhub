@@ -47,10 +47,10 @@ pub async fn rotate_mirror_key(
   id : Int64,
   version : Int64,
 ) -> Unit {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
-  ignore(require_mirror_manager(pool, actor, repo))
+  ignore(require_repository_admin(pool, actor, repo))
   guard pool.with_client(client => {
     client.query_opt(
       "SELECT id FROM repository_mirror WHERE id=? AND repository_id=? AND version=?",
@@ -63,7 +63,7 @@ pub async fn rotate_mirror_key(
     )
   }
   let key = generate_mirror_key(root)
-  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
+  ignore(require_repository_admin(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(

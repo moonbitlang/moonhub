@@ -113,7 +113,7 @@ pub async fn initialize_mirror_host(
   version : Int64,
   config : MirrorConfig,
 ) -> Unit {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
   let url : String = pool.with_client(client => {
@@ -135,9 +135,9 @@ pub async fn initialize_mirror_host(
       ]),
     )
   })
-  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
+  ignore(require_repository_admin(pool, mirror_actor(pool, actor.id), repo))
   let keys = scan_mirror_host(config, parse_ssh_import_source(url))
-  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
+  ignore(require_repository_admin(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     // The mirror lock binds the scan to this saved destination and version.
     ignore(
@@ -159,10 +159,10 @@ pub async fn confirm_mirror_host(
   version : Int64,
   challenge : String,
 ) -> Unit {
-  let scope = require_mirror_manager(pool, actor, repo)
+  let scope = require_repository_admin(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
-  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
+  ignore(require_repository_admin(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(
