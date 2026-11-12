@@ -14,10 +14,10 @@ async test "empty database initializes the complete baseline and repeats safely"
       )
       for
         (kind, count) in [
-          ("table", 81L),
+          ("table", 83L),
           ("index", 71L),
           ("view", 2L),
-          ("trigger", 42L),
+          ("trigger", 43L),
         ] {
         assert_eq(
           (
@@ -63,7 +63,8 @@ async test "schema 38 upgrades atomically and preserves existing data" {
         initialize_database_schema(
           client,
           None,
-          migration + "\nSELECT * FROM missing_table;",
+          migration,
+          "SELECT * FROM missing_table;",
         )
       catch {
         @moondb.QueryError(_) => ()
@@ -166,7 +167,7 @@ async test "current schema initialization preserves data and schema" {
 async test "all older versions and future versions are rejected without changing data" {
   @async.with_task_group(group => {
     let versions = [ for version in 0..<38 => version ]
-    versions.push(41)
+    versions.push(42)
     versions.push(100)
     for version in versions {
       let pool = new_db_pool({ path: ":memory:", }, group)
@@ -178,7 +179,7 @@ async test "all older versions and future versions are rejected without changing
       })
       try initialize_db(pool) catch {
         @domain.BadRequest(message~) =>
-          if version > 40 {
+          if version > 41 {
             assert_eq(
               message, "database schema is newer than this moonhub version",
             )
@@ -257,6 +258,7 @@ async test "baseline creation rolls back DDL and version and can retry" {
           Some(baseline),
           migration +
           "\nPRAGMA user_version=38; CREATE TABLE \"user\"(id INTEGER);",
+          "",
         )
       catch {
         @moondb.QueryError(_) => ()
@@ -298,7 +300,12 @@ async test "baseline transaction rechecks version and objects after preflight" {
       // A version 38 preflight does not load the baseline. If the database
       // becomes empty before the write lock, it must retry with that script.
       try
-        initialize_database_schema(client, None, "SQL that must not execute")
+        initialize_database_schema(
+          client,
+          None,
+          "SQL that must not execute",
+          "SQL that must not execute",
+        )
       catch {
         @domain.BadRequest(message~) =>
           assert_true(message.contains("state changed"))
@@ -314,16 +321,18 @@ async test "baseline transaction rechecks version and objects after preflight" {
         client,
         None,
         "invalid SQL that must not execute",
+        "invalid SQL that must not execute",
       )
       for
         sql in [
-          "PRAGMA user_version=37", "PRAGMA user_version=41", "PRAGMA user_version=0",
+          "PRAGMA user_version=37", "PRAGMA user_version=42", "PRAGMA user_version=0",
         ] {
         client.batch_execute(sql)
         try
           initialize_database_schema(
             client,
             None,
+            "invalid SQL that must not execute",
             "invalid SQL that must not execute",
           )
         catch {
