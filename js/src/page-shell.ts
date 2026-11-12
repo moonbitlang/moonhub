@@ -232,18 +232,6 @@ export function mountShell(signal: AbortSignal) {
   document.querySelector('.logout-form')?.addEventListener('submit', () => {
     try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('moonhub.draft:')) sessionStorage.removeItem(key); } catch { /* Private browsing may disallow storage. */ }
   }, { signal });
-  const timeElements = [...document.querySelectorAll<HTMLTimeElement>('time[data-relative-time]')];
-  function relativeTimes() {
-    const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-    for (const element of timeElements) {
-      const dateTime = element.dateTime.replace(' ', 'T');
-      const timestamp = Date.parse(/[zZ]|[+-]\d\d:\d\d$/.test(dateTime) ? dateTime : dateTime + 'Z'); if (!Number.isFinite(timestamp)) continue;
-      const seconds = (timestamp - Date.now()) / 1000, magnitude = Math.abs(seconds);
-      const [unit, divisor] = magnitude < 60 ? ['second', 1] : magnitude < 3600 ? ['minute', 60] : magnitude < 86400 ? ['hour', 3600] : ['day', 86400];
-      element.textContent = formatter.format(Math.round(seconds / divisor), unit as Intl.RelativeTimeFormatUnit);
-    }
-  }
-  relativeTimes(); if (timeElements.length) intervals.push(setInterval(relativeTimes, 60000));
   for (const detail of document.querySelectorAll<HTMLDetailsElement>('[data-mobile-details]')) {
     const compact = matchMedia('(max-width: 700px)');
     if (compact.matches) detail.open = false;

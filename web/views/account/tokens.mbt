@@ -24,7 +24,7 @@ fn token_page(
       b <+ "<ul class=\"mr-list\">"
       for token in tokens {
         b <+
-          "<li><strong>\{token.name}</strong><p class=\"muted\">\{token.permission} · expires \{token.expires_at} · \{if token.revoked_at is Some(_) { "Revoked" } else { "Not revoked" }}</p>"
+          "<li><strong>\{token.name}</strong><p class=\"muted\">\{token.permission} · expires \{@web_ui.timestamp(token.expires_at)} · \{if token.revoked_at is Some(_) { "Revoked" } else { "Not revoked" }}</p>"
         if token.revoked_at is None {
           b <+
             "<form method=\"post\" action=\"/-/settings/tokens/\{token.id.to_string()}/revoke\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button class=\"danger-button secondary-button\" type=\"submit\">Revoke \{token.name}</button></form>"

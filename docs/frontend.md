@@ -61,6 +61,30 @@ the document head.
 `js/src/page-shell.ts` retains the current sidebar, menus, drafts and accessibility
 behavior. The migration does not change the site's visual design.
 
+## Display time zones
+
+Profile settings save an optional IANA time zone to the account. The default,
+Follow device time zone, resolves independently on each browser; explicit choices
+apply across devices. The session lookup loads the current preference on each
+request and `web/ui.layout` puts it on `main[data-time-zone]`, so SPA navigation
+also receives fresh settings. Preferences do not change stored UTC instants,
+API timestamps, scheduling or lease calculations.
+
+Page templates use `web/ui.timestamp` for instants. It emits ISO `datetime`
+attributes with a UTC marker or existing offset, `data-local-time`, an explicit
+fallback and optional `data-relative-time`. `js/src/time.ts` enhances these after
+hydration and each navigation, using the browser locale and selected time zone.
+Relative times keep exact local times in their title. Date-only Git metadata
+remains a calendar date. Without JavaScript, UTC instants stay explicitly marked
+UTC; an unsupported browser time zone falls back to UTC.
+
+The server validates choices against the public-domain IANA tzdb 2026f Zone/Link
+identifier catalog in `identity/time_zones.mbt`. The browser supplies offset and
+daylight-saving rules. Regenerate it with
+`python3 scripts/update-time-zones.py /path/to/tzdataYYYYx.tar.gz` after downloading
+an official release, then run `moon fmt`. Do not store numeric offsets as account
+preferences.
+
 ## Framework source and builds
 
 Both SSR and JS use the published `moonbit-community/rabbita@0.17.0` dependency

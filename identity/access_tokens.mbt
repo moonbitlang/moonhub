@@ -150,6 +150,7 @@ pub fn authenticate_access_token(
         name_key: row.get_name("name_key"),
         display_name: row.get_name("display_name"),
         is_site_admin: row.get_name("is_site_admin"),
+        time_zone: None,
       }
     })
   })

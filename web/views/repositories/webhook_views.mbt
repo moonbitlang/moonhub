@@ -107,12 +107,13 @@ fn render_webhook_deliveries(
         b <+ "<ul class=\"ssh-key-list\" aria-label=\"Webhook deliveries\">"
         for d in rows {
           b <+
-            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2><a href=\"\{base}/deliveries/\{d.id.to_string()}\">#\{d.id.to_string()} · \{d.kind}</a></h2><span class=\"ssh-key-state\">\{d.status}</span></div><p class=\"muted\">\{d.created_at} UTC · \{d.attempts.to_string()} attempts · HTTP \{d.response_code.to_string()}</p>"
+            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2><a href=\"\{base}/deliveries/\{d.id.to_string()}\">#\{d.id.to_string()} · \{d.kind}</a></h2><span class=\"ssh-key-state\">\{d.status}</span></div><p class=\"muted\">\{@web_ui.timestamp(d.created_at)} · \{d.attempts.to_string()} attempts · HTTP \{d.response_code.to_string()}</p>"
           if !d.error.is_empty() {
             b <+ "<p>\{d.error}</p>"
           }
           if d.status == "pending" {
-            b <+ "<p class=\"muted\">Next attempt: \{d.next_attempt_at} UTC</p>"
+            b <+
+              "<p class=\"muted\">Next attempt: \{@web_ui.timestamp(d.next_attempt_at)}</p>"
           }
           if hook.active &&
             ["failed", "succeeded", "cancelled"].contains(d.status) {

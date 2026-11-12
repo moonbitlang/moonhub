@@ -10,9 +10,9 @@ fn render_invitation_credentials(
     assets,
     Html(b => {
       b <+
-        "<nav class=\"ssh-settings-back\" aria-label=\"Team\"><a href=\"/\{team.name_key}\">\{team.display_name}</a></nav><section class=\"page-heading\"><h1>Invitation sign-in details</h1></section><div class=\"content-stack invitation-details\"><section><dl class=\"ssh-address-details\"><div><dt>Username</dt><dd class=\"path\">\{details.name_key}</dd></div><div><dt>Email</dt><dd>\{details.email}</dd></div><div><dt>Expires</dt><dd>\{details.expires_at} UTC</dd></div><div><dt>Delivery</dt><dd>\{details.email_status}</dd></div>"
+        "<nav class=\"ssh-settings-back\" aria-label=\"Team\"><a href=\"/\{team.name_key}\">\{team.display_name}</a></nav><section class=\"page-heading\"><h1>Invitation sign-in details</h1></section><div class=\"content-stack invitation-details\"><section><dl class=\"ssh-address-details\"><div><dt>Username</dt><dd class=\"path\">\{details.name_key}</dd></div><div><dt>Email</dt><dd>\{details.email}</dd></div><div><dt>Expires</dt><dd>\{@web_ui.timestamp(details.expires_at)}</dd></div><div><dt>Delivery</dt><dd>\{details.email_status}</dd></div>"
       if details.email_sent_at is Some(sent_at) {
-        b <+ "<div><dt>Sent</dt><dd>\{sent_at} UTC</dd></div>"
+        b <+ "<div><dt>Sent</dt><dd>\{@web_ui.timestamp(sent_at)}</dd></div>"
       }
       b <+ "</dl>"
       if details.email_last_error is Some(_) {

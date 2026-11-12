@@ -20,4 +20,5 @@ pub(all) struct CurrentUser {
   name_key : String
   display_name : String
   is_site_admin : Bool
+  time_zone : String?
 }

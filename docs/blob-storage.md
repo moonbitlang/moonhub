@@ -109,7 +109,7 @@ request volume with realistic archives before production cutover.
 
 ## Cutover, rollback and cleanup
 
-Migration 038 adds storage locations and a durable deletion journal. Historical
+Migration 039 adds storage locations and a durable deletion journal. Historical
 records without a location continue to read from `.pipeline-artifacts` under the
 repository root. New records capture their complete destination descriptor,
 including the filesystem root or S3 bucket/Region/prefix. Editing the default

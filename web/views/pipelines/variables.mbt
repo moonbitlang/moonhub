@@ -184,7 +184,7 @@ fn render_variables(
         b <+ "<ul class=\"ssh-key-list\" aria-label=\"Repository variables\">"
         for variable in variables {
           b <+
-            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{variable.name}</h2></div><pre><code>\{variable.value}</code></pre><dl class=\"ssh-key-metadata\"><div><dt>Updated</dt><dd>\{variable.updated_at} UTC</dd></div></dl>"
+            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{variable.name}</h2></div><pre><code>\{variable.value}</code></pre><dl class=\"ssh-key-metadata\"><div><dt>Updated</dt><dd>\{@web_ui.timestamp(variable.updated_at)}</dd></div></dl>"
           if manager {
             b <+
               "<div class=\"ssh-form-actions\"><a href=\"\{base}/\{variable.name}/edit\" aria-label=\"Edit \{variable.name}\">Edit variable</a><a class=\"ssh-revoke-link\" href=\"\{base}/\{variable.name}/delete\" aria-label=\"Delete \{variable.name}\">Delete</a></div>"

@@ -74,6 +74,7 @@ pub fn authenticate_user(
             name_key: row.get_name("name_key"),
             display_name: row.get_name("display_name"),
             is_site_admin: row.get_name("is_site_admin"),
+            time_zone: None,
           }
           let token = create_session_token(tx, user.id)
           let _ = user
@@ -118,7 +119,8 @@ pub fn lookup_session_user(
       #|  "user".id,
       #|  "user".name_key,
       #|  "user".display_name,
-      #|  "user".is_site_admin
+      #|  "user".is_site_admin,
+      #|  (SELECT time_zone FROM user_preferences WHERE user_id = "user".id) AS time_zone
       #|FROM session
       #|JOIN "user" ON "user".id = session.user_id
       #|WHERE session.token_hash = ?
@@ -138,6 +140,7 @@ pub fn lookup_session_user(
           name_key: row.get_name("name_key"),
           display_name: row.get_name("display_name"),
           is_site_admin: row.get_name("is_site_admin"),
+          time_zone: row.get_name("time_zone"),
         })
       }
     }
@@ -297,6 +300,7 @@ pub fn accept_invitation(
             name_key: user_row.get_name("name_key"),
             display_name: user_row.get_name("display_name"),
             is_site_admin: user_row.get_name("is_site_admin"),
+            time_zone: None,
           }
           // Every activated account owns a personal namespace, which is the only
           // namespace it may create repositories in without an administrator.
@@ -894,6 +898,7 @@ pub fn active_user_by_name(
       name_key: row.get_name("name_key"),
       display_name: row.get_name("display_name"),
       is_site_admin: row.get_name("is_site_admin"),
+      time_zone: None,
     }
   })
 }
