@@ -244,6 +244,9 @@ async function main() {
     assert.equal(docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']), '');
     console.log(`Windows ${standalone?'standalone provider':'ASG worker'} container smoke passed: same worker, fresh volumes, PowerShell, Bash, Node20 action + post, cancellation, cleanup before ready, drain.`);
   } finally {
+    // A cleanup failure must not leave the fixture's HTTP listener keeping Node
+    // alive until the entire CI job times out, or hide the original test error.
+    try {
     const owned=docker(['ps','-aq','--filter','name=^moonhub-pipeline-']).split(/\s+/).filter(Boolean);
     for(const container of owned) {
       try {console.log('Remaining container '+container+'\n'+docker(['top',container]));console.log(docker(['logs',container]));} catch {}
@@ -258,9 +261,11 @@ async function main() {
     const volumes=docker(['volume','ls','-q','--filter','label=io.moonhub.pipeline.workspace=1']).split(/\s+/).filter(Boolean);
     if(volumes.length) docker(['volume','rm',...volumes]);
     try {docker(['image','rm',image]);} catch {}
-    ps(`Remove-NetFirewallRule -Name '${rule}' -ErrorAction SilentlyContinue`);
-    server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
-    fs.rmSync(root,{recursive:true,force:true});
+    } finally {
+      try {ps(`Get-NetFirewallRule -Name '${rule}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction Stop`);} catch(error) {console.error('Fixture firewall cleanup failed: '+error.message);}
+      server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
+      fs.rmSync(root,{recursive:true,force:true});
+    }
   }
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
