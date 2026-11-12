@@ -32,11 +32,17 @@ pub async fn[A] with_repository_write(
   f : async (RepositoryScope, String) -> A,
 ) -> A {
   authorize_repository(pool, actor, repo, Write)
+  let expected = repository_scope(pool, actor, repo)
   let git_dir = resolve_repository_dir(root, repo)
   let lock = @gitops.repository_write_lock(git_dir)
   defer lock.close()
   authorize_repository(pool, actor, repo, Write)
   let scope = repository_scope(pool, actor, repo)
+  guard scope.id == expected.id else {
+    raise @domain.NotFound(
+      message="repository identity changed; reload before writing",
+    )
+  }
   recover_ref_events_locked(pool, scope, git_dir)
   f(scope, git_dir)
 }

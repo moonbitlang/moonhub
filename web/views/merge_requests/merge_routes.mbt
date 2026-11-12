@@ -208,6 +208,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       try {
         let lock = @gitops.repository_write_lock(git_dir)
         defer lock.close()
+        @repository.recover_ref_events_locked(pool, scope, git_dir)
         mr = @collaboration.refresh_merge_request(
           pool,
           scope,

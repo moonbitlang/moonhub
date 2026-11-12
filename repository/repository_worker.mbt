@@ -119,6 +119,22 @@ async fn provision_repository(
   }
   require_repository_manager(pool, actor, team)
   let job = pin_legacy_repository_source(pool, actor, job, addresses)
+  // Keep a local source pinned throughout cloning and publication. Otherwise
+  // an SSH connection delayed after resolution could read a same-name successor.
+  let source_lock = if job.source_kind == "local" {
+    guard job.source_repository_id is Some(id) else {
+      raise @domain.NotFound(message="source repository no longer exists")
+    }
+    let source_repo = readable_source_repository(pool, actor, id)
+    let directory = resolve_repository_dir(root, source_repo)
+    let lock = @gitops.repository_write_lock(directory)
+    errdefer lock.close()
+    ignore(readable_source_repository(pool, actor, id))
+    Some(lock)
+  } else {
+    None
+  }
+  defer (if source_lock is Some(lock) { lock.close() })
   let source = repository_job_source(pool, actor, job, addresses)
   let checked = @domain.parse_transport_repo("\{job.repo.path()}.git")
   guard checked.path() == job.repo.path() else {

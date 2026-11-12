@@ -195,8 +195,11 @@ pub async fn serve_git_ssh(
     return 0
   }
   let request = parse_ssh_request(command)
-  ignore(
-    authorize_git_operation(pool, credential, request.repo, request.operation),
+  let expected = authorize_git_operation(
+    pool,
+    credential,
+    request.repo,
+    request.operation,
   )
   let git_dir = @repository.resolve_repository_dir(root, request.repo)
   let write_lock = if request.operation == @repository.Write {
@@ -211,6 +214,11 @@ pub async fn serve_git_ssh(
     request.repo,
     request.operation,
   )
+  guard scope.id == expected.id else {
+    raise @domain.NotFound(
+      message="repository identity changed; reconnect before writing",
+    )
+  }
   if request.operation == @repository.Write {
     @repository.recover_ref_events_locked(pool, scope, git_dir)
   }

@@ -168,6 +168,19 @@ pub async fn recover_ref_events_locked(
   scope : RepositoryScope,
   git_dir : String,
 ) -> Unit {
+  // Background workers also arrive here with a previously captured scope.
+  // Never apply recovery to another repository after waiting for its lock.
+  pool.with_client(client => {
+    guard client.query_opt(
+        "SELECT r.id FROM repository r JOIN team t ON t.id=r.team_id WHERE r.id=? AND r.ready=1 AND t.name_key=? AND r.name=?",
+        params=[scope.id, scope.repo.owner, scope.repo.name],
+      )
+      is Some(_) else {
+      raise @domain.NotFound(
+        message="repository identity changed; retry the request",
+      )
+    }
+  })
   recover_mirror_refs_locked(pool, scope, git_dir)
   recover_webhook_refs_locked(pool, scope, git_dir)
   let rows = pool.with_client(client => {
