@@ -33,6 +33,14 @@ fn Tool::definition(self : Tool) -> Json {
       "description": "Repository path, owner/name",
     }
   }
+  if ["moonhub_create_merge_request", "moonhub_edit_merge_request"].contains(
+      self.name,
+    ) {
+    properties["description"] = {
+      "type": "string",
+      "description": "MR Markdown description. Use Closes #123, Fixes #123 or Resolves #123 to close same-repository issues only after successful merge. Keywords are case-insensitive; comma/and-separated numbers are supported. Code, quoted lines and HTML comments are ignored. Response closing_issue_numbers lists parsed references; missing/already closed issues are skipped.",
+    }
+  }
   for
     key in [
       "number", "version", "edit_version", "discussion", "state_version", "attempt",
@@ -43,6 +51,18 @@ fn Tool::definition(self : Tool) -> Json {
         "type": "string",
         "description": "Canonical decimal string (not a JSON number)",
       }
+    }
+  }
+  if self.name == "moonhub_create_merge_request" {
+    properties["issue"] = {
+      "type": "string",
+      "description": "Optional related issue number as a canonical decimal string. This only links the issue; use Closes #123 in description to close it on merge.",
+    }
+  }
+  if self.name == "moonhub_merge_merge_request" {
+    properties["edit_version"] = {
+      "type": "string",
+      "description": "Observed MR metadata version as a canonical decimal string. Required when closing_issue_numbers is nonempty, to confirm the issue closures inspected with moonhub_get_merge_request. Stale metadata is rejected.",
     }
   }
   {
@@ -148,7 +168,7 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_get_merge_request",
-      description: "Read a merge request, activity and checks, including current version and edit_version.",
+      description: "Read a merge request, activity and checks, including current version, edit_version and closing_issue_numbers parsed from its description. Existing open issues in that list close only after successful merge.",
       permission: "read",
       required: ["repository", "number"],
       optional: ["page"],
@@ -263,7 +283,7 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_create_merge_request",
-      description: "Create an MR without authorizing CI execution; draft is true or false (default).",
+      description: "Create an MR without authorizing CI execution; draft is true or false (default). To close issues on successful merge, put Closes #123, Fixes #123 or Resolves #123 in description. The optional issue argument only links an issue. Returns closing_issue_numbers.",
       permission: "write",
       required: ["repository", "title", "source", "target"],
       optional: ["description", "draft", "issue"],
@@ -280,7 +300,7 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_edit_merge_request",
-      description: "Edit MR title, description or target branch using the last observed edit_version.",
+      description: "Edit MR title, description or target branch using the last observed edit_version. Add or remove Closes #123 / Fixes #123 / Resolves #123 in description to change which issues close on successful merge. Returns closing_issue_numbers.",
       permission: "write",
       required: ["repository", "number", "edit_version"],
       optional: ["title", "description", "target"],
@@ -357,10 +377,10 @@ fn tool_catalog() -> Array[Tool] {
     },
     {
       name: "moonhub_merge_merge_request",
-      description: "Submit an MR merge for the explicitly observed version, subject to branch rules and checks. Requires explicit user intent to merge.",
+      description: "Submit an MR merge for the explicitly observed version, subject to branch rules and checks. Successful merge closes existing open same-repository issues declared by Closes/Fixes/Resolves #123 in description; inspect closing_issue_numbers and pass the observed edit_version to confirm closures. Requires explicit user intent to merge.",
       permission: "merge",
       required: ["repository", "number", "version"],
-      optional: [],
+      optional: ["edit_version"],
     },
   ]
 }
@@ -916,6 +936,11 @@ async fn invoke_tool(
               actor,
               mr,
               decimal(string_arg(args, "version")),
+              edit_version=if args.contains("edit_version") {
+                Some(decimal(string_arg(args, "edit_version")))
+              } else {
+                None
+              },
             )
         }
         @user_api.mr_json(@collaboration.require_merge_request(pool, scope, id))

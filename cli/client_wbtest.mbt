@@ -131,3 +131,34 @@ test "MR diff accepts a commit independently of the required revision" {
   assert_eq(option(parsed, "version"), Some("3"))
   assert_eq(option(parsed, "commit"), Some(sha))
 }
+
+///|
+test "CLI help discovers closing directives and the merge preview" {
+  for
+    args in [
+      ["--help"],
+      ["mr", "--help"],
+      ["mr", "create", "--help"],
+      ["mr", "edit", "--help"],
+      ["mr", "merge", "--help"],
+    ] {
+    guard command().parse_outcome(argv=args) is Help(help) else {
+      fail("missing command help")
+    }
+    assert_true(help.contains("Closes"), msg=help)
+    assert_true(help.contains("merge"), msg=help)
+  }
+  guard command().parse_outcome(argv=["mr", "view", "--help"]) is Help(help) else {
+    fail("missing view help")
+  }
+  assert_true(help.contains("closing_issue_numbers"))
+}
+
+///|
+test "CLI merge accepts the observed metadata version to confirm closures" {
+  let parsed = command().parse(argv=[
+    "mr", "merge", "1", "--version", "2", "--edit-version", "3",
+  ])
+  assert_eq(option(parsed, "version"), Some("2"))
+  assert_eq(option(parsed, "edit-version"), Some("3"))
+}

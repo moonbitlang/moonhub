@@ -25,6 +25,27 @@ fn finish_merge(
           sha,
         )
         merge_activity(tx, mr, actor_id, "merged", body=sha)
+        for number in closing_issue_numbers(mr.description) {
+          let issue = tx.query_opt(
+            "SELECT id FROM issue WHERE repository_id = ? AND number = ? AND status = 'open'",
+            params=[mr.repository_id, number],
+          )
+          if issue is Some(issue) {
+            let id : Int64 = issue.get_name("id")
+            ignore(
+              tx.execute(
+                "UPDATE issue SET status = 'closed', closed_at = datetime('now'), edit_version = edit_version + 1, updated_at = datetime('now') WHERE id = ? AND status = 'open'",
+                params=[id],
+              ),
+            )
+            ignore(
+              tx.execute(
+                "INSERT INTO issue_activity (issue_id, actor_id, kind, body) VALUES (?, ?, 'close', ?)",
+                params=[id, actor_id, "Closed by merge request !\{mr.number}."],
+              ),
+            )
+          }
+        }
       }
     })
   })

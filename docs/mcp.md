@@ -114,6 +114,25 @@ manager access, an explicitly observed MR version and passing branch checks.
 Edits use `edit_version`; discussion resolution uses `state_version`.
 Reload current state after stale-version errors.
 
+For issue-fixing work, put `Closes #123`, `Fixes #123` or `Resolves #123` in the
+`description` of `moonhub_create_merge_request` / `moonhub_edit_merge_request`.
+Keywords are case-insensitive and accept comma/`and`-separated local references
+such as `Closes #123, #124`. Only the description declares closures: titles,
+comments, code examples and cross-repository references do not. The optional
+`issue` creation argument only links an issue. The tool catalog and description/issue
+argument schemas expose this distinction directly to agents.
+
+MR objects in tool results include `closing_issue_numbers` (decimal strings
+parsed from the description). Inspect this field with `moonhub_get_merge_request`
+before invoking `moonhub_merge_merge_request` with explicit user intent. Pass the
+observed `edit_version` alongside `version` to confirm a nonempty declaration;
+missing or stale metadata confirmation is rejected. A successful
+merge closes existing open issues in the same repository; missing/already closed
+issues are skipped. Submission queues a merge and does not itself close anything.
+Read MR state and issue activity afterward to confirm completion. Closing an
+unmerged MR or a failed merge leaves issues open. Editing the description replaces
+the declarations. See [closing directives](collaboration.md#issues).
+
 `moonhub_edit_merge_request` accepts optional `title`, `description` and `target`;
 at least one must be supplied. Omitted metadata is preserved. A target change is
 allowed only on an open MR with no merge queued/running and creates a new revision

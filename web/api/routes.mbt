@@ -605,6 +605,16 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 actor,
                 current,
                 number(field(body, "version")),
+                edit_version=body
+                  .get("edit_version")
+                  .map(value => {
+                    guard value is String(value) else {
+                      raise @domain.BadRequest(
+                        message="edit_version must be a decimal string",
+                      )
+                    }
+                    number(value)
+                  }),
               )
             "approve-checks" =>
               @collaboration.approve_merge_checks(

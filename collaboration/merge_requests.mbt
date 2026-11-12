@@ -636,6 +636,7 @@ pub fn enqueue_merge(
   actor : @domain.CurrentUser,
   mr : MergeRequest,
   version : Int64,
+  edit_version~ : Int64? = None,
 ) -> Unit raise {
   @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
   require_mutable_merge(mr)
@@ -645,6 +646,20 @@ pub fn enqueue_merge(
   guard version == mr.version else {
     raise @domain.BadRequest(
       message="branches changed; review the current version before merging",
+    )
+  }
+  // Description changes do not create a code revision. Bind issue-closing
+  // side effects to metadata the merger explicitly observed, including clients
+  // that inspected an MR before its first closing directive was added.
+  if edit_version is Some(expected) {
+    guard expected == mr.edit_version else {
+      raise @domain.BadRequest(
+        message="merge request metadata changed; reload closing_issue_numbers and edit_version before merging",
+      )
+    }
+  } else if !closing_issue_numbers(mr.description).is_empty() {
+    raise @domain.BadRequest(
+      message="edit_version is required to confirm closing_issue_numbers before merging",
     )
   }
   let blocked = merge_blocker(pool, scope, mr, merge_revision(pool, mr))

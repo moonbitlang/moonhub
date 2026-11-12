@@ -604,7 +604,8 @@ fn render_merge_detail(
           b <+ "<p class=\"settings-success\">No conflicts. Ready to merge.</p>"
         }
         if manager && blocker.is_empty() && version == mr.version {
-          b <+ "\{merge_action(base, csrf, "merge", "Merge request", version)}"
+          b <+
+            "\{merge_action(base, csrf, "merge", "Merge request", version, edit_version=mr.edit_version)}"
         }
         if !manager && mr.status == "open" {
           b <+

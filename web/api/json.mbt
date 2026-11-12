@@ -179,6 +179,9 @@ pub fn mr_json(mr : @collaboration.MergeRequest) -> Json {
     "number": mr.number.to_string(),
     "title": mr.title,
     "description": mr.description,
+    "closing_issue_numbers": @collaboration.closing_issue_numbers(
+      mr.description,
+    ).map(number => number.to_string()),
     "author": mr.author,
     "source": mr.source,
     "target": mr.target,

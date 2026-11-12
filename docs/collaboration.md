@@ -37,7 +37,44 @@ HTML.
 
 An issue can be linked when creating an MR, including through the issue's
 "Create merge request" link. Only issues in the same repository can be linked.
-Merging does not automatically close an issue.
+Linking alone does not close an issue. To close issues when an MR successfully
+merges, add closing directives to the MR **description**, for example:
+
+```text
+Closes #123
+Fixes #124, #125 and #126
+Resolves: #127
+```
+
+The case-insensitive keywords are `close`, `closes`, `closed`, `fix`, `fixes`,
+`fixed`, `resolve`, `resolves` and `resolved`. Use canonical positive issue
+numbers from the same repository, immediately after the keyword (with optional
+colon and spaces/tabs). Commas, `and`, or spaces can separate multiple numbers
+on the same line. Repeat a keyword on a new line. Titles, comments, commit
+messages, cross-repository references and bare `#123` mentions do not close
+issues. Inline/fenced/indented code, quoted lines, escaped text and HTML comments
+are ignored. An issue linked through the related-issue field is still only linked.
+
+Closures run only after a successful merge into the MR's target branch, in the
+same database transaction as merge completion. Closing/declining an MR or a
+failed merge leaves issues open. Missing or already closed issues are skipped;
+duplicates and recovery retries do not close or notify twice. Each closure
+increments the issue's edit version, records `Closed by merge request !N.` with
+the merging user, and uses the existing close notifications and webhooks.
+Editing the MR description updates the directives used by the eventual merge.
+
+MR JSON returned by the API, CLI and MCP includes `closing_issue_numbers`, an
+array of canonical decimal strings parsed from the description. This is the
+declaration, not a record of actual closures: entries may be missing or already
+closed. Read issue status/activity to confirm completion.
+
+When the declaration is nonempty, merge submission requires the MR's observed
+`edit_version` as well as its code `version`. Description edits do not change
+the code version; stale/missing metadata confirmation must not silently close
+newly declared issues. Browser merge forms send both values. CLI callers pass
+`--edit-version`, and API/MCP callers pass `edit_version`. MRs without closing
+directives retain the existing version-only merge interface; a supplied stale
+`edit_version` is always rejected.
 
 ## Merge Requests
 

@@ -719,7 +719,16 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
             form.get("version").unwrap_or(""),
           )
           if action == "merge" {
-            @collaboration.enqueue_merge(pool, scope, actor, mr, version)
+            @collaboration.enqueue_merge(
+              pool,
+              scope,
+              actor,
+              mr,
+              version,
+              edit_version=form
+                .get("edit_version")
+                .map(@web_context.positive_resource_number),
+            )
           } else if action == "approve-checks" {
             @collaboration.approve_merge_checks(pool, scope, actor, mr, version)
           } else {
