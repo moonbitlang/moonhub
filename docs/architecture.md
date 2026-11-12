@@ -184,6 +184,28 @@ creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
 
+Permanent deletion belongs to `repository`: it takes the shared Git write lock,
+rechecks the immutable repository ID and current manager permission, refuses
+unfinished CI runs/attempts and syncing mirrors, and transactionally records a
+cleanup manifest before deleting the repository. Foreign keys remove business
+records and delivery retries; deploy-key tombstones remain revoked. The manifest
+has no foreign key to the deleted repository and reserves its namespace/name
+until storage cleanup succeeds. A database trigger enforces this reservation for
+all registration paths.
+
+The Web server starts the durable cleanup worker with storage callbacks supplied
+by `attachments` and the application-scoped Pipeline coordinator. Repository owns
+Git and mirror cleanup, so it does not import either higher-level package.
+Artifact/cache cleanup uses the destinations preserved by the cascade deletion
+journal, including historical filesystem and S3 locations. It retains delayed
+namespace intents to reclaim uploads that finish after the initial cleanup.
+Cleanup uses a shared-volume worker lock, rejects traversal and filesystem
+symbolic links, treats missing files as successful retries, and retries failures
+after 30 seconds, including after restart.
+Attachment uploads share the repository write lock; local imports keep their
+source ID and hold its lock through cloning/publication. Managed writes and SSH
+transport compare repository IDs before and after acquiring the lock.
+
 Push mirror configuration, ref intents, snapshotting and delivery workers belong
 to `repository`; `web/views/repositories` owns the authorized settings forms.
 The source write lock covers only the local snapshot; a separate per-mirror lock

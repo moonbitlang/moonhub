@@ -85,6 +85,14 @@ runs in the background, with status and retry controls;
 [configure a team's import identity and trusted source hosts](deploy/README.md#ssh-import)
 before importing private repositories.
 
+Repository managers can permanently delete a ready repository from **Settings**
+after entering its full `owner/repo` name. Deletion has no recovery
+period and includes Git history, collaboration data, CI, attachments, artifacts,
+caches and repository configuration. Active CI or mirror syncs must finish
+first. Access ends immediately; the name remains reserved until background
+storage cleanup succeeds. Failed creation/import operations retain their
+existing discard flow.
+
 ## Continuous deployment
 
 Development, PRs, merge checks and CI for this repository use

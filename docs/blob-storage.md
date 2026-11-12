@@ -149,7 +149,9 @@ Every external write has a deletion intent before I/O begins. Linking a staged
 block or completed archive and removing that intent happen atomically. A crash
 therefore leaves recoverable work rather than an untracked object. Run/repository
 cascade deletion records a namespace deletion intent independent of foreign keys.
-Its ten-minute grace period allows in-flight transfers to stop before removal.
+Normal cascade cleanup waits ten minutes for in-flight transfers. Permanent
+repository deletion also performs an initial cleanup at the saved destinations
+and retains this delayed intent to reclaim uploads that finish afterwards.
 
 The existing cleanup worker reclaims expired/deleted records and retries due
 deletion intents. Successful remote deletion precedes metadata reclamation;

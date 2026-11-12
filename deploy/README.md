@@ -265,8 +265,8 @@ server configuration, not ordinary Git objects.
 repositories must be explicitly registered and associated with a team before
 they are available through either the web UI or SSH. Database initialization
 runs in `web` before the server becomes healthy. An empty database uses the
-schema 38 baseline and subsequent incremental migrations to reach schema 40.
-Existing databases at schema 38 upgrade automatically; older databases need
+schema 38 baseline and subsequent incremental migrations to reach schema 41.
+Existing databases at schema 38–40 upgrade automatically; older databases need
 to be upgraded with a historical release first; see
 [database initialization and upgrades](../db/README.md). SSH waits for Web
 initialization and never changes the schema from an authentication request.
