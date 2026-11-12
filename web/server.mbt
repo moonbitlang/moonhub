@@ -83,6 +83,17 @@ pub async fn serve(config : Config) -> Unit {
       }
     })
     let coordinator = @pipeline.Coordinator::new(pool, oidc?, storage?)
+    @repository.start_repository_deletion_worker(
+      pool,
+      config.root,
+      group,
+      cleanup_attachments=ids => {
+        @attachments.cleanup_repository_files(config.root, ids)
+      },
+      cleanup_artifacts=keys => {
+        coordinator.cleanup_repository_files(config.root, keys)
+      },
+    )
     coordinator.start_lease_worker(group)
     group.spawn_bg(no_wait=true, () => {
       for ;; {

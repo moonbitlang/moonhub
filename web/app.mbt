@@ -61,6 +61,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@namespace_views.teams_module)
   ctx.use_(@namespace_views.namespaces_module)
   ctx.use_(@repository_views.repositories_module)
+  ctx.use_(@repository_views.repository_settings_module)
   ctx.use_(@repository_views.deploy_keys_module)
   ctx.use_(@repository_views.webhooks_module)
   ctx.use_(@repository_views.mirrors_module)

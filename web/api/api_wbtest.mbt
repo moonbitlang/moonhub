@@ -21,6 +21,41 @@ async fn api_test_request(
 }
 
 ///|
+async test "deleted repositories disappear from authenticated API reads and writes" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let token = @identity.create_access_token(
+      pool, actor, "deletion", "write", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let (before, _) = api_test_request(
+      port,
+      "/repos/alice/demo/issues",
+      token,
+      None,
+    )
+    assert_eq(before, 200)
+    @repository.delete_repository(pool, root, actor, repo, 1, repo.path())
+    for suffix in ["issues", "mrs"] {
+      let (read, _) = api_test_request(
+        port,
+        "/repos/alice/demo/" + suffix,
+        token,
+        None,
+      )
+      assert_eq(read, 404)
+    }
+    let (write, _) = api_test_request(
+      port,
+      "/repos/alice/demo/issues",
+      token,
+      Some({ "title": "too late" }),
+    )
+    assert_eq(write, 404)
+  })
+}
+
+///|
 async test "user API token authentication scope repository isolation and version bound writes" {
   @web_testkit.with_repository_test_app((port, pool, root, alice_cookie, _) => {
     let alice = @identity.active_user_by_name(pool, "alice")

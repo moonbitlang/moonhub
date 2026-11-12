@@ -132,6 +132,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "releases" => ("Releases", "/releases")
         "webhooks" => ("Webhooks", "/settings/webhooks")
         "settings" => ("Branch protection", "/settings/branches")
+        "general-settings" => ("Settings", "/settings")
         "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
         "secrets" => ("Repository secrets", "/settings/secrets")
         "variables" => ("Repository variables", "/settings/variables")
@@ -243,6 +244,8 @@ fn render_sidebar(
             "\{render_navigation_item(base + suffix, label, icon, active == key)}"
         }
         if manager {
+          b <+
+            "\{render_navigation_item(base + "/settings", "Settings", "settings", active == "general-settings")}"
           b <+
             "\{render_navigation_item(base + "/settings/secrets", "Secrets", "key", active == "secrets")}"
           b <+
