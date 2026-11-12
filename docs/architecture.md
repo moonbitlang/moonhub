@@ -21,7 +21,7 @@ unchanged.
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
 | `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events, recovery and outbound push mirrors |
 | `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and pending upload cleanup |
-| `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to migration 024 |
+| `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to database triggers |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
@@ -74,9 +74,10 @@ creation and editing pages live together. Repository browsing and management
 share one page package. `views` means the entire page feature, not only its HTML
 template. Business services remain outside `web/`.
 
-SQL migrations remain in `db/`; they are deployment data, not a MoonBit package.
-Run commands from the module root so migration and fixture paths resolve as
-before.
+The schema 38 baseline and future SQL migrations live in `db/`; they are
+deployment data, not a MoonBit package. Run commands from the module root so
+schema and fixture paths resolve. See [database
+initialization](../db/README.md).
 
 ## Dependency Direction
 
@@ -108,11 +109,12 @@ MR checks add a one-way dependency from `pipeline` to `collaboration`.
 Collaboration owns required workflow policies, execution approval, versioned
 check records and the merge gate; it does not import Pipeline or the workflow
 parser. Pipeline refreshes eligible MRs under the repository write lock, creates
-immutable merged-tree runs and cancels obsolete work. Migration 014 links each
-run to its check and propagates the latest linked run's state transactionally
-through a SQLite trigger. Web owns the check worker lifetime. The two feature
-page packages use business APIs and link to each other by URL, never importing
-one another. See [MR checks](merge-checks.md) for trust and lifecycle semantics.
+immutable merged-tree runs and cancels obsolete work. The baseline schema links
+each run to its check and propagates the latest linked run's state
+transactionally through a SQLite trigger. Web owns the check worker lifetime.
+The two feature page packages use business APIs and link to each other by URL,
+never importing one another. See [MR checks](merge-checks.md) for trust and
+lifecycle semantics.
 
 Only packages under `web/` import Moonback. Business packages take explicit domain values and
 database handles, never HTTP requests, HTML or module contexts. The database's
@@ -233,12 +235,13 @@ that order. Review the generated `.mbti` and formatting changes, then run the
 tests and the package-boundary check. The tracked pre-commit hook enforces the
 three-command sequence; see [hook setup and index safety](../.githooks/README.md).
 
-Collaboration owns review requests, subscriptions, event fan-out and Inbox queries.
-Migration 015 creates notifications and optional email outbox rows transactionally
-with activity; the mail worker rechecks current access/preferences at claim time.
-`web/views/notifications` owns Inbox routes and HTTP tests. Web starts the review
-request refresh worker independently of Pipeline so ready MRs without CI refresh
-in the background. Shared subscription rendering lives in `web/ui`.
+Collaboration owns review requests, subscriptions, event fan-out and Inbox
+queries. Database triggers create notifications and optional email outbox rows
+transactionally with activity; the mail worker rechecks current
+access/preferences at claim time. `web/views/notifications` owns Inbox routes
+and HTTP tests. Web starts the review request refresh worker independently of
+Pipeline so ready MRs without CI refresh in the background. Shared subscription
+rendering lives in `web/ui`.
 
 The remote CLI uses `/-/api/v1`, mounted separately from browser cookie/login
 middleware and Runner credentials. Identity owns scoped, expiring access tokens;

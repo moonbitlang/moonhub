@@ -3,7 +3,7 @@
 `moonhub-runner` is a separate native executable. MoonHub owns repository grants,
 job scheduling and durable configuration; the runner owns its backend and worker
 resources. The server has no AWS dependency. Existing `moonhub pipeline-provider`
-and `moonhub runner` commands remain supported. Migration 025 preserves existing
+and `moonhub runner` commands remain supported. The baseline schema stores
 provider credentials and task history.
 
 ## Build and register

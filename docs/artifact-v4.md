@@ -3,9 +3,9 @@
 Storage can use filesystem or S3 independently for artifacts and caches; see [blob storage](blob-storage.md) for configuration, cutover and cleanup.
 
 MoonHub executes the downloaded upstream `actions/upload-artifact@v4` and
-`actions/download-artifact@v4` code. Migration 032 adds the backing service,
-private filesystem storage and attempt-scoped credentials. Deploy the updated
-server and runner together. The runner lease/report protocol remains V1;
+`actions/download-artifact@v4` code. The backing service uses the baseline
+schema, private blob storage and attempt-scoped credentials. Deploy the
+updated server and runner together. The runner lease/report protocol remains V1;
 existing assignment and workflow snapshots remain readable.
 
 ## Supported workflow behavior

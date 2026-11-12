@@ -95,7 +95,8 @@ Do not use a broad user/admin SSH key as an automatic fallback.
 
 ## Rotation and Temporary Root-Key Migration
 
-1. Upgrade Web and SSH together so both use schema 13 and the same trusted hooks.
+1. Upgrade Web and SSH together so both use the supported schema and trusted hooks.
+   See [database compatibility](../db/README.md) for older databases.
    Back up the database and matching images with the deployment wrapper first.
 2. Generate a **new** server key, register its public half read-only for the
    intended repository, and verify the fingerprint. Keep the working old key.
@@ -113,7 +114,7 @@ Do not use a broad user/admin SSH key as an automatic fallback.
 
 If the replacement pull fails, leave the old key working and repair the host
 verification or repository configuration before continuing. A rollback restores
-the matching database and images, not an old executable against schema 13.
+the matching database and images together.
 
 ## Verification
 

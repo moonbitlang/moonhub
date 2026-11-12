@@ -149,10 +149,11 @@ API prefix: /-/api/v1/repos/:owner/:repo/hooks
 
 ## Upgrade and verification
 
-Migration 024 advances schema 23 to 24 without replaying history. Upgrade Web
-and SSH together; SSH hooks record the new push intents. Back up and restore
-matching SQLite and repository data before rollback; older binaries cannot open
-schema 24.
+The baseline schema includes webhook storage and event projections. Upgrade Web
+and SSH together; SSH hooks record push intents. Back up and restore matching
+SQLite and repository data before rollback. Older databases must first reach
+schema 38 using a historical release; see [database
+compatibility](../db/README.md).
 
 ~~~sh
 moon check --deny-warn

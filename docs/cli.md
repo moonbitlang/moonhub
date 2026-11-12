@@ -318,12 +318,12 @@ access is required in addition to token permission.
 
 ## Upgrade and verification
 
-Migration 016 adds tokens without changing accounts, sessions or existing jobs.
-The Build/Runner compiler pin is defined in `deploy/base.Dockerfile`; see the
+The baseline schema includes access tokens, accounts, sessions and jobs. The
+Build/Runner compiler pin is defined in `deploy/base.Dockerfile`; see the
 [current toolchain requirements](../README.md#moonbit-toolchain). Rebuild the
-dependency base and Runner when changing that deployment pin.
-Upgrade matching Web/SSH executables together. Token credentials are excluded
-from identity-only exports; create replacement credentials on a migrated site.
+dependency base and Runner when changing that deployment pin. Upgrade matching
+Web/SSH executables together. Preserve credentials through complete deployment
+backups; see [database compatibility](../db/README.md).
 
 ```sh
 moon check --deny-warn

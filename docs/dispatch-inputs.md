@@ -114,17 +114,17 @@ interpolation into shell source can execute shell code.
 ## Upgrade and verification
 
 Dispatch snapshots introduced definition version 5 and assignment version 8.
-Definition-v6 snapshots use assignment version 9 for
-[repository variables](repository-variables.md). Upgrade the
-coordinator, provider/controller and runner together; old executors reject the
-new version instead of silently losing inputs. Definition versions 1-5 remain
-readable, and reruns retain their original assignment contracts. Legacy context
-and job-plan JSON defaults missing input/event fields to empty maps. Legacy
-assignments preserve their original expression contexts and do not receive the
-new event file; server scheduling uses the same version boundary. Dispatch inputs
-itself required no database migration: the existing immutable `context_json`
-stores the values. Repository variables separately add migration 036.
-The runner bounds event JSON to 192 KiB, including its stringified input map.
+Definition-v6 snapshots use assignment version 9 for [repository
+variables](repository-variables.md). Upgrade the coordinator,
+provider/controller and runner together; old executors reject the new version
+instead of silently losing inputs. Definition versions 1-5 remain readable, and
+reruns retain their original assignment contracts. Legacy context and job-plan
+JSON defaults missing input/event fields to empty maps. Legacy assignments
+preserve their original expression contexts and do not receive the new event
+file; server scheduling uses the same version boundary. Dispatch inputs itself
+required no database migration: the existing immutable `context_json` stores the
+values. Repository variable storage is included in the baseline schema. The
+runner bounds event JSON to 192 KiB, including its stringified input map.
 
 Tests cover schema/type/size validation, numeric YAML normalization, all four
 submission interfaces, immutable reruns, old wire contracts, conditions,
@@ -141,9 +141,9 @@ node --test runner/actions/runtime.test.mjs
 Scheduled triggers, dynamic matrices, environment policy and
 authenticated release APIs remain separate migration work.
 
-Current snapshots use definition v7 / assignment v10 for
-[workflow OIDC](workflow-oidc.md), with migration 037. Historical definition
-versions 1–6 and their assignment contracts remain readable.
+Current snapshots use definition v7 / assignment v10 for [workflow
+OIDC](workflow-oidc.md). Historical definition versions 1–6 and their assignment
+contracts remain readable.
 
 Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
 only OIDC-enabled jobs require assignment v10.
