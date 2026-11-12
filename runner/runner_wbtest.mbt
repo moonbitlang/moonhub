@@ -45,6 +45,7 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
       context: Map([]),
       contents_read: true,
       id_token_write: false,
+      api_permissions: 0,
       matrix: Map([]),
       strategy: Map([]),
       id: "build",

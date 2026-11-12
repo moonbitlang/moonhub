@@ -11,6 +11,7 @@ unchanged.
 | `domain` | Shared account/repository identities, name and path validation, public errors and diagnostic redaction |
 | `cli` | Remote collaboration commands, HTTP client, private credential storage and terminal output; no database or Web dependency |
 | `config` | Environment loading and primitive configuration parsing |
+| `releases` | Repository versions, immutable published assets, fs/S3 locations and cleanup journals; no Pipeline or Web dependency |
 | `storage` | Backend-neutral object storage, filesystem and S3 adapters, bounded streams and integrity checks; no business, database or Web dependency |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
 | `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
@@ -65,6 +66,7 @@ web/
     merge_requests/
     settings/
     pipelines/
+    releases/
     notifications/
   testkit/
 ```
@@ -255,3 +257,5 @@ policy through `ctx.require`, and calls business services directly. It shares
 JSON DTO mapping with `web/api`; business packages do not import MCP. The
 composition boundary reads `MOONHUB_MCP_ALLOWED_ORIGINS`. No Runner credentials
 are converted into MCP credentials. See [MCP](mcp.md).
+
+Release lifecycle and byte storage belong to `releases` and `storage`; Pipeline grants only live repository-scoped job API capabilities. The Web adapter composes these services without business packages importing one another. `web/views/releases` owns browser pages and downloads; `web/api` owns the bounded gh-compatible API. See [releases](releases.md).

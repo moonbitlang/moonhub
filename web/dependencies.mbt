@@ -106,6 +106,7 @@ let user_api_dependencies_module : @moonback.Module = Module(ctx => {
   ctx.provide(@web_context.config_db_pool, pool)
   ctx.use_(pipeline_dependencies_module)
   ctx.use_(webhook_dependencies_module)
+  ctx.use_(release_dependencies_module)
 })
 
 ///|
@@ -155,5 +156,30 @@ let diff_dependencies_module : @moonback.Module = Module(ctx => {
   ctx.provide(
     @web_context.diff_enabled_key,
     ctx.config().get_custom(@web_context.diff_enabled_key).unwrap_or(false),
+  )
+})
+
+///|
+let release_dependencies_module : @moonback.Module = Module(ctx => {
+  let config = ctx.config()
+  let pool = config
+    .get_custom(@web_context.config_db_pool)
+    .unwrap_or_else(() => {
+      raise @domain.BadRequest(message="missing release database")
+    })
+  let root = config
+    .get_custom(@web_context.config_root)
+    .unwrap_or_else(() => {
+      raise @domain.BadRequest(message="missing release root")
+    })
+  ctx.provide(
+    @web_context.release_service_key,
+    config
+    .get_custom(@web_context.release_service_key)
+    .unwrap_or_else(() => @releases.Service::new(pool, root)),
+  )
+  ctx.provide(
+    @web_context.release_origin_key,
+    config.get_custom(@web_context.release_origin_key).unwrap_or(""),
   )
 })

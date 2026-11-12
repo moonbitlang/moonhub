@@ -1,4 +1,6 @@
 import {
+  "hackwaly/moonhub/web/views/releases" @release_views,
+  "hackwaly/moonhub/releases",
   "hackwaly/moonhub/storage",
   "hackwaly/moonhub/gitops",
   "moonbitlang/core/string",

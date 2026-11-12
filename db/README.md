@@ -37,3 +37,5 @@ Keep schema 38 as the existing-database floor. Migration 039 continues above
 this baseline; future incremental migrations must extend the supported-version
 logic in `database/schema.mbt`. Fresh databases must reach the same schema as
 upgraded databases in one atomic initialization transaction.
+
+Schema 040 adds repository releases, durable published-asset storage and cleanup, live job API grants, immutable run display titles and opt-in UTC schedule ticks. Migration 039 remains the compatibility step for historical artifact/cache locations.

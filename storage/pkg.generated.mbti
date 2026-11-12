@@ -24,6 +24,7 @@ type Backend
 pub struct Config {
   artifacts : String
   caches : String
+  releases : String
   // private fields
 }
 pub async fn Config::load(String, node? : String, helper? : String) -> Self

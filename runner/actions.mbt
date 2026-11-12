@@ -72,11 +72,13 @@ async fn Runtime::execute_action_step(
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+      @protocol.release_assignment_version,
     ].contains(self.assignment.version),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+      @protocol.release_assignment_version,
     ].contains(self.assignment.version),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
@@ -166,6 +168,22 @@ async fn Runtime::execute_action_runtime(
     env["MOONHUB_ACTION_OIDC_TOKEN"] = grant.token
     env["MOONHUB_ACTION_OIDC_URL"] = grant.request_url
   }
+  if self.assignment.job.api_permissions != 0 {
+    guard self.api is Some(fetch) else {
+      raise InvalidConfiguration("job API service unavailable")
+    }
+    let grant = @async.with_timeout(Int32::min(timeout, 10000), () => {
+      fetch({ version: 1, execution_id: self.execution_id, })
+    })
+    self.check_live()
+    guard grant.token.length() == 64 &&
+      grant.token
+      .iter()
+      .all(ch => ch.is_ascii_digit() || ('a' <= ch && ch <= 'f')) else {
+      raise InvalidResponse
+    }
+    env["MOONHUB_ACTION_API_TOKEN"] = grant.token
+  }
   env["MOONHUB_ACTION_NODE"] = self.action_node
   env["MOONHUB_ACTION_RUNTIME"] = self.action_runtime
   env["MOONHUB_ACTION_PLAN"] = filename
@@ -215,11 +233,13 @@ async fn Runtime::execute_action_posts(
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+      @protocol.release_assignment_version,
     ].contains(self.assignment.version),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+      @protocol.release_assignment_version,
     ].contains(self.assignment.version),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
@@ -247,6 +267,7 @@ async fn Runtime::execute_action_posts(
   if [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
+      @protocol.release_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }

@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 39L
+pub let database_schema_version : Int64 = 40L
 
 ///|
 let database_initialization_state : String =
@@ -67,7 +67,7 @@ fn initialize_database_schema(
         }
         // The schema 38 baseline and all later migrations commit together.
         tx.driver.exec_script(storage_migration)
-        ignore(tx.execute("PRAGMA user_version = 39"))
+        ignore(tx.execute("PRAGMA user_version = 40"))
       }
     },
     immediate=true,
@@ -90,8 +90,13 @@ pub async fn initialize_db(pool : Database) -> Unit {
       None
     }
     let storage_migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()
+    let release_migration = @fs.read_file("db/migrations/040_releases.sql").text()
     pool.with_client(client => {
-      initialize_database_schema(client, baseline, storage_migration)
+      initialize_database_schema(
+        client,
+        baseline,
+        storage_migration + "\n" + release_migration,
+      )
     })
   }
 }

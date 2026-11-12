@@ -83,6 +83,8 @@ export class ActionRuntime {
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
     this.artifact = process.env.MOONHUB_ACTION_ARTIFACT_TOKEN ? { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL } : undefined;
     if (this.artifact && !this.state.masks.includes(this.artifact.token)) this.state.masks.push(this.artifact.token);
+    this.apiToken = process.env.MOONHUB_ACTION_API_TOKEN;
+    if (this.apiToken && !this.state.masks.includes(this.apiToken)) this.state.masks.push(this.apiToken);
     this.oidc = process.env.MOONHUB_ACTION_OIDC_TOKEN ? { token: process.env.MOONHUB_ACTION_OIDC_TOKEN, url: process.env.MOONHUB_ACTION_OIDC_URL } : undefined;
     if (this.oidc && !this.state.masks.includes(this.oidc.token)) this.state.masks.push(this.oidc.token);
     this.baseEnv = environment(Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("MOONHUB_ACTION_"))));
@@ -121,7 +123,7 @@ export class ActionRuntime {
     const github = { repository: this.config.repository, sha: this.config.sha, server_url: this.config.server,
       api_url: `${this.config.server}/-/api/v1`, ref: this.config.context?.ref || this.config.sha,
       workflow: this.config.context?.workflow || '', actor: this.config.context?.actor || '', run_id: this.config.run_id || '0', job: this.config.job_id || '',
-      event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.config.contents_read === false ? '' : 'moonhub-local-source',
+      event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.apiToken || (this.config.contents_read === false ? '' : 'moonhub-local-source'),
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
       ...(this.variablesContext ? { vars: this.variables } : {}), ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
@@ -170,6 +172,16 @@ export class ActionRuntime {
   async files(env, result, execute) {
     const directory = path.join(this.temp, '_commands', randomUUID());
     await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    if (this.apiToken) {
+      const host = new URL(this.config.server).host;
+      const ghConfig = path.join(directory, 'gh');
+      await fs.mkdir(ghConfig, {recursive:true,mode:0o700});
+      await fs.writeFile(path.join(ghConfig,'hosts.yml'), JSON.stringify({[host]:{oauth_token:this.apiToken,git_protocol:'https',user:'moonhub-job',users:{'moonhub-job':{oauth_token:this.apiToken}}}}), {mode:0o600});
+      await fs.writeFile(path.join(ghConfig,'config.yml'), JSON.stringify({version:'1'}), {mode:0o600});
+      env.GH_HOST=host; env.GH_CONFIG_DIR=ghConfig; env.GH_PROMPT_DISABLED='1';
+      if (env.GH_TOKEN === this.apiToken) delete env.GH_TOKEN;
+      if (env.GITHUB_TOKEN === this.apiToken) delete env.GITHUB_TOKEN;
+    }
     const names = ['ENV', 'PATH', 'OUTPUT', 'STATE', 'STEP_SUMMARY'];
     const files = Object.fromEntries(names.map(name => [name, path.join(directory, name)]));
     for (const [name, filename] of Object.entries(files)) { await fs.writeFile(filename, '', { flag: 'wx', mode: 0o600 }); env[`GITHUB_${name}`] = filename; }

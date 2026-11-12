@@ -105,6 +105,7 @@ test "assignment validates string identifiers and bounded timestamps" {
       context: Map([]),
       contents_read: true,
       id_token_write: false,
+      api_permissions: 0,
       matrix: Map([]),
       strategy: Map([]),
       id: "build",
@@ -184,6 +185,7 @@ test "wire job plan has no language-specific optional field representation" {
     context: Map([]),
     contents_read: true,
     id_token_write: false,
+    api_permissions: 0,
     matrix: Map([]),
     strategy: Map([]),
     id: "build",
@@ -296,7 +298,8 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   assert_true(action_runtime_version(variable_assignment_version))
   assert_true(action_runtime_version(10))
   assert_true(action_runtime_version(environment_assignment_version))
-  assert_false(action_runtime_version(12))
+  assert_true(action_runtime_version(release_assignment_version))
+  assert_false(action_runtime_version(13))
 }
 
 ///|

@@ -343,6 +343,7 @@ restore_backup() {
      MOONHUB_SSH_PUBLIC_URL: env("web"; "MOONHUB_SSH_PUBLIC_URL"),
      MOONHUB_SSH_INTERNAL_URL: env("web"; "MOONHUB_SSH_INTERNAL_URL"),
      MOONHUB_IMPORT_TIMEOUT_SECONDS: env("web"; "MOONHUB_IMPORT_TIMEOUT_SECONDS"),
+     MOONHUB_RELEASE_ORIGIN: env("web"; "MOONHUB_RELEASE_ORIGIN"),
      MOONHUB_WEBHOOK_ALLOWED_ORIGINS: env("web"; "MOONHUB_WEBHOOK_ALLOWED_ORIGINS"),
      MOONHUB_BACKUP_DIR: ($state + "/backups")}
     + (if any(.services.web.volumes[]; .target == "/run/secrets/workflow_oidc") then {

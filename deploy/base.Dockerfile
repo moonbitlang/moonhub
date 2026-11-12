@@ -12,7 +12,7 @@ ARG MOONBIT_VERSION=0.10.19+8e43a47fb-nightly
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl build-essential git libssl-dev libssl3 util-linux \
+    bash ca-certificates curl build-essential git gh libssl-dev libssl3 util-linux \
     docker.io gosu openssh-server tini \
     && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*
 

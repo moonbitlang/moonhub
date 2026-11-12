@@ -198,6 +198,18 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     })
     writer.write(archive)
   })
+  ctx.post(
+    "/attempts/:id/api-runtime",
+    json_handler(req => {
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "attempt"),
+      )
+      let request : @protocol.OidcRuntimeRequest = @json.from_json(
+        @json.parse(@utf8.decode(@web_context.read_bounded_body(req, 4096))),
+      )
+      ToJson::to_json(coordinator.api_runtime(id, bearer_token(req), request))
+    }),
+  )
   ctx.get("/attempts/:id/source-bundle", async fn(req, res) {
     let archive = try {
       guard @protocol.parse_decimal(

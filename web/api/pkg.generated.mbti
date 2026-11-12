@@ -23,6 +23,10 @@ pub fn issue_json(@collaboration.Issue) -> @json.Json
 
 pub fn mr_json(@collaboration.MergeRequest) -> @json.Json
 
+pub let release_graphql_module : @moonback.Module
+
+pub let releases_api_module : @moonback.Module
+
 pub fn run_json(@pipeline.Run) -> @json.Json
 
 pub fn variable_json(@pipeline.RepositoryVariable) -> @json.Json

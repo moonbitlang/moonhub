@@ -186,3 +186,5 @@ Actions against S3, and removes the container and its data afterward. The same
 test runs in Self-check. It requires Docker, installed storage/action npm
 dependencies and the pinned MoonBit toolchain. No production AWS resources are
 created by that test.
+
+Published release assets use the same storage adapters with their own durable lifecycle and no CI retention expiry. The optional `releases` backend selector defaults to `artifacts`; saved asset locations survive changes. See [Release storage and recovery](releases.md).

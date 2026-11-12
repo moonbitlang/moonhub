@@ -690,3 +690,27 @@ test('OIDC credentials reach scripts, composites and pre/main/post while reserve
     assert.equal(runtime.state.env[name], undefined);
   }
 });
+
+test('job API credential is host-bound, masked, scoped to one invocation and usable as github.token', async t => {
+  const {config}=await fixture(t);
+  const old=process.env.MOONHUB_ACTION_API_TOKEN;
+  const token='d'.repeat(64);process.env.MOONHUB_ACTION_API_TOKEN=token;
+  t.after(()=>{if(old===undefined)delete process.env.MOONHUB_ACTION_API_TOKEN;else process.env.MOONHUB_ACTION_API_TOKEN=old});
+  const runtime=new ActionRuntime(config);
+  assert.equal(runtime.context().github.token,token);
+  assert.ok(runtime.state.masks.includes(token));
+  let directory;
+  runtime.process=async(program,args,env)=>{
+    directory=env.GH_CONFIG_DIR;
+    assert.equal(env.GH_HOST,'moonhub.example');
+    assert.equal(env.GH_TOKEN,undefined);
+    assert.equal(env.MOONHUB_ACTION_API_TOKEN,undefined);
+    const hosts=JSON.parse(await fs.readFile(path.join(directory,'hosts.yml'),'utf8'));
+    assert.deepEqual(Object.keys(hosts),['moonhub.example']);
+    assert.equal(hosts['moonhub.example'].oauth_token,token);
+    assert.equal((await fs.stat(path.join(directory,'hosts.yml'))).mode&0o777,0o600);
+    return 0;
+  };
+  assert.equal((await runtime.script('true','bash','.',{GH_TOKEN:token})).code,0);
+  assert.equal(await fs.stat(directory).then(()=>true,()=>false),false);
+});

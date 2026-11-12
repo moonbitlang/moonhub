@@ -248,7 +248,7 @@ fn parse_job(
   value : @yaml.Yaml,
   workflow_env : Map[String, String],
   defaults : RunDefaults,
-  permissions : (Bool, Bool),
+  permissions : (Bool, Bool, Int32),
 ) -> Job raise InvalidWorkflow {
   guard valid_identifier(id) else {
     raise InvalidWorkflow("invalid job id: \{id}")
@@ -546,7 +546,7 @@ fn parse_job(
       ),
     })
   }
-  let (contents_read, id_token_write) = read_permissions(
+  let (contents_read, id_token_write, api_permissions) = read_permissions(
     fields.get("permissions"),
     permissions,
     "\{ctx}.permissions",
@@ -570,6 +570,7 @@ fn parse_job(
     max_parallel: 256,
     contents_read,
     id_token_write,
+    api_permissions,
     timeout_minutes: parse_timeout(
       fields.get("timeout-minutes"),
       "\{ctx}.timeout-minutes",
@@ -586,7 +587,9 @@ pub fn parse(
   let fields = yaml_as_obj(read_yaml(source), "workflow")
   check_fields(
     fields,
-    ["name", "on", "env", "defaults", "jobs", "permissions", "concurrency"],
+    [
+      "name", "run-name", "on", "env", "defaults", "jobs", "permissions", "concurrency",
+    ],
     "workflow",
   )
   ignore(parse_trigger(fields.get("on")))
@@ -594,7 +597,7 @@ pub fn parse(
   let defaults = parse_run_defaults(fields.get("defaults"), "defaults")
   let permissions = read_permissions(
     fields.get("permissions"),
-    (true, false),
+    (true, false, 0),
     "permissions",
   )
   guard fields.get("jobs") is Some(value) else {
@@ -701,6 +704,7 @@ pub fn parse(
     }
   }
   let workflow : Workflow = {
+    run_name: template_string(fields.get("run-name"), "run-name").unwrap_or(""),
     name: yaml_as_optional_string(fields.get("name"), "name").unwrap_or(""),
     concurrency: parse_concurrency(fields.get("concurrency")),
     jobs,

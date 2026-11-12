@@ -11,11 +11,12 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 7
+pub let format_version : Int32 = 8
 
 ///|
 #derive(Debug, ToJson)
 pub struct Workflow {
+  run_name : String
   name : String
   concurrency : Concurrency?
   jobs : Array[Job]
@@ -34,6 +35,10 @@ pub impl @json.FromJson for Workflow with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid workflow"))
   }
   {
+    run_name: @json.from_json(
+      fields.get("run_name").unwrap_or(Json::string("")),
+      path=path.add_key("run_name"),
+    ),
     name: @json.from_json(
       fields.get("name").unwrap_or(Json::null()),
       path=path.add_key("name"),
@@ -61,6 +66,7 @@ pub struct Job {
   runs_on : Array[String]
   contents_read : Bool
   id_token_write : Bool
+  api_permissions : Int32
   matrix : Map[String, Json]
   strategy : Map[String, Json]
   matrix_group : String
@@ -127,6 +133,10 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     max_parallel: @json.from_json(
       fields.get("max_parallel").unwrap_or(ToJson::to_json(256)),
       path=path.add_key("max_parallel"),
+    ),
+    api_permissions: @json.from_json(
+      fields.get("api_permissions").unwrap_or(Json::number(0)),
+      path=path.add_key("api_permissions"),
     ),
     id_token_write: @json.from_json(
       fields.get("id_token_write").unwrap_or(Json::boolean(false)),

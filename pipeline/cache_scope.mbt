@@ -41,7 +41,7 @@ fn snapshot_cache_scope(
       "refs/heads/" + context.base_ref,
     )
   } else {
-    guard ["push", "workflow_dispatch"].contains(context.event_name) else {
+    guard ["push", "workflow_dispatch", "schedule"].contains(context.event_name) else {
       return
     }
     ("refs/heads/" + run.source_branch, "")

@@ -43,11 +43,20 @@ pub let oidc_assignment_version : Int32 = 10
 pub let environment_assignment_version : Int32 = 11
 
 ///|
+pub let release_assignment_version : Int32 = 12
+
+///|
+#derive(ToJson, FromJson)
+pub(all) struct ApiRuntime {
+  token : String
+}
+
+///|
 pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
-    environment_assignment_version,
+    environment_assignment_version, release_assignment_version,
   ].contains(version)
 }
 
@@ -207,6 +216,7 @@ pub(all) struct JobPlan {
   context : Map[String, String]
   contents_read : Bool
   id_token_write : Bool
+  api_permissions : Int32
   matrix : Map[String, Json]
   strategy : Map[String, Json]
   id : String
@@ -249,6 +259,10 @@ pub impl @json.FromJson for JobPlan with fn from_json(json, path) {
     matrix: @json.from_json(
       fields.get("matrix").unwrap_or(({} : Json)),
       path=path.add_key("matrix"),
+    ),
+    api_permissions: @json.from_json(
+      fields.get("api_permissions").unwrap_or(Json::number(0)),
+      path=path.add_key("api_permissions"),
     ),
     id_token_write: @json.from_json(
       fields.get("id_token_write").unwrap_or(Json::boolean(false)),
@@ -459,3 +473,11 @@ pub(all) struct OidcRuntime {
   token : String
   request_url : String
 }
+
+///|
+#deprecated
+pub extend ApiRuntime with @json.ToJson::{to_json}
+
+///|
+#deprecated
+pub extend ApiRuntime with @json.FromJson::{from_json}

@@ -129,6 +129,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "issues" => ("Issues", "/issues")
         "merge-requests" => ("Merge requests", "/merge-requests")
         "pipelines" => ("Pipelines", "/pipelines")
+        "releases" => ("Releases", "/releases")
         "webhooks" => ("Webhooks", "/settings/webhooks")
         "settings" => ("Branch protection", "/settings/branches")
         "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
@@ -235,6 +236,7 @@ fn render_sidebar(
               "/merge-requests", "merge-requests", "Merge requests", "git-pull-request",
             ),
             ("/pipelines", "pipelines", "Pipelines", "git-commit"),
+            ("/releases", "releases", "Releases", "tag"),
             ("/settings/variables", "variables", "Variables", "settings"),
           ] {
           b <+

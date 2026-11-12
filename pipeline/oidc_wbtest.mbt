@@ -519,7 +519,7 @@ async test "OIDC legacy definition six keeps assignment nine and cannot gain ide
 async test "OIDC definition seven ordinary jobs retain the complete v9 execution contract" {
   with_oidc_fixture(
     (c, _, _, run, _, _) => {
-      assert_eq(run.definition_version, 7)
+      assert_eq(run.definition_version, @workflow.format_version)
       let a = c.claim(provider_secret, claim_request()).unwrap()
       assert_eq(a.version, @protocol.variable_assignment_version)
       assert_false(a.job.id_token_write)

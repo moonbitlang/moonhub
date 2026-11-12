@@ -43,6 +43,8 @@ pub fn merge_check_context(@database.Database, @domain.CurrentUser, @domain.Repo
 
 pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> Run
 
+pub async fn run_due_schedules(@database.Database, String, now_ms? : Int64) -> Unit
+
 pub async fn run_next_merge_check(@database.Database, String) -> Bool
 
 pub async fn run_next_push_event(@database.Database, String) -> Bool
@@ -51,9 +53,15 @@ pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @domai
 
 pub fn save_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, Int64) -> Unit raise
 
+pub fn scheduled_runs_status(@database.Database, @domain.CurrentUser, @domain.RepoId) -> (Bool, String) raise
+
+pub fn set_scheduled_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, Bool) -> Unit raise
+
 pub fn start_merge_checks_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
 pub fn start_push_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
+pub fn workflow_run_history(@database.Database, @domain.CurrentUser, @domain.RepoId, String, page? : Int64, per_page? : Int64, status? : String, branch? : String) -> (Int64, Array[Run]) raise
 
 // Errors
 pub suberror ExecutionError {
@@ -86,12 +94,14 @@ pub fn Conclusion::to_repr(Self) -> @debug.Repr
 pub struct Coordinator {
   // private fields
 }
+pub fn Coordinator::api_runtime(Self, Int64, String, @protocol.OidcRuntimeRequest) -> @protocol.ApiRuntime raise
 pub fn Coordinator::append_log(Self, Int64, String, @protocol.LogRequest) -> @protocol.LeaseState raise
 pub fn Coordinator::artifact_blob(Self, String, Int64, String) -> ArtifactBlob raise
 pub fn Coordinator::artifact_block_limit(Self, Int64, String) -> Int32 raise
 pub fn Coordinator::artifact_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::artifact_runtime(Self, Int64, String, @protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime raise
 pub fn Coordinator::authenticate_attempt(Self, Int64, String) -> Unit raise
+pub fn Coordinator::authenticate_job_api(Self, String, @domain.RepoId, String) -> @domain.CurrentUser raise
 pub fn Coordinator::authorize_artifact_blob(Self, Int64, String, String) -> Unit raise
 pub fn Coordinator::cache_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::cancel_run(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
@@ -264,6 +274,7 @@ pub struct Run {
   requested_by_user_id : Int64
   workflow_path : String
   workflow_name : String
+  display_title : String
   source_branch : String
   commit_sha : String
   source_ref : String

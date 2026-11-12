@@ -878,3 +878,13 @@ moonhub-diff-toolbar [data-toolbar-fallback] nav { display: flex; justify-conten
 @media (min-width: 901px) {
   .diff-navigation { display: none; }
 }
+
+.release-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 75ch; line-height: 1.7; }
+.release-digest { overflow-wrap: anywhere; white-space: normal; }
+
+.release-row { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 0; border-bottom:1px solid var(--color-border); min-width:0; }
+.release-row > div { min-width:0; }
+.release-row h2 { font-size:17px; margin:0 0 6px; }
+.release-row p { margin:4px 0; color:var(--color-muted); }
+.release-row .status-badge { flex-shrink:0; }
+@media (max-width:600px) { .release-row { flex-wrap:wrap; } }

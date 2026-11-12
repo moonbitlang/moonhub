@@ -5,6 +5,8 @@ pub let app_module : @moonback.Module = Module(ctx => {
   ctx.use_(@pipeline_views.oidc_module)
   ctx.mount("/\{@domain.PUBLIC_ASSETS_OWNER}", App(assets_module, config~))
   ctx.mount("/-/api/v1", App(user_api_module, config~))
+  ctx.mount("/api/v3", App(user_api_module, config~))
+  ctx.mount("/api/graphql", App(release_graphql_app_module, config~))
   ctx.mount("/-/mcp", App(mcp_app_module, config~))
   ctx.mount("/-/runner-api/v1", App(runner_app_module, config~))
   ctx.mount(
@@ -41,6 +43,7 @@ let artifact_blob_app_module : @moonback.Module = Module(ctx => {
 let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(browser_resources_module)
   ctx.use_(services_module)
+  ctx.use_(release_dependencies_module)
   ctx.use_(webhook_dependencies_module)
   ctx.use_(pipeline_dependencies_module)
   let assets = ctx.require(@web_context.asset_paths_key)
@@ -65,6 +68,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@issue_views.issues_module)
   ctx.use_(@attachment_views.attachments_module)
   ctx.use_(@pipeline_views.pipeline_pages_module)
+  ctx.use_(@release_views.releases_module)
   ctx.use_(@pipeline_views.repository_secrets_module)
   ctx.use_(@pipeline_views.repository_variables_module)
   ctx.use_(@repository_views.repo_browser_module)
@@ -83,10 +87,17 @@ let user_api_module : @moonback.Module = Module(ctx => {
   ctx.use_(user_api_dependencies_module)
   ctx.use_(@user_api.api_module)
   ctx.use_(@user_api.webhooks_api_module)
+  ctx.use_(@user_api.releases_api_module)
 })
 
 ///|
 let cache_rpc_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
   ctx.use_(@pipeline_views.cache_rpc_module)
+})
+
+///|
+let release_graphql_app_module : @moonback.Module = Module(ctx => {
+  ctx.use_(user_api_dependencies_module)
+  ctx.use_(@user_api.release_graphql_module)
 })

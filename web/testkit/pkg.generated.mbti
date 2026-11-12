@@ -54,7 +54,7 @@ pub let test_ssh_addresses : @repository.SshAddressConfig
 
 pub async fn with_production_test_app(async (@moonback.App, Int32, @database.Database) -> Unit) -> Unit
 
-pub async fn with_repository_test_app(async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit, moondiff? : Bool, diff_executor? : @gitops.DiffExecutor) -> Unit
+pub async fn with_repository_test_app(async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit, moondiff? : Bool, diff_executor? : @gitops.DiffExecutor, release_origin? : String) -> Unit
 
 pub async fn with_ssh_settings_app(async (Int32, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig, repo_root? : String, import_config? : @repository.RepoImportConfig?, mirror_config? : @repository.MirrorConfig) -> Unit
 

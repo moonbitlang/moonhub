@@ -42,7 +42,7 @@ async test "repository variables snapshot atomically and survive edits deletion 
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
     let captured = run.context.unwrap().variables
-    assert_eq(run.definition_version, 7)
+    assert_eq(run.definition_version, @workflow.format_version)
     assert_eq(captured.get("OPENSEEK_S3_REGION"), Some("ap-southeast-1"))
     assert_eq(captured.get("ENABLED"), Some("yes"))
     assert_eq(captured.get("LITERAL"), Some("${{ secrets.NOT_A_SECRET }}"))

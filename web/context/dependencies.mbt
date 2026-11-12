@@ -36,3 +36,33 @@ pub let browser_access_key : @moonback.TypedKey[BrowserAccess] = TypedKey(
     }
   },
 )
+
+///|
+extenum @moonback.TypedBox += {
+  ReleaseService(@releases.Service)
+  ReleaseOrigin(String)
+}
+
+///|
+pub let release_service_key : @moonback.TypedKey[@releases.Service] = TypedKey(
+  name="moonhub.releases",
+  box=x => ReleaseService(x),
+  unbox=x => {
+    match x {
+      ReleaseService(s) => Some(s)
+      _ => None
+    }
+  },
+)
+
+///|
+pub let release_origin_key : @moonback.TypedKey[String] = TypedKey(
+  name="moonhub.release_origin",
+  box=x => ReleaseOrigin(x),
+  unbox=x => {
+    match x {
+      ReleaseOrigin(s) => Some(s)
+      _ => None
+    }
+  },
+)

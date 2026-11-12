@@ -8,6 +8,7 @@ pub struct EventFilters {
 
 ///|
 pub struct Triggers {
+  schedules : Array[String]
   dispatch : Bool
   inputs : Array[DispatchInput]
   push : Bool
@@ -87,7 +88,11 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
   guard !fields.is_empty() else {
     raise InvalidWorkflow("on requires a trigger")
   }
-  check_fields(fields, ["push", "pull_request", "workflow_dispatch"], "on")
+  check_fields(
+    fields,
+    ["push", "pull_request", "workflow_dispatch", "schedule"],
+    "on",
+  )
   let dispatch_options = match fields.get("workflow_dispatch") {
     None | Some(Null) => Map([])
     Some(value) => yaml_as_obj(value, "on.workflow_dispatch")
@@ -129,6 +134,7 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     filters[event] = event_filters(options, ctx)
   }
   {
+    schedules: parse_schedules(fields.get("schedule")),
     dispatch: fields.contains("workflow_dispatch"),
     inputs,
     push: fields.contains("push"),
