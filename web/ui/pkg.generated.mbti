@@ -44,6 +44,8 @@ pub fn repo_link(@domain.RepoId) -> String
 
 pub fn repository_status_label(String, Bool) -> String
 
+pub fn timestamp(String, relative? : Bool) -> @moonback.Html
+
 // Errors
 
 // Types and methods

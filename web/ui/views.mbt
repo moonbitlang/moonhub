@@ -23,6 +23,9 @@ pub fn layout(
   } else {
     "page \{body_class}"
   }
+  let time_zone = current_user
+    .map(user => user.time_zone.unwrap_or(""))
+    .unwrap_or("")
   Html(b => {
     b <+
       $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{shell.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}
@@ -31,7 +34,7 @@ pub fn layout(
         "<div class=\"workspace-shell\">\{render_sidebar(navigation, current_user)}"
     }
     b <+
-      "<main id=\"main-content\" class=\"\{main_class}\" tabindex=\"-1\">\{body}</main>"
+      "<main id=\"main-content\" data-time-zone=\"\{time_zone}\" class=\"\{main_class}\" tabindex=\"-1\">\{body}</main>"
     if shell {
       b <+ "</div>"
     }

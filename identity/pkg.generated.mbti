@@ -28,6 +28,8 @@ pub fn create_session_token(@database.DbTransaction, Int64) -> String raise @moo
 
 pub fn create_team(@database.Database, @domain.CurrentUser, String, String) -> Bool raise
 
+pub fn display_time_zones() -> Array[String]
+
 pub fn ensure_root_invitation(@database.Database, RootUserConfig) -> Unit raise
 
 pub fn get_team_by_name_key(@database.Database, String) -> TeamSummary? raise
@@ -72,11 +74,13 @@ pub fn revoke_session(@database.Database, String) -> Unit raise
 
 pub fn team_role(@database.Database, @domain.CurrentUser, Int64) -> String? raise
 
-pub fn update_display_name(@database.Database, @domain.CurrentUser, String) -> Unit raise
+pub fn update_profile(@database.Database, @domain.CurrentUser, String, String?) -> Unit raise
 
 pub fn user_profile(@database.Database, @domain.CurrentUser) -> UserProfile raise
 
 pub fn valid_access_token(String) -> Bool
+
+pub fn valid_display_time_zone(String?) -> Bool
 
 // Errors
 
@@ -152,6 +156,7 @@ pub struct UserProfile {
   name_key : String
   display_name : String
   email : String?
+  time_zone : String?
 }
 
 // Type aliases

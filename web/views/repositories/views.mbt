@@ -96,7 +96,22 @@ async fn stream_commit_detail(
       Some(summary) => summary.trim().to_owned()
       None => ""
     }
-    b <+ "<pre>\{summary_text}</pre><h2>Changes</h2>"
+    b <+ "<pre>"
+    let mut header = true
+    for i, line in summary_text.split("\n").collect() {
+      if i > 0 {
+        b <+ "\n"
+      }
+      if line.is_empty() {
+        header = false
+      }
+      if header && line.has_prefix("Date:") {
+        b <+ "Date:   \{@web_ui.timestamp(line[5:].trim().to_owned())}"
+      } else {
+        b <+ "\{line.to_owned()}"
+      }
+    }
+    b <+ "</pre><h2>Changes</h2>"
     if structured_view is Some(view) {
       b <+ "\{view}"
     } else if reader.read_some(max_len=8192) is Some(first_chunk) {

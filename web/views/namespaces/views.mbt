@@ -181,7 +181,8 @@ fn render_team_detail(
           b <+
             "<tr><td>\{invitation.email}</td><td><span class=\"repo-name\">\{invitation.display_name}</span><div class=\"cell-secondary\">\{invitation.name_key}</div></td><td><span class=\"role-label\">\{role}</span></td><td><span class=\"status-badge\" data-status=\"\{invitation.status}\">\{status_label}</span></td><td><span class=\"delivery-state\" data-delivery=\"\{delivery_status}\">\{delivery_label}</span>"
           match invitation.email_sent_at {
-            Some(sent_at) => b <+ "<div class=\"muted\">\{sent_at}</div>"
+            Some(sent_at) =>
+              b <+ "<div class=\"muted\">\{@web_ui.timestamp(sent_at)}</div>"
             None => ()
           }
           match invitation.email_last_error {

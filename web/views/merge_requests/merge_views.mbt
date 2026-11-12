@@ -77,8 +77,7 @@ fn render_merge_list(
               b <+
                 "<span class=\"mr-state\" data-state=\"\{meta.checks}\">CI \{if meta.checks == "success" { "passed" } else if meta.checks == "failure" { "failed" } else { "pending" }}</span>"
             }
-            b <+
-              "<time data-relative-time datetime=\"\{meta.updated}Z\" title=\"\{meta.updated} UTC\">\{meta.updated} UTC</time></div>"
+            b <+ "\{@web_ui.timestamp(meta.updated, relative=true)}</div>"
           }
           b <+ "</li>"
         }
@@ -402,7 +401,7 @@ fn render_merge_detail(
             let date = item.created_at
             let item_version = item.version
             b <+
-              "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind.replace_all(old="_", new=" ")}</span><time>\{date}</time>"
+              "<li><div class=\"mr-event-heading\"><strong>\{actor}</strong><span>\{kind.replace_all(old="_", new=" ")}</span>\{@web_ui.timestamp(date)}"
             if item_version > 0L {
               b <+
                 "<a href=\"\{base}?tab=changes&amp;version=\{item_version.to_string()}\">v\{item_version.to_string()}</a>"

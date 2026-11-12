@@ -192,7 +192,7 @@ fn render_secrets(
         b <+ "<ul class=\"ssh-key-list\" aria-label=\"Repository secrets\">"
         for secret in secrets {
           b <+
-            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{secret.name}</h2></div><dl class=\"ssh-key-metadata\"><div><dt>Branch</dt><dd>\{secret.branch}</dd></div><div><dt>Workflow</dt><dd>\{secret.workflow_path}</dd></div><div><dt>Updated</dt><dd>\{secret.updated_at} UTC</dd></div></dl><div class=\"ssh-form-actions\"><a href=\"\{base}/\{secret.name}/edit\" aria-label=\"Edit \{secret.name}\">Edit secret</a><a class=\"ssh-revoke-link\" href=\"\{base}/\{secret.name}/delete\" aria-label=\"Delete \{secret.name}\">Delete</a></div></div></li>"
+            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{secret.name}</h2></div><dl class=\"ssh-key-metadata\"><div><dt>Branch</dt><dd>\{secret.branch}</dd></div><div><dt>Workflow</dt><dd>\{secret.workflow_path}</dd></div><div><dt>Updated</dt><dd>\{@web_ui.timestamp(secret.updated_at)}</dd></div></dl><div class=\"ssh-form-actions\"><a href=\"\{base}/\{secret.name}/edit\" aria-label=\"Edit \{secret.name}\">Edit secret</a><a class=\"ssh-revoke-link\" href=\"\{base}/\{secret.name}/delete\" aria-label=\"Delete \{secret.name}\">Delete</a></div></div></li>"
         }
         b <+ "</ul>"
       }
