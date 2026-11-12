@@ -632,23 +632,9 @@ shared-host snapshots because a fresh bounded storage area and resource slice
 must be provisioned before restoring them; do not restore them with an older
 recovery script that silently discards limits.
 
-`deploy/identity-transfer.py export SOURCE DESTINATION` exports only users,
-teams, membership, invitation and user SSH public-key records from a read-only SQLite snapshot.
-`import ... --schema-root db --schema-version 11|12|13|14` creates a fresh database
-with those identities; it refuses existing destinations. Password hashes are
-preserved, including public-key revocation state, but server SSH host keys,
-sessions, password resets, mail settings/outbox,
-repositories and pipelines are excluded. Export files are sensitive and mode
-0600; transfer them over SSH without displaying contents. Existing users log
-in with their old passwords and use their existing SSH keys. Verify
-the helper with `python3 scripts/identity-transfer-test.py`.
-The Python exporter accepts source schema versions 11–14. When Python is absent
-from the old Web image, `export-identities.cjs` performs the same export for
-source schema versions 11–16 using Node 24's SQLite API and the shared
-`identity-tables.json` allowlist. It reads a transaction snapshot and outputs
-counts only. These are legacy identity-transfer tools; neither exporter accepts
-the current application schema. Use complete deployment backups for current
-installations.
+Use complete deployment backups to preserve identities together with repository,
+collaboration and Pipeline data. Legacy identity-only transfer tools have been
+removed.
 
 ### Standard Restores
 
