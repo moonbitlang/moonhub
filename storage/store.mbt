@@ -172,12 +172,16 @@ pub async fn Store::remove(self : Store, key : String) -> Unit {
 pub async fn Store::remove_namespace(self : Store, scope_key : String) -> Unit {
   namespace_key(scope_key)
   match self.backend {
-    Filesystem(root) => {
-      if !@fs.exists(root) || !@fs.exists(root + "/" + scope_key) {
-        return
+    Filesystem(root) =>
+      try {
+        guard @fs.kind(root, follow_symlink=false) is Directory else {
+          raise IntegrityFailure
+        }
+        fs_remove_tree(root + "/" + scope_key)
+      } catch {
+        @os_error.OSError(_) as err if err.is_ENOENT() => ()
+        err => raise err
       }
-      @fs.rmdir(fs_directory(root, scope_key, false), recursive=true)
-    }
     S3 => ignore(self.s3_command("remove_namespace", { "key": scope_key }, b""))
   }
 }

@@ -19,6 +19,7 @@ import {
 
 import {
   "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/ssh",
 } for "wbtest"
 
 supported_targets = "native"

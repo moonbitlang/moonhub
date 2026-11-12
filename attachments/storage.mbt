@@ -60,6 +60,31 @@ pub async fn upload(
   bytes : Bytes,
 ) -> Attachment {
   @repository.authorize_repository(pool, actor, scope.repo, Write)
+  let current = @repository.repository_scope(pool, actor, scope.repo)
+  guard current.id == scope.id else {
+    raise @domain.NotFound(
+      message="repository identity changed; reload before uploading",
+    )
+  }
+  @repository.with_repository_write(pool, root, actor, scope.repo, (current, _) => {
+    guard current.id == scope.id else {
+      raise @domain.NotFound(
+        message="repository identity changed; reload before uploading",
+      )
+    }
+    upload_locked(pool, root, scope, actor, filename, bytes)
+  })
+}
+
+///|
+async fn upload_locked(
+  pool : @database.Database,
+  root : String,
+  scope : @repository.RepositoryScope,
+  actor : @domain.CurrentUser,
+  filename : String,
+  bytes : Bytes,
+) -> Attachment {
   guard !bytes.is_empty() && bytes.length() <= maximum_attachment_bytes else {
     raise @domain.BadRequest(
       message="each attachment must be between 1 byte and 25 MiB",

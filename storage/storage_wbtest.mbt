@@ -209,3 +209,34 @@ async test "S3 live large archive streams beyond the old artifact limit without 
   )
   store.remove_namespace("large")
 }
+
+///|
+async test "namespace cleanup refuses nested and dangling symlinks and retries missing paths" {
+  let root = @fs.tmpdir(prefix="moonhub-storage-cleanup-")
+  defer @fs.rmdir(root, recursive=true)
+  let store = filesystem(root + "/blobs")
+  @fs.mkdir(root + "/outside")
+  @fs.write_file(root + "/outside/keep", b"keep")
+  store.put("sample/data", b"data")
+  @fs.mkdir(root + "/blobs/sample/nested")
+  @fs.symlink(target=root + "/outside", root + "/blobs/sample/nested/link")
+  try store.remove_namespace("sample") catch {
+    IntegrityFailure => ()
+    err => raise err
+  } noraise {
+    _ => fail("cleanup accepted a nested symlink")
+  }
+  assert_eq(@fs.read_file(root + "/outside/keep").text(), "keep")
+  @fs.remove(root + "/blobs/sample/nested/link")
+  @fs.symlink(target=root + "/missing", root + "/blobs/dangling")
+  try store.remove_namespace("dangling") catch {
+    IntegrityFailure => ()
+    err => raise err
+  } noraise {
+    _ => fail("cleanup accepted a dangling symlink")
+  }
+  @fs.remove(root + "/blobs/dangling")
+  store.remove_namespace("sample")
+  store.remove_namespace("sample")
+  assert_false(@fs.exists(root + "/blobs/sample"))
+}

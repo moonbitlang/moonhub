@@ -13,6 +13,8 @@ pub fn attachment_links(String) -> Array[ImageLink]
 
 pub async fn cleanup_pending(@database.Database, String) -> Unit
 
+pub async fn cleanup_repository_files(String, Array[String]) -> Unit
+
 pub fn image_links(String) -> Array[ImageLink]
 
 pub fn markdown(Attachment) -> String
