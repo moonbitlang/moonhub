@@ -68,7 +68,23 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         @web_context.required_param(req, "artifact", "artifact"),
       ),
     )
+    let authorize = () => {
+      ignore(
+        coordinator.user_artifact(
+          root,
+          actor,
+          @web_context.repo_param(req),
+          @web_context.positive_resource_number(
+            @web_context.required_param(req, "run", "run"),
+          ),
+          blob.id,
+        ),
+      )
+    }
     blob.with_reader(reader => {
+      // The bounded download queue and remote open can outlive authorization.
+      // Recheck before sending headers as well as between streamed chunks.
+      authorize()
       let writer = @async.with_timeout(30000, () => {
         res.respond(headers={
           "Content-Type": "application/zip",
@@ -78,19 +94,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           "X-Content-Type-Options": "nosniff",
         })
       })
-      stream_artifact(() => reader.read(), writer, () => {
-        ignore(
-          coordinator.user_artifact(
-            root,
-            actor,
-            @web_context.repo_param(req),
-            @web_context.positive_resource_number(
-              @web_context.required_param(req, "run", "run"),
-            ),
-            blob.id,
-          ),
-        )
-      })
+      stream_artifact(() => reader.read(), writer, authorize)
     })
   })
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {
