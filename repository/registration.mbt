@@ -6,6 +6,7 @@ pub async fn create_managed_repository(
   visibility : String,
   import_existing : Bool,
 ) -> Unit {
+  require_repository_name_available(pool, repo)
   guard visibility == "public" || visibility == "private" else {
     raise @domain.BadRequest(message="visibility must be public or private")
   }

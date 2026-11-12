@@ -115,6 +115,7 @@ pub async fn enqueue_repository(
 ) -> @domain.RepoId {
   require_repository_manager(pool, actor, team)
   let repo = @domain.parse_transport_repo("\{team.name_key}/\{name}")
+  require_repository_name_available(pool, repo)
   let source = if source_url.is_empty() {
     None
   } else {

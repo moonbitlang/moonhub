@@ -24,6 +24,8 @@ pub async fn create_managed_repository(@database.Database, String, @domain.RepoI
 
 pub let default_mirror_config : MirrorConfig
 
+pub async fn delete_repository(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, String) -> Unit
+
 pub async fn discard_repository_job(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit
 
 pub fn effective_ssh_endpoint(@database.Database, SshAddressConfig) -> SshEndpoint? raise
