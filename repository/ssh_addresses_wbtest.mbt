@@ -43,39 +43,3 @@ test "SSH endpoints reject listen addresses credentials paths and invalid ports"
     }
   }
 }
-
-///|
-async test "SSH address migration preserves version two jobs as legacy" {
-  @async.with_task_group(group => {
-    let pool = @database.new_db_pool({ path: ":memory:", }, group)
-    defer pool.close()
-    let baseline = @fs.read_file("db/base.sql").text()
-    let ssh = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
-    let jobs = @fs.read_file("db/migrations/002_repository_jobs.sql").text()
-    pool.with_client(client => {
-      client.batch_execute(baseline)
-      client.batch_execute(ssh)
-      client.batch_execute(jobs)
-      client.batch_execute(
-        (
-          #|INSERT INTO "user" (id, name_key, display_name, password_hash, is_site_admin) VALUES (1, 'alice', 'Alice', 'test', 0);
-          #|INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'alice', 'Alice', 'personal');
-          #|INSERT INTO repository (id, team_id, name, visibility, ready) VALUES (1, 1, 'copy', 'private', 0);
-          #|INSERT INTO repository_job (repository_id, requested_by_user_id, source_url) VALUES (1, 1, 'git@source.example:repo.git');
-          #|PRAGMA user_version = 2;
-        ),
-      )
-    })
-    @database.initialize_db(pool)
-    @database.initialize_db(pool)
-    let job = require_repository_job(
-      pool,
-      @identity.get_team_by_name_key(pool, "alice").unwrap(),
-      "copy",
-    )
-    assert_eq(job.source_kind, "legacy")
-    assert_true(job.source_repository_id is None)
-    assert_eq(job.source_url, "git@source.example:repo.git")
-    assert_true(effective_ssh_endpoint(pool, no_ssh_address_config) is None)
-  })
-}

@@ -17,7 +17,6 @@ import {
 }
 
 import {
-  "hackwaly/moonhub/ssh",
   "hackwaly/moonhub/test_support",
 } for "wbtest"
 

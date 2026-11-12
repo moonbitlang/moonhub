@@ -1,11 +1,9 @@
 ///|
-async test "repository variable schema upgrades version 35 preserves existing data and is idempotent" {
+async test "baseline preserves repository variables and cascades deletion" {
   @test_support.with_ssh_test_db(pool => {
     pool.with_client(client => {
       client.batch_execute(
         (
-          #|DROP TABLE repository_variable;
-          #|PRAGMA user_version=35;
           #|INSERT INTO repository_secret(repository_id,name,value,branch,workflow_path) VALUES(1,'EXISTING_SECRET','private-value','main','.github/workflows/ci.yml');
         ),
       )

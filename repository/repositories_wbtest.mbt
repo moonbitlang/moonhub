@@ -166,44 +166,6 @@ async test "publication never overwrites an unrelated repository at the destinat
 }
 
 ///|
-async test "repository schema migration preserves existing ready repositories and SSH identities" {
-  @async.with_task_group(group => {
-    let pool = @database.new_db_pool({ path: ":memory:", }, group)
-    defer pool.close()
-    let base = @fs.read_file("db/base.sql").text()
-    let keys = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
-    pool.with_client(client => {
-      client.batch_execute(base)
-      client.batch_execute(keys)
-      let _ = client.execute("PRAGMA user_version = 1")
-      client.batch_execute(
-        (
-          #|INSERT INTO "user" (id, name_key, display_name, password_hash) VALUES (1, 'existing', 'Existing', 'hash');
-          #|INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'existing', 'Existing', 'personal');
-          #|INSERT INTO team_member VALUES (1, 1, 'owner', datetime('now'));
-          #|INSERT INTO repository (team_id, name) VALUES (1, 'repo');
-          #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint) VALUES (1, 'Existing key', 'public', 'fingerprint');
-        ),
-      )
-    })
-    @database.initialize_db(pool)
-    @database.initialize_db(pool)
-    assert_eq(
-      @ssh.user_ssh_keys(pool, @identity.active_user_by_name(pool, "existing")).length(),
-      1,
-    )
-    assert_true(
-      can_access_repository(
-        pool,
-        @identity.active_user_by_name(pool, "existing"),
-        { owner: "existing", name: "repo", },
-        Read,
-      ),
-    )
-  })
-}
-
-///|
 async test "interrupted clones remove their previous staging directory before recovery" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")

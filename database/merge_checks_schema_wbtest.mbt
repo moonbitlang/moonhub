@@ -1,32 +1,19 @@
 ///|
-async test "MR checks migration preserves existing rules and immutable pipeline snapshots" {
+async test "baseline defaults MR checks and protects immutable pipeline snapshots" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
-    for
-      file in [
-        "db/base.sql", "db/migrations/001_ssh_keys.sql", "db/migrations/002_repository_jobs.sql",
-        "db/migrations/003_ssh_addresses.sql", "db/migrations/004_merge_requests.sql",
-        "db/migrations/005_mail_settings.sql", "db/migrations/006_personal_namespaces.sql",
-        "db/migrations/007_pipelines.sql", "db/migrations/008_pipeline_protocol.sql",
-        "db/migrations/009_runner_steps.sql", "db/migrations/010_password_resets.sql",
-        "db/migrations/011_provider_scope.sql", "db/migrations/012_pipeline_push.sql",
-        "db/migrations/013_repository_deploy_keys.sql",
-      ] {
-      let sql = @fs.read_file(file).text()
-      pool.with_client(client => client.batch_execute(sql))
-    }
+    initialize_db(pool)
     pool.with_client(client => {
       client.batch_execute(
         (
           #|INSERT INTO "user" (id, name_key, display_name, password_hash) VALUES (1, 'test', 'Test', 'hash');
           #|INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'test', 'Test', 'personal');
           #|INSERT INTO repository (id, team_id, name) VALUES (1, 1, 'repo');
-          #|INSERT INTO branch_rule VALUES (1, 'main', 1);
+          #|INSERT INTO branch_rule(repository_id,branch,required_approvals) VALUES (1, 'main', 1);
           #|INSERT INTO merge_request (id, repository_id, number, author_id, title, source_branch, target_branch, current_version) VALUES (1, 1, 1, 1, 'Existing', 'feature', 'main', 1);
           #|INSERT INTO merge_revision (merge_request_id, version, source_sha, target_sha, base_sha) VALUES (1, 1, 'source', 'target', 'base');
           #|INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json) VALUES (1, 1, 1, '.github/workflows/build.yml', 'Existing', 'main', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/moonhub/pipelines/existing', 1, 'existing workflow', '{}');
-          #|PRAGMA user_version = 13;
         ),
       )
     })

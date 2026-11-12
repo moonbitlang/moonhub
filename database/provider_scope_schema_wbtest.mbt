@@ -1,19 +1,9 @@
 ///|
-async test "provider scope migration preserves selected grants and never promotes existing providers" {
+async test "baseline defaults providers to selected scope and preserves grants" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
-    for
-      file in [
-        "db/base.sql", "db/migrations/001_ssh_keys.sql", "db/migrations/002_repository_jobs.sql",
-        "db/migrations/003_ssh_addresses.sql", "db/migrations/004_merge_requests.sql",
-        "db/migrations/005_mail_settings.sql", "db/migrations/006_personal_namespaces.sql",
-        "db/migrations/007_pipelines.sql", "db/migrations/008_pipeline_protocol.sql",
-        "db/migrations/009_runner_steps.sql", "db/migrations/010_password_resets.sql",
-      ] {
-      let sql = @fs.read_file(file).text()
-      pool.with_client(client => client.batch_execute(sql))
-    }
+    initialize_db(pool)
     pool.with_client(client => {
       client.batch_execute(
         (
@@ -22,7 +12,6 @@ async test "provider scope migration preserves selected grants and never promote
           #|INSERT INTO pipeline_provider (id, name, token_hash, paused, revoked) VALUES (1, 'existing', 'hash', 1, 0), (2, 'revoked', 'other', 0, 1);
           #|INSERT INTO pipeline_provider_repository VALUES (1, 1);
           #|INSERT INTO pipeline_provider_label VALUES (1, 'linux'), (1, 'self-hosted');
-          #|PRAGMA user_version = 10;
         ),
       )
     })

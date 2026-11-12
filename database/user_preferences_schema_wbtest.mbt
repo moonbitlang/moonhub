@@ -1,9 +1,9 @@
 ///|
-async test "display preferences upgrade schema 37 without changing timestamps or accounts" {
+async test "baseline preserves display preferences and account timestamps" {
   @test_support.with_ssh_test_db(pool => {
     pool.with_client(client => {
       client.batch_execute(
-        "DROP TABLE user_preferences; PRAGMA user_version=37; UPDATE \"user\" SET created_at='2024-01-02 03:04:05' WHERE id=1;",
+        "UPDATE \"user\" SET created_at='2024-01-02 03:04:05' WHERE id=1;",
       )
     })
     initialize_db(pool)
