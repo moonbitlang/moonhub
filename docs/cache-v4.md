@@ -3,10 +3,11 @@
 Storage can use filesystem or S3 independently for artifacts and caches; see [blob storage](blob-storage.md) for configuration, cutover and cleanup.
 
 MoonHub downloads and executes the original actions/cache@v4, cache/restore,
-cache/save and cache clients embedded in JavaScript Actions. Migration 033 adds
-Cache Service v2 (the protocol used by Cache Action v4). There is no built-in
-cache Action replacement. Deploy the updated server and runner together; the
-runner/report protocol remains V1 and existing snapshots remain readable.
+cache/save and cache clients embedded in JavaScript Actions. The baseline schema
+backs Cache Service v2 (the protocol used by Cache Action v4). There is no
+built-in cache Action replacement. Deploy the updated server and runner
+together; the runner/report protocol remains V1 and existing snapshots remain
+readable.
 
 ## Workflow behavior
 
@@ -103,10 +104,10 @@ the updated npm lockfile.
 
 Offline tests cover exact/version/prefix selection, incomplete uploads,
 immutable retries, cancellation, completed-producer access, MR/trusted scope
-separation, rerun snapshots, LRU/expiry, migration 32 to 33, single PUT and staged
-blocks. JavaScript tests compare hash/glob semantics with the pinned toolkit,
-exercise input delivery, and bound subdirectory Action entry points to their
-repository root.
+separation, rerun snapshots, LRU/expiry, baseline defaults, single PUT and
+staged blocks. JavaScript tests compare hash/glob semantics with the pinned
+toolkit, exercise input delivery, and bound subdirectory Action entry points to
+their repository root.
 
 Opt-in HTTP acceptance downloads and executes unmodified actions/cache@v4.2.4,
 pinned to 0400d5f644dc74513175e3cd8d07132dd4860809. It covers post save, a 9 MiB

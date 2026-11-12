@@ -118,14 +118,14 @@ disclosures and separator-based threads, with replies indented one level. Reply
 and resolve/reopen actions use CSRF-protected POST forms and work without
 JavaScript. Overview pages show at most 50 threads and the latest three replies
 per thread; thread detail pages expose every reply in chronological pages of 50.
-Original comment IDs, review decisions and deletion tombstones are preserved by
-migration 019, without replaying old notifications. The existing activity history
-remains available as a secondary disclosure. Replies and resolve/reopen events use the
-existing MR subscription and delivery authorization rules. Notification links
-retain the discussion and stable comment ID; the server resolves the actual
-reply page, including deleted-comment placeholders. Delete/restore actions return
-to that same page and comment anchor. Migration 020 backfills existing targets
-without replaying notifications or mail or resetting read state.
+The database preserves original comment IDs, review decisions and deletion
+tombstones. The existing activity history remains available as a secondary
+disclosure. Replies and resolve/reopen events use the existing MR subscription
+and delivery authorization rules. Notification links retain the discussion and
+stable comment ID; the server resolves the actual reply page, including
+deleted-comment placeholders. Delete/restore actions return to that same page
+and comment anchor. Discussion targets and read state persist without replaying
+notifications or mail at initialization.
 
 Inline code comments start the same discussions with an immutable anchor to a
 saved MR version and comparison: All changes or one commit, base/head object IDs,

@@ -263,9 +263,13 @@ server configuration, not ordinary Git objects.
 
 **Upgrade note:** disk directories alone no longer grant access. Existing
 repositories must be explicitly registered and associated with a team before
-they are available through either the web UI or SSH. Database schema migrations
-run automatically in `web` before the server becomes healthy. SSH waits for that
-initialization and never runs migrations from an authentication request.
+they are available through either the web UI or SSH. Database initialization
+runs in `web` before the server becomes healthy. An empty database uses the
+schema 38 baseline and subsequent incremental migrations to reach schema 39.
+Existing databases at schema 38 upgrade automatically; older databases need
+to be upgraded with a historical release first; see
+[database initialization and upgrades](../db/README.md). SSH waits for Web
+initialization and never changes the schema from an authentication request.
 
 ## SSH Import
 
@@ -632,23 +636,11 @@ shared-host snapshots because a fresh bounded storage area and resource slice
 must be provisioned before restoring them; do not restore them with an older
 recovery script that silently discards limits.
 
-`deploy/identity-transfer.py export SOURCE DESTINATION` exports only users,
-teams, membership, invitation and user SSH public-key records from a read-only SQLite snapshot.
-`import ... --schema-root db --schema-version 11|12|13|14` creates a fresh database
-with those identities; it refuses existing destinations. Password hashes are
-preserved, including public-key revocation state, but server SSH host keys,
-sessions, password resets, mail settings/outbox,
-repositories and pipelines are excluded. Export files are sensitive and mode
-0600; transfer them over SSH without displaying contents. Existing users log
-in with their old passwords and use their existing SSH keys. Verify
-the helper with `python3 scripts/identity-transfer-test.py`.
-The Python exporter accepts source schema versions 11–14. When Python is absent
-from the old Web image, `export-identities.cjs` performs the same export for
-source schema versions 11–16 using Node 24's SQLite API and the shared
-`identity-tables.json` allowlist. It reads a transaction snapshot and outputs
-counts only. These are legacy identity-transfer tools; neither exporter accepts
-the current application schema. Use complete deployment backups for current
-installations.
+Use complete deployment backups to preserve identities together with repository,
+collaboration and Pipeline data. Legacy identity-only transfer tools have been
+removed. When restoring a backup older than schema 38, restore its matching
+images first, upgrade it to schema 38 using a historical release, then switch to
+the current release. See [database upgrade guidance](../db/README.md).
 
 ### Standard Restores
 

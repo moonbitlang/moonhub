@@ -132,15 +132,16 @@ the resolved plan retains the 1 MiB cap.
 
 The collaboration API's run objects expose `context` as an object with
 `repository`, `sha`, `event_name`, `head_ref`, `base_ref`. For historical runs
-created before migration 018, `context` is `null`; their existing definitions
-and reruns continue to work unchanged. No context is fabricated from live state.
-Migration 018 upgrades the database to schema 18 and protects context against
+created before context snapshots were introduced, `context` is `null`; their
+existing definitions and reruns continue to work unchanged. No context is
+fabricated from live state. The baseline schema protects context against
 updates. Back up the database and repositories together and upgrade Web/SSH
-together; an older server binary cannot open schema 18. Simple public context
-references still use ordinary resolved env strings. Current definition-v4 runs use
-assignment version 7. Definition-v3 snapshots retain version 6 and definition-v2
-snapshots retain version 5, including jobs containing only shell steps.
-Repository secrets retain the separate execution-time channel described below.
+together; see [database compatibility](../db/README.md). Simple public context
+references still use ordinary resolved env strings. Current definition-v4 runs
+use assignment version 7. Definition-v3 snapshots retain version 6 and
+definition-v2 snapshots retain version 5, including jobs containing only shell
+steps. Repository secrets retain the separate execution-time channel described
+below.
 
 ### Repository Secrets
 
@@ -237,11 +238,11 @@ Matching uses a multi-pattern failure-link scan and combines overlapping matches
 Pending cross-chunk context is bounded by mask lengths rather than by an entire
 chain of overlaps, so repeated prefixes cannot cause quadratic rescanning.
 
-Migration 029 upgrades the database to schema 29. Secret values and temporary
-delivery records are stored in SQLite without application-level encryption,
-consistent with other recoverable integration credentials. Protect the database,
-WAL and backups as credentials. Upgrade matching server and Runner components
-before scheduling secret jobs; no production credentials are created by migration.
+The baseline schema stores secret values and temporary delivery records in
+SQLite without application-level encryption, consistent with other recoverable
+integration credentials. Protect the database, WAL and backups as credentials.
+Upgrade matching server and Runner components before scheduling secret jobs;
+initialization creates no production credentials.
 
 Validation includes the full MoonBit suite and
 `node scripts/repository-secrets-smoke.cjs` after building the browser assets and
@@ -363,13 +364,14 @@ administrator. Ordinary contributors cannot enqueue code execution. Read APIs
 require current repository read access and scope all lookups by repository.
 Permissions are rechecked after Git operations and before publishing a snapshot.
 
-Migration 007 adds runs, jobs, dependency edges, and separate attempt history.
-Run configuration is immutable and versioned. New runs contain no attempts;
-jobs without dependencies are queued and dependent jobs are waiting. Lifecycle
-state and conclusion are separate. Completed records require a conclusion, and
-at most one active attempt can exist per job. Claims and attempt transitions are
-transactional. The scheduler advances dependent jobs transactionally and supports
-explicit reruns from an immutable completed snapshot.
+The baseline schema includes runs, jobs, dependency edges, and separate attempt
+history. Run configuration is immutable and versioned. New runs contain no
+attempts; jobs without dependencies are queued and dependent jobs are waiting.
+Lifecycle state and conclusion are separate. Completed records require a
+conclusion, and at most one active attempt can exist per job. Claims and attempt
+transitions are transactional. The scheduler advances dependent jobs
+transactionally and supports explicit reruns from an immutable completed
+snapshot.
 
 The repository's existing cross-process write lock coordinates run creation.
 Source is pinned under a random `refs/moonhub/pipelines/<token>` ref **before**
@@ -395,7 +397,7 @@ node scripts/check-package-boundaries.cjs
 Tests cover upstream YAML behavior, multiline script preservation, scalar
 coercion, defaults/env precedence, fail-closed validation, structural limits,
 dependency cycles, current authorization, concurrent run numbering, rollback,
-attempt constraints, migration from schema 6, database reopen, and source
+attempt constraints, baseline initialization, database reopen, and source
 retention after a force push plus immediate Git garbage collection. Workflow and
 store tests do not execute scripts or connect to Docker. The full MoonBit suite
 also runs Runner execution tests using application-owned fixtures.
@@ -419,10 +421,10 @@ without `uses` or `moonbit_version`; those fields are empty when unused. Lease,
 claim and result HTTP messages remain V1 under the existing API prefix. Older
 Runners/providers reject unsupported assignments. Upgrade Web, SSH, provider and
 Runner images together. Definition version 3 and assignment version 6 add
-matrix/strategy contexts, and migration 031 adds durable scheduling state.
-Definition version 4 and assignment version 7 add job dataflow, with output
-storage in migration 035. Older definitions remain readable without
-reinterpreting their snapshots.
+matrix/strategy contexts backed by durable scheduling state. Definition version
+4 and assignment version 7 add job dataflow, with output storage in
+`pipeline_job_output`. Older definitions remain readable without reinterpreting
+their snapshots.
 
 The machine API is mounted at `/-/runner-api/v1` separately from browser session
 and login middleware. Its feature module requires an app-scoped `Coordinator`
@@ -598,15 +600,15 @@ Tests exercise production bearer-vs-cookie authentication, a simulated HTTP
 provider's complete lifecycle, lost-response claim replay, separate database
 connections competing for a job, database close/reopen, reordered/duplicate
 logs, credential redaction, log quotas, cancellation/result races, revoked
-permissions, expired/old credentials, fixed deadlines, and migration 7 -> 8
-including backfilled labels. No Docker daemon or external service is needed.
+permissions, expired/old credentials, fixed deadlines, and persisted runner
+labels. No Docker daemon or external service is needed.
 
 ## Automatic Push Workflows
 
-Automatic execution is opt-in per repository. A repository owner or administrator
-can enable **Run push workflows** on its Pipelines page. Existing repositories
-remain disabled after migration 012. Only pushes by repository owners/admins or
-site administrators are eligible, preserving the existing execution trust policy;
+Automatic execution is opt-in per repository. A repository owner or
+administrator can enable **Run push workflows** on its Pipelines page. Push
+workflows default to disabled. Only pushes by repository owners/admins or site
+administrators are eligible, preserving the existing execution trust policy;
 ordinary contributors can still push, but their pushes do not automatically run
 code. The requester must remain authorized when the event is processed and when
 a provider claims it. Provider scopes and label matching still apply. No fork or
@@ -671,11 +673,11 @@ plain HTTP requires the explicit `--allow-http` development flag. Redirects are
 not followed and response bodies/retries are bounded.
 
 The Runner generates a fresh `execution_id` before its first `/start` request.
-Migration 009 binds that ID once and adds persisted per-step states. Start
-retries from the same instance are idempotent; a different Runner instance is
-rejected, even if it receives the same assignment and attempt credential.
-Older simulated clients may still use the legacy start shape, but real Runners
-require the echoed execution ID and fail closed against an older server.
+The database binds that ID once and persists per-step states. Start retries from
+the same instance are idempotent; a different Runner instance is rejected, even
+if it receives the same assignment and attempt credential. Older simulated
+clients may still use the legacy start shape, but real Runners require the
+echoed execution ID and fail closed against an older server.
 
 The additional `/attempts/:id/steps` endpoint accepts `version`, `step_id`,
 `state`, and `exit_code`. It enforces pending -> running -> terminal transitions,

@@ -15,233 +15,83 @@ pub fn[T] new_db_pool(
 pub let database_schema_version : Int64 = 39L
 
 ///|
-pub async fn initialize_db(pool : Database) -> Unit {
-  pool.with_client(client => {
-    let _ = client.execute("PRAGMA foreign_keys = ON", params=[])
-    let _ = client.execute("PRAGMA journal_mode = WAL", params=[])
-    let _ = client.execute("PRAGMA busy_timeout = 5000", params=[])
-  })
-  let table_row = pool.with_client(client => {
-    client.query_opt(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'user'",
-    )
-  })
-  if table_row is None {
-    let sql = @fs.read_file("db/base.sql").text()
-    pool.with_client(client => client.batch_execute(sql))
+let database_initialization_state : String =
+  #|SELECT user_version,
+  #|  EXISTS (SELECT 1 FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*') AS has_objects
+  #|FROM pragma_user_version
+
+///|
+fn database_needs_initialization(state : DbRow) -> Bool raise {
+  let version : Int64 = state.get_name("user_version")
+  if version == database_schema_version {
+    return false
   }
-  let storage_migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()
-  let preferences_migration = @fs.read_file(
-    "db/migrations/038_user_preferences.sql",
-  ).text()
-  let oidc_migration = @fs.read_file("db/migrations/037_pipeline_oidc.sql").text()
-  let ssh_migration = @fs.read_file("db/migrations/001_ssh_keys.sql").text()
-  let repository_migration = @fs.read_file(
-    "db/migrations/002_repository_jobs.sql",
-  ).text()
-  let address_migration = @fs.read_file("db/migrations/003_ssh_addresses.sql").text()
-  let merge_migration = @fs.read_file("db/migrations/004_merge_requests.sql").text()
-  let mail_migration = @fs.read_file("db/migrations/005_mail_settings.sql").text()
-  let personal_namespace_migration = @fs.read_file(
-    "db/migrations/006_personal_namespaces.sql",
-  ).text()
-  let pipeline_migration = @fs.read_file("db/migrations/007_pipelines.sql").text()
-  let protocol_migration = @fs.read_file(
-    "db/migrations/008_pipeline_protocol.sql",
-  ).text()
-  let runner_migration = @fs.read_file("db/migrations/009_runner_steps.sql").text()
-  let password_reset_migration = @fs.read_file(
-    "db/migrations/010_password_resets.sql",
-  ).text()
-  let provider_scope_migration = @fs.read_file(
-    "db/migrations/011_provider_scope.sql",
-  ).text()
-  let push_migration = @fs.read_file("db/migrations/012_pipeline_push.sql").text()
-  let deploy_key_migration = @fs.read_file(
-    "db/migrations/013_repository_deploy_keys.sql",
-  ).text()
-  let merge_checks_migration = @fs.read_file(
-    "db/migrations/014_merge_checks.sql",
-  ).text()
-  let notifications_migration = @fs.read_file(
-    "db/migrations/015_notifications.sql",
-  ).text()
-  let access_tokens_migration = @fs.read_file(
-    "db/migrations/016_access_tokens.sql",
-  ).text()
-  let pull_request_migration = @fs.read_file(
-    "db/migrations/017_pull_request_workflows.sql",
-  ).text()
-  let run_context_migration = @fs.read_file("db/migrations/018_run_context.sql").text()
-  let discussions_migration = @fs.read_file(
-    "db/migrations/019_merge_discussions.sql",
-  ).text()
-  let discussion_targets_migration = @fs.read_file(
-    "db/migrations/020_discussion_notification_targets.sql",
-  ).text()
-  let anchors_migration = @fs.read_file(
-    "db/migrations/021_merge_discussion_anchors.sql",
-  ).text()
-  let attachments_migration = @fs.read_file("db/migrations/022_attachments.sql").text()
-  let general_attachments_migration = @fs.read_file(
-    "db/migrations/023_general_attachments.sql",
-  ).text()
-  let runner_control_migration = @fs.read_file(
-    "db/migrations/025_runner_control.sql",
-  ).text()
-  let mirrors_migration = @fs.read_file("db/migrations/026_push_mirrors.sql").text()
-  let mirror_keys_migration = @fs.read_file("db/migrations/027_mirror_keys.sql").text()
-  let mirror_host_keys_migration = @fs.read_file(
-    "db/migrations/028_mirror_host_keys.sql",
-  ).text()
-  let webhooks_migration = @fs.read_file("db/migrations/024_webhooks.sql").text()
-  let secrets_migration = @fs.read_file(
-    "db/migrations/029_repository_secrets.sql",
-  ).text()
-  let self_approval_migration = @fs.read_file(
-    "db/migrations/030_self_approval.sql",
-  ).text()
-  let scheduling_migration = @fs.read_file(
-    "db/migrations/031_workflow_scheduling.sql",
-  ).text()
-  let artifact_migration = @fs.read_file(
-    "db/migrations/032_pipeline_artifacts.sql",
-  ).text()
-  let cache_migration = @fs.read_file("db/migrations/033_pipeline_cache.sql").text()
-  let targets_migration = @fs.read_file(
-    "db/migrations/034_merge_request_targets.sql",
-  ).text()
-  let job_output_migration = @fs.read_file("db/migrations/035_job_outputs.sql").text()
-  let variables_migration = @fs.read_file(
-    "db/migrations/036_repository_variables.sql",
-  ).text()
-  pool.with_client(client => {
-    client.with_transaction(tx => {
-      let row = tx.query_one("PRAGMA user_version")
-      let version : Int64 = row.get_name("user_version")
-      guard version <= database_schema_version else {
-        raise @domain.BadRequest(
-          message="database schema is newer than this moonhub version",
-        )
-      }
-      if version == 0L {
-        tx.driver.exec_script(ssh_migration)
-      }
-      if version < 2L {
-        tx.driver.exec_script(repository_migration)
-      }
-      if version < 3L {
-        tx.driver.exec_script(address_migration)
-      }
-      if version < 4L {
-        tx.driver.exec_script(merge_migration)
-      }
-      if version < 5L {
-        tx.driver.exec_script(mail_migration)
-      }
-      if version < 6L {
-        tx.driver.exec_script(personal_namespace_migration)
-      }
-      if version < 7L {
-        tx.driver.exec_script(pipeline_migration)
-      }
-      if version < 8L {
-        tx.driver.exec_script(protocol_migration)
-      }
-      if version < 9L {
-        tx.driver.exec_script(runner_migration)
-      }
-      if version < 10L {
-        tx.driver.exec_script(password_reset_migration)
-      }
-      if version < 11L {
-        tx.driver.exec_script(provider_scope_migration)
-      }
-      if version < 12L {
-        tx.driver.exec_script(push_migration)
-      }
-      if version < 13L {
-        tx.driver.exec_script(deploy_key_migration)
-      }
-      if version < 14L {
-        tx.driver.exec_script(merge_checks_migration)
-      }
-      if version < 15L {
-        tx.driver.exec_script(notifications_migration)
-      }
-      if version < 16L {
-        tx.driver.exec_script(access_tokens_migration)
-      }
-      if version < 17L {
-        tx.driver.exec_script(pull_request_migration)
-      }
-      if version < 18L {
-        tx.driver.exec_script(run_context_migration)
-      }
-      if version < 19L {
-        tx.driver.exec_script(discussions_migration)
-      }
-      if version < 20L {
-        tx.driver.exec_script(discussion_targets_migration)
-      }
-      if version < 21L {
-        tx.driver.exec_script(anchors_migration)
-      }
-      if version < 22L {
-        tx.driver.exec_script(attachments_migration)
-      }
-      if version < 23L {
-        tx.driver.exec_script(general_attachments_migration)
-      }
-      if version < 24L {
-        tx.driver.exec_script(webhooks_migration)
-      }
-      if version < 25L {
-        tx.driver.exec_script(runner_control_migration)
-      }
-      if version < 26L {
-        tx.driver.exec_script(mirrors_migration)
-      }
-      if version < 27L {
-        tx.driver.exec_script(mirror_keys_migration)
-      }
-      if version < 28L {
-        tx.driver.exec_script(mirror_host_keys_migration)
-      }
-      if version < 29L {
-        tx.driver.exec_script(secrets_migration)
-      }
-      if version < 30L {
-        tx.driver.exec_script(self_approval_migration)
-      }
-      if version < 31L {
-        tx.driver.exec_script(scheduling_migration)
-      }
-      if version < 32L {
-        tx.driver.exec_script(artifact_migration)
-      }
-      if version < 33L {
-        tx.driver.exec_script(cache_migration)
-      }
-      if version < 34L {
-        tx.driver.exec_script(targets_migration)
-      }
-      if version < 35L {
-        tx.driver.exec_script(job_output_migration)
-      }
-      if version < 36L {
-        tx.driver.exec_script(variables_migration)
-      }
-      if version < 37L {
-        tx.driver.exec_script(oidc_migration)
-      }
-      if version < 38L {
-        tx.driver.exec_script(preferences_migration)
-      }
-      if version < 39L {
+  guard version <= database_schema_version else {
+    raise @domain.BadRequest(
+      message="database schema is newer than this moonhub version",
+    )
+  }
+  guard version == 0L || version >= 38L else {
+    raise @domain.BadRequest(
+      message="database schema \{version} is older than the minimum supported version 38; upgrade it to schema 38 with a historical MoonHub release first",
+    )
+  }
+  guard version != 0L || !(state.get_name("has_objects") : Bool) else {
+    raise @domain.BadRequest(
+      message="database has schema version 0 but contains user-defined objects; restore a complete database or upgrade it to schema 38 with a historical MoonHub release first",
+    )
+  }
+  true
+}
+
+///|
+fn initialize_database_schema(
+  client : DbClient,
+  baseline : String?,
+  storage_migration : String,
+) -> Unit raise {
+  client.with_transaction(
+    tx => {
+      // Reserve the writer before rechecking: another initializer may have
+      // committed while the scripts were being read.
+      let state = tx.query_one(database_initialization_state)
+      if database_needs_initialization(state) {
+        let version : Int64 = state.get_name("user_version")
+        if version == 0L {
+          guard baseline is Some(sql) else {
+            raise @domain.BadRequest(
+              message="database state changed during initialization; retry initialization",
+            )
+          }
+          tx.driver.exec_script(sql)
+        }
+        // The schema 38 baseline and all later migrations commit together.
         tx.driver.exec_script(storage_migration)
+        ignore(tx.execute("PRAGMA user_version = 39"))
       }
-      let _ = tx.execute("PRAGMA user_version = 39")
-    })
+    },
+    immediate=true,
+  )
+}
+
+///|
+pub async fn initialize_db(pool : Database) -> Unit {
+  let state = pool.with_client(client => {
+    ignore(client.execute("PRAGMA foreign_keys = ON"))
+    ignore(client.execute("PRAGMA journal_mode = WAL"))
+    ignore(client.execute("PRAGMA busy_timeout = 5000"))
+    client.query_one(database_initialization_state)
   })
+  if database_needs_initialization(state) {
+    let version : Int64 = state.get_name("user_version")
+    let baseline = if version == 0L {
+      Some(@fs.read_file("db/base.sql").text())
+    } else {
+      None
+    }
+    let storage_migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()
+    pool.with_client(client => {
+      initialize_database_schema(client, baseline, storage_migration)
+    })
+  }
 }

@@ -156,18 +156,18 @@ Use compatible Web/provider/Runner versions when proposing new actions: a newer
 parser or setup action must actually execute on the MR's candidate, rather than
 only compile its implementation under the old workflow.
 
-Migration 017 adds the MR event, distinguishes automatic/required checks and
-preserves existing execution approvals. Existing run definitions without `uses`
-remain readable and runnable. New checkout assignments require matching provider
-and Runner images; see [assignment compatibility](pipelines.md#runner-protocol).
+The baseline schema stores the MR event, automatic/required checks and execution
+approvals. Existing run definitions without `uses` remain readable and runnable.
+New checkout assignments require matching provider and Runner images; see
+[assignment compatibility](pipelines.md#runner-protocol).
 
-Migration 014 preserves existing MRs, reviews, branch rules, and Pipeline runs.
-It adds opt-in requirements, versioned check state, and immutable run-to-check
-links. The latest linked run updates check status transactionally in SQLite.
-Upgrade Web and SSH together because trusted push hooks consult the new policy.
-Back up the database and repositories together before upgrading; an older binary
-cannot open the upgraded schema. Rollback requires the matching backup, not
-just an older executable.
+The baseline schema includes MRs, reviews, branch rules, Pipeline runs, opt-in
+requirements, versioned check state, and immutable run-to-check links. The
+latest linked run updates check status transactionally in SQLite. Upgrade Web
+and SSH together because trusted push hooks consult the new policy. Back up the
+database and repositories together before upgrading; an older binary cannot open
+the upgraded schema. Rollback requires the matching backup, not just an older
+executable. See [database compatibility](../db/README.md).
 
 ```sh
 moon check --deny-warn
