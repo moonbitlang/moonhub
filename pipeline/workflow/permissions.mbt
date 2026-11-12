@@ -17,10 +17,10 @@ fn read_permissions(
     Some(String("write")) => true
     _ => raise InvalidWorkflow("\{ctx}.id-token supports only write or none")
   }
-  let api = (if fields.get("contents") == Some(@yaml.String("write")) {
-      3
-    } else {
-      0
+  let api = (match fields.get("contents") {
+      Some(String("write")) => 3
+      Some(String("read")) => 1
+      _ => 0
     }) +
     (match fields.get("actions") {
       None | Some(String("none")) => 0

@@ -111,8 +111,8 @@ outside its temporary repository.
 
 `permissions.contents` supports `none`, `read` and `write`; `permissions.actions`
 supports `none` and `read`. An explicit permission map resets unspecified rights.
-Write and actions-read jobs require assignment version 12; older runners reject
-this contract rather than substituting an empty token. Other jobs retain their
+Jobs that explicitly grant contents read/write or actions-read require assignment version 12; older runners reject
+this contract rather than substituting an empty token. Jobs that rely only on the historical default retain their
 historical assignment behavior. `github.token` receives an opaque job credential
 only when API permissions are declared. It is repository-bound, tied to the live
 attempt/execution, masked in logs and invalid after cancellation, lease expiry,

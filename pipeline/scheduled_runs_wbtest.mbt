@@ -124,3 +124,49 @@ async test "job API grants are repository permission event and live attempt boun
     }
   })
 }
+
+///|
+async test "explicit contents read grants release reads without publication or legacy scope expansion" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let source = "permissions: {contents: read}\n" + sample_workflow
+    ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), source))
+    ignore(
+      create_run(
+        pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
+      ),
+    )
+    let c = Coordinator::new(pool)
+    ignore(
+      c.create_provider(
+        @identity.active_user_by_name(pool, "admin"),
+        "reader",
+        provider_secret,
+        ["self-hosted", "linux"],
+        [protocol_repo],
+      ),
+    )
+    let assignment = c.claim(provider_secret, claim_request()).unwrap()
+    assert_eq(assignment.version, @protocol.release_assignment_version)
+    let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+    ignore(c.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
+    let grant = c.api_runtime(id, attempt_secret, {
+      version: 1,
+      execution_id: "e".repeat(32),
+    })
+    assert_eq(
+      c.authenticate_job_api(grant.token, protocol_repo, "contents:read").id,
+      actor.id,
+    )
+    try
+      ignore(
+        c.authenticate_job_api(grant.token, protocol_repo, "contents:write"),
+      )
+    catch {
+      @domain.Forbidden(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("read-only job could publish")
+    }
+  })
+}

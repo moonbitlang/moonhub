@@ -59,7 +59,7 @@ async test "Windows environment protocol retains OIDC dispatch and output contra
           runner_os: Some("windows"),
         })
         .unwrap()
-      assert_eq(assignment.version, @protocol.environment_assignment_version)
+      assert_eq(assignment.version, @protocol.release_assignment_version)
       assert_true(assignment.job.id_token_write)
       assert_true(assignment.job.contents_read)
       assert_eq(

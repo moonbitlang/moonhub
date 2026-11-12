@@ -24,7 +24,7 @@ async fn with_oidc_fixture(
 async test "OIDC signs verifiable JWTs from immutable snapshots with separate masked credentials" {
   with_oidc_fixture((c, pool, _, run, _, clock) => {
     let a = c.claim(provider_secret, claim_request()).unwrap()
-    assert_eq(a.version, @protocol.oidc_assignment_version)
+    assert_eq(a.version, @protocol.release_assignment_version)
     assert_true(a.job.id_token_write)
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
     ignore(c.start(id, attempt_secret, 1, execution_id="e".repeat(32)))

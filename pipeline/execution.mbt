@@ -512,8 +512,14 @@ pub fn Coordinator::claim(
             event = run_event_context(saved, event_ref=context["ref"])
           }
         }
+        let api_permissions = if (row.get_name("definition_version") : Int64) >=
+          8L {
+          job.api_permissions
+        } else {
+          0
+        }
         Some({
-          version: if job.api_permissions != 0 {
+          version: if api_permissions != 0 {
             @protocol.release_assignment_version
           } else if job.runs_on.contains("windows-2025") {
             @protocol.environment_assignment_version
@@ -565,7 +571,7 @@ pub fn Coordinator::claim(
             },
             context,
             contents_read: job.contents_read,
-            api_permissions: job.api_permissions,
+            api_permissions,
             id_token_write: (row.get_name("definition_version") : Int64) >= 7L &&
             job.id_token_write,
             matrix: job.matrix,
