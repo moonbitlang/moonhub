@@ -104,7 +104,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
       "prepared",
       updates,
     )
-    assert_true(@repository.list_ref_events(pool, actor, repo).is_empty())
+    assert_true(@test_support.ref_events(pool, scope).is_empty())
     @repository.set_pipeline_push_enabled(pool, root, actor, repo, true)
     @repository.record_received_transaction(
       pool,
@@ -115,10 +115,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
       updates,
     )
     @repository.recover_ref_events_locked(pool, scope, git_dir)
-    assert_eq(
-      @repository.list_ref_events(pool, actor, repo)[0].state,
-      "aborted",
-    )
+    assert_eq(@test_support.ref_events(pool, scope)[0].state, "aborted")
     @repository.record_received_transaction(
       pool,
       actor,
@@ -150,9 +147,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
       @gitops.merge_git(git_dir, ["update-ref", "refs/heads/feature", invalid]),
     )
     assert_true(run_next_push_event(pool, root))
-    assert_false(
-      @repository.list_ref_events(pool, actor, repo)[0].error.is_empty(),
-    )
+    assert_false(@test_support.ref_events(pool, scope)[0].error.is_empty())
     @repository.record_received_transaction(
       pool,
       actor,
@@ -173,8 +168,6 @@ async test "push trigger settings filters invalid workflows aborted updates and 
     assert_true(run_next_push_event(pool, root))
     let admin = @identity.active_user_by_name(pool, "admin")
     assert_true(list_runs(pool, admin, repo).is_empty())
-    assert_false(
-      @repository.list_ref_events(pool, admin, repo)[0].error.is_empty(),
-    )
+    assert_false(@test_support.ref_events(pool, scope)[0].error.is_empty())
   })
 }

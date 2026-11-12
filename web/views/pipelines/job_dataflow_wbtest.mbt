@@ -118,13 +118,12 @@ async test "real runner carries version outputs through conditional matrix build
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c
-              .read_logs(
+            let logs = c.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
                 @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-              )
+              ).chunks
               .map(chunk => chunk.text)
               .join("")
             fail("runner job " + assignment.job.id + ": " + logs)
@@ -256,13 +255,12 @@ async test "real runner terminates a job after the shared output budget rejects 
       let runs = @pipeline.list_runs(pool, actor, repo)
       assert_true(runs[0].state is @pipeline.Completed)
       assert_true(runs[0].conclusion is Some(@pipeline.Failure))
-      let logs = c
-        .read_logs(
+      let logs = c.read_log_page(
           actor,
           repo,
           runs[0].number,
           @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-        )
+        ).chunks
         .map(chunk => chunk.text)
         .join("")
       if !logs.contains("coordinator rejected job outputs") {

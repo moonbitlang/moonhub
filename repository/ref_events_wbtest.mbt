@@ -22,7 +22,9 @@ async test "reference transaction ignores tags deletes and unauthorized auto exe
         line,
       )
     }
-    assert_true(list_ref_events(pool, actor, repo).is_empty())
+    assert_true(
+      @test_support.ref_events(pool, repository_scope(pool, actor, repo)).is_empty(),
+    )
     pool.with_client(client => {
       ignore(
         client.execute(
@@ -39,7 +41,9 @@ async test "reference transaction ignores tags deletes and unauthorized auto exe
       "prepared",
       "\{zero} \{sha} refs/heads/new",
     )
-    assert_true(list_ref_events(pool, actor, repo).is_empty())
+    assert_true(
+      @test_support.ref_events(pool, repository_scope(pool, actor, repo)).is_empty(),
+    )
     try set_pipeline_push_enabled(pool, root, contributor, repo, false) catch {
       @domain.Forbidden(_) => ()
       err => raise err

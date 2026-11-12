@@ -78,7 +78,15 @@ async test "provider label forms preserve errors, enforce admin and CSRF, and ke
     assert_eq(updated.id, provider.id)
     assert_true(updated.paused)
     assert_eq(updated.labels, ["linux", "moonhub-build", "self-hosted"])
-    coordinator.authenticate_provider(token)
+    assert_true(
+      coordinator.claim(token, {
+        version: 1,
+        runner_os: None,
+        request_id: "1".repeat(32),
+        attempt_token: "b".repeat(64),
+      })
+      is None,
+    )
     let (confirmation, confirmation_body) = @web_testkit.http_get_path_with_cookie(
       port, "/-/admin/pipelines/providers?labels_saved=1", admin_cookie,
     )

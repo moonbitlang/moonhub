@@ -252,7 +252,9 @@ async test "mirror intents capture committed branch and tag deletions, recover i
       line,
     )
     assert_false(sync_next_mirror(pool, root, config))
-    assert_true(list_ref_events(pool, actor, repo).is_empty())
+    assert_true(
+      @test_support.ref_events(pool, repository_scope(pool, actor, repo)).is_empty(),
+    )
     assert_eq(mirror_history(pool, actor, repo, id).length(), 3)
   })
 }

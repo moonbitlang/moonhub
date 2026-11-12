@@ -461,27 +461,3 @@ pub fn create_prepared_merge_discussion(
     })
   })
 }
-
-///|
-// Compatibility entry point. Callers controlling repository locks should prepare
-// first, then call create_prepared_merge_discussion inside their write section.
-pub async fn create_anchored_merge_discussion(
-  pool : @database.Database,
-  scope : @repository.RepositoryScope,
-  actor : @domain.CurrentUser,
-  mr : MergeRequest,
-  git_dir : String,
-  version : Int64,
-  commit : String?,
-  path : String,
-  side : String,
-  start_line : Int64,
-  end_line : Int64,
-  body : String,
-) -> Int64 {
-  let prepared = prepare_anchored_merge_discussion(
-    pool, scope, actor, mr, git_dir, version, commit, path, side, start_line, end_line,
-    body,
-  )
-  create_prepared_merge_discussion(pool, scope, actor, mr, prepared)
-}

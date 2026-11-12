@@ -74,8 +74,7 @@ async test "OIDC signs verifiable JWTs from immutable snapshots with separate ma
       ),
     )
     let reader = @identity.active_user_by_name(pool, "alice")
-    let text = c
-      .read_logs(reader, protocol_repo, run.number, id)
+    let text = c.read_log_page(reader, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join("")
     assert_true(!text.contains(jwt) && !text.contains(grant.token))

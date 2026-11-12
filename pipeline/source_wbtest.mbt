@@ -25,11 +25,11 @@ async test "checkout requires a live authorized attempt and denies stale source 
         "cancelled" => coordinator.cancel_run(admin, protocol_repo, run.number)
         "revoked" => coordinator.revoke_provider(admin, provider.id)
         "grant" =>
-          coordinator.set_provider_repository(
+          coordinator.set_provider_scope(
             admin,
             provider.id,
-            protocol_repo,
-            false,
+            SelectedRepositories,
+            [],
           )
         "actor" =>
           pool.with_client(client => {

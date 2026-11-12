@@ -134,14 +134,12 @@ async test "pull request automatically runs built-in checkout against its merged
           )
         })
         @async.with_timeout(6000, () => {
-          while coordinator
-                .read_logs(
+          while coordinator.read_log_page(
                   actor,
                   repo,
                   run.number,
                   @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-                )
-                .is_empty() {
+                ).chunks.is_empty() {
             @async.sleep(10)
           }
         })
@@ -176,13 +174,12 @@ async test "pull request automatically runs built-in checkout against its merged
           @collaboration.merge_checks(pool, mr)[0].conclusion,
           "success",
         )
-        let logs = coordinator
-          .read_logs(
+        let logs = coordinator.read_log_page(
             actor,
             repo,
             run.number,
             @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-          )
+          ).chunks
           .map(chunk => chunk.text)
           .join("")
         assert_eq(

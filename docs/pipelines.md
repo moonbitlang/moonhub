@@ -542,10 +542,10 @@ does not protect against deliberate credential transformation/exfiltration. The
 Runner keeps control credentials out of user scripts, and provider credentials
 never belong in logs. See repository secrets above for value delivery and masking.
 
-`Coordinator.read_logs` rechecks repository access and attempt/run scope, returns
-at most 100 records with stable cursor IDs, and never renders log text as HTML.
-`Coordinator.read_log_page` additionally returns `next_cursor`, `has_more` and
-`complete`. Attempt state and log records are read in one database snapshot:
+`Coordinator.read_log_page` rechecks repository access and attempt/run scope,
+returns at most 100 records with stable cursor IDs plus `next_cursor`, `has_more`
+and `complete`, and never renders log text as HTML. Attempt state and log records
+are read in one database snapshot:
 `complete` is true only after the attempt has terminated and this page reaches
 the end, including any suffix flushed during termination. Cursor IDs, unlike
 runner upload sequences, also cover these flushed records.

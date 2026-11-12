@@ -493,8 +493,11 @@ async test "only one provider claims a job and provider scope and labels are enf
       .query_one("SELECT id FROM pipeline_provider WHERE name = 'other'")
       .get_name("id")
     })
-    coordinator.set_provider_repository(
-      admin, other_provider, protocol_repo, true,
+    coordinator.set_provider_scope(
+      admin,
+      other_provider,
+      SelectedRepositories,
+      [protocol_repo],
     )
     assert_true(
       coordinator.claim(other, claim_request(secret="d".repeat(64))) is None,
@@ -549,8 +552,7 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
     ignore(coordinator.append_log(id, attempt_secret, first))
     let reader = @identity.active_user_by_name(pool, "alice")
     assert_eq(
-      coordinator
-      .read_logs(reader, protocol_repo, run.number, id)
+      coordinator.read_log_page(reader, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join(""),
       "token=",
@@ -580,18 +582,21 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
         log_request(2L, attempt_secret[32:].to_owned() + "\n"),
       ),
     )
-    let chunks = coordinator.read_logs(reader, protocol_repo, run.number, id)
+    let chunks = coordinator.read_log_page(
+        reader,
+        protocol_repo,
+        run.number,
+        id,
+      ).chunks
     assert_eq(chunks.map(chunk => chunk.text).join(""), "token=***\n")
     assert_true(
-      coordinator
-      .read_logs(
+      coordinator.read_log_page(
         reader,
         protocol_repo,
         run.number,
         id,
         after=@protocol.parse_decimal(chunks.last().unwrap().id).unwrap(),
-      )
-      .is_empty(),
+      ).chunks.is_empty(),
     )
     try
       ignore(coordinator.complete(id, attempt_secret, completion(last=3L)))
@@ -629,12 +634,12 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
     )
     try
       ignore(
-        coordinator.read_logs(
+        coordinator.read_log_page(
           @identity.active_user_by_name(pool, "bob"),
           protocol_repo,
           run.number,
           id,
-        ),
+        ).chunks,
       )
     catch {
       @domain.NotFound(_) => ()
@@ -874,11 +879,11 @@ async test "revoked repository grant and revoked actor both stop active attempts
           )
         })
       } else {
-        coordinator.set_provider_repository(
+        coordinator.set_provider_scope(
           @identity.active_user_by_name(pool, "admin"),
           provider.id,
-          protocol_repo,
-          false,
+          SelectedRepositories,
+          [],
         )
       }
       assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
@@ -1035,13 +1040,12 @@ async test "claim logs and cancellation survive closing and reopening the durabl
       )
       let actor = @identity.active_user_by_name(reopened, "alice")
       assert_eq(
-        restored
-        .read_logs(
+        restored.read_log_page(
           actor,
           protocol_repo,
           run.number,
           @protocol.parse_decimal(retry.attempt_id).unwrap(),
-        )
+        ).chunks
         .map(chunk => chunk.text)
         .join(""),
         "one\ntwo\n",
@@ -1219,7 +1223,9 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
     try
-      ignore(coordinator.read_logs(actor, protocol_repo, other.number, id))
+      ignore(
+        coordinator.read_log_page(actor, protocol_repo, other.number, id).chunks,
+      )
     catch {
       @domain.NotFound(_) => ()
       err => raise err
@@ -1229,13 +1235,12 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
     let partial = attempt_secret[:20].to_owned()
     ignore(coordinator.append_log(id, attempt_secret, log_request(1L, partial)))
     assert_eq(
-      coordinator.read_logs(actor, protocol_repo, run.number, id)[0].text,
+      coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks[0].text,
       "",
     )
     ignore(coordinator.complete(id, attempt_secret, completion(last=1L)))
     assert_eq(
-      coordinator
-      .read_logs(actor, protocol_repo, run.number, id)
+      coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join(""),
       "***",

@@ -325,7 +325,12 @@ async test "push events include contributors tags deletes and crash recovery ind
       )
     }
     assert_eq(deliveries(pool, actor, repo, id).length(), 3)
-    assert_true(@repository.list_ref_events(pool, actor, repo).is_empty())
+    assert_true(
+      @test_support.ref_events(
+        pool,
+        @repository.repository_scope(pool, actor, repo),
+      ).is_empty(),
+    )
     @repository.record_received_transaction(
       pool,
       bob,
@@ -404,7 +409,7 @@ async test "MR discussion reviews merge pushes and pipeline completion emit tran
       "Reviewed",
     )
     assert_eq(deliveries(pool, actor, repo, id)[0].kind, "review")
-    let discussion = @collaboration.create_anchored_merge_discussion(
+    let prepared = @collaboration.prepare_anchored_merge_discussion(
       pool,
       scope,
       actor,
@@ -417,6 +422,9 @@ async test "MR discussion reviews merge pushes and pipeline completion emit tran
       1L,
       1L,
       "Inline body",
+    )
+    let discussion = @collaboration.create_prepared_merge_discussion(
+      pool, scope, actor, mr, prepared,
     )
     ignore(
       @collaboration.reply_merge_discussion(
@@ -520,7 +528,12 @@ async test "deploy key pushes retain machine identity and never authorize CI" {
       value.contains("deploy_key") &&
       !value.contains("username"),
     )
-    assert_true(@repository.list_ref_events(pool, actor, repo).is_empty())
+    assert_true(
+      @test_support.ref_events(
+        pool,
+        @repository.repository_scope(pool, actor, repo),
+      ).is_empty(),
+    )
   })
 }
 

@@ -171,13 +171,12 @@ async test "real runner obtains step secrets through HTTP and stores only masked
         )
         assert_eq(result.conclusion, "success")
         assert_true(result.reported)
-        let logs = coordinator
-          .read_logs(
+        let logs = coordinator.read_log_page(
             actor,
             repo,
             run.number,
             @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-          )
+          ).chunks
           .map(chunk => chunk.text)
           .join("")
         assert_eq(logs, "***")

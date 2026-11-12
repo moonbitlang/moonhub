@@ -147,7 +147,7 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
           for ;; {
             let job = @pipeline.list_jobs(pool, actor, repo, run.number)[0]
             if job.attempt_id is Some(id) {
-              let logs = coordinator.read_logs(actor, repo, run.number, id)
+              let logs = coordinator.read_log_page(actor, repo, run.number, id).chunks
               if logs.any(chunk => chunk.text.contains("macos-probe-ready")) &&
                 first_log.val == 0L {
                 first_log.val = @env.now().reinterpret_as_int64() - begin

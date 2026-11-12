@@ -904,7 +904,7 @@ async test "MCP discussion detail returns full context and paginates every reply
       false,
     )
     let root_body = "R".repeat(700)
-    let discussion_id = @collaboration.create_anchored_merge_discussion(
+    let prepared = @collaboration.prepare_anchored_merge_discussion(
       pool,
       scope,
       actor,
@@ -917,6 +917,9 @@ async test "MCP discussion detail returns full context and paginates every reply
       1L,
       6L,
       root_body,
+    )
+    let discussion_id = @collaboration.create_prepared_merge_discussion(
+      pool, scope, actor, mr, prepared,
     )
     for i in 0..<51 {
       ignore(

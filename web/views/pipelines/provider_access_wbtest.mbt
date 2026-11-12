@@ -71,7 +71,6 @@ async test "provider access forms preserve selected grants and require administr
     assert_eq(current.scope, @pipeline.ProviderScope::parse("all"))
     assert_true(current.repositories.is_empty())
     assert_true(current.paused)
-    coordinator.authenticate_provider(token)
     let (_, listing) = @web_testkit.http_get_path_with_cookie(
       port, "/-/admin/pipelines/providers?scope_saved=1", cookie,
     )
@@ -81,6 +80,15 @@ async test "provider access forms preserve selected grants and require administr
     )
     assert_true(listing.contains("Never connected"))
     assert_false(listing.contains(token))
+    assert_true(
+      coordinator.claim(token, {
+        version: 1,
+        runner_os: None,
+        request_id: "1".repeat(32),
+        attempt_token: "b".repeat(64),
+      })
+      is None,
+    )
     let (selected, _) = @web_testkit.http_post_path_with_cookie(
       port,
       route,

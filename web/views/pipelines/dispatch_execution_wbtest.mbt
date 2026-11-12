@@ -91,13 +91,12 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c
-              .read_logs(
+            let logs = c.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
                 @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-              )
+              ).chunks
               .map(chunk => chunk.text)
               .join("")
             fail("dispatch job " + assignment.job.id + ": " + logs)

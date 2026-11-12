@@ -130,18 +130,6 @@ pub fn Coordinator::append_log(
 }
 
 ///|
-pub fn Coordinator::read_logs(
-  self : Coordinator,
-  actor : @domain.CurrentUser,
-  repo : @domain.RepoId,
-  run_number : Int64,
-  attempt_id : Int64,
-  after~ : Int64 = 0L,
-) -> Array[@protocol.LogChunk] raise {
-  self.read_log_page(actor, repo, run_number, attempt_id, after~).chunks
-}
-
-///|
 #derive(Debug)
 pub struct LogPage {
   chunks : Array[@protocol.LogChunk]

@@ -12,13 +12,9 @@ import {
 // Values
 pub fn approve_merge_checks(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, Int64) -> Unit raise
 
-pub fn authorize_received_refs(@database.Database, @domain.CurrentUser, @domain.RepoId, String) -> Unit raise
-
 pub fn branch_rules(@database.Database, @repository.RepositoryScope) -> Array[BranchRule] raise
 
 pub fn check_received_ref_rules(@database.Database, @repository.RepositoryScope, String) -> Unit raise
-
-pub async fn create_anchored_merge_discussion(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, MergeRequest, String, Int64, String?, String, String, Int64, Int64, String) -> Int64
 
 pub fn create_issue(@database.Database, @repository.RepositoryScope, @domain.CurrentUser, String, String, Int64) -> Int64 raise
 
