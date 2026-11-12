@@ -156,7 +156,11 @@ cp .env.example .env
 # Edit DB_PATH in .env if you want to store the database elsewhere.
 ```
 
-The server creates the SQLite database and schema automatically on first start.
+The server initializes an empty SQLite database from the schema 38 baseline on
+first start, then applies incremental migrations. Existing databases must be at
+least schema 38; older databases and backups need a historical MoonHub release
+to upgrade them first. See
+[database initialization and upgrades](db/README.md).
 
 Use the tracked test fixture under `testdata/repos`:
 

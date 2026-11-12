@@ -263,9 +263,13 @@ server configuration, not ordinary Git objects.
 
 **Upgrade note:** disk directories alone no longer grant access. Existing
 repositories must be explicitly registered and associated with a team before
-they are available through either the web UI or SSH. Database schema migrations
-run automatically in `web` before the server becomes healthy. SSH waits for that
-initialization and never runs migrations from an authentication request.
+they are available through either the web UI or SSH. Database initialization
+runs in `web` before the server becomes healthy. An empty database uses the
+schema 38 baseline and subsequent incremental migrations to reach schema 39.
+Existing databases at schema 38 upgrade automatically; older databases need
+to be upgraded with a historical release first; see
+[database initialization and upgrades](../db/README.md). SSH waits for Web
+initialization and never changes the schema from an authentication request.
 
 ## SSH Import
 
@@ -634,7 +638,9 @@ recovery script that silently discards limits.
 
 Use complete deployment backups to preserve identities together with repository,
 collaboration and Pipeline data. Legacy identity-only transfer tools have been
-removed.
+removed. When restoring a backup older than schema 38, restore its matching
+images first, upgrade it to schema 38 using a historical release, then switch to
+the current release. See [database upgrade guidance](../db/README.md).
 
 ### Standard Restores
 
