@@ -295,23 +295,21 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         200,
       )
       assert_eq(
-        coordinator
-        .read_logs(
+        coordinator.read_log_page(
           actor,
           repo,
           run.number,
           @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-        )
-        .length(),
+        ).chunks.length(),
         1,
       )
       assert_eq(
-        coordinator.read_logs(
+        coordinator.read_log_page(
           actor,
           repo,
           run.number,
           @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-        )[0].text,
+        ).chunks[0].text,
         chunk.text,
       )
       assert_eq(

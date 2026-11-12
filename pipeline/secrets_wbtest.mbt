@@ -419,8 +419,7 @@ async test "step secret delivery binds execution and step masks issued values ac
         completion(conclusion="failure", last=3L),
       ),
     )
-    let logs = coordinator
-      .read_logs(actor, protocol_repo, run.number, id)
+    let logs = coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join("")
     assert_eq(logs, "credential=***\ntoken=***\ntruncated=***")

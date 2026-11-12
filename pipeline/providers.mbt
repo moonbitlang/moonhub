@@ -406,16 +406,6 @@ fn authenticate_provider(
 }
 
 ///|
-pub fn Coordinator::authenticate_provider(
-  self : Coordinator,
-  token : String,
-) -> Unit raise {
-  self.pool.with_client(client => {
-    client.with_transaction(tx => ignore(authenticate_provider(tx, token)))
-  })
-}
-
-///|
 pub fn Coordinator::set_provider_paused(
   self : Coordinator,
   actor : @domain.CurrentUser,
@@ -456,53 +446,6 @@ pub fn Coordinator::revoke_provider(
           "UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, ?) WHERE provider_id = ? AND status <> 'completed'",
           params=[now, id],
         )
-      },
-      immediate=true,
-    )
-  })
-}
-
-///|
-pub fn Coordinator::set_provider_repository(
-  self : Coordinator,
-  actor : @domain.CurrentUser,
-  provider_id : Int64,
-  repo : @domain.RepoId,
-  allowed : Bool,
-) -> Unit raise {
-  require_provider_admin(self.pool, actor)
-  let scope = @repository.repository_scope(self.pool, actor, repo)
-  let now = (self.clock)()
-  self.pool.with_client(client => {
-    client.with_transaction(
-      tx => {
-        guard tx.query_opt(
-            "SELECT repository_scope FROM pipeline_provider WHERE id = ? AND revoked = 0",
-            params=[provider_id],
-          )
-          is Some(provider) else {
-          raise @domain.NotFound(message="provider not found")
-        }
-        guard (provider.get_name("repository_scope") : String) == "selected" else {
-          raise @domain.BadRequest(
-            message="Select repository scope before changing individual grants.",
-          )
-        }
-        if allowed {
-          let _ = tx.execute(
-            "INSERT OR IGNORE INTO pipeline_provider_repository (provider_id, repository_id) VALUES (?, ?)",
-            params=[provider_id, scope.id],
-          )
-        } else {
-          let _ = tx.execute(
-            "DELETE FROM pipeline_provider_repository WHERE provider_id = ? AND repository_id = ?",
-            params=[provider_id, scope.id],
-          )
-          let _ = tx.execute(
-            "UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, ?) WHERE provider_id = ? AND status <> 'completed' AND job_id IN (SELECT j.id FROM pipeline_job j JOIN pipeline_run r ON r.id = j.run_id WHERE r.repository_id = ?)",
-            params=[now, provider_id, scope.id],
-          )
-        }
       },
       immediate=true,
     )

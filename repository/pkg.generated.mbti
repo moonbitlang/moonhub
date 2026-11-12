@@ -32,8 +32,6 @@ pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser,
 
 pub async fn initialize_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, MirrorConfig) -> Unit
 
-pub fn list_ref_events(@database.Database, @domain.CurrentUser, @domain.RepoId) -> Array[RefEventStatus] raise
-
 pub fn mirror_config_from_env() -> MirrorConfig raise
 
 pub fn mirror_history(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[MirrorAttempt] raise
@@ -142,13 +140,6 @@ pub(all) struct PushMirror {
   error : String
   last_success_at : String?
   next_attempt_at : String
-}
-
-pub struct RefEventStatus {
-  reference : String
-  commit_sha : String
-  state : String
-  error : String
 }
 
 pub(all) struct RepoImportConfig {

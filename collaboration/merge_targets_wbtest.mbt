@@ -19,7 +19,7 @@ async test "retargeting identical commits versions reviews and merges only the n
     submit_merge_review(
       pool, reviewer, mr, 1L, "approved", "Approved old target",
     )
-    let discussion = create_anchored_merge_discussion(
+    let prepared = prepare_anchored_merge_discussion(
       pool,
       scope,
       reviewer,
@@ -32,6 +32,9 @@ async test "retargeting identical commits versions reviews and merges only the n
       1L,
       1L,
       "Keep the original anchor",
+    )
+    let discussion = create_prepared_merge_discussion(
+      pool, scope, reviewer, mr, prepared,
     )
     update_merge_request(
       pool, scope, dir, actor, mr, "Retargeted", "New body", "release", 1L,

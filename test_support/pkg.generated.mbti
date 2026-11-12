@@ -17,6 +17,8 @@ pub async fn merge_test_commit(String, String, String, String, preserve_files? :
 
 pub async fn mock_import_config(String, String) -> @repository.RepoImportConfig
 
+pub fn ref_events(@database.Database, @repository.RepositoryScope) -> Array[RefEvent] raise
+
 pub async fn run_one_message_smtp_server(@socket.TcpServer, TestSmtpTranscript) -> Unit
 
 pub let single_job_workflow : String
@@ -40,6 +42,13 @@ pub async fn workflow_commit(String, String, mode? : String) -> String
 // Errors
 
 // Types and methods
+pub struct RefEvent {
+  reference : String
+  commit_sha : String
+  state : String
+  error : String
+}
+
 pub(all) struct TestSmtpTranscript {
   lines : Array[String]
   mut data : String

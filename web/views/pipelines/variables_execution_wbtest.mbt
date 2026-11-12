@@ -82,13 +82,12 @@ async test "real runner consumes captured vars in env conditions Action inputs p
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c
-              .read_logs(
+            let logs = c.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
                 @protocol.parse_decimal(assignment.attempt_id).unwrap(),
-              )
+              ).chunks
               .map(chunk => chunk.text)
               .join("")
             fail("vars job " + assignment.job.id + ": " + logs)

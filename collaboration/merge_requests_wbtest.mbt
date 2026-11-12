@@ -51,7 +51,7 @@ async test "merge requests require version-bound approval and publish a two-pare
     let merged = require_merge_request(pool, scope, 1L)
     assert_eq(merged.status, "merged", msg=merged.job_error)
     assert_eq(merged.job_status, "succeeded")
-    let events = @repository.list_ref_events(pool, alice, repo)
+    let events = @test_support.ref_events(pool, scope)
     assert_eq(events.length(), 1)
     assert_eq(events[0].state, "ready")
     assert_eq(events[0].reference, "refs/heads/master")
@@ -391,7 +391,7 @@ async test "merge recovery uses its atomic receipt even after a later target pus
     let merged = require_merge_request(pool, scope, mr.number)
     assert_eq(merged.status, "merged")
     assert_eq(merged.merged_sha, result)
-    let events = @repository.list_ref_events(pool, alice, repo)
+    let events = @test_support.ref_events(pool, scope)
     assert_eq(events.length(), 1)
     assert_eq(events[0].commit_sha, result)
     assert_eq(@gitops.branch_sha(git_dir, "master"), advanced)
@@ -418,12 +418,7 @@ async test "branch protection rejects direct updates deletes and internal refs" 
     let scope = @repository.repository_scope(pool, alice, repo)
     let sha = @gitops.branch_sha(git_dir, "master")
     let zero = "0".repeat(sha.length())
-    authorize_received_refs(
-      pool,
-      alice,
-      repo,
-      "\{sha} \{sha} refs/heads/master\n",
-    )
+    check_received_ref_rules(pool, scope, "\{sha} \{sha} refs/heads/master\n")
     save_branch_rule(pool, scope, git_dir, alice, "master", true, 1L)
     for
       update in [
@@ -431,7 +426,7 @@ async test "branch protection rejects direct updates deletes and internal refs" 
         "\{sha} \{zero} refs/heads/master\n",
         "\{zero} \{sha} refs/moonhub/merges/1\n",
       ] {
-      try authorize_received_refs(pool, alice, repo, update) catch {
+      try check_received_ref_rules(pool, scope, update) catch {
         @domain.Forbidden(_) => ()
         err => raise err
       } noraise {
@@ -439,31 +434,20 @@ async test "branch protection rejects direct updates deletes and internal refs" 
       }
     }
     try
-      authorize_received_refs(
-        pool,
-        bob,
-        repo,
-        "\{sha} \{sha} refs/heads/feature\n",
-      )
+      @repository.authorize_repository(pool, bob, repo, @repository.Write)
     catch {
       @domain.NotFound(_) => ()
       err => raise err
     } noraise {
       _ => fail("nonmember pushed to private repository")
     }
-    authorize_received_refs(
+    check_received_ref_rules(
       pool,
-      alice,
-      repo,
+      scope,
       "\{zero} \{sha} refs/heads/feature\n\{zero} \{sha} refs/tags/v1\n",
     )
     save_branch_rule(pool, scope, git_dir, alice, "master", false, 0L)
-    authorize_received_refs(
-      pool,
-      alice,
-      repo,
-      "\{sha} \{sha} refs/heads/master\n",
-    )
+    check_received_ref_rules(pool, scope, "\{sha} \{sha} refs/heads/master\n")
   })
 }
 

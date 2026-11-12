@@ -39,7 +39,13 @@ async test "provider label replacement changes matching without replacing creden
       ).conclusion,
       "cancelled",
     )
-    coordinator.authenticate_provider(provider_secret)
+    assert_true(
+      coordinator.claim(
+        provider_secret,
+        claim_request(id="2", secret="c".repeat(64)),
+      )
+      is None,
+    )
     assert_eq(
       pool.with_client(client => {
         client

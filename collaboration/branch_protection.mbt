@@ -116,18 +116,6 @@ pub async fn save_branch_rule(
 }
 
 ///|
-pub fn authorize_received_refs(
-  pool : @database.Database,
-  actor : @domain.CurrentUser,
-  repo : @domain.RepoId,
-  updates : String,
-) -> Unit raise {
-  @repository.authorize_repository(pool, actor, repo, @repository.Write)
-  let scope = @repository.repository_scope(pool, actor, repo)
-  check_received_ref_rules(pool, scope, updates)
-}
-
-///|
 // Authentication is transport-specific; all writers share these ref restrictions.
 pub fn check_received_ref_rules(
   pool : @database.Database,

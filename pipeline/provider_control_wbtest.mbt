@@ -62,7 +62,7 @@ async test "managed registration is retry safe and configuration survives restar
     } noraise {
       _ => fail("stale save overwrote configuration")
     }
-    try c.authenticate_provider("a".repeat(64)) catch {
+    try ignore(c.claim("a".repeat(64), claim_request())) catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {

@@ -90,7 +90,6 @@ pub fn Coordinator::artifact_block_limit(Self, Int64, String) -> Int32 raise
 pub fn Coordinator::artifact_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::artifact_runtime(Self, Int64, String, @protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime raise
 pub fn Coordinator::authenticate_attempt(Self, Int64, String) -> Unit raise
-pub fn Coordinator::authenticate_provider(Self, String) -> Unit raise
 pub fn Coordinator::authorize_artifact_blob(Self, Int64, String, String) -> Unit raise
 pub fn Coordinator::cache_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub fn Coordinator::cancel_run(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Unit raise
@@ -112,7 +111,6 @@ pub async fn Coordinator::oidc_token(Self, Int64, String, String) -> @json.Json
 pub fn Coordinator::provider_control(Self, @domain.CurrentUser, Int64) -> ProviderControl raise
 pub fn Coordinator::queue_reasons(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Map[String, QueueReason] raise
 pub fn Coordinator::read_log_page(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> LogPage raise
-pub fn Coordinator::read_logs(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> Array[@protocol.LogChunk] raise
 pub async fn Coordinator::read_source(Self, String, Int64, String) -> Bytes
 pub async fn Coordinator::read_source_bundle(Self, String, Int64, String) -> Bytes
 pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
@@ -122,7 +120,6 @@ pub fn Coordinator::revoke_provider(Self, @domain.CurrentUser, Int64) -> Unit ra
 pub fn Coordinator::save_provider_config(Self, @domain.CurrentUser, Int64, Int64, Map[String, String]) -> Unit raise
 pub fn Coordinator::set_provider_labels(Self, @domain.CurrentUser, Int64, Array[String]) -> Unit raise
 pub fn Coordinator::set_provider_paused(Self, @domain.CurrentUser, Int64, Bool) -> Unit raise
-pub fn Coordinator::set_provider_repository(Self, @domain.CurrentUser, Int64, @domain.RepoId, Bool) -> Unit raise
 pub fn Coordinator::set_provider_scope(Self, @domain.CurrentUser, Int64, ProviderScope, Array[@domain.RepoId]) -> Unit raise
 pub async fn Coordinator::stage_artifact_block(Self, String, Int64, String, String, Bytes) -> Unit
 pub fn Coordinator::start(Self, Int64, String, Int32, execution_id? : String) -> @protocol.LeaseState raise

@@ -21,7 +21,13 @@ async test "all-repository scope unblocks queued work and narrowing cancels unau
     assert_false(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
     coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
     assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    coordinator.authenticate_provider(provider_secret)
+    assert_true(
+      coordinator.claim(
+        provider_secret,
+        claim_request(id="2", secret="c".repeat(64)),
+      )
+      is None,
+    )
   })
 }
 
@@ -113,19 +119,6 @@ async test "scope is preserved by ordinary ensure and changed only with an expli
       scope=Some(AllRepositories),
     )
     assert_eq(ensured.scope, AllRepositories)
-    try
-      coordinator.set_provider_repository(
-        admin,
-        created.id,
-        protocol_repo,
-        false,
-      )
-    catch {
-      @domain.BadRequest(_) => ()
-      err => raise err
-    } noraise {
-      _ => fail("silently revoked a grant on a shared provider")
-    }
     try
       coordinator.set_provider_scope(admin, created.id, AllRepositories, [
         protocol_repo,
