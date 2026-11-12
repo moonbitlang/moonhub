@@ -62,6 +62,8 @@ pub async fn recover_ref_events_locked(@database.Database, RepositoryScope, Stri
 
 pub async fn recover_webhook_refs_locked(@database.Database, RepositoryScope, String) -> Unit
 
+pub async fn remove_cleanup_path(String, String) -> Unit
+
 pub fn repo_import_config_from_env() -> RepoImportConfig? raise
 
 pub fn repository_job_source(@database.Database, @domain.CurrentUser, RepositoryJob, SshAddressConfig) -> SshImportSource? raise
@@ -83,6 +85,8 @@ pub fn retry_repository_job(@database.Database, @domain.CurrentUser, @identity.T
 
 pub async fn rotate_mirror_key(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Unit
 
+pub async fn run_next_repository_deletion(@database.Database, String, cleanup_attachments~ : async (Array[String]) -> Unit, cleanup_artifacts~ : async (Array[String]) -> Unit) -> Bool
+
 pub async fn run_next_repository_job(@database.Database, String, RepoImportConfig?, addresses? : SshAddressConfig) -> Bool
 
 pub async fn save_push_mirror(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String, Bool, Bool, Bool) -> Int64
@@ -94,6 +98,8 @@ pub async fn set_pipeline_push_enabled(@database.Database, String, @domain.Curre
 pub fn ssh_address_config_from_env() -> SshAddressConfig raise
 
 pub fn start_mirror_worker(@database.Database, String, MirrorConfig, @async.TaskGroup[Unit]) -> Unit
+
+pub fn start_repository_deletion_worker(@database.Database, String, @async.TaskGroup[Unit], cleanup_attachments~ : async (Array[String]) -> Unit, cleanup_artifacts~ : async (Array[String]) -> Unit) -> Unit
 
 pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
 
