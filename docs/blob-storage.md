@@ -167,7 +167,7 @@ node --test storage/s3/backend.test.mjs
 node scripts/check-package-boundaries.cjs
 ```
 
-`node scripts/storage-s3-smoke.mjs` starts a disposable localhost-only MinIO,
+`node scripts/storage-s3-smoke.mjs` starts a disposable localhost-only S3Mock service,
 exercises both storage contracts and the unchanged upstream Artifact/Cache v4
 Actions against S3, and removes the container and its data afterward. The same
 test runs in Self-check. It requires Docker, installed storage/action npm

@@ -10,15 +10,14 @@ const docker = args => execFileSync('docker', args, { encoding: 'utf8', stdio: [
 const credentials = { accessKeyId: 'moonhub-test', secretAccessKey: 'moonhub-storage-test-only' };
 let started = false, client;
 try {
-  docker(['run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::9000',
-    '--env', `MINIO_ROOT_USER=${credentials.accessKeyId}`, '--env', `MINIO_ROOT_PASSWORD=${credentials.secretAccessKey}`,
-    'minio/minio:RELEASE.2024-01-05T22-17-24Z', 'server', '/data']);
+  docker(['run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::9090',
+    'adobe/s3mock:5.1.0@sha256:65cf60155a2e235fe7d5bf6c633747d6fc7ed93f9f5a6727d86470026b83c2a2']);
   started = true;
-  const port = docker(['port', name, '9000/tcp']).split(':').at(-1);
+  const port = docker(['port', name, '9090/tcp']).split(':').at(-1);
   const endpoint = `http://127.0.0.1:${port}`;
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 60000;
   while (true) {
-    try { if ((await fetch(endpoint + '/minio/health/ready', { signal: AbortSignal.timeout(1000) })).ok) break; } catch {}
+    try { if ((await fetch(endpoint + '/favicon.ico', { signal: AbortSignal.timeout(1000) })).ok) break; } catch {}
     if (Date.now() > deadline) throw Error('S3 fixture did not become ready');
     await new Promise(resolve => setTimeout(resolve, 200));
   }
