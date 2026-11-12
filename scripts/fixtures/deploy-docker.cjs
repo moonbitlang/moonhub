@@ -50,6 +50,10 @@ if (process.env.TEST_STORAGE_CONFIG === '1') {
   containers[0].Mounts.push(bind('/run/secrets/blob_storage'));
   containers[0].Config.Env.push('MOONHUB_STORAGE_CONFIG=/run/secrets/blob_storage');
 }
+if (process.env.TEST_STORAGE_AWS === '1') {
+  containers[0].Mounts.push(bind('/run/secrets/storage_aws'));
+  containers[0].Config.Env.push('AWS_CONFIG_FILE=/run/secrets/storage_aws/config');
+}
 if (process.env.TEST_BASIC === '1') for (const c of containers) delete c.NetworkSettings.Networks.old_pipeline;
 if (process.env.TEST_RESOURCE_LIMITS === '1') for (const c of containers) Object.assign(c.HostConfig, {
   CgroupParent: 'moonhub.slice', CgroupnsMode: 'private', NanoCpus: 500000000,
@@ -90,7 +94,7 @@ else if (line.includes('exec -i --user git') && line.includes('node --no-warning
 else if (line.startsWith('cp ')) {
   if (fail === 'backup') process.exit(1);
   if (a[2] === '-') process.stdout.write('archive');
-  else if (a[1].endsWith('/ssh-import')) fs.mkdirSync(a[2]);
+  else if (a[1].endsWith('/ssh-import') || a[1].endsWith('/storage_aws')) fs.mkdirSync(a[2]);
   else fs.writeFileSync(a[2], 'secret');
 } else if (line.includes('ps -q ')) out('running-id');
 else if (line.includes('docker.sock save ')) {

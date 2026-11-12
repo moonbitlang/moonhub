@@ -1,0 +1,13 @@
+services:
+  web:
+    environment:
+      AWS_CONFIG_FILE: /run/secrets/storage_aws/config
+      AWS_SHARED_CREDENTIALS_FILE: /run/secrets/storage_aws/credentials
+      AWS_EC2_METADATA_DISABLED: "true"
+    volumes:
+      - type: bind
+        source: ${MOONHUB_STORAGE_AWS_DIR:?Set the host AWS storage credential directory}
+        target: /run/secrets/storage_aws
+        read_only: true
+        bind:
+          create_host_path: false
