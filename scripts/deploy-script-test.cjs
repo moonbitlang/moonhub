@@ -13,7 +13,7 @@ try {
   fs.copyFileSync(path.join(__dirname, 'resolve-dependencies.cjs'), path.join(root, 'scripts/resolve-dependencies.cjs'));
   fs.mkdirSync(path.join(root, 'bin'));
   fs.copyFileSync(path.join(__dirname, '../deploy/deploy.sh'), path.join(root, 'deploy/deploy.sh'));
-  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml', 'compose.oidc.yaml', 'compose.storage.yaml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
+  for (const file of ['recovery.sh', 'recovery.jq', 'base-image.sh', 'base.Dockerfile', 'configure-apt.sh', 'install-moonbit.sh', 'shared-build.sh', 'active-attempts.cjs', 'buildkitd.toml', 'compose.oidc.yaml', 'compose.storage.yaml', 'compose.storage-aws.yaml']) fs.copyFileSync(path.join(__dirname, '../deploy', file), path.join(root, 'deploy', file));
   for (const file of ['moon.mod', 'moon.pkg', '.dockerignore']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
   for (const file of ['package.json', 'package-lock.json']) fs.copyFileSync(path.join(__dirname, '../js', file), path.join(root, 'js', file));
   fs.mkdirSync(path.join(root, 'runner/actions'), { recursive: true });
@@ -42,7 +42,7 @@ try {
     MOONHUB_PROVIDER_SCOPE: '', MOONHUB_PROVIDER_REPOSITORIES: '',
     MOONHUB_SHARED_HOST: '0', MOONHUB_CGROUP_PARENT: '', MOONHUB_DIND_STORAGE_DIR: '',
     MOONHUB_BACKUP_KEEP: '0',
-    MOONHUB_OIDC_CONFIG_FILE: '', MOONHUB_STORAGE_CONFIG_FILE: '',
+    MOONHUB_OIDC_CONFIG_FILE: '', MOONHUB_STORAGE_CONFIG_FILE: '', MOONHUB_STORAGE_AWS_DIR: '',
   };
   function run(extra = {}, command = 'upgrade', answer) {
     fs.writeFileSync(log, '');
@@ -122,8 +122,10 @@ try {
   const oidcStateRoot = path.join(oidcRoot, 'recovered');
   const oidcState = path.join(oidcStateRoot, fs.readdirSync(oidcStateRoot).find(name => fs.existsSync(path.join(oidcStateRoot, name, 'upgrade.env'))));
   assert.match(fs.readFileSync(path.join(oidcState, 'upgrade.env'), 'utf8'), /MOONHUB_OIDC_CONFIG_FILE=.*bindings\/web-/);
+  const storageAwsDir = path.join(root, 'bin/storage-aws');
+  fs.mkdirSync(storageAwsDir);fs.writeFileSync(path.join(storageAwsDir, 'config'), '[default]');
   const storageRoot = path.join(root, 'backups/storage');
-  result = run({ MOONHUB_STORAGE_CONFIG_FILE: path.join(root, 'secret'), TEST_STORAGE_CONFIG: '1', MOONHUB_BACKUP_DIR: storageRoot });
+  result = run({ MOONHUB_STORAGE_CONFIG_FILE: path.join(root, 'secret'), MOONHUB_STORAGE_AWS_DIR: storageAwsDir, TEST_STORAGE_CONFIG: '1', TEST_STORAGE_AWS: '1', MOONHUB_BACKUP_DIR: storageRoot });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.commands.some(line => line.includes('compose.storage.yaml')));
   const storageValidation = result.commands.findIndex(line => line.includes('storage-check'));
@@ -132,11 +134,18 @@ try {
   const storageBundle = path.join(storageRoot, fs.readdirSync(storageRoot).find(name => !name.startsWith('.')));
   const storageSaved = JSON.parse(fs.readFileSync(path.join(storageBundle, 'compose.json')));
   assert.ok(storageSaved.services.web.volumes.some(v => v.target === '/run/secrets/blob_storage' && v.read_only));
+  assert.ok(storageSaved.services.web.volumes.some(v => v.target === '/run/secrets/storage_aws' && v.read_only));
   result = run({ TEST_FRESH: '1' }, ['restore', storageBundle, '--project', 'storage-restored', '--http-port', '19017', '--ssh-port', '19018', '--pipeline-prefix', '172.30.97']);
   assert.equal(result.status, 0, result.stderr);
   const storageStateRoot = path.join(storageRoot, 'recovered');
   const storageState = path.join(storageStateRoot, fs.readdirSync(storageStateRoot).find(name => fs.existsSync(path.join(storageStateRoot, name, 'upgrade.env'))));
   assert.match(fs.readFileSync(path.join(storageState, 'upgrade.env'), 'utf8'), /MOONHUB_STORAGE_CONFIG_FILE=.*bindings\/web-/);
+  assert.match(fs.readFileSync(path.join(storageState, 'upgrade.env'), 'utf8'), /MOONHUB_STORAGE_AWS_DIR=.*bindings\/web-/);
+  for (const directory of ['relative', path.join(root, 'missing')]) {
+    result = run({ MOONHUB_STORAGE_CONFIG_FILE: path.join(root, 'secret'), MOONHUB_STORAGE_AWS_DIR: directory });
+    assert.notEqual(result.status, 0);
+    assert.ok(!result.commands.some(line => / stop$/.test(line)));
+  }
   result = run({ MOONHUB_STORAGE_CONFIG_FILE: path.join(root, 'secret'), TEST_FAIL: 'storage-config' });
   assert.notEqual(result.status, 0);
   assert.ok(!result.commands.some(line => / stop$/.test(line)), 'invalid storage configuration stopped services');

@@ -351,6 +351,9 @@ restore_backup() {
     + (if any(.services.web.volumes[]; .target == "/run/secrets/blob_storage") then {
        MOONHUB_STORAGE_CONFIG_FILE: binding("web"; "/run/secrets/blob_storage")}
       else {} end)
+    + (if any(.services.web.volumes[]; .target == "/run/secrets/storage_aws") then {
+       MOONHUB_STORAGE_AWS_DIR: binding("web"; "/run/secrets/storage_aws")}
+      else {} end)
     + (if .services["pipeline-provider"] then {
        MOONHUB_PROVIDER_TOKEN_FILE: binding("pipeline-provider"; "/run/secrets/provider_token"),
        MOONHUB_PROVIDER_NAME: $manifest[0].provider_name, MOONHUB_PROVIDER_LABELS: $manifest[0].provider_labels,

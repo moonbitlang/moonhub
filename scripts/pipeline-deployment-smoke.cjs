@@ -77,3 +77,18 @@ for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
   assert.equal(storage.services[name].environment?.MOONHUB_STORAGE_CONFIG, undefined);
 }
 console.log('Storage configuration is mounted read-only into the Web service only.');
+
+const storageAws = JSON.parse(execFileSync('docker', [
+  'compose', '-f', 'compose.yaml', '-f', 'deploy/compose.pipeline.yaml',
+  '-f', 'deploy/compose.storage.yaml', '-f', 'deploy/compose.storage-aws.yaml', 'config', '--format', 'json',
+], { cwd: root, env: { ...env, MOONHUB_STORAGE_CONFIG_FILE: '/private/operator/storage.json', MOONHUB_STORAGE_AWS_DIR: '/private/operator/storage-aws' }, encoding: 'utf8' }));
+assert.equal(storageAws.services.web.environment.AWS_CONFIG_FILE, '/run/secrets/storage_aws/config');
+assert.equal(storageAws.services.web.environment.AWS_EC2_METADATA_DISABLED, 'true');
+const awsMount = storageAws.services.web.volumes.find(v => v.target === '/run/secrets/storage_aws');
+assert.equal(awsMount.source, '/private/operator/storage-aws');
+assert.equal(awsMount.read_only, true);
+for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
+  assert.ok(!storageAws.services[name].volumes.some(v => v.target === '/run/secrets/storage_aws'));
+  assert.equal(storageAws.services[name].environment?.AWS_CONFIG_FILE, undefined);
+}
+console.log('Storage AWS identity is scoped to the Web service only.');

@@ -65,6 +65,7 @@ REBUILD_BASE=${MOONHUB_BASE_REBUILD:-0}
 SHARED_HOST=${MOONHUB_SHARED_HOST:-0}
 OIDC_FILE=${MOONHUB_OIDC_CONFIG_FILE:-}
 STORAGE_FILE=${MOONHUB_STORAGE_CONFIG_FILE:-}
+STORAGE_AWS_DIR=${MOONHUB_STORAGE_AWS_DIR:-}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
@@ -73,6 +74,10 @@ if [ -n "$OIDC_FILE" ]; then
 fi
 if [ -n "$STORAGE_FILE" ]; then
   compose+=( -f "$ROOT/deploy/compose.storage.yaml" )
+fi
+if [ -n "$STORAGE_AWS_DIR" ]; then
+  [ -n "$STORAGE_FILE" ] || { printf 'AWS storage credentials require storage configuration.\n' >&2; exit 1; }
+  compose+=( -f "$ROOT/deploy/compose.storage-aws.yaml" )
 fi
 if [ "$ENABLE_PIPELINES" = 1 ]; then
   compose+=( -f "$ROOT/deploy/compose.pipeline.yaml" )
@@ -141,6 +146,7 @@ export MOONHUB_PROVIDER_TOKEN_FILE="$PROVIDER_TOKEN_FILE"
 export MOONHUB_USE_CN_MIRRORS="$USE_CN_MIRRORS"
 export MOONHUB_OIDC_CONFIG_FILE="$OIDC_FILE"
 export MOONHUB_STORAGE_CONFIG_FILE="$STORAGE_FILE"
+export MOONHUB_STORAGE_AWS_DIR="$STORAGE_AWS_DIR"
 
 usage() {
   cat <<'EOF'
@@ -193,6 +199,12 @@ validate_inputs() {
       printf 'Storage configuration must be an absolute, regular non-symlink file path.\n' >&2; exit 1;
     }
     require_file "$STORAGE_FILE" "storage configuration"
+  fi
+  if [ -n "$STORAGE_AWS_DIR" ]; then
+    [[ "$STORAGE_AWS_DIR" = /* && "$STORAGE_AWS_DIR" != *','* && "$STORAGE_AWS_DIR" != *$'\n'* && "$STORAGE_AWS_DIR" != *$'\r'* && ! -L "$STORAGE_AWS_DIR" && -d "$STORAGE_AWS_DIR" ]] || {
+      printf 'AWS storage credentials must use an absolute, existing non-symlink directory.\n' >&2; exit 1;
+    }
+    require_file "$STORAGE_AWS_DIR/config" "AWS storage profile"
   fi
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     require_file "$PROVIDER_TOKEN_FILE" "provider token secret"

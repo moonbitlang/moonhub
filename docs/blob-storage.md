@@ -83,6 +83,17 @@ the SDK bridge; local development needs `npm ci --prefix storage/s3 --ignore-scr
 and bridge path. Startup checks the selected configuration and bridge; remote
 bucket permissions must also be verified with an acceptance run.
 
+For a Web container that cannot reach instance metadata, set
+`MOONHUB_STORAGE_AWS_DIR` to a protected host directory containing the SDK's
+`config` and optional `credentials` files. The tracked deployment adds a
+read-only mount to Web only and disables instance metadata discovery there.
+An operator-managed credential process can return scoped temporary role
+credentials with expiration; rotate its data atomically inside the mounted
+directory. Keep the directory writable only by the host identity refresher and
+readable by the Web UID. Never mount it into SSH, providers or task containers.
+Backups include this private mount; recovered temporary credentials still need
+a running refresher and must not be mistaken for a renewable identity.
+
 ## Uploads, integrity and resource use
 
 The existing Artifact/Cache v4 RPCs and Azure-style blob operations remain the
