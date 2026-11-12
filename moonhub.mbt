@@ -173,6 +173,32 @@ async fn main {
       }
       @sys.exit(code)
     }
+    Some("storage-check") => {
+      let code = try {
+        guard args.length() == 3 else {
+          raise @domain.BadRequest(
+            message="Usage: moonhub storage-check CONFIG_FILE",
+          )
+        }
+        ignore(
+          @storage.Config::load(
+            args[2],
+            node=@config.env_value("MOONHUB_STORAGE_NODE").unwrap_or("node"),
+            helper=@config.env_value("MOONHUB_S3_HELPER").unwrap_or(
+              "storage/s3/bridge.mjs",
+            ),
+          ),
+        )
+        println("Blob storage configuration valid")
+        0
+      } catch {
+        _ => {
+          @stdio.stderr.write("moonhub: invalid blob storage configuration\n")
+          2
+        }
+      }
+      @sys.exit(code)
+    }
     Some("oidc-check") => {
       let code = try {
         guard args.length() == 3 else {

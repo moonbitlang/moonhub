@@ -117,6 +117,8 @@ async function main() {
   await run('Package boundaries', process.execPath, ['scripts/check-package-boundaries.cjs']);
   await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs', 'scripts/resolve-dependencies-test.cjs', 'scripts/github-ci-test.cjs', 'scripts/macos-guest-test.mjs']);
   await run('Production deployment regression', process.execPath, ['--test', 'scripts/production-deploy-test.cjs', 'scripts/production-dind-test.cjs', 'scripts/github-deploy-test.cjs']);
+  await run('Storage SDK dependencies', 'npm', ['ci', '--prefix', 'storage/s3', '--ignore-scripts', '--no-audit', '--no-fund']);
+  await run('Storage SDK tests', process.execPath, ['--test', 'storage/s3/backend.test.mjs']);
   await run('Action runtime dependencies', 'npm', ['ci', '--prefix', 'runner/actions', '--ignore-scripts', '--no-audit', '--no-fund']);
   await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
@@ -124,6 +126,7 @@ async function main() {
   await run('Diff worker build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub-diff-worker']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
+  await run('S3 storage integration', process.execPath, ['scripts/storage-s3-smoke.mjs'], 300000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }

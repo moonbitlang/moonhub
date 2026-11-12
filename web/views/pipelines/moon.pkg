@@ -9,7 +9,6 @@ import {
   "hackwaly/moonhub/web/context" @web_context,
   "hackwaly/moonhub/web/ui" @web_ui,
   "moonbitlang/async",
-  "moonbitlang/async/fs",
   "moonbitlang/async/http",
   "moonbitlang/async/io",
   "moonbitlang/core/encoding/utf8",
@@ -21,6 +20,7 @@ import {
 }
 
 import {
+  "hackwaly/moonhub/storage",
   "moonbitlang/core/debug",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/collaboration",

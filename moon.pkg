@@ -20,6 +20,7 @@ import {
   "hackwaly/moonhub/runner/cli" @runner_cli,
   "hackwaly/moonhub/provider",
   "hackwaly/moonhub/pipeline",
+  "hackwaly/moonhub/storage",
   "moonbitlang/async/signal",
 }
 

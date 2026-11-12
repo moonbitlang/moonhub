@@ -143,6 +143,7 @@ pub fn Coordinator::artifact_rpc(
                 ],
               )
               .get_name("id")
+            self.capture_storage_location(tx, id, false)
             {
               "ok": true,
               "signed_upload_url": artifact_capability(

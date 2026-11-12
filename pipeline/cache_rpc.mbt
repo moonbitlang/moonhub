@@ -141,6 +141,7 @@ pub fn Coordinator::cache_rpc(
                 ],
               )
               .get_name("id")
+            self.capture_storage_location(tx, id, true)
             ignore(
               tx.execute(
                 "INSERT INTO pipeline_cache(artifact_id,repository_id,scope,key,version,state,created_ms,last_access_ms) VALUES(?,?,?,?,?,'pending',?,?)",

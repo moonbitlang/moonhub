@@ -12,10 +12,11 @@ assert.equal(graph.status, 'success', JSON.stringify(graph.error));
 assert.ok([2, 3].includes(graph.version), 'Update this check for the new moon tree schema');
 
 const allowed = {
-  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli', 'runner/cli'],
+  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli', 'runner/cli', 'storage'],
   cli: ['domain', 'diff/protocol'],
   domain: [],
   config: [],
+  storage: [],
   database: ['domain'],
   gitops: ['domain', 'diff/protocol'],
   'diff/protocol': [],
@@ -27,7 +28,7 @@ const allowed = {
   webhooks: ['domain', 'database', 'identity', 'repository', 'gitops'],
   attachments: ['domain', 'database', 'identity', 'repository'],
   collaboration: ['domain', 'database', 'identity', 'gitops', 'repository', 'attachments'],
-  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/protocol'],
+  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/protocol', 'storage'],
   'pipeline/protocol': [],
   'pipeline/actions': [],
   runner: ['pipeline/protocol', 'pipeline/actions', 'runner/platform'],
@@ -39,7 +40,7 @@ const allowed = {
   'vendor/yaml': [],
   ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
-    'gitops',
+    'gitops', 'storage',
     'domain', 'config', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline', 'attachments', 'webhooks',
     'web/assets', 'web/api', 'web/mcp', 'web/context', 'web/views/auth', 'web/views/account',
     'web/views/namespaces', 'web/views/repositories', 'web/views/issues',

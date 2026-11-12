@@ -76,10 +76,7 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
     assert_eq(artifact_test_string(exact, "matched_key"), "deps-a")
     let (id, sig) = artifact_test_url(exact, "signed_download_url")
     assert_eq(id, first)
-    assert_eq(
-      @fs.read_file(c.artifact_blob(root, id, sig).path).text(),
-      "first",
-    )
+    assert_eq(artifact_test_text(c.artifact_blob(root, id, sig)), "first")
     let prefix = c.cache_rpc(grant.token, "GetCacheEntryDownloadURL", {
       "key": "miss",
       "version": "v1",
@@ -217,10 +214,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       cache_test_request("trusted"),
     )
     let (entry, sig) = artifact_test_url(restored, "signed_download_url")
-    assert_eq(
-      @fs.read_file(c.artifact_blob(root, entry, sig).path).text(),
-      "trusted",
-    )
+    assert_eq(artifact_test_text(c.artifact_blob(root, entry, sig)), "trusted")
     // Model a server-created MR snapshot. Test-only replacement deliberately
     // drops no immutability guard and does not alter trusted run context.
     pool.with_client(client => {
@@ -256,10 +250,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       cache_test_request("trusted"),
     )
     let (entry, sig) = artifact_test_url(trusted, "signed_download_url")
-    assert_eq(
-      @fs.read_file(c.artifact_blob(root, entry, sig).path).text(),
-      "trusted",
-    )
+    assert_eq(artifact_test_text(c.artifact_blob(root, entry, sig)), "trusted")
     let malicious : Json = {
       "key": "trusted",
       "version": "v1",
@@ -385,7 +376,7 @@ async test "cache capabilities cannot overwrite committed bytes and completed pr
     )
     let (_, read_sig) = artifact_test_url(restored, "signed_download_url")
     assert_eq(
-      @fs.read_file(c.artifact_blob(root, id, read_sig).path).text(),
+      artifact_test_text(c.artifact_blob(root, id, read_sig)),
       "original",
     )
     assert_true(

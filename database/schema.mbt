@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 38L
+pub let database_schema_version : Int64 = 39L
 
 ///|
 pub async fn initialize_db(pool : Database) -> Unit {
@@ -30,6 +30,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
     let sql = @fs.read_file("db/base.sql").text()
     pool.with_client(client => client.batch_execute(sql))
   }
+  let storage_migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()
   let preferences_migration = @fs.read_file(
     "db/migrations/038_user_preferences.sql",
   ).text()
@@ -237,7 +238,10 @@ pub async fn initialize_db(pool : Database) -> Unit {
       if version < 38L {
         tx.driver.exec_script(preferences_migration)
       }
-      let _ = tx.execute("PRAGMA user_version = 38")
+      if version < 39L {
+        tx.driver.exec_script(storage_migration)
+      }
+      let _ = tx.execute("PRAGMA user_version = 39")
     })
   })
 }

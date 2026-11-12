@@ -1,7 +1,9 @@
 ///|
 pub struct ArtifactBlob {
   id : Int64
-  path : String
+  priv store : @storage.Store
+  priv key : String
+  priv downloads : @async.Semaphore
   size : Int64
   digest : String
 }
@@ -59,26 +61,6 @@ fn artifact_blob_access(
 }
 
 ///|
-fn artifact_directory(root : String, key : String) -> String {
-  root + "/.pipeline-artifacts/" + key
-}
-
-///|
-async fn make_artifact_directory(root : String, key : String) -> String {
-  let parent = root + "/.pipeline-artifacts"
-  @fs.mkdir(parent, allow_exist=true, permission=0o700)
-  guard @fs.kind(parent, follow_symlink=false) is Directory else {
-    raise @domain.BadRequest(message="invalid artifact storage")
-  }
-  let directory = artifact_directory(root, key)
-  @fs.mkdir(directory, allow_exist=true, permission=0o700)
-  guard @fs.kind(directory, follow_symlink=false) is Directory else {
-    raise @domain.BadRequest(message="invalid artifact storage")
-  }
-  directory
-}
-
-///|
 pub fn Coordinator::authorize_artifact_blob(
   self : Coordinator,
   id : Int64,
@@ -115,7 +97,7 @@ pub async fn Coordinator::stage_artifact_block(
     raise @domain.BadRequest(message="invalid or oversized artifact block")
   }
   self.make_cache_space(root, id, sig, block, bytes.length().to_int64())
-  let key : String = self.pool.with_client(client => {
+  let (key, location) : (String, String) = self.pool.with_client(client => {
     client.with_transaction(tx => {
       let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
       guard bytes.length() <=
@@ -130,7 +112,7 @@ pub async fn Coordinator::stage_artifact_block(
         (row.get_name("kind") : String) == "cache" else {
         raise Conflict("artifact already committed")
       }
-      row.get_name("storage_key")
+      ((row.get_name("storage_key") : String), blob_location(tx, id))
     })
   })
   let replay = self.pool.with_client(client => {
@@ -151,13 +133,24 @@ pub async fn Coordinator::stage_artifact_block(
   if replay {
     return
   }
-  let directory = make_artifact_directory(root, key)
+  let store = self.blob_store(root, location)
   let file = @identity.random_hex(32)
-  let filename = directory + "/" + file
+  let filename = key + "/" + file
+  self.pool.with_client(client => {
+    client.with_transaction(tx => {
+      reserve_blob(tx, location, filename, (self.clock)())
+    })
+  })
   let mut committed = false
   // A failed or cancelled filesystem write can leave a partial file too.
-  defer (if !committed { @fs.remove(filename) catch { _ => () } })
-  @fs.write_file(filename, bytes, create_mode=CreateNew, permission=0o600)
+  defer (if !committed {
+    @async.protect_from_cancel(() => {
+      @async.with_timeout(5000, () => store.remove(filename)) catch {
+        _ => ()
+      }
+    })
+  })
+  store.put(filename, bytes)
   let digest = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
   let old_file : String? = self.pool.with_client(client => {
     client.with_transaction(
@@ -180,7 +173,7 @@ pub async fn Coordinator::stage_artifact_block(
           )
           .get_name("size")
         let previous = tx.query_opt(
-          "SELECT file_key,size FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
+          "SELECT file_key,size,digest FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
           params=[id, block],
         )
         let old_size : Int64 = match previous {
@@ -232,6 +225,15 @@ pub async fn Coordinator::stage_artifact_block(
             params=[id, block, file, bytes.length().to_int64(), digest],
           ),
         )
+        release_blob(tx, location, filename)
+        if previous is Some(entry) {
+          reserve_blob(
+            tx,
+            location,
+            key + "/" + (entry.get_name("file_key") : String),
+            (self.clock)(),
+          )
+        }
         previous.map(entry => (entry.get_name("file_key") : String))
       },
       immediate=true,
@@ -240,7 +242,7 @@ pub async fn Coordinator::stage_artifact_block(
   committed = true
   // Replacing a staged block must not leak files or charge the old bytes twice.
   if old_file is Some(old) {
-    @fs.remove(directory + "/" + old) catch {
+    store.remove(key + "/" + old) catch {
       _ => ()
     }
   }
@@ -266,7 +268,7 @@ pub async fn Coordinator::commit_artifact_blocks(
   }
   let order = ToJson::to_json(blocks).stringify()
   let generation = @identity.random_hex(32)
-  let pending : (String, Array[(String, Int64)], Int64)? = self.pool.with_client(client => {
+  let pending : (String, String, Array[@storage.Part], Int64)? = self.pool.with_client(client => {
       client.with_transaction(
         tx => {
           let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
@@ -289,16 +291,20 @@ pub async fn Coordinator::commit_artifact_blocks(
           }
           let files = blocks.map(block => {
             let entry = tx.query_opt(
-              "SELECT file_key,size FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
+              "SELECT file_key,size,digest FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
               params=[id, block],
             )
             guard entry is Some(entry) else {
               raise @domain.BadRequest(message="artifact block missing")
             }
             (
-              (entry.get_name("file_key") : String),
-              (entry.get_name("size") : Int64),
-            )
+              {
+                key: (row.get_name("storage_key") : String) +
+                "/" +
+                (entry.get_name("file_key") : String),
+                size: entry.get_name("size"),
+                digest: entry.get_name("digest"),
+              } : @storage.Part)
           })
           ignore(
             tx.execute(
@@ -306,19 +312,29 @@ pub async fn Coordinator::commit_artifact_blocks(
               params=[generation, order, id],
             ),
           )
-          Some(((row.get_name("storage_key") : String), files, byte_limit))
+          let key : String = row.get_name("storage_key")
+          let location = blob_location(tx, id)
+          reserve_blob(
+            tx,
+            location,
+            key + "/archive-" + generation,
+            (self.clock)(),
+          )
+          Some((key, location, files, byte_limit))
         },
         immediate=true,
       )
     },
   )
-  guard pending is Some((key, files, byte_limit)) else { return }
-  let directory = artifact_directory(root, key)
-  let output_path = directory + "/archive-" + generation
+  guard pending is Some((key, location, files, byte_limit)) else { return }
+  let store = self.blob_store(root, location)
+  let output_path = key + "/archive-" + generation
   let mut success = false
   // Register recovery before opening the destination, which itself can fail.
   defer (if !success {
-    @fs.remove(output_path) catch {
+    @async.protect_from_cancel(() => {
+      @async.with_timeout(5000, () => store.remove(output_path))
+    }) catch {
       _ => ()
     }
     self.pool.with_client(client => {
@@ -332,32 +348,15 @@ pub async fn Coordinator::commit_artifact_blocks(
       _ => ()
     }
   })
-  let output = @fs.open(
-    output_path,
-    mode=ReadWrite,
-    create_mode=CreateNew,
-    permission=0o600,
-  )
-  defer output.close()
-  let hasher = @crypto.SHA256::new()
-  let mut total = 0L
-  for (file, size) in files {
-    let input = @fs.open(directory + "/" + file, mode=ReadOnly)
-    defer input.close()
-    guard input.size() == size else {
-      raise @domain.BadRequest(message="artifact block changed")
-    }
-    while input.read_some(max_len=65536) is Some(chunk) {
-      total += chunk.length().to_int64()
-      guard total <= byte_limit else {
-        raise @domain.BadRequest(message="artifact exceeds byte limit")
-      }
-      hasher.update(chunk)
-      output.write(chunk)
-    }
+  let total = files.fold(init=0L, (sum, part) => sum + part.size)
+  guard total <= byte_limit else {
+    raise @domain.BadRequest(message="artifact exceeds byte limit")
   }
-  output.sync()
-  let digest = "sha256:" + @crypto.bytes_to_hex_string(hasher.finalize())
+  let info = store.compose(output_path, files)
+  guard info.size == total else {
+    raise @domain.BadRequest(message="artifact size mismatch")
+  }
+  let digest = info.digest
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
@@ -369,6 +368,7 @@ pub async fn Coordinator::commit_artifact_blocks(
           1 else {
           raise Conflict("artifact commit superseded")
         }
+        release_blob(tx, location, output_path)
       },
       immediate=true,
     )
@@ -391,7 +391,9 @@ pub fn Coordinator::artifact_blob(
       }
       {
         id,
-        path: artifact_directory(root, row.get_name("storage_key")) +
+        store: self.blob_store(root, blob_location(tx, id)),
+        downloads: self.downloads,
+        key: (row.get_name("storage_key") : String) +
         "/archive-" +
         (row.get_name("generation") : String),
         size: row.get_name("size"),
@@ -407,6 +409,7 @@ pub async fn Coordinator::cleanup_artifacts(
   root : String,
 ) -> Unit {
   let now = (self.clock)()
+  let mut complete = true
   let rows = self.pool.with_client(client => {
     ignore(
       client.execute(
@@ -420,22 +423,42 @@ pub async fn Coordinator::cleanup_artifacts(
       ),
     )
     client.query_all(
-      "SELECT id,storage_key FROM pipeline_artifact WHERE state='deleted' ORDER BY id LIMIT 100",
+      "SELECT a.id,a.storage_key,COALESCE(l.location,'legacy-fs') AS location FROM pipeline_artifact a LEFT JOIN pipeline_artifact_location l ON l.artifact_id=a.id LEFT JOIN pipeline_blob_garbage g ON g.location=COALESCE(l.location,'legacy-fs') AND g.key=a.storage_key AND g.kind='namespace' WHERE a.state='deleted' AND (g.not_before_ms IS NULL OR g.not_before_ms<=?) ORDER BY COALESCE(g.not_before_ms,0),a.id LIMIT 100",
+      params=[now],
     )
   })
   for row in rows {
-    let path = artifact_directory(root, row.get_name("storage_key"))
-    if @fs.exists(path) {
-      @fs.rmdir(path, recursive=true)
+    let id : Int64 = row.get_name("id")
+    let key : String = row.get_name("storage_key")
+    let location : String = row.get_name("location")
+    try {
+      self.blob_store(root, location).remove_namespace(key)
+      self.pool.with_client(client => {
+        client.with_transaction(tx => {
+          ignore(
+            tx.execute(
+              "DELETE FROM pipeline_artifact WHERE id=? AND state='deleted'",
+              params=[id],
+            ),
+          )
+          ignore(
+            tx.execute(
+              "DELETE FROM pipeline_blob_garbage WHERE location=? AND key=? AND kind='namespace'",
+              params=[location, key],
+            ),
+          )
+        })
+      })
+    } catch {
+      _ => {
+        complete = false
+        self.pool.with_client(client => {
+          client.with_transaction(tx => {
+            defer_blob_cleanup(tx, location, key, "namespace", (self.clock)())
+          })
+        })
+      }
     }
-    self.pool.with_client(client => {
-      ignore(
-        client.execute(
-          "DELETE FROM pipeline_artifact WHERE id=? AND state='deleted'",
-          params=[(row.get_name("id") : Int64)],
-        ),
-      )
-    })
   }
   self.pool.with_client(client => {
     ignore(
@@ -451,32 +474,27 @@ pub async fn Coordinator::cleanup_artifacts(
       ),
     )
   })
-  let parent = root + "/.pipeline-artifacts"
-  if @fs.exists(parent) && @fs.kind(parent, follow_symlink=false) is Directory {
-    let directory = @fs.opendir(parent)
-    defer directory.close()
-    let mut removed = 0
-    while directory.next() is Some(entry) {
-      let key = entry.name
-      if key.length() == 64 &&
-        key.iter().all(ch => ch.is_ascii_digit() || ('a' <= ch && ch <= 'f')) {
-        let exists = self.pool.with_client(client => {
-          client.query_opt(
-            "SELECT id FROM pipeline_artifact WHERE storage_key=?",
-            params=[key],
-          )
-          is Some(_)
-        })
-        if !exists &&
-          @fs.kind(parent + "/" + key, follow_symlink=false) is Directory {
-          @fs.rmdir(parent + "/" + key, recursive=true)
-          removed += 1
-          if removed >= 100 {
-            break
-          }
-        }
-      }
+  if !self.cleanup_blob_garbage(root) {
+    complete = false
+  }
+  let legacy = self.blob_store(root, "legacy-fs")
+  let mut removed = 0
+  legacy.visit_filesystem_namespaces(key => {
+    let exists = self.pool.with_client(client => {
+      client.query_opt(
+        "SELECT id FROM pipeline_artifact WHERE storage_key=? UNION SELECT 1 FROM pipeline_blob_garbage WHERE key=? AND kind='namespace'",
+        params=[key, key],
+      )
+      is Some(_)
+    })
+    if !exists {
+      legacy.remove_namespace(key)
+      removed += 1
     }
+    removed < 100
+  })
+  guard complete else {
+    raise @domain.BadRequest(message="blob cleanup incomplete; will retry")
   }
 }
 
@@ -501,7 +519,12 @@ pub fn Coordinator::user_artifact(
     }
     {
       id,
-      path: artifact_directory(root, row.get_name("storage_key")) +
+      store: self.blob_store(
+        root,
+        client.with_transaction(tx => blob_location(tx, id)),
+      ),
+      downloads: self.downloads,
+      key: (row.get_name("storage_key") : String) +
       "/archive-" +
       (row.get_name("generation") : String),
       size: row.get_name("size"),

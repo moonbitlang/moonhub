@@ -44,7 +44,10 @@ async fn with_artifact_http(
     } else {
       None
     }
-    let c = @pipeline.Coordinator::new(pool, oidc?)
+    let storage = @env.get_env_var("MOONHUB_TEST_S3_CONFIG").map(text => {
+      @storage.Config::parse(@json.parse(text))
+    })
+    let c = @pipeline.Coordinator::new(pool, oidc?, storage?)
     let token = "a".repeat(64)
     ignore(
       c.create_provider(
@@ -529,7 +532,12 @@ async test "artifact streams time out stalled writers and release transfer capac
   }
   try
     with_artifact_transfer(transfers, () => (), () => {
-      stream_artifact(file, writer, () => (), timeout_ms=10)
+      stream_artifact(
+        () => file.read_some(max_len=65536),
+        writer,
+        () => (),
+        timeout_ms=10,
+      )
     })
   catch {
     @async.TimeoutError => ()
@@ -611,7 +619,7 @@ async test "artifact streams stop on authorization revocation before the next ch
   }
   let calls = Ref(0)
   try
-    stream_artifact(file, writer, () => {
+    stream_artifact(() => file.read_some(max_len=65536), writer, () => {
       calls.val += 1
       if calls.val > 1 {
         raise @domain.Unauthorized(message="revoked")

@@ -68,21 +68,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         @web_context.required_param(req, "artifact", "artifact"),
       ),
     )
-    let file = @fs.open(blob.path, mode=ReadOnly)
-    defer file.close()
-    guard file.size() == blob.size else {
-      raise @domain.NotFound(message="artifact data missing")
-    }
-    let writer = @async.with_timeout(30000, () => {
-      res.respond(headers={
-        "Content-Type": "application/zip",
-        "Content-Length": blob.size.to_string(),
-        "Content-Disposition": "attachment; filename=artifact.zip",
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-      })
-    })
-    stream_artifact(file, writer, () => {
+    let authorize = () => {
       ignore(
         coordinator.user_artifact(
           root,
@@ -94,6 +80,21 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           blob.id,
         ),
       )
+    }
+    blob.with_reader(reader => {
+      // The bounded download queue and remote open can outlive authorization.
+      // Recheck before sending headers as well as between streamed chunks.
+      authorize()
+      let writer = @async.with_timeout(30000, () => {
+        res.respond(headers={
+          "Content-Type": "application/zip",
+          "Content-Length": blob.size.to_string(),
+          "Content-Disposition": "attachment; filename=artifact.zip",
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        })
+      })
+      stream_artifact(() => reader.read(), writer, authorize)
     })
   })
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {

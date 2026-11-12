@@ -1,4 +1,20 @@
 ///|
+fn artifact_directory(root : String, key : String) -> String {
+  root + "/.pipeline-artifacts/" + key
+}
+
+///|
+async fn artifact_test_text(blob : ArtifactBlob) -> String {
+  let bytes : Array[Byte] = []
+  blob.with_reader(reader => {
+    while reader.read() is Some(chunk) {
+      bytes.append(chunk.to_array())
+    }
+  })
+  @utf8.decode(Bytes::from_array(bytes))
+}
+
+///|
 fn artifact_test_request(
   assignment : @protocol.Assignment,
   fields : Map[String, Json],
@@ -149,7 +165,7 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
       "signed_url",
     )
     let blob = c.artifact_blob(root, id, read_sig)
-    assert_eq(@fs.read_file(blob.path).text(), "defabc")
+    assert_eq(artifact_test_text(blob), "defabc")
     try c.authorize_artifact_blob(id, read_sig, "write") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
@@ -170,8 +186,8 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
         protocol_repo,
         @protocol.parse_decimal(a.run_id).unwrap(),
         id,
-      ).path,
-      blob.path,
+      ).key,
+      blob.key,
     )
     try
       ignore(
@@ -379,10 +395,7 @@ async test "later jobs download same-run artifacts while old credentials and oth
       ),
       "signed_url",
     )
-    assert_eq(
-      @fs.read_file(c.artifact_blob(root, id, read_sig).path).text(),
-      "zip",
-    )
+    assert_eq(artifact_test_text(c.artifact_blob(root, id, read_sig)), "zip")
     // A second provider can execute an unrelated run concurrently.
     let other_run = create_run(
       pool,
@@ -505,7 +518,7 @@ async test "artifact upload exceeds the old byte and block limits while cache li
       "signed_url",
     )
     assert_eq(
-      @fs.read_file(c.artifact_blob(root, download, read_sig).path).text(),
+      artifact_test_text(c.artifact_blob(root, download, read_sig)),
       "x".repeat(256),
     )
     let (cache, cache_sig) = artifact_test_url(
@@ -626,7 +639,7 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
     })
     assert_eq(@fs.readdir(artifact_directory(root, key)).length(), 1)
     let orphan = "d".repeat(64)
-    ignore(make_artifact_directory(root, orphan))
+    @fs.mkdir(artifact_directory(root, orphan), permission=0o700)
     @fs.write_file(artifact_directory(root, orphan) + "/data", b"orphan")
     clock.val += 604800001L
     c.cleanup_artifacts(root)

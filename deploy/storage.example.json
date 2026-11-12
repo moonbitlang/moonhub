@@ -1,0 +1,13 @@
+{
+  "artifacts": "remote",
+  "caches": "remote",
+  "backends": {
+    "local": { "type": "fs", "root": "/data/repos/.pipeline-artifacts" },
+    "remote": {
+      "type": "s3",
+      "bucket": "replace-with-your-private-bucket",
+      "region": "us-west-2",
+      "prefix": "moonhub/blobs"
+    }
+  }
+}

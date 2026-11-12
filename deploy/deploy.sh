@@ -64,11 +64,15 @@ USE_CN_MIRRORS=${MOONHUB_USE_CN_MIRRORS:-0}
 REBUILD_BASE=${MOONHUB_BASE_REBUILD:-0}
 SHARED_HOST=${MOONHUB_SHARED_HOST:-0}
 OIDC_FILE=${MOONHUB_OIDC_CONFIG_FILE:-}
+STORAGE_FILE=${MOONHUB_STORAGE_CONFIG_FILE:-}
 
 compose=(docker compose --env-file /dev/null --project-name "$PROJECT"
   -f "$ROOT/compose.yaml")
 if [ -n "$OIDC_FILE" ]; then
   compose+=( -f "$ROOT/deploy/compose.oidc.yaml" )
+fi
+if [ -n "$STORAGE_FILE" ]; then
+  compose+=( -f "$ROOT/deploy/compose.storage.yaml" )
 fi
 if [ "$ENABLE_PIPELINES" = 1 ]; then
   compose+=( -f "$ROOT/deploy/compose.pipeline.yaml" )
@@ -136,6 +140,7 @@ export MOONHUB_ROOT_PASSWORD_FILE="$ROOT_PASSWORD_FILE"
 export MOONHUB_PROVIDER_TOKEN_FILE="$PROVIDER_TOKEN_FILE"
 export MOONHUB_USE_CN_MIRRORS="$USE_CN_MIRRORS"
 export MOONHUB_OIDC_CONFIG_FILE="$OIDC_FILE"
+export MOONHUB_STORAGE_CONFIG_FILE="$STORAGE_FILE"
 
 usage() {
   cat <<'EOF'
@@ -183,6 +188,12 @@ validate_inputs() {
     }
     require_file "$OIDC_FILE" "OIDC configuration"
   fi
+  if [ -n "$STORAGE_FILE" ]; then
+    [[ "$STORAGE_FILE" = /* && "$STORAGE_FILE" != *','* && "$STORAGE_FILE" != *$'\n'* && "$STORAGE_FILE" != *$'\r'* && ! -L "$STORAGE_FILE" ]] || {
+      printf 'Storage configuration must be an absolute, regular non-symlink file path.\n' >&2; exit 1;
+    }
+    require_file "$STORAGE_FILE" "storage configuration"
+  fi
   if [ "$ENABLE_PIPELINES" = 1 ]; then
     require_file "$PROVIDER_TOKEN_FILE" "provider token secret"
     local token
@@ -200,6 +211,13 @@ validate_oidc() {
   docker run --rm --network none --read-only --pids-limit 64 --memory 128m --cpus 1 \
     --mount "type=bind,src=$OIDC_FILE,dst=/run/secrets/workflow_oidc,readonly" \
     --entrypoint moonhub "$RUNTIME_IMAGE" oidc-check /run/secrets/workflow_oidc
+}
+
+validate_storage() {
+  [ -n "$STORAGE_FILE" ] || return 0
+  docker run --rm --network none --read-only --pids-limit 64 --memory 256m --cpus 1 \
+    --mount "type=bind,src=$STORAGE_FILE,dst=/run/secrets/blob_storage,readonly" \
+    --entrypoint moonhub "$RUNTIME_IMAGE" storage-check /run/secrets/blob_storage
 }
 
 verify_oidc() {
@@ -385,6 +403,7 @@ upgrade() {
   recovery_requirements
   build_images
   validate_oidc
+  validate_storage
   prepare_pipeline_switch
   prepare_backup
   printf 'All images ready. Stopping target services for backup and switch...\n'

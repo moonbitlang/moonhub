@@ -1,5 +1,7 @@
 # Cache v4 compatibility
 
+Storage can use filesystem or S3 independently for artifacts and caches; see [blob storage](blob-storage.md) for configuration, cutover and cleanup.
+
 MoonHub downloads and executes the original actions/cache@v4, cache/restore,
 cache/save and cache clients embedded in JavaScript Actions. Migration 033 adds
 Cache Service v2 (the protocol used by Cache Action v4). There is no built-in
@@ -72,13 +74,14 @@ caches are separate work.
 - Keys: 512 UTF-8 bytes; archive versions: 256 bytes; at most ten primary/restore
   keys per request. These limits can be lower than GitHub's service limits.
 
-The existing once-per-minute cleanup reclaims expired/deleted cache files and
+The existing once-per-minute cleanup reclaims expired/deleted cache objects and
 metadata, up to 100 entries per sweep. Deleted blocks consume quota until their
 files are removed. Blocks coexist with assembled archives: provision up to
 twice the staged quota plus Artifact storage and in-flight buffers. Four blob
 transfers are allowed per Web process; each cache upload can buffer 128 MiB.
 Repository deletion cascades cache metadata; deleting a producer run/attempt
-currently also cascades its caches. Whole-data-volume backups include storage.
+currently also cascades its caches. Whole-data-volume backups include fs storage. S3 object recovery is managed
+separately; see [blob storage](blob-storage.md).
 
 ## hashFiles expressions
 
