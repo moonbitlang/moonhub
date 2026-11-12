@@ -1,0 +1,62 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/storage"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn filesystem(String) -> Store raise
+
+pub fn resolve(String, legacy_root~ : String) -> Store raise
+
+// Errors
+pub suberror StorageError {
+  InvalidConfiguration
+  InvalidKey
+  Unavailable
+  IntegrityFailure
+}
+
+// Types and methods
+type Backend
+
+pub struct Config {
+  artifacts : String
+  caches : String
+  // private fields
+}
+pub async fn Config::load(String, node? : String, helper? : String) -> Self
+pub fn Config::parse(@json.Json, node? : String, helper? : String) -> Self raise
+pub fn Config::resolve(Self, String, legacy_root~ : String) -> Store raise
+
+pub(all) struct ObjectInfo {
+  size : Int64
+  digest : String
+}
+
+pub(all) struct Part {
+  key : String
+  size : Int64
+  digest : String
+}
+
+pub struct Reader {
+  // private fields
+}
+pub async fn Reader::read(Self) -> Bytes?
+
+pub struct Store {
+  // private fields
+}
+pub async fn Store::compose(Self, String, Array[Part]) -> ObjectInfo
+pub fn Store::location(Self) -> String
+pub async fn Store::put(Self, String, Bytes) -> Unit
+pub async fn Store::remove(Self, String) -> Unit
+pub async fn Store::remove_namespace(Self, String) -> Unit
+pub async fn Store::visit_filesystem_namespaces(Self, async (String) -> Bool) -> Unit
+pub async fn Store::with_reader(Self, String, Int64, async (Reader) -> Unit) -> Unit
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,11 @@
+{
+  "name": "moonhub-s3-storage",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1167.0"
+  }
+}

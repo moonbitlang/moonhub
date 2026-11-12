@@ -34,7 +34,7 @@ ensure_base_image() {
           "${DEBIAN_SECURITY_MIRROR:-http://mirrors.ustc.edu.cn/debian-security}"
       fi
       for file in deploy/base.Dockerfile deploy/configure-apt.sh deploy/install-moonbit.sh \
-        .dockerignore moon.mod js/package.json js/package-lock.json runner/actions/package.json runner/actions/package-lock.json scripts/resolve-dependencies.cjs; do
+        .dockerignore moon.mod js/package.json js/package-lock.json runner/actions/package.json runner/actions/package-lock.json storage/s3/package.json storage/s3/package-lock.json scripts/resolve-dependencies.cjs; do
         "${hash_command[@]}" "$file" || return 1
       done
     } | "${hash_command[@]}"

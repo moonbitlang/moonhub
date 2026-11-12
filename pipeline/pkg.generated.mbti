@@ -6,6 +6,7 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/pipeline/protocol",
   "hackwaly/moonhub/pipeline/workflow",
+  "hackwaly/moonhub/storage",
   "moonbitlang/async",
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
@@ -63,10 +64,11 @@ pub suberror ExecutionError {
 // Types and methods
 pub struct ArtifactBlob {
   id : Int64
-  path : String
   size : Int64
   digest : String
+  // private fields
 }
+pub async fn ArtifactBlob::with_reader(Self, async (@storage.Reader) -> Unit) -> Unit
 
 #derive(Eq, @debug.Debug)
 pub enum Conclusion {
@@ -103,7 +105,7 @@ pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, A
 pub fn Coordinator::expire_attempts(Self) -> Int32 raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int32) -> @protocol.LeaseState raise
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise
-pub fn Coordinator::new(@database.Database, oidc? : OidcIssuer, clock? : () -> Int64) -> Self
+pub fn Coordinator::new(@database.Database, oidc? : OidcIssuer, storage? : @storage.Config, clock? : () -> Int64) -> Self
 pub fn Coordinator::oidc_discovery(Self) -> @json.Json raise
 pub fn Coordinator::oidc_jwks(Self) -> @json.Json raise
 pub fn Coordinator::oidc_runtime(Self, Int64, String, @protocol.OidcRuntimeRequest) -> @protocol.OidcRuntime raise

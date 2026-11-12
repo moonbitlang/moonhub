@@ -138,12 +138,12 @@ async fn[T] with_artifact_transfer(
 
 ///|
 async fn stream_artifact(
-  file : @fs.File,
+  read : async () -> Bytes?,
   writer : &@io.Writer,
   authorize : () -> Unit raise,
   timeout_ms~ : Int32 = 30000,
 ) -> Unit {
-  while file.read_some(max_len=65536) is Some(chunk) {
+  while read() is Some(chunk) {
     authorize()
     @async.with_timeout(timeout_ms, () => writer.write(chunk))
   }
@@ -241,21 +241,19 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
       )
     }
     with_artifact_transfer(transfers, authorize, () => {
-      let file = @fs.open(blob.path, mode=ReadOnly)
-      defer file.close()
-      guard file.size() == blob.size else {
-        raise @domain.NotFound(message="artifact data missing")
-      }
-      let writer = @async.with_timeout(30000, () => {
-        res.respond(status=200, headers={
-          "Content-Type": "application/zip",
-          "Content-Length": blob.size.to_string(),
-          "Cache-Control": "private, no-store",
-          "X-Content-Type-Options": "nosniff",
-          "Content-Disposition": "attachment; filename=artifact.zip",
+      blob.with_reader(reader => {
+        authorize()
+        let writer = @async.with_timeout(30000, () => {
+          res.respond(status=200, headers={
+            "Content-Type": "application/zip",
+            "Content-Length": blob.size.to_string(),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "attachment; filename=artifact.zip",
+          })
         })
+        stream_artifact(() => reader.read(), writer, authorize)
       })
-      stream_artifact(file, writer, authorize)
     })
   })
 })

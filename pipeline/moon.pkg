@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/storage",
   "moonbitlang/core/debug",
   "moonbitlang/x/codec/base64",
   "moonbitlang/x/crypto",

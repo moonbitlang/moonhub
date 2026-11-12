@@ -74,6 +74,8 @@ COPY --from=assets /src/assets/ /app/assets/
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY db/ /app/db/
+COPY storage/s3/*.mjs /app/storage/s3/
+COPY --from=base /opt/moonhub-storage/node_modules /app/storage/s3/node_modules
 # Git only records the executable bit, so migration files created under a
 # restrictive umask reach the image unreadable to the git user.
 RUN chmod -R a+rX /app/db

@@ -35,6 +35,9 @@ RUN npm ci --no-audit --no-fund
 WORKDIR /opt/moonhub-actions
 COPY runner/actions/package.json runner/actions/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+WORKDIR /opt/moonhub-storage
+COPY storage/s3/package.json storage/s3/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 WORKDIR /src
 # Final stages supply their own entrypoint; do not inherit Node's wrapper.
 ENTRYPOINT []

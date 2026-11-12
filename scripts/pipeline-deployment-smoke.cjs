@@ -63,3 +63,17 @@ for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
   assert.ok(!oidc.services[name].environment?.MOONHUB_OIDC_CONFIG);
 }
 console.log('Workflow OIDC Compose mount is read-only and restricted to Web.');
+
+const storage = JSON.parse(execFileSync('docker', [
+  'compose', '-f', 'compose.yaml', '-f', 'deploy/compose.pipeline.yaml', '-f', 'deploy/compose.storage.yaml',
+  'config', '--format', 'json',
+], { cwd: root, env: { ...env, MOONHUB_STORAGE_CONFIG_FILE: '/private/operator/storage.json' }, encoding: 'utf8' }));
+assert.equal(storage.services.web.environment.MOONHUB_STORAGE_CONFIG, '/run/secrets/blob_storage');
+const mount = storage.services.web.volumes.find(v => v.target === '/run/secrets/blob_storage');
+assert.equal(mount.source, '/private/operator/storage.json');
+assert.equal(mount.read_only, true);
+for (const name of ['ssh', 'pipeline-provider', 'pipeline-docker']) {
+  assert.ok(!storage.services[name].volumes.some(v => v.target === '/run/secrets/blob_storage'));
+  assert.equal(storage.services[name].environment?.MOONHUB_STORAGE_CONFIG, undefined);
+}
+console.log('Storage configuration is mounted read-only into the Web service only.');

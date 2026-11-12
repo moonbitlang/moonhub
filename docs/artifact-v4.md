@@ -1,5 +1,7 @@
 # Artifact v4 compatibility
 
+Storage can use filesystem or S3 independently for artifacts and caches; see [blob storage](blob-storage.md) for configuration, cutover and cleanup.
+
 MoonHub executes the downloaded upstream `actions/upload-artifact@v4` and
 `actions/download-artifact@v4` code. Migration 032 adds the backing service,
 private filesystem storage and attempt-scoped credentials. Deploy the updated
@@ -93,8 +95,9 @@ byte quota plus in-flight upload space (four concurrent blob transfers per Web
 process) on the Web data disk. Transfer-slot waits, response headers and each
 response-body write are bounded to 30 seconds. Authorization is rechecked after
 a slot becomes available and before every downloaded chunk, including browser
-downloads. Existing whole-data-volume backups include the
-artifact directory.
+downloads. Existing whole-data-volume backups include the fs
+artifact directory; S3 objects require the separate recovery policy described in
+[blob storage](blob-storage.md).
 
 This increment supports the v4 current-run protocol. Cross-run/cross-repository
 GitHub REST downloads using the Action's `github-token` input fail explicitly;

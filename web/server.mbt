@@ -45,7 +45,20 @@ pub async fn serve(config : Config) -> Unit {
         )
       None => None
     }
-    let coordinator = @pipeline.Coordinator::new(pool, oidc?)
+    let storage = match @config.env_value("MOONHUB_STORAGE_CONFIG") {
+      Some(path) =>
+        Some(
+          @storage.Config::load(
+            path,
+            node=@config.env_value("MOONHUB_STORAGE_NODE").unwrap_or("node"),
+            helper=@config.env_value("MOONHUB_S3_HELPER").unwrap_or(
+              "storage/s3/bridge.mjs",
+            ),
+          ),
+        )
+      None => None
+    }
+    let coordinator = @pipeline.Coordinator::new(pool, oidc?, storage?)
     coordinator.start_lease_worker(group)
     group.spawn_bg(no_wait=true, () => {
       for ;; {

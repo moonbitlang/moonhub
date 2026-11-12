@@ -1,0 +1,11 @@
+services:
+  web:
+    environment:
+      MOONHUB_STORAGE_CONFIG: /run/secrets/blob_storage
+    volumes:
+      - type: bind
+        source: ${MOONHUB_STORAGE_CONFIG_FILE:?Set the host storage configuration path}
+        target: /run/secrets/blob_storage
+        read_only: true
+        bind:
+          create_host_path: false
