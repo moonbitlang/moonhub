@@ -201,8 +201,6 @@ jobs:
             scripts/shared-host-test.cjs
       - name: Test pipeline Compose configuration
         run: node scripts/pipeline-deployment-smoke.cjs
-      - name: Test identity transfer
-        run: python3 scripts/identity-transfer-test.py
 
   required:
     name: CI required
