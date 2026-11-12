@@ -189,7 +189,11 @@ async test "original Desktop Windows workflow packages uploads and restores with
           assert_eq(assignment.job.id, job.id)
           assert_eq(
             assignment.version,
-            @protocol.environment_assignment_version,
+            if job.api_permissions != 0 {
+              @protocol.release_assignment_version
+            } else {
+              @protocol.environment_assignment_version
+            },
           )
           let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
           ignore(c.start(id, token, 1, execution_id=@identity.random_hex(16)))
