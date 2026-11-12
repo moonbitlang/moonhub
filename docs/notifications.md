@@ -65,22 +65,22 @@ Queued mail rechecks repository access, the account email, subscription and emai
 preference before claiming delivery. A direct assignment/review request can bypass
 a discussion mute, but never the email preference or repository permission.
 
-Email contains an event type and a repository-relative item path, with no comment,
-diff or title content. MR discussion updates include a stable discussion/comment
-target in that path, shared with Inbox links; the server finds the current reply
-page, including deleted-comment placeholders. Migration 020 backfills existing
-Inbox event targets without replaying mail or resetting read state. Moonhub does
-not yet configure a public HTTP base URL, so
-messages do not include an absolute clickable site URL. Open the indicated item
-on your Moonhub instance. Site SMTP configuration remains shared with invitations
-and password recovery.
+Email contains an event type and a repository-relative item path, with no
+comment, diff or title content. MR discussion updates include a stable
+discussion/comment target in that path, shared with Inbox links; the server
+finds the current reply page, including deleted-comment placeholders. Inbox
+event targets and read state persist without replaying mail at initialization.
+Moonhub does not yet configure a public HTTP base URL, so messages do not
+include an absolute clickable site URL. Open the indicated item on your Moonhub
+instance. Site SMTP configuration remains shared with invitations and password
+recovery.
 
 ## Upgrade and Verification
 
-Schema migration 015 runs at Web startup. Upgrade Web and SSH together; restore
-matching database/repository backups when rolling back to an older executable.
-Identity-only export accepts schema 15 and continues to exclude repository and
-collaboration data. Review-request worker lifetime belongs to Web.
+Web initializes the [supported database schema](../db/README.md) at startup.
+Upgrade Web and SSH together; restore complete matching database/repository
+backups when rolling back to an older executable. Review-request worker lifetime
+belongs to Web.
 
 ```sh
 moon check --deny-warn

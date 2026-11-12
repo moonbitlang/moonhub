@@ -98,19 +98,21 @@ issuer; see [workflow OIDC](workflow-oidc.md).
 
 ## Upgrade and validation
 
-Migration 036 adds repository variable storage. Variables introduced definition
-version 6 and assignment version 9. Current snapshots use definition v7 /
-assignment v10 for [workflow OIDC](workflow-oidc.md). Upgrade coordinator, providers
-and runners together. Historical definition versions 1–5 remain readable; reruns retain their
-original contracts and do not acquire a new `vars` context. Older JSON contexts
-and plans default missing variable maps to empty values during decoding.
+The baseline schema includes repository variable storage. Variables introduced
+definition version 6 and assignment version 9. Current snapshots use definition
+v7 / assignment v10 for [workflow OIDC](workflow-oidc.md). Upgrade coordinator,
+providers and runners together. Historical definition versions 1–5 remain
+readable; reruns retain their original contracts and do not acquire a new `vars`
+context. Older JSON contexts and plans default missing variable maps to empty
+values during decoding.
 
-Regression tests cover migration upgrade/idempotence, authorization, optimistic
-versions, repository isolation, naming/value/aggregate limits, API/CLI/MCP/browser
-submission, escaping and CSRF, captured values through setting changes and
-reruns, MR/push contexts, and real HTTP execution with downstream outputs. Runtime
-tests cover case-insensitive/missing lookup, composite inputs, post handlers,
-nonrecursive values, no automatic environment injection and legacy context gates.
+Regression tests cover baseline persistence and cascade deletion, authorization,
+optimistic versions, repository isolation, naming/value/aggregate limits,
+API/CLI/MCP/browser submission, escaping and CSRF, captured values through
+setting changes and reruns, MR/push contexts, and real HTTP execution with
+downstream outputs. Runtime tests cover case-insensitive/missing lookup,
+composite inputs, post handlers, nonrecursive values, no automatic environment
+injection and legacy context gates.
 
 ```sh
 moon test --strip -j 1 --deny-warn

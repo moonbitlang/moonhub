@@ -53,25 +53,27 @@ bytes with a write-scoped Bearer token. It returns string `id`, repository-relat
 
 ## Persistence and authorization
 
-Migrations 022/023 store metadata in `attachment`: repository, uploader, filename,
-detected media type, byte count, SHA-256, creation time and lifecycle state. The
-opaque ID is the storage key. Bytes live under `<repository-root>/.attachments/`,
-outside all Git repositories, using owner-only directories/files. Uploads reserve
-metadata, write a temporary file, rename it, then mark the attachment ready. Content
-mutations and their `attachment_reference` rows commit in the same transaction.
-Failed mutations leave only unclaimed pending uploads, never committed references
-to incomplete uploads.
+The baseline schema stores metadata in `attachment`: repository, uploader,
+filename, detected media type, byte count, SHA-256, creation time and lifecycle
+state. The opaque ID is the storage key. Bytes live under
+`<repository-root>/.attachments/`, outside all Git repositories, using
+owner-only directories/files. Uploads reserve metadata, write a temporary file,
+rename it, then mark the attachment ready. Content mutations and their
+`attachment_reference` rows commit in the same transaction. Failed mutations
+leave only unclaimed pending uploads, never committed references to incomplete
+uploads.
 
-Reads recheck current repository access. Before an attachment is linked, only its
-uploader can read or claim it. Linked attachments may be reused within the same
-repository. Attachments cannot be linked or fetched through another repository.
-Images use their detected media type. Other files use `application/octet-stream`
-and `Content-Disposition: attachment`, with the original UTF-8 download filename.
-All responses use `nosniff`, a restrictive CSP and private `no-store` caching.
-Random URLs do not replace authorization. Migration 023 preserves existing image
-metadata, reference claims and pending-upload lifecycle state. Ordinary Markdown
-links claim references transactionally just like embedded images; code examples
-do not claim files. Non-image attachments cannot be embedded using image syntax.
+Reads recheck current repository access. Before an attachment is linked, only
+its uploader can read or claim it. Linked attachments may be reused within the
+same repository. Attachments cannot be linked or fetched through another
+repository. Images use their detected media type. Other files use
+`application/octet-stream` and `Content-Disposition: attachment`, with the
+original UTF-8 download filename. All responses use `nosniff`, a restrictive CSP
+and private `no-store` caching. Random URLs do not replace authorization. Image
+metadata, reference claims and pending-upload lifecycle state persist in the
+database. Ordinary Markdown links claim references transactionally just like
+embedded images; code examples do not claim files. Non-image attachments cannot
+be embedded using image syntax.
 
 The server expires never-linked uploads after 24 hours, in hourly batches of up
 to 100. Expiry claims prevent a concurrent content mutation from linking a file

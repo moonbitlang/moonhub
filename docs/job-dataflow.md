@@ -76,10 +76,10 @@ fail-fast and max-parallel policies remain in force.
 
 ## Persistence and limits
 
-Migration 035 adds `pipeline_job_output`, linked to both job and attempt. No old
-outputs are invented or jobs replayed. Reruns create new storage. Expired leases
-and conflicting completion replays cannot overwrite it; identical reports are
-idempotent.
+The baseline schema includes `pipeline_job_output`, linked to both job and
+attempt. Initialization does not invent outputs or replay jobs. Reruns create
+new storage. Expired leases and conflicting completion replays cannot overwrite
+it; identical reports are idempotent.
 
 At most 100 names are allowed per job. Each value is at most 16 KiB UTF-8, the
 encoded map at most 32 KiB, and all stored maps in a run at most 256 KiB. NUL and
@@ -142,9 +142,9 @@ from definition version 6 / assignment version 9; see
 [repository variables](repository-variables.md). Values are captured with the run
 and snapshot reruns do not reload current repository settings.
 
-Current snapshots use definition v7 / assignment v10 for
-[workflow OIDC](workflow-oidc.md), with migration 037. Historical definition
-versions 1–6 and their assignment contracts remain readable.
+Current snapshots use definition v7 / assignment v10 for [workflow
+OIDC](workflow-oidc.md). Historical definition versions 1–6 and their assignment
+contracts remain readable.
 
 Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
 only OIDC-enabled jobs require assignment v10.

@@ -175,20 +175,19 @@ cannot overwrite reserved executor or shell/loader-injection variables.
 ## Deployment and validation
 
 Upgrade the server, provider/controller and task runner together. Definition
-version 2 always uses assignment version 5, including jobs containing only
-`run` steps, so environment/output files work without an explicit expression or
-action. Older definition version 1 remains readable and runnable; reruns preserve
-its saved definition version and legacy assignment selection.
-Historical definition-v3 snapshots use assignment version 6 for matrix/strategy contexts.
-Definition-v4 snapshots use assignment version 7 for job dataflow; migration 035
-adds attempt-bound output storage. Definition-v5 snapshots use assignment
-version 8 for immutable dispatch input and event contexts. Definition-v6
-snapshots use assignment version 9 for repository variables; migration 036 adds
-their configuration storage. Current definition-v7 snapshots use assignment v10
-for scoped [workflow OIDC identities](workflow-oidc.md); migration 037 adds
-execution-bound request grants.
-Migration 031 adds durable scheduling state; upgrade coordinator, provider and
-runner together. See [workflow scheduling](workflow-scheduling.md).
+version 2 always uses assignment version 5, including jobs containing only `run`
+steps, so environment/output files work without an explicit expression or
+action. Older definition version 1 remains readable and runnable; reruns
+preserve its saved definition version and legacy assignment selection.
+Historical definition-v3 snapshots use assignment version 6 for matrix/strategy
+contexts. Definition-v4 snapshots use assignment version 7 for job dataflow with
+attempt-bound output storage. Definition-v5 snapshots use assignment version 8
+for immutable dispatch input and event contexts. Definition-v6 snapshots use
+assignment version 9 for repository variables with persisted configuration
+storage. Current definition-v7 snapshots use assignment v10 for scoped [workflow
+OIDC identities](workflow-oidc.md) and execution-bound request grants. The
+baseline schema includes durable scheduling state; upgrade coordinator, provider
+and runner together. See [workflow scheduling](workflow-scheduling.md).
 
 The dependency base installs locked YAML dependencies and pinned Node 20/24
 binaries. Its fingerprint includes `runner/actions/package*.json`. Application
