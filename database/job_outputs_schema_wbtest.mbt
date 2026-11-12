@@ -1,5 +1,5 @@
 ///|
-async test "job output schema upgrades version 34 without changing completed runs" {
+async test "baseline cascades job outputs when deleting runs" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
@@ -7,8 +7,6 @@ async test "job output schema upgrades version 34 without changing completed run
     pool.with_client(client => {
       client.batch_execute(
         (
-          #|DROP TABLE pipeline_job_output;
-          #|PRAGMA user_version=34;
           #|INSERT INTO "user"(id,name_key,display_name,password_hash) VALUES(1,'legacy','Legacy','hash');
           #|INSERT INTO team(id,name_key,display_name,kind) VALUES(1,'legacy','Legacy','personal');
           #|INSERT INTO repository(id,team_id,name,visibility) VALUES(1,1,'repo','private');

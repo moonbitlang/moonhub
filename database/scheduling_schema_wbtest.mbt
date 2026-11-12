@@ -1,5 +1,5 @@
 ///|
-async test "workflow scheduling schema upgrades preserve old runs and migrate idempotently" {
+async test "baseline defaults workflow scheduling columns" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
@@ -13,11 +13,6 @@ async test "workflow scheduling schema upgrades preserve old runs and migrate id
       )
       assert_true(
         client.query_all("SELECT run_id FROM pipeline_run_schedule").is_empty(),
-      )
-      // Recreate schema 30's job columns without touching related tables; the
-      // migration is applied on a genuinely old schema, not a fresh DB shortcut.
-      client.batch_execute(
-        "DROP TABLE pipeline_job_output; ALTER TABLE merge_revision DROP COLUMN target_branch; DROP TABLE pipeline_cache; DROP TABLE pipeline_cache_scope; DROP TABLE pipeline_artifact_capability; DROP TABLE pipeline_artifact_block; DROP TABLE pipeline_artifact; DROP TABLE pipeline_artifact_runtime; DROP TABLE pipeline_run_schedule; DROP INDEX pipeline_matrix_active; ALTER TABLE pipeline_job DROP COLUMN matrix_fail_fast; ALTER TABLE pipeline_job DROP COLUMN max_parallel; ALTER TABLE pipeline_job DROP COLUMN matrix_group; PRAGMA user_version=30;",
       )
     })
     pool.with_client(client => {

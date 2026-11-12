@@ -8,8 +8,6 @@ import {
 }
 
 import {
-  "hackwaly/moonhub/collaboration",
-  "hackwaly/moonhub/identity",
   "hackwaly/moonhub/mail",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/test_support",

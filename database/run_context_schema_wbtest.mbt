@@ -1,23 +1,9 @@
 ///|
-async test "context migration preserves schema seventeen runs and keeps missing metadata explicit" {
+async test "baseline keeps missing run context explicit and immutable" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
-    for
-      file in [
-        "db/base.sql", "db/migrations/001_ssh_keys.sql", "db/migrations/002_repository_jobs.sql",
-        "db/migrations/003_ssh_addresses.sql", "db/migrations/004_merge_requests.sql",
-        "db/migrations/005_mail_settings.sql", "db/migrations/006_personal_namespaces.sql",
-        "db/migrations/007_pipelines.sql", "db/migrations/008_pipeline_protocol.sql",
-        "db/migrations/009_runner_steps.sql", "db/migrations/010_password_resets.sql",
-        "db/migrations/011_provider_scope.sql", "db/migrations/012_pipeline_push.sql",
-        "db/migrations/013_repository_deploy_keys.sql", "db/migrations/014_merge_checks.sql",
-        "db/migrations/015_notifications.sql", "db/migrations/016_access_tokens.sql",
-        "db/migrations/017_pull_request_workflows.sql",
-      ] {
-      let sql = @fs.read_file(file).text()
-      pool.with_client(client => client.batch_execute(sql))
-    }
+    initialize_db(pool)
     pool.with_client(client => {
       client.batch_execute(
         (
@@ -26,7 +12,6 @@ async test "context migration preserves schema seventeen runs and keeps missing 
           #|INSERT INTO repository(id, team_id, name) VALUES (1, 1, 'demo');
           #|INSERT INTO pipeline_run(id, repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json)
           #|VALUES (1, 1, 1, 1, '.github/workflows/build.yml', 'Legacy', 'master', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'refs/moonhub/pipelines/legacy', 1, 'original source', '{"name":"Legacy","jobs":[]}');
-          #|PRAGMA user_version = 17;
         ),
       )
     })

@@ -1,24 +1,9 @@
 ///|
-async test "anchor upgrade preserves unanchored discussions and prevents moving saved anchors" {
+async test "baseline preserves unanchored discussions and prevents moving saved anchors" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
-    for
-      file in [
-        "db/base.sql", "db/migrations/001_ssh_keys.sql", "db/migrations/002_repository_jobs.sql",
-        "db/migrations/003_ssh_addresses.sql", "db/migrations/004_merge_requests.sql",
-        "db/migrations/005_mail_settings.sql", "db/migrations/006_personal_namespaces.sql",
-        "db/migrations/007_pipelines.sql", "db/migrations/008_pipeline_protocol.sql",
-        "db/migrations/009_runner_steps.sql", "db/migrations/010_password_resets.sql",
-        "db/migrations/011_provider_scope.sql", "db/migrations/012_pipeline_push.sql",
-        "db/migrations/013_repository_deploy_keys.sql", "db/migrations/014_merge_checks.sql",
-        "db/migrations/015_notifications.sql", "db/migrations/016_access_tokens.sql",
-        "db/migrations/017_pull_request_workflows.sql", "db/migrations/018_run_context.sql",
-        "db/migrations/019_merge_discussions.sql", "db/migrations/020_discussion_notification_targets.sql",
-      ] {
-      let sql = @fs.read_file(file).text()
-      pool.with_client(client => client.batch_execute(sql))
-    }
+    initialize_db(pool)
 
     pool.with_client(client => {
       client.batch_execute(
@@ -30,7 +15,6 @@ async test "anchor upgrade preserves unanchored discussions and prevents moving 
           #|INSERT INTO merge_activity(id,merge_request_id,actor_id,kind,body,version) VALUES(10,1,1,'comment','Root',1);
           #|INSERT INTO merge_activity(id,merge_request_id,actor_id,kind,body,version,discussion_id) VALUES(11,1,1,'comment','Reply',1,10);
           #|UPDATE merge_discussion SET resolved=1,state_version=2,state_actor_id=1 WHERE id=10;
-          #|PRAGMA user_version=20;
         ),
       )
     })

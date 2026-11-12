@@ -1,20 +1,9 @@
 ///|
-async test "deploy key migration preserves user keys and protects credential identities" {
+async test "baseline defaults deploy keys to read only and protects credential identities" {
   @async.with_task_group(group => {
     let pool = new_db_pool({ path: ":memory:", }, group)
     defer pool.close()
-    for
-      file in [
-        "db/base.sql", "db/migrations/001_ssh_keys.sql", "db/migrations/002_repository_jobs.sql",
-        "db/migrations/003_ssh_addresses.sql", "db/migrations/004_merge_requests.sql",
-        "db/migrations/005_mail_settings.sql", "db/migrations/006_personal_namespaces.sql",
-        "db/migrations/007_pipelines.sql", "db/migrations/008_pipeline_protocol.sql",
-        "db/migrations/009_runner_steps.sql", "db/migrations/010_password_resets.sql",
-        "db/migrations/011_provider_scope.sql", "db/migrations/012_pipeline_push.sql",
-      ] {
-      let sql = @fs.read_file(file).text()
-      pool.with_client(client => client.batch_execute(sql))
-    }
+    initialize_db(pool)
     pool.with_client(client => {
       client.batch_execute(
         (
@@ -22,7 +11,6 @@ async test "deploy key migration preserves user keys and protects credential ide
           #|INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'test', 'Test', 'personal');
           #|INSERT INTO repository (id, team_id, name) VALUES (1, 1, 'repo'), (2, 1, 'other');
           #|INSERT INTO ssh_key (user_id, title, public_key, fingerprint) VALUES (1, 'existing', 'user-key', 'user-fingerprint');
-          #|PRAGMA user_version = 12;
         ),
       )
     })
