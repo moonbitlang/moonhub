@@ -4,6 +4,7 @@ import { mountMarkdownEditors } from './markdown-editor';
 import { mountRepoClone } from './repo-clone';
 import { mountPipelineLogs } from './pipeline-logs';
 import { mountTimes } from './time';
+import { mountRepositoryBrowser } from './repository-browser';
 
 const pageType = 'application/vnd.moonhub.page+json';
 let lifetime = new AbortController();
@@ -19,6 +20,7 @@ const positions = new Map<number, [number, number]>();
 function enhance() {
   const { signal } = lifetime;
   mountShell(signal);
+  mountRepositoryBrowser(signal);
   mountTimes(signal);
   mountMarkdownEditors(signal);
   mountRepoClone(signal);
