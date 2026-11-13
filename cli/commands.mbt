@@ -89,6 +89,11 @@ async fn read_variable_value(path : String) -> String {
 
 ///|
 fn setup_instructions(server : String) -> String {
+  let transport_option = if server.has_prefix("http://") {
+    " --allow-http"
+  } else {
+    ""
+  }
   "Setup:\n" +
   "  1. Sign in to \{server} in your browser.\n" +
   "     Open \{server}/-/settings/tokens (Account > Access tokens).\n" +
@@ -96,9 +101,9 @@ fn setup_instructions(server : String) -> String {
   "     Execute and merge permissions are independent; repository roles still apply.\n" +
   "  2. Copy the token (shown once) to a private file; on Unix: chmod 600 /path/to/moonhub.token.\n" +
   "  3. Sign in:\n" +
-  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth login --server \{server} --token-file /path/to/moonhub.token\n" +
+  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth login --server \{server} --token-file /path/to/moonhub.token\{transport_option}\n" +
   "  4. Verify:\n" +
-  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth status --json\n" +
+  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth status --json\{transport_option}\n" +
   "With the native executable, use moonhub in place of moonx hackwaly/moonhub/cmd/moonhub@latest."
 }
 

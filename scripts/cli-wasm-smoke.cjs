@@ -8,6 +8,7 @@ const { randomBytes } = require('node:crypto');
 const { execFileSync, spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
+const version = fs.readFileSync(path.join(root, 'moon.mod'), 'utf8').match(/^version\s*=\s*"([^"]+)"/m)[1];
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-wasm-'));
 const token = 'mh_' + randomBytes(32).toString('hex');
 const tokenFile = path.join(temp, 'token');
@@ -84,11 +85,12 @@ async function main() {
   assert.match(help.stdout, /Setup:/);
   assert.match(help.stdout, /auth login --server/);
   assert.match((await cli([])).stdout, /Setup:/);
-  assert.match((await cli(['--version'])).stdout, /moonhub 0\.1\.0/);
-  assert.match((await cli(['-V'])).stdout, /0\.1\.0/);
+  assert.equal((await cli(['--version'])).stdout.trim(), 'moonhub ' + version);
+  assert.ok((await cli(['-V'])).stdout.trim().endsWith(version));
   const setup = await cli(['auth', 'setup', '--server', 'https://moonhub.example']);
   assert.ok(setup.stdout.includes('https://moonhub.example/-/settings/tokens'));
   assert.match(setup.stdout, /read.*write.*execute.*merge/);
+  assert.ok(!setup.stdout.includes('--allow-http'), 'HTTPS setup suggested weakening transport');
   const loginHelp = await cli(['auth', 'login', '--help']);
   assert.match(loginHelp.stdout, /Examples and notes:/);
   assert.ok(!loginHelp.stdout.includes('--hunk-id'));
@@ -111,7 +113,14 @@ async function main() {
   assert.ok(missingToken.stderr.includes('https://moonhub.example/-/settings/tokens'));
   await cli(['auth', 'status', '--server', base, '--token-file', tokenFile], 2);
   assert.equal(requests.length, 0, 'HTTP was contacted without --allow-http');
-  assert.equal(JSON.parse((await cli(['auth', 'login', ...connection])).stdout).username, 'fixture');
+  const localSetup = await cli(['auth', 'setup', '--server', base, '--allow-http']);
+  const setupCommands = localSetup.stdout.split('\n')
+    .map(line => line.trim()).filter(line => line.startsWith('moonx '))
+    .map(line => line.split(/\s+/).slice(2).map(value => value === '/path/to/moonhub.token' ? tokenFile : value));
+  assert.equal(setupCommands.length, 2);
+  assert.ok(setupCommands.every(args => args.includes('--allow-http')));
+  assert.equal(JSON.parse((await cli([...setupCommands[0], '--json'])).stdout).username, 'fixture');
+  assert.equal(JSON.parse((await cli(setupCommands[1])).stdout).username, 'fixture');
   const credentials = path.join(env.XDG_CONFIG_HOME, 'moonhub/auth.json');
   assert.equal(JSON.parse(fs.readFileSync(credentials, 'utf8')).server, base);
   if (process.platform !== 'win32') {

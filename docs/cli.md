@@ -28,11 +28,14 @@ For the shorter commands below, Bash and Zsh users can define:
 alias moonhub='moonx hackwaly/moonhub/cmd/moonhub@latest'
 ```
 
-`@latest` refreshes the registry version; use `@0.1.0` for a reproducible version.
+`@latest` refreshes the registry version; use `@0.1.1` for a reproducible version.
 Running without arguments or with `--help` shows setup instructions. When the
 server or token is missing, the client explains how to create an access token,
 sign in and verify the saved credentials; a configured server supplies the
 concrete token-settings URL.
+For a trusted local HTTP server, pass `--allow-http` to `auth setup`; the
+generated login and verification commands retain that option. HTTPS setup
+does not suggest enabling HTTP.
 Every subcommand has focused options and examples in `--help`; for example,
 `moonhub mr merge --help` explains where to obtain the required revision and how
 to inspect the issues that a merge will close. `moonhub --version` (or `-V`)

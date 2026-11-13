@@ -1,5 +1,5 @@
 ///|
-const CLI_VERSION : String = "0.1.0"
+const CLI_VERSION : String = "0.1.1"
 
 ///|
 fn command_groups() -> Array[(String, Array[String])] {
