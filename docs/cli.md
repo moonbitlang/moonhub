@@ -11,6 +11,46 @@ examples below refer to files in the repository being operated on.
 
 ## Authentication
 
+With a current MoonBit toolchain installed, run the published Wasm client directly:
+
+```sh
+moonx hackwaly/moonhub/cmd/moonhub@latest --help
+moonx hackwaly/moonhub/cmd/moonhub@latest auth setup --server https://moonhub.example
+moonx hackwaly/moonhub/cmd/moonhub@latest auth login \
+  --server https://moonhub.example --token-file /path/to/moonhub.token
+moonx hackwaly/moonhub/cmd/moonhub@latest auth status --json
+moonx hackwaly/moonhub/cmd/moonhub@latest mr list --repo OWNER/NAME
+```
+
+For the shorter commands below, Bash and Zsh users can define:
+
+```sh
+alias moonhub='moonx hackwaly/moonhub/cmd/moonhub@latest'
+```
+
+`@latest` refreshes the registry version; use `@0.1.0` for a reproducible version.
+Running without arguments or with `--help` shows setup instructions. When the
+server or token is missing, the client explains how to create an access token,
+sign in and verify the saved credentials; a configured server supplies the
+concrete token-settings URL.
+Every subcommand has focused options and examples in `--help`; for example,
+`moonhub mr merge --help` explains where to obtain the required revision and how
+to inspect the issues that a merge will close. `moonhub --version` (or `-V`)
+prints the client release; subcommands use `--version VALUE` for resource revisions.
+The client uses the same credentials, environment variables, commands and exit
+codes as the native `moonhub` executable used in the examples below. Git must be
+installed when inferring `--repo` from the current repository; pass `--repo` to
+select a repository explicitly. The published entry point is a remote client;
+server, runner and administration commands use the native executable.
+
+To build and check the client from source:
+
+```sh
+moon build --target wasm --strip -j 1 --deny-warn cmd/moonhub
+moon test --target wasm --strip -j 1 --deny-warn cli domain
+node scripts/cli-wasm-smoke.cjs
+```
+
 Create an access token in **Account menu > Access tokens** (`/-/settings/tokens`).
 Give it a name, permission and an expiry of 1–365 days (default 30). The secret
 is displayed only in the creation response; list pages never display it again.

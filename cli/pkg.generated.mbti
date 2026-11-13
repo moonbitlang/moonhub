@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub async fn execute(ArrayView[String]) -> Int32
+
 pub async fn request(String, String, String, @json.Json?, allow_http? : Bool, raw_body? : Bytes) -> @json.Json
 
 pub async fn run(ArrayView[String]) -> Int32

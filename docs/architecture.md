@@ -10,6 +10,7 @@ unchanged.
 | --- | --- |
 | `domain` | Shared account/repository identities, name and path validation, public errors and diagnostic redaction |
 | `cli` | Remote collaboration commands, HTTP client, private credential storage and terminal output; no database or Web dependency |
+| `cmd/moonhub` | Standalone remote CLI entry point for native builds and Wasm execution through `moonx` |
 | `config` | Environment loading and primitive configuration parsing |
 | `releases` | Repository versions, immutable published assets, fs/S3 locations and cleanup journals; no Pipeline or Web dependency |
 | `storage` | Backend-neutral object storage, filesystem and S3 adapters, bounded streams and integrity checks; no business, database or Web dependency |

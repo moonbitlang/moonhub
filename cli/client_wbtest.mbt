@@ -94,7 +94,7 @@ test "discussion commands retain independent discussion and state IDs" {
     ] {
     let parsed = command().parse(argv=[
       "mr", action, "10", "--discussion", "9223372036854775807", "--state-version",
-      "2", "--filter", "unresolved", "--page", "3",
+      "2", "--filter", "unresolved", "--page", "3", "--body-file", "/tmp/comment.md",
     ])
     assert_eq(option(parsed, "discussion"), Some("9223372036854775807"))
     assert_eq(option(parsed, "state-version"), Some("2"))

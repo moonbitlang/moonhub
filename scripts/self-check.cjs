@@ -115,6 +115,9 @@ async function main() {
   await run('MoonBit interfaces', 'moon', ['info']);
   assertUnchanged(before, snapshotInputs(root));
   await run('Package boundaries', process.execPath, ['scripts/check-package-boundaries.cjs']);
+  await run('Wasm CLI build', 'moon', ['build', '--target', 'wasm', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub']);
+  await run('Wasm CLI tests', 'moon', ['test', '--target', 'wasm', '--strip', '-j', '1', '--deny-warn', 'cli', 'domain']);
+  await run('Wasm CLI smoke', process.execPath, ['scripts/cli-wasm-smoke.cjs']);
   await run('Script tests', process.execPath, ['--test', 'scripts/self-check-test.cjs', 'scripts/pre-commit-hook-test.cjs', 'scripts/resolve-dependencies-test.cjs', 'scripts/github-ci-test.cjs', 'scripts/macos-guest-test.mjs']);
   await run('Production deployment regression', process.execPath, ['--test', 'scripts/production-deploy-test.cjs', 'scripts/production-dind-test.cjs', 'scripts/github-deploy-test.cjs']);
   await run('Storage SDK dependencies', 'npm', ['ci', '--prefix', 'storage/s3', '--ignore-scripts', '--no-audit', '--no-fund']);
