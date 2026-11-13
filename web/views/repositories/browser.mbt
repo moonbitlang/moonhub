@@ -26,12 +26,14 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
   let root = ctx.require(@web_context.config_root)
   let diff_executor = ctx.require(@web_context.diff_executor_key)
   let diff_enabled = ctx.require(@web_context.diff_enabled_key)
+  let release_service = ctx.require(@web_context.release_service_key)
   ctx.get("/:owner/:repo", async fn(req, res) {
     let repo = resolve_repo(root, req, authorize)
     let git_dir = repo.git_dir(root)
     let rev = @gitops.resolve_ref(git_dir, @web_context.query_rev(req))
     res.send_html(
       render_tree(
+        release_service~,
         root~,
         asset_path_map~,
         repo~,
@@ -49,6 +51,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let rev = @gitops.resolve_ref(git_dir, None)
     res.send_html(
       render_tree(
+        release_service~,
         root~,
         asset_path_map~,
         repo~,
@@ -66,6 +69,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let rev = @gitops.resolve_ref(git_dir, Some(@web_context.rev_param(req)))
     res.send_html(
       render_tree(
+        release_service~,
         root~,
         asset_path_map~,
         repo~,
@@ -87,6 +91,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     )
     res.send_html(
       render_tree(
+        release_service~,
         root~,
         asset_path_map~,
         repo~,

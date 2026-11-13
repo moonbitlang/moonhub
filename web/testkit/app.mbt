@@ -23,6 +23,30 @@ pub let browser_app_module : @moonback.Module = Module(ctx => {
         let root = ctx.require(@web_context.config_root)
         ctx.provide(@web_context.diff_executor_key, @gitops.DiffExecutor::new())
         ctx.provide(@web_context.diff_enabled_key, false)
+        // The read-only browser fixture supplies the same app-scoped release
+        // dependency as production, with a disposable public repository catalog.
+        @async.with_task_group(group => {
+          let pool = @database.new_db_pool({ path: ":memory:", }, group)
+          ctx.on_close(() => pool.close())
+          @database.initialize_db(pool)
+          let repositories = @gitops.list_repositories(root)
+          pool.with_client(client => {
+            for repo in repositories {
+              let _ = client.execute(
+                "INSERT OR IGNORE INTO team (name_key, display_name, kind) VALUES (?, ?, 'org')",
+                params=[repo.owner, repo.owner],
+              )
+              let _ = client.execute(
+                "INSERT INTO repository (team_id, name, visibility) SELECT id, ?, 'public' FROM team WHERE name_key=?",
+                params=[repo.name, repo.owner],
+              )
+            }
+          })
+          ctx.provide(
+            @web_context.release_service_key,
+            @releases.Service::new(pool, root),
+          )
+        })
         ctx.provide(@web_context.browser_access_key, {
           repositories: _ => @gitops.list_repositories(root),
           personal_owner: _ => None,
