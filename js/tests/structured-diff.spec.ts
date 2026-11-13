@@ -115,12 +115,12 @@ test('obsolete file loads are cancelled on mode change and cannot overwrite curr
 test('MR inline drafts keep their document and source coordinates across mode changes and navigation', async ({ page, browser }) => {
   await login(page);
   await page.goto('/alice/demo/merge-requests/new');
-  await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-feature');
-  await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-base');
+  await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-feature');
+  await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-base');
   await page.getByLabel('Title', { exact: true }).fill('MoonDiff browser review');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await expect(page).toHaveURL(/\/merge-requests\/\d+$/);
-  await page.getByRole('link', { name: 'Changes', exact: true }).click();
+  await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   const header = page.locator('.site-header');
   await expect(header.locator('.structured-toolbar')).toHaveCount(1);
   await expect(page.locator('main .structured-toolbar')).toHaveCount(0);
@@ -144,10 +144,10 @@ test('MR inline drafts keep their document and source coordinates across mode ch
   await expect(form.locator('[name=document_id]')).toHaveValue(document);
   await expect(form.locator('[name=start_line]')).toHaveValue('1');
   await expect(form.locator('[name=mode]')).toHaveValue('lexical');
-  await page.getByRole('link', { name: 'Discussion', exact: true }).click();
+  await page.getByRole('link', { name: 'Conversation', exact: true }).click();
   await expect(header.locator('.structured-toolbar')).toHaveCount(0);
   await expect(header.locator('.breadcrumbs')).toHaveCount(1);
-  await page.getByRole('link', { name: 'Changes', exact: true }).click();
+  await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   await expect(header.locator('.structured-toolbar')).toHaveCount(1);
   await expect(form.locator('textarea[name=body]')).toHaveValue('Keep this original location');
   await expect(form.locator('[name=document_id]')).toHaveValue(document);
@@ -168,16 +168,16 @@ async function reviewPage(page: Page) {
   const existing = page.getByRole('link', { name: 'Inline review context', exact: true }).first();
   if (await existing.count()) {
     await existing.click();
-    await page.getByRole('link', { name: 'Changes', exact: true }).click();
+    await page.getByRole('link', { name: 'Files changed', exact: true }).click();
     return;
   }
   await page.goto('/alice/demo/merge-requests/new');
-  await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-review');
-  await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-review-base');
+  await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-review');
+  await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-review-base');
   await page.getByLabel('Title', { exact: true }).fill('Inline review context');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await expect(page).toHaveURL(/\/merge-requests\/\d+$/);
-  await page.getByRole('link', { name: 'Changes', exact: true }).click();
+  await page.getByRole('link', { name: 'Files changed', exact: true }).click();
 }
 
 for (const width of [1440, 390]) for (const layout of ['Split', 'Unified']) test(`inline review keeps code context and highlights ranges in ${layout} at ${width}px`, async ({ page }) => {
@@ -364,12 +364,12 @@ async function blockScrollPage(page: Page, kind: 'commit' | 'MR' = 'commit') {
   await login(page);
   if (kind === 'MR') {
     await page.goto('/alice/demo/merge-requests/new');
-    await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-scroll');
-    await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-scroll-base');
+    await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-scroll');
+    await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-scroll-base');
     await page.getByLabel('Title', { exact: true }).fill('Block scrolling review');
-    await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+    await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
     await expect(page).toHaveURL(/\/merge-requests\/\d+$/);
-    await page.getByRole('link', { name: 'Changes', exact: true }).click();
+    await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   } else {
     await page.goto('/alice/demo/commits?rev=moondiff-scroll');
     await page.getByRole('row').filter({ hasText: 'MoonDiff block scrolling' }).getByRole('link').click();
@@ -945,11 +945,11 @@ test('deleted empty files have only a filename with and without JavaScript', asy
 test('one-sided line selection keeps original coordinates and opens saved discussions', async ({ page }) => {
   await login(page);
   await page.goto('/alice/demo/merge-requests/new');
-  await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-single');
-  await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-single-base');
+  await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-single');
+  await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-single-base');
   await page.getByLabel('Title', { exact: true }).fill('One-sided browser review');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
-  await page.getByRole('link', { name: 'Changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
+  await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   const form = page.locator('[data-inline-form]');
   for (const [path, side, first, last] of [['added.mbt', 'new', 1, 1], ['deleted.txt', 'old', 1, 3], ['declarations.mbt', 'old', 4, 6], ['declarations.mbt', 'new', 4, 6]] as const) {
     const file = diffFile(page, path);
@@ -1016,10 +1016,10 @@ test('commit header stays usable on narrow screens and retains the account menu'
 test('byte-only paths stay isolated and later-page comments survive source links, refresh and no JavaScript', async ({ page, browser }) => {
   await login(page);
   await page.goto('/alice/demo/merge-requests/new');
-  await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-paged');
-  await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-paged-base');
+  await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-paged');
+  await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-paged-base');
   await page.getByLabel('Title', { exact: true }).fill('Paged byte paths');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await expect(page).toHaveURL(/\/merge-requests\/\d+$/);
   const mrURL = page.url();
   const fileRequests: string[] = [];
@@ -1027,7 +1027,7 @@ test('byte-only paths stay isolated and later-page comments survive source links
     const url = new URL(request.url());
     if (url.pathname.endsWith('/diff') && url.searchParams.has('file_id')) fileRequests.push(url.searchParams.get('file_id')!);
   });
-  await page.getByRole('link', { name: 'Changes', exact: true }).click();
+  await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   const manifest = JSON.parse((await page.locator('moonhub-structured-diff').getAttribute('data-manifest'))!);
   const invalid = manifest.files.filter((f: { path_error?: string }) => f.path_error);
   expect(invalid).toHaveLength(2);
@@ -1119,16 +1119,16 @@ async function pagedPage(page: Page, kind: 'commit' | 'MR') {
     const existing = page.getByRole('link', { name: /^(Paged byte paths|Paged navigation state)$/, exact: true }).first();
     if (await existing.count()) {
       await existing.click();
-      await page.getByRole('link', { name: 'Changes', exact: true }).click();
+      await page.getByRole('link', { name: 'Files changed', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Token', exact: true })).toHaveAttribute('aria-pressed', 'true');
       return;
     }
     await page.goto('/alice/demo/merge-requests/new');
-    await page.getByLabel('Source branch', { exact: true }).selectOption('moondiff-paged');
-    await page.getByLabel('Target branch', { exact: true }).selectOption('moondiff-paged-base');
+    await page.getByLabel('Compare branch', { exact: true }).selectOption('moondiff-paged');
+    await page.getByLabel('Base branch', { exact: true }).selectOption('moondiff-paged-base');
     await page.getByLabel('Title', { exact: true }).fill('Paged navigation state');
-    await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
-    await page.getByRole('link', { name: 'Changes', exact: true }).click();
+    await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
+    await page.getByRole('link', { name: 'Files changed', exact: true }).click();
   }
   await expect(page.getByRole('button', { name: 'Token', exact: true })).toHaveAttribute('aria-pressed', 'true');
 }

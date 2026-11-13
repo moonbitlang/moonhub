@@ -132,7 +132,7 @@ async test "MR workflow settings and execution approval require current authoriz
     let (_, run_page) = @web_testkit.http_get_path_with_cookie(
       port, "/alice/demo/pipelines/1", alice,
     )
-    assert_true(run_page.contains("Merge request !1, version 1"))
+    assert_true(run_page.contains("Pull request !1, version 1"))
     assert_true(run_page.contains("/alice/demo/merge-requests/1?version=1"))
     ignore(
       @test_support.merge_test_commit(

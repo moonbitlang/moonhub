@@ -536,7 +536,7 @@ test('MR target edits preserve history and work on desktop and mobile without Ja
     await page.locator('select[name=source]').selectOption('feature/breadcrumbs');
     await page.locator('select[name=target]').selectOption('master');
     await page.getByLabel('Title', { exact: true }).fill('Change target browser fixture');
-    await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+    await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
     await expect(page).toHaveURL(/merge-requests\/\d+$/);
     const detail = page.url();
     await page.locator('.mr-more-actions > summary').click();
