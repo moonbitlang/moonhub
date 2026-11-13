@@ -186,13 +186,57 @@ async fn render_tree(
     err => raise err
   }
   let base = "\{@web_ui.repo_link(repo)}/tree/\{@web_context.url_escape_path(rev)}"
+  let navigation = code_navigation(git_dir, rev)
+  let commits = @gitops.list_commits(git_dir, rev) catch { _ => [] }
+  let readme = entries
+    .iter()
+    .find_first(entry => {
+      entry.kind == "blob" &&
+      ["readme.md", "readme.markdown"].contains(entry.name.to_lower())
+    })
+  let readme_body = if readme is Some(entry) {
+    let file = if path.is_empty() {
+      entry.name
+    } else {
+      path + "/" + entry.name
+    }
+    try {
+      let (code, text) = @gitops.merge_git_command(
+        git_dir,
+        ["show", rev + ":" + file],
+        limit=262144,
+        strict_utf8=true,
+      )
+      if code == 0 {
+        Some(text)
+      } else {
+        None
+      }
+    } catch {
+      _ => None
+    }
+  } else {
+    None
+  }
   @web_ui.layout(
     repo.path(),
     asset_path_map,
     Html(b => {
-      b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url)}"
       b <+
-        "<div class=\"content-stack\">\{render_file_breadcrumbs(repo, rev, path)}<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
+        "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls=render_code_controls(repo, rev, navigation))}"
+      b <+
+        "<div class=\"content-stack\">\{render_file_breadcrumbs(repo, rev, path)}"
+      b <+ "<div class=\"commit-summary\">"
+      if commits.get(0) is Some(commit) {
+        b <+
+          "<strong>\{commit.author}</strong><a class=\"commit-subject\" href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\">\{commit.subject}</a><span class=\"commit-metadata\"><a href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\"><code>\{commit.hash[:12].to_owned()}</code></a><span class=\"muted\">\{@web_ui.timestamp(commit.date, relative=true)}</span></span>"
+      } else {
+        b <+ "<span class=\"muted\">No commits yet.</span>"
+      }
+      b <+
+        "<a class=\"commit-history\" href=\"\{@web_ui.repo_link(repo)}/commits?rev=\{@web_context.url_escape_path(rev)}\"><span class=\"ui-icon\" data-icon=\"history\" aria-hidden=\"true\"></span>Commits</a></div>"
+      b <+
+        "<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
       if !path.is_empty() {
         let parent = match path.rev_find("/") {
           Some(index) =>
@@ -221,7 +265,24 @@ async fn render_tree(
       if entries.is_empty() {
         b <+ "<tr><td colspan=\"2\" class=\"muted\">No files.</td></tr>"
       }
-      b <+ "</tbody></table></div></div></div>"
+      b <+ "</tbody></table></div></div>"
+      if readme is Some(entry) {
+        b <+ "<section class=\"readme-preview\"><h2>\{entry.name}</h2>"
+        if readme_body is Some(text) {
+          b <+
+            "<div class=\"markdown-body\">\{@web_ui.markdown(text, repo=Some(repo))}</div>"
+        } else {
+          let file = if path.is_empty() {
+            entry.name
+          } else {
+            path + "/" + entry.name
+          }
+          b <+
+            "<p>Preview unavailable. <a href=\"\{@web_ui.repo_link(repo)}/blob/\{@web_context.url_escape_path(rev)}/\{@web_context.url_escape_path(file)}\">Open README</a></p>"
+        }
+        b <+ "</section>"
+      }
+      b <+ "</div>"
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map),
     current_user~,
@@ -245,13 +306,46 @@ async fn render_blob(
       raise @domain.NotFound(message="file not found")
     err => raise err
   }
+  let navigation = code_navigation(repo.git_dir(root), rev)
+  let markdown = path.to_lower().has_suffix(".md") ||
+    path.to_lower().has_suffix(".markdown")
+  let directory = path.rev_find("/").map(i => path[:i].to_owned()).unwrap_or("")
+  let siblings = @gitops.list_tree(repo.git_dir(root), rev, directory)
   @web_ui.layout(
     "\{repo.path()}:\{path}",
     asset_path_map,
     Html(b => {
-      b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url)}"
       b <+
-        "\{render_file_breadcrumbs(repo, rev, path)}<moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content>\{content}</pre></moonhub-file-view>"
+        "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls=render_code_controls(repo, rev, navigation, history=true))}"
+      b <+
+        "\{render_file_breadcrumbs(repo, rev, path)}<div class=\"file-workspace\"><nav class=\"directory-navigation\" aria-label=\"Directory navigation\"><h3>Files</h3>"
+      for entry in siblings {
+        let child = if directory.is_empty() {
+          entry.name
+        } else {
+          directory + "/" + entry.name
+        }
+        b <+
+          "<a href=\"\{@web_ui.repo_link(repo)}/\{if entry.kind == "tree" { "tree" } else { "blob" }}/\{@web_context.url_escape_path(rev)}/\{@web_context.url_escape_path(child)}\""
+        if child == path {
+          b <+ " aria-current=\"page\""
+        }
+        b <+ ">\{entry.name}</a>"
+      }
+      b <+
+        "</nav><div class=\"file-content\"><div class=\"file-toolbar\"><code>\{path}</code><button class=\"secondary-button\" type=\"button\" data-copy-path hidden>Copy path</button><button class=\"secondary-button\" type=\"button\" data-copy-file hidden>Copy text</button><span data-copy-status role=\"status\"></span></div>"
+      if markdown {
+        b <+
+          "<div class=\"file-preview-tabs\" hidden><button class=\"secondary-button\" type=\"button\" data-file-tab=\"preview\" aria-pressed=\"true\">Preview</button><button class=\"secondary-button\" type=\"button\" data-file-tab=\"code\" aria-pressed=\"false\">Code</button></div><section class=\"markdown-body file-markdown-preview\" data-file-preview>\{@web_ui.markdown(content, repo=Some(repo))}</section>"
+      }
+      b <+
+        "<div data-file-code><moonhub-file-view><span data-file-name hidden>\{path}</span><pre data-file-content><code>"
+      for i, line in content.split("\n").collect() {
+        b <+
+          "<span class=\"code-line\" id=\"L\{(i + 1).to_string()}\"><a class=\"line-number\" href=\"#L\{(i + 1).to_string()}\" aria-label=\"Line \{(i + 1).to_string()}\">\{(i + 1).to_string()}</a>\{line.to_owned()}</span>"
+      }
+      b <+
+        "</code></pre><pre data-file-source hidden>\{content}</pre></moonhub-file-view></div></div></div>"
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map, code_view=true),
     current_user~,
