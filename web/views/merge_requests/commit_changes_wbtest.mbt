@@ -43,10 +43,12 @@ async test "MR Changes selects a commit in context and preserves historical revi
     assert_eq(status.code, 200)
     assert_true(selected.contains("-one\n+two"))
     assert_true(selected.contains("Compared with parent"))
-    assert_true(selected.contains("Reviews apply to the entire MR version."))
+    assert_true(
+      selected.contains("Reviews apply to the entire pull request version."),
+    )
     assert_true(selected.contains("name=\"version\" value=\"1\""))
     assert_true(selected.contains("Commit details</a>"))
-    assert_true(selected.contains("Review and merge readiness"))
+    assert_true(selected.contains("Pull request details"))
     let (_, commits) = @web_testkit.http_get_path_with_cookie(
       port,
       url + "?tab=commits&version=1",

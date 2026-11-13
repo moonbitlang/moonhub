@@ -921,6 +921,7 @@ body:has(.repository-shell) .page-tabs a, body:has(.repository-shell) .mr-state 
 body:has(.repository-shell) .mr-form { max-width: 100%; }
 body:has(.repository-shell) .mr-main { min-width: 0; }
 body:has(.repository-shell) .mr-sidebar { top: 120px; max-height: calc(100dvh - 140px); }
+body:has(.repository-shell) .mr-main > .mr-merge-panel { border: 1px solid var(--color-border); border-radius: 6px; padding: 20px; margin-top: 24px; }
 body:has(.repository-shell) .discussion-description { border: 1px solid var(--color-border); border-radius: 6px; padding: 20px; }
 body:has(.repository-shell) .mr-timeline > li { padding: 16px; border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; }
 body:has(.repository-shell) .mr-event-heading { padding-bottom: 12px; border-bottom: 1px solid var(--color-border-muted); }
@@ -985,6 +986,9 @@ pre[data-file-content] .line-number { display: inline-block; width: 4em; padding
   body:has(.repository-shell) .list-filters .field { width: 100%; }
   body:has(.repository-shell) .release-row, .readme-preview .markdown-body, .file-markdown-preview { padding: 16px; }
 }
+body:has(.repository-shell) .mr-branch-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; }
+.branch-direction { padding: 0 4px 8px; color: var(--color-muted); font-size: 24px; }
+@media (max-width: 500px) { body:has(.repository-shell) .mr-branch-fields { grid-template-columns: minmax(0,1fr); } .branch-direction { text-align: center; transform: rotate(-90deg); padding: 0; } }
 .global-navigation[open] > summary { position: relative; z-index: 81; }
 .global-navigation-panel > .brand { margin-left: 48px; }
 
@@ -999,6 +1003,9 @@ pre[data-file-content] .line-number { display: inline-block; width: 4em; padding
 body:has(.repository-shell) .repo-header { border-bottom: 0; padding-bottom: 0; }
 .code-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .code-toolbar .code-navigation { flex: 1; margin-bottom: 0; }
+.danger-confirmation { padding: 12px; border: 1px solid var(--color-border); border-radius: 6px; }
+.danger-confirmation > summary { color: var(--color-danger); cursor: pointer; }
+.danger-confirmation p { margin-top: 12px; }
 
 html:has(.repository-shell) { scroll-padding-top: calc(var(--header-height) + 62px); }
 @media (max-width: 900px) {
