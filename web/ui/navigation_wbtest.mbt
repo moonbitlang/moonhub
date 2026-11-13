@@ -30,12 +30,12 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
         ),
         (
           "/alice/demo/merge-requests",
-          "Merge requests",
+          "Pull requests",
           ["/alice", "/alice/demo", "/alice/demo/merge-requests"],
         ),
         (
           "/alice/demo/pipelines",
-          "Pipelines",
+          "Actions",
           ["/alice", "/alice/demo", "/alice/demo/pipelines"],
         ),
         (
@@ -150,10 +150,8 @@ async test "repository sidebar matches the current page and hides management for
     })
     for
       (suffix, label) in [
-        ("", "Files"),
-        ("/commits", "Commits"),
-        ("/issues", "Issues"),
-        ("/merge-requests", "Merge requests"),
+        ("/issues", "All issues"),
+        ("/merge-requests", "Pull requests"),
         ("/settings/branches", "Branch protection"),
       ] {
       let (response, body) = @web_testkit.http_get_path_with_cookie(
@@ -166,6 +164,24 @@ async test "repository sidebar matches the current page and hides management for
       assert_true(body.contains("href=\"/alice/demo/settings/branches\""))
       assert_true(!body.contains("class=\"tabs\""))
     }
+    for
+      suffix in [
+        "", "/tree/master/src", "/blob/master/src/main.mbt", "/commits",
+      ] {
+      let (response, body) = @web_testkit.http_get_path_with_cookie(
+        port,
+        "/alice/demo" + suffix,
+        alice,
+      )
+      assert_eq(response.code, 200)
+      assert_true(body.contains("workspace-shell--full-width"))
+      for
+        removed in [
+          "id=\"app-sidebar\"", " data-sidebar-open", " data-sidebar-collapse", "Switch workspace",
+        ] {
+        assert_true(!body.contains(removed), msg=suffix + removed)
+      }
+    }
     let (response, body) = @web_testkit.http_get_path_with_cookie(
       port, "/alice/demo", bob,
     )
@@ -175,7 +191,7 @@ async test "repository sidebar matches the current page and hides management for
 }
 
 ///|
-async test "site administrators reach site settings from every page sidebar" {
+async test "site administrators reach site settings from the global drawer" {
   @web_testkit.with_ssh_settings_app((port, _, alice, _, admin) => {
     for
       path in [
@@ -205,13 +221,13 @@ async test "site administrators reach site settings from every page sidebar" {
       port, "/-/admin/settings/ssh", admin,
     )
     assert_eq(settings.code, 200)
-    // The site settings scope keeps a single Administration group.
+    // The site settings scope and global drawer each keep an Administration group.
     assert_eq(
       settings_body
       .split("<p class=\"nav-group-label\">Administration</p>")
       .to_array()
       .length(),
-      2,
+      3,
     )
     let (member_page, member_body) = @web_testkit.http_get_path_with_cookie(
       port, "/alice/demo", alice,

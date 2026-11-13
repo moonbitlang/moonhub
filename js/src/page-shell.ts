@@ -42,10 +42,10 @@ export function mountShell(signal: AbortSignal) {
     }
   }
 
-  root.toggleAttribute("data-ui-enhanced", !!sidebar);
+  root.setAttribute("data-ui-enhanced", "");
+  root.dataset.uiReady = "true";
   if (sidebar) {
     try { root.dataset.sidebarCollapsed = String(localStorage.getItem("moonhub.sidebar") === "collapsed"); } catch { /* Storage can be disabled. */ }
-    root.dataset.uiReady = "true";
     if (openButton) { openButton.hidden = false; openButton.inert = false; }
     if (collapseButton) {
       collapseButton.hidden = false;
@@ -91,6 +91,22 @@ export function mountShell(signal: AbortSignal) {
     }
   }, { signal });
   const menus = [...document.querySelectorAll<HTMLDetailsElement>("[data-dismissable]")];
+  const globalMenu = document.querySelector<HTMLDetailsElement>('.global-navigation');
+  globalMenu?.addEventListener('toggle', () => {
+    if (main) main.inert = globalMenu.open;
+    if (sidebar) sidebar.inert = globalMenu.open || mobile.matches && !root.hasAttribute('data-navigation-open');
+    const summary = globalMenu.querySelector('summary');
+    summary?.setAttribute('aria-expanded', String(globalMenu.open));
+    if (globalMenu.open) globalMenu.querySelector<HTMLElement>('nav a')?.focus();
+  }, { signal });
+  globalMenu?.addEventListener('keydown', event => {
+    if (!globalMenu.open || event.key !== 'Tab') return;
+    const focusable = [...globalMenu.querySelectorAll<HTMLElement>('summary, a[href]')].filter(element => element.checkVisibility());
+    const first = focusable[0], last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }, { signal });
+
   for (const menu of menus) {
     menu.addEventListener("toggle", () => {
       if (menu.open) {
