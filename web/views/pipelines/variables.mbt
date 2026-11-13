@@ -172,6 +172,7 @@ fn render_variables(
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">Add variable</a>"
       }
       b <+ "</div>"
+      b <+ "\{@web_ui.render_secret_variable_tabs(repo, "variables", manager)}"
       if saved {
         b <+ "<p class=\"flash-success\" role=\"status\">Variable saved.</p>"
       }

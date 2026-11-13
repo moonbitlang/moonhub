@@ -370,3 +370,24 @@ fn render_global_navigation(
     b <+ "</nav></details>"
   })
 }
+
+///|
+pub fn render_secret_variable_tabs(
+  repo : @domain.RepoId,
+  active : String,
+  manager : Bool,
+) -> @moonback.Html {
+  Html(b => {
+    b <+ "<nav class=\"page-tabs\" aria-label=\"Secrets and variables\">"
+    for (key, label) in [("secrets", "Secrets"), ("variables", "Variables")] {
+      if manager || key == "variables" {
+        b <+ "<a href=\"\{repo_link(repo)}/settings/\{key}\""
+        if active == key {
+          b <+ " aria-current=\"page\""
+        }
+        b <+ ">\{label}</a>"
+      }
+    }
+    b <+ "</nav>"
+  })
+}
