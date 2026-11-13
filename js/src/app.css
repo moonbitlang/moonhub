@@ -915,8 +915,16 @@ body:has(.repository-shell) .list-filters { padding: 16px; border: 1px solid var
 body:has(.repository-shell) .list-filters .field:first-of-type { flex: 1; }
 body:has(.repository-shell) .list-filters input[type=search] { width: 100%; min-width: 0; }
 body:has(.repository-shell) .mr-list { border-radius: 6px; }
+body:has(.repository-shell) .compact-records > li { padding: 12px 16px; }
+body:has(.repository-shell) .compact-records p { margin: 4px 0 0; font-size: 12px; }
 body:has(.repository-shell) .page-tabs a, body:has(.repository-shell) .mr-state { text-transform: capitalize; }
 body:has(.repository-shell) .mr-form { max-width: 100%; }
+body:has(.repository-shell) .mr-main { min-width: 0; }
+body:has(.repository-shell) .mr-sidebar { top: 120px; max-height: calc(100dvh - 140px); }
+body:has(.repository-shell) .discussion-description { border: 1px solid var(--color-border); border-radius: 6px; padding: 20px; }
+body:has(.repository-shell) .mr-timeline > li { padding: 16px; border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; }
+body:has(.repository-shell) .mr-event-heading { padding-bottom: 12px; border-bottom: 1px solid var(--color-border-muted); }
+body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 .code-navigation { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .code-navigation > details { position: relative; }
 .code-navigation summary { list-style: none; }
