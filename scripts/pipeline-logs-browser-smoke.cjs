@@ -99,7 +99,7 @@ async function main() {
     cli(['pipeline-provider-create', '--name', name, '--token-file', file, '--repositories', 'root/demo']);
     return token;
   });
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const setup = await context();
   const setupPage = await setup.newPage();
   const route = await dispatch(setupPage);
