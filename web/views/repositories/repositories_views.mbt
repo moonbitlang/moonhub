@@ -39,7 +39,7 @@ fn render_repository_form(
           "<p class=\"flash-error\" role=\"status\">SSH imports are not configured for this namespace.</p>"
       }
       b <+
-        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"field\"><label for=\"repository-name\"><span>Repository name</span></label><div class=\"repository-name-field\"><span class=\"path muted\">\{team.name_key}/</span><input id=\"repository-name\" name=\"name\" value=\"\{name}\" maxlength=\"100\" autocomplete=\"off\" required></div></div><div class=\"field\"><label for=\"repository-visibility\"><span>Visibility</span></label><select id=\"repository-visibility\" name=\"visibility\">"
+        "<form class=\"form-stack\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"field\"><span>Owner</span><strong>\{team.name_key}</strong><span class=\"muted\">\{team.display_name}</span></div><div class=\"field\"><label for=\"repository-name\"><span>Repository name</span></label><div class=\"repository-name-field\"><span class=\"path muted\">\{team.name_key}/</span><input id=\"repository-name\" name=\"name\" value=\"\{name}\" maxlength=\"100\" autocomplete=\"off\" required></div></div><div class=\"field\"><label for=\"repository-visibility\"><span>Visibility</span></label><select id=\"repository-visibility\" name=\"visibility\">"
       if visibility == "public" {
         b <+
           "<option value=\"private\">Private</option><option value=\"public\" selected>Public</option>"
