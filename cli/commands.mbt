@@ -1,181 +1,4 @@
 ///|
-fn command() -> @argparse.Command {
-  let options = [
-    @argparse.OptionArg(
-      "server",
-      long="server",
-      env="MOONHUB_SERVER",
-      global=true,
-    ),
-    @argparse.OptionArg("token-file", long="token-file", global=true),
-    @argparse.OptionArg(
-      "repo",
-      long="repo",
-      env="MOONHUB_REPOSITORY",
-      global=true,
-    ),
-    @argparse.OptionArg("page", long="page", default_values=["1"], global=true),
-    @argparse.OptionArg(
-      "status",
-      long="status",
-      default_values=["open"],
-      global=true,
-    ),
-    @argparse.OptionArg(
-      "filter",
-      long="filter",
-      default_values=["unread"],
-      global=true,
-    ),
-    @argparse.OptionArg("title", long="title", global=true),
-    @argparse.OptionArg(
-      "body-file",
-      long="body-file",
-      global=true,
-      about="UTF-8 description/comment file. MR descriptions: Closes #123, Fixes #123 or Resolves #123 closes same-repository issues after a successful merge; mr view --json exposes closing_issue_numbers.",
-    ),
-    @argparse.OptionArg("file", long="file", global=true),
-    @argparse.OptionArg("delivery", long="delivery", global=true),
-    @argparse.OptionArg("source", long="source", global=true),
-    @argparse.OptionArg("target", long="target", global=true),
-    @argparse.OptionArg("version", long="version", global=true),
-    @argparse.OptionArg("edit-version", long="edit-version", global=true),
-    @argparse.OptionArg("decision", long="decision", global=true),
-    @argparse.OptionArg("reviewer", long="reviewer", global=true),
-    @argparse.OptionArg("comment", long="comment", global=true),
-    ..[
-      "format", "file-id", "mode", "ignore-comments", "ignore-tests", "document-id",
-      "hunk-id", "diff-page",
-    ].map(name => @argparse.OptionArg(name, long=name, global=true)),
-    @argparse.OptionArg("commit", long="commit", global=true),
-    @argparse.OptionArg("path", long="path", global=true),
-    @argparse.OptionArg("side", long="side", global=true),
-    @argparse.OptionArg("start-line", long="start-line", global=true),
-    @argparse.OptionArg("end-line", long="end-line", global=true),
-    @argparse.OptionArg("discussion", long="discussion", global=true),
-    @argparse.OptionArg("state-version", long="state-version", global=true),
-    @argparse.OptionArg("assignee", long="assignee", global=true),
-    @argparse.OptionArg("workflow", long="workflow", global=true),
-    @argparse.OptionArg("inputs-file", long="inputs-file", global=true),
-    @argparse.OptionArg("jobs", long="jobs", global=true),
-    @argparse.OptionArg("branch", long="branch", global=true),
-    @argparse.OptionArg("attempt", long="attempt", global=true),
-    @argparse.OptionArg(
-      "after",
-      long="after",
-      default_values=["0"],
-      global=true,
-    ),
-  ]
-  @argparse.Command(
-    "moonhub",
-    options~,
-    flags=[
-      @argparse.FlagArg("allow-http", long="allow-http", global=true),
-      @argparse.FlagArg("json", long="json", global=true),
-      @argparse.FlagArg("draft", long="draft", global=true),
-    ],
-    subcommand_required=true,
-    subcommands=[
-      @argparse.Command("variable", subcommand_required=true, subcommands=[
-        @argparse.Command("list"),
-        @argparse.Command("set", positionals=[@argparse.PositionArg("name")]),
-        @argparse.Command("delete", positionals=[@argparse.PositionArg("name")]),
-      ]),
-      @argparse.Command("secret", subcommand_required=true, subcommands=[
-        @argparse.Command("list"),
-        @argparse.Command("set", positionals=[@argparse.PositionArg("name")]),
-        @argparse.Command("delete", positionals=[@argparse.PositionArg("name")]),
-      ]),
-      @argparse.Command(
-        "webhook",
-        subcommand_required=true,
-        subcommands=[
-          @argparse.Command("list"),
-          @argparse.Command("create"),
-          ..["edit", "deliveries", "delivery", "redeliver", "ping", "delete"].map(action => {
-              @argparse.Command(action, positionals=[
-                @argparse.PositionArg("number"),
-              ])
-            },
-          ),
-        ],
-      ),
-      @argparse.Command("attachment", subcommand_required=true, subcommands=[
-        @argparse.Command("upload"),
-      ]),
-      @argparse.Command("auth", subcommand_required=true, subcommands=[
-        @argparse.Command("login"),
-        @argparse.Command("status"),
-        @argparse.Command("logout"),
-      ]),
-      @argparse.Command(
-        "mr",
-        about="Manage merge requests. Use Closes #123, Fixes #123 or Resolves #123 in the description to close same-repository issues after successful merge. Inspect closing_issue_numbers with mr view --json.",
-        subcommand_required=true,
-        subcommands=[
-          @argparse.Command("list"),
-          @argparse.Command(
-            "create",
-            about="Create an MR. Use --body-file with Closes #123 to close the issue after successful merge.",
-          ),
-          ..[
-            "view", "diff", "checks", "comment", "review", "request-review", "merge",
-            "approve-checks", "close", "reopen", "draft", "ready", "edit", "delete-comment",
-            "restore-comment", "discussions", "inline-comment", "reply", "resolve-discussion",
-            "reopen-discussion",
-          ].map(action => {
-            @argparse.Command(
-              action,
-              about=match action {
-                "edit" =>
-                  "Edit MR metadata with --edit-version. Add/remove Closes #123 in --body-file to change which issues close after successful merge."
-                "merge" =>
-                  "Submit the observed --version for merge. Successful merge closes issues declared by Closes/Fixes/Resolves #123 in the description; inspect closing_issue_numbers with mr view --json first and pass its --edit-version to confirm these closures."
-                "view" =>
-                  "View an MR; --json includes closing_issue_numbers parsed from its description. Missing/already closed issues are skipped at merge."
-                _ => ""
-              },
-              positionals=[@argparse.PositionArg("number")],
-            )
-          }),
-        ],
-      ),
-      @argparse.Command(
-        "issue",
-        subcommand_required=true,
-        subcommands=[
-          @argparse.Command("list"),
-          @argparse.Command("create"),
-          ..["view", "comment", "close", "reopen", "edit"].map(action => {
-            @argparse.Command(action, positionals=[
-              @argparse.PositionArg("number"),
-            ])
-          }),
-        ],
-      ),
-      @argparse.Command(
-        "ci",
-        subcommand_required=true,
-        subcommands=[
-          @argparse.Command("list"),
-          @argparse.Command("run"),
-          ..["view", "logs", "rerun", "cancel"].map(action => {
-            @argparse.Command(action, positionals=[
-              @argparse.PositionArg("number"),
-            ])
-          }),
-        ],
-      ),
-      @argparse.Command("inbox", subcommands=[
-        @argparse.Command("list"),
-        @argparse.Command("read", positionals=[@argparse.PositionArg("number")]),
-      ]),
-    ],
-  )
-}
-
-///|
 fn option(matches : @argparse.Matches, name : String) -> String? {
   match matches.values.get(name) {
     Some(values) => values.get(0).filter(value => !value.is_empty())
@@ -194,30 +17,48 @@ fn required(
 }
 
 ///|
+// File options share one policy: regular non-symlink files, a bounded size,
+// valid UTF-8, and actionable diagnostics without echoing file contents.
+async fn read_text_input(
+  path : String,
+  limit : Int64,
+  label : String,
+) -> String {
+  let bytes = try {
+    guard @fs.kind(path, follow_symlink=false) is Regular &&
+      @fs.file_size(path) <= limit else {
+      raise Invalid("\{label} must be a regular file of at most \{limit} bytes")
+    }
+    let bytes = @fs.read_file(path).binary()
+    guard bytes.length().to_int64() <= limit else {
+      raise Invalid("\{label} exceeds \{limit} bytes")
+    }
+    bytes
+  } catch {
+    err if @async.is_being_cancelled() => raise err
+    Invalid(_) as err => raise err
+    _ =>
+      raise Invalid(
+        "Cannot read \{label}; check the file path and read permissions",
+      )
+  }
+  @utf8.decode(bytes) catch {
+    _ => raise Invalid("\{label} must contain valid UTF-8")
+  }
+}
+
+///|
 async fn read_body(matches : @argparse.Matches) -> String {
   match option(matches, "body-file") {
     None => ""
-    Some(path) => {
-      guard @fs.kind(path, follow_symlink=false) is Regular &&
-        @fs.file_size(path) <= 16777216L else {
-        raise Invalid(
-          "body file must be a regular UTF-8 file of at most 16 MiB (20,000 characters after image upload)",
-        )
-      }
-      @fs.read_file(path).text()
-    }
+    Some(path) => read_text_input(path, 16777216L, "--body-file")
   }
 }
 
 ///|
 async fn read_dispatch_inputs(path : String) -> Map[String, Json] {
-  guard @fs.kind(path, follow_symlink=false) is Regular &&
-    @fs.file_size(path) <= 65535L else {
-    raise Invalid(
-      "inputs file must be a regular UTF-8 JSON file of at most 65,535 bytes",
-    )
-  }
-  let value = @json.parse(@utf8.decode(@fs.read_file(path).binary())) catch {
+  let text = read_text_input(path, 65535L, "--inputs-file")
+  let value = @json.parse(text) catch {
     _ => raise Invalid("inputs file must contain valid UTF-8 JSON")
   }
   guard value is Object(inputs) &&
@@ -239,19 +80,31 @@ async fn read_dispatch_inputs(path : String) -> Map[String, Json] {
 
 ///|
 async fn read_variable_value(path : String) -> String {
-  guard @fs.kind(path, follow_symlink=false) is Regular &&
-    @fs.file_size(path) <= 49152L else {
-    raise Invalid(
-      "variable file must be a regular UTF-8 file of at most 48 KiB",
-    )
-  }
-  let value = @utf8.decode(@fs.read_file(path).binary()) catch {
-    _ => raise Invalid("variable file must contain valid UTF-8")
-  }
+  let value = read_text_input(path, 49152L, "variable --body-file")
   guard !value.contains("\u{0000}") else {
     raise Invalid("variable value must not contain NUL characters")
   }
   value
+}
+
+///|
+fn setup_instructions(server : String) -> String {
+  let transport_option = if server.has_prefix("http://") {
+    " --allow-http"
+  } else {
+    ""
+  }
+  "Setup:\n" +
+  "  1. Sign in to \{server} in your browser.\n" +
+  "     Open \{server}/-/settings/tokens (Account > Access tokens).\n" +
+  "     Create a token: read for browsing, write for comments/edits, execute for CI, merge for merging.\n" +
+  "     Execute and merge permissions are independent; repository roles still apply.\n" +
+  "  2. Copy the token (shown once) to a private file; on Unix: chmod 600 /path/to/moonhub.token.\n" +
+  "  3. Sign in:\n" +
+  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth login --server \{server} --token-file /path/to/moonhub.token\{transport_option}\n" +
+  "  4. Verify:\n" +
+  "     moonx hackwaly/moonhub/cmd/moonhub@latest auth status --json\{transport_option}\n" +
+  "With the native executable, use moonhub in place of moonx hackwaly/moonhub/cmd/moonhub@latest."
 }
 
 ///|
@@ -273,28 +126,59 @@ async fn read_credentials() -> (String, String)? {
   }
   guard @fs.kind(path, follow_symlink=false) is Regular &&
     @fs.file_size(path) <= 4096L else {
-    raise Invalid("invalid credential file")
+    raise Invalid(
+      "invalid credential file; run auth login --server SERVER --token-file FILE to replace it, or auth logout to clear it",
+    )
   }
   let json = @json.parse(@fs.read_file(path).text()) catch {
-    _ => raise Invalid("invalid credential file")
+    _ =>
+      raise Invalid(
+        "invalid credential file; run auth login --server SERVER --token-file FILE to replace it, or auth logout to clear it",
+      )
   }
   match json {
     { "server": String(server), "token": String(token), .. } =>
       Some((server, token))
-    _ => raise Invalid("invalid credential file")
+    _ =>
+      raise Invalid(
+        "invalid credential file; run auth login --server SERVER --token-file FILE to replace it, or auth logout to clear it",
+      )
   }
 }
 
 ///|
 pub async fn run(args : ArrayView[String]) -> Int32 {
-  let matches = command().parse(argv=args, env=@env.get_env_vars()) catch {
-    err => raise Invalid(err.to_string())
+  // --version also names an observed resource revision on subcommands.
+  if args.length() == 1 && args[0] == "--version" {
+    println("moonhub \{CLI_VERSION}")
+    return 0
+  }
+  let matches = match
+    command().parse_outcome(argv=args, env=@env.get_env_vars()) {
+    Parsed(matches) => matches
+    Help(text) => {
+      println(contextual_help(text))
+      return 0
+    }
+    Version(text) => {
+      println(text)
+      return 0
+    }
+    Failed(err) => raise Invalid(contextual_help(err.to_string()))
   }
   guard matches.subcommand is Some((group, group_options)) else { return 2 }
   let (action, options) = group_options.subcommand.unwrap_or(
     ("list", group_options),
   )
   let allow_http = matches.flags.get("allow-http").unwrap_or(false)
+  if group == "auth" && action == "setup" {
+    let server = match option(matches, "server") {
+      Some(value) => validate_server(value, allow_http)
+      None => "https://your-moonhub-server"
+    }
+    println(setup_instructions(server))
+    return 0
+  }
   if group == "auth" && action == "logout" {
     let file = credential_file()
     if @fs.exists(file) {
@@ -312,24 +196,30 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
   } else {
     read_credentials()
   }
-  let server = validate_server(
-    option(matches, "server").unwrap_or(
-      saved.map(value => value.0).unwrap_or(""),
-    ),
-    allow_http,
+  let configured_server = option(matches, "server").unwrap_or(
+    saved.map(value => value.0).unwrap_or(""),
   )
+  guard !configured_server.is_empty() else {
+    raise Invalid(
+      "No MoonHub server configured.\n\n" +
+      setup_instructions("https://your-moonhub-server"),
+    )
+  }
+  let server = validate_server(configured_server, allow_http)
   let token = if option(matches, "token-file") is Some(path) {
-    guard @fs.kind(path, follow_symlink=false) is Regular &&
-      @fs.file_size(path) <= 256L else {
-      raise Invalid("token file must be regular and small")
-    }
-    @fs.read_file(path).text().trim().to_owned()
+    read_text_input(path, 256L, "--token-file").trim().to_owned()
   } else {
     environment_token.unwrap_or(
       saved
       .filter(value => value.0 == server)
       .map(value => value.1)
       .unwrap_or(""),
+    )
+  }
+  guard !token.is_empty() else {
+    raise Invalid(
+      "No access token for this MoonHub server.\n\n" +
+      setup_instructions(server),
     )
   }
   if group == "auth" {
@@ -364,17 +254,38 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         permission=0o600,
       )
       @fs.rename(temporary, path, replace=true)
-      if !matches.flags.get("json").unwrap_or(false) {
-        println("Signed in. Credential saved with private permissions.")
+    }
+    if matches.flags.get("json").unwrap_or(false) {
+      println(user.stringify())
+    } else {
+      match user {
+        { "username": String(username), "id": String(id), .. } =>
+          println(
+            "Signed in to \{server} as \{terminal_text(username)} (account ID \{terminal_text(id)}).",
+          )
+        _ => raise InvalidResponse
+      }
+      if action == "login" {
+        println(
+          "Credentials saved to \{credential_file()} with private permissions.",
+        )
+        println(
+          "Next: moonhub mr list --repo OWNER/NAME (with moonx, keep the same package prefix).",
+        )
       }
     }
-    println(user.stringify())
     return 0
   }
   let repo = if group == "inbox" {
     ""
   } else {
-    @domain.parse_transport_repo(discover_repo(server, option(matches, "repo"))).path()
+    let name = discover_repo(server, option(matches, "repo"))
+    @domain.parse_transport_repo(name).path() catch {
+      _ =>
+        raise Invalid(
+          "--repo must be OWNER/NAME, for example compiler/moonhub; copy it from the repository URL",
+        )
+    }
   }
   let base = "/repos/" + repo
   if group == "attachment" && action == "upload" {
@@ -438,13 +349,9 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
         "version": Json(if version == "0" { "0" } else { decimal(version) }),
       }
       if option(matches, "body-file") is Some(file) {
-        guard @fs.kind(file, follow_symlink=false) is Regular &&
-          @fs.file_size(file) <= 16384L else {
-          raise Invalid(
-            "secret file must be a regular UTF-8 file of at most 16 KiB",
-          )
-        }
-        fields["value"] = Json(@fs.read_file(file).text())
+        fields["value"] = Json(
+          read_text_input(file, 16384L, "secret --body-file"),
+        )
       }
       ("\{base}/secrets/\{escape(name)}", Some(Json::object(fields)))
     }
@@ -456,11 +363,8 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     ("webhook", "list") => ("\{base}/hooks", None)
     ("webhook", "create" | "edit") => {
       let file = required(matches, "body-file")
-      guard @fs.kind(file, follow_symlink=false) is Regular &&
-        @fs.file_size(file) <= 65536L else {
-        raise Invalid("webhook JSON file must be regular and at most 64 KiB")
-      }
-      let body = @json.parse(@fs.read_file(file).text()) catch {
+      let text = read_text_input(file, 65536L, "webhook --body-file")
+      let body = @json.parse(text) catch {
         _ => raise Invalid("invalid webhook JSON file")
       }
       guard body is Object(_) else {

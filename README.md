@@ -1,8 +1,15 @@
 # hackwaly/moonhub
 
-The native executable includes a remote collaboration CLI: `auth`, `mr`,
-`issue`, `ci` and `inbox`. Create an access token in Account settings and see
-[CLI setup and commands](docs/cli.md).
+Run the remote collaboration CLI from Mooncakes with a current MoonBit toolchain:
+
+```sh
+moonx hackwaly/moonhub/cmd/moonhub@latest --help
+```
+
+The client supports `auth`, `mr`, `issue`, `ci`, `inbox`, `attachment`, `webhook`,
+`secret` and `variable`. Create an access token in Account settings and see
+[CLI setup and commands](docs/cli.md). The native server executable includes
+the same client commands.
 
 AI clients can use the native [MCP 2.0 endpoint](docs/mcp.md) at `/-/mcp`
 (protocol revision 2026-07-28), authenticated with the same scoped access tokens.

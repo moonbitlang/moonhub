@@ -3,17 +3,17 @@
 
 name = "hackwaly/moonhub"
 
-version = "0.1.0"
+version = "0.1.1"
 
 readme = "README.md"
 
-repository = ""
+repository = "https://github.com/moonbitlang/moonhub"
 
 license = "Apache-2.0"
 
-keywords = [ ]
+keywords = [ "cli", "git", "collaboration" ]
 
-description = ""
+description = "MoonHub collaboration CLI for merge requests, issues and CI"
 
 import {
   "moonbitlang/async@0.22.4",

@@ -23,6 +23,7 @@ const allowed = {
   'diff/protocol': [],
   'diff/compute': ['diff/protocol'],
   'cmd/moonhub-diff-worker': ['diff/protocol', 'diff/compute'],
+  'cmd/moonhub': ['cli'],
   identity: ['domain', 'database'],
   mail: ['domain', 'database'],
   repository: ['domain', 'config', 'database', 'identity', 'gitops'],

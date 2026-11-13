@@ -146,33 +146,10 @@ async fn main {
       | "webhook"
       | "secret"
       | "variable"
-    ) => {
-      let code = @cli.run(args[1:]) catch {
-        @cli.Invalid(message) => {
-          @stdio.stderr.write("moonhub: \{message}\n")
-          2
-        }
-        @cli.InvalidResponse => {
-          @stdio.stderr.write("moonhub: invalid API JSON response\n")
-          1
-        }
-        @cli.TimedOut => {
-          @stdio.stderr.write("moonhub: API request timed out\n")
-          1
-        }
-        @cli.Rejected(status, message) => {
-          @stdio.stderr.write(
-            "moonhub: HTTP \{status}: \{@cli.terminal_text(message)}\n",
-          )
-          1
-        }
-        _ => {
-          @stdio.stderr.write("moonhub: CLI request failed\n")
-          1
-        }
-      }
-      @sys.exit(code)
-    }
+      | "help"
+      | "--version"
+      | "-V"
+    ) => @sys.exit(@cli.execute(args[1:]))
     Some("storage-check") => {
       let code = try {
         guard args.length() == 3 else {

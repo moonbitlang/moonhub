@@ -41,7 +41,9 @@ fn check_token(token : String) -> Unit raise CliError {
   guard token.length() == 67 &&
     token.has_prefix("mh_") &&
     token[3:].iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f')) else {
-    raise Invalid("a valid mh_ access token is required")
+    raise Invalid(
+      "a valid mh_ access token is required; create one in Account > Access tokens, then use auth login --server SERVER --token-file FILE (see auth setup)",
+    )
   }
 }
 
