@@ -105,6 +105,7 @@ summary::-webkit-details-marker { display: none; }
 .logout-form { margin: 4px 0 0; padding-top: 4px; border-top: 1px solid var(--color-border-muted); }
 .logout-button:hover { background: var(--color-danger-soft); color: var(--color-danger); }
 .workspace-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: calc(100dvh - var(--header-height)); }
+.workspace-shell--full-width { grid-template-columns: minmax(0, 1fr); }
 .sidebar { position: sticky; top: var(--header-height); z-index: 30; display: flex; flex-direction: column; min-width: 0; height: calc(100dvh - var(--header-height)); border-right: 1px solid var(--color-border); background: var(--color-surface-subtle); }
 .context-switcher { position: relative; margin: 16px 12px 12px; }
 .context-switcher > summary { display: flex; align-items: center; gap: 9px; padding: 8px 4px; border-radius: 6px; cursor: pointer; list-style: none; }
@@ -888,3 +889,73 @@ moonhub-diff-toolbar [data-toolbar-fallback] nav { display: flex; justify-conten
 .release-row p { margin:4px 0; color:var(--color-muted); }
 .release-row .status-badge { flex-shrink:0; }
 @media (max-width:600px) { .release-row { flex-wrap:wrap; } }
+
+/* Repository presentation is scoped independently of account/team/admin pages. */
+.global-navigation { position: relative; margin-left: 16px; flex: 0 0 auto; }
+.global-navigation > summary { list-style: none; }
+.global-navigation-panel { position: fixed; z-index: 80; inset: 0 auto 0 0; width: min(320px, 85vw); padding: 24px 16px; overflow-y: auto; border-right: 1px solid var(--color-border); border-radius: 0 12px 12px 0; background: var(--color-surface); box-shadow: 0 0 0 100vmax rgb(20 25 32 / 30%); }
+.global-navigation-panel > .brand { margin: 0 10px 28px; }
+.global-navigation-panel > .nav-group-label { margin-top: 24px; }
+.repository-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 24px; border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); }
+.repository-tabs .nav-item { position: relative; flex-shrink: 0; min-height: 50px; border-radius: 0; color: var(--color-text); }
+.repository-tabs .nav-item[aria-current]::after { position: absolute; content: ''; height: 3px; bottom: 0; left: 8px; right: 8px; border-radius: 3px; background: #e68a72; }
+.repository-tabs .nav-item[aria-current] { background: transparent; font-weight: 650; }
+body:has(.repository-shell) .brand-area { width: auto; flex-basis: auto; padding-left: 4px; }
+body:has(.repository-shell) .site-header__inner { gap: 16px; }
+body:has(.repository-shell) .sidebar { top: 106px; height: calc(100dvh - 106px); background: var(--color-canvas); }
+body:has(.repository-shell) .page { width: 100%; max-width: 1440px; min-width: 0; margin-inline: auto; }
+body:has(.repository-shell) .context-switcher { border-bottom: 1px solid var(--color-border-muted); padding-bottom: 12px; }
+body:has(.repository-shell) .page-subtitle { margin-top: 6px; }
+body:has(.repository-shell) .mr-page-heading, body:has(.repository-shell) .page-heading { margin-bottom: 20px; }
+body:has(.repository-shell) .list-filters { padding: 16px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-subtle); gap: 12px; }
+body:has(.repository-shell) .list-filters .field:first-of-type { flex: 1; }
+body:has(.repository-shell) .list-filters input[type=search] { width: 100%; min-width: 0; }
+body:has(.repository-shell) .mr-list { border-radius: 6px; }
+body:has(.repository-shell) .page-tabs a, body:has(.repository-shell) .mr-state { text-transform: capitalize; }
+body:has(.repository-shell) .mr-form { max-width: 100%; }
+@media (min-width: 901px) {
+  .repository-tabs { position: sticky; top: var(--header-height); z-index: 39; }
+  html[data-sidebar-collapsed=true] body:has(.repository-shell) .repository-tabs .nav-label { display: inline; }
+  html[data-sidebar-collapsed=true] body:has(.repository-shell) .repository-tabs .nav-item { padding-inline: 10px; }
+}
+@media (max-width: 900px) {
+  body:has(.repository-shell) .sidebar { top: 0; height: 100dvh; }
+  body:has(.repository-shell) .page { padding: 20px 16px; }
+  .repository-tabs { padding-inline: 12px; gap: 2px; }
+  body:has(.repository-shell) .mr-workspace { grid-template-columns: minmax(0,1fr); }
+  body:has(.repository-shell) .mr-main { grid-row: 1; }
+  body:has(.repository-shell) .mr-sidebar { grid-row: 2; position: static; max-height: none; border: 0; padding: 0; display: block; }
+  .file-workspace { grid-template-columns: minmax(0,1fr); }
+  .directory-navigation { display: flex; overflow-x: auto; gap: 4px; align-items: center; }
+  .directory-navigation a { flex-shrink: 0; }
+  .directory-navigation h3 { margin: 0 8px 0 0; }
+}
+@media (max-width: 500px) {
+  .global-navigation { margin-left: 8px; }
+  body:has(.repository-shell) .site-header__inner { gap: 4px; padding-right: 8px; }
+  body:has(.repository-shell) .brand-label { display: none; }
+  body:has(.repository-shell) .page { padding: 16px 12px; }
+  body:has(.repository-shell) .list-filters { display: grid; grid-template-columns: minmax(0,1fr); }
+  body:has(.repository-shell) .list-filters .field { width: 100%; }
+  body:has(.repository-shell) .release-row, .readme-preview .markdown-body, .file-markdown-preview { padding: 16px; }
+}
+.global-navigation[open] > summary { position: relative; z-index: 81; }
+.global-navigation-panel > .brand { margin-left: 48px; }
+
+.global-navigation > summary { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+@media (max-width: 900px) {
+  .site-header__inner { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .site-header__inner > .global-navigation { grid-column: 1; grid-row: 1; margin-left: 0; }
+  .site-header__inner > .brand-area, .site-header__inner > .brand { grid-column: 2; grid-row: 1; }
+  .site-header__inner > .header-inbox { grid-column: 3; grid-row: 1; }
+  .site-header__inner > .account-menu, .site-header__inner > .header-sign-in { grid-column: 4; grid-row: 1; }
+}
+
+html:has(.repository-shell) { scroll-padding-top: calc(var(--header-height) + 62px); }
+@media (max-width: 900px) {
+  html:not([data-ui-enhanced]) body:has(.repository-shell) .sidebar { position: static; height: auto; }
+}
+/* The global drawer is independent of the feature-sidebar preference. */
+html[data-sidebar-collapsed="true"] .global-navigation-panel .nav-label { display: inline; }
+html[data-sidebar-collapsed="true"] .global-navigation-panel .nav-group-label { display: block; }
+html[data-sidebar-collapsed="true"] .global-navigation-panel .nav-item { justify-content: flex-start; padding: 8px 10px; }

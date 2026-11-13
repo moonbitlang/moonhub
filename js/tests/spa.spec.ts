@@ -177,7 +177,7 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   await page.evaluate(() => { (window as any).documentIdentity = document; });
   await page.locator('a[href="/alice/demo"]:visible').first().click();
   await expect(page.locator('#main-content')).toContainText('README');
-  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Repository navigation', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
   await page.getByRole('link', { name: 'New issue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'New issue', exact: true })).toBeVisible();
   await expect(page.locator('.CodeMirror')).toHaveCount(1);
@@ -211,7 +211,7 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   await expect(page.locator('[name=description]')).toHaveValue('**Edited SPA description**');
   await expect(page.locator('[name=assignee]')).toHaveValue('1');
   await expect(page.locator('[name=edit_version]')).toHaveValue('2');
-  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Repository navigation', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
   await page.getByRole('link', { name: 'New issue', exact: true }).click();
   await expect(page.locator('.CodeMirror')).toHaveCount(1);
   await expect(page.locator('.markdown-editor-toolbar')).toHaveCount(1);

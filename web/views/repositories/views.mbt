@@ -323,10 +323,6 @@ async fn render_commit(
     "\{repo.path()} \{commit}",
     asset_path_map,
     Html(b => {
-      if diff_toolbar is Some(_) {
-        b <+
-          "<button class=\"icon-button mobile-menu-button diff-navigation\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
-      }
       stream_commit_detail(b, git_dir, commit, structured_view=diff_view)
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map, code_view=true),
