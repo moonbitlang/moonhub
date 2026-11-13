@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const directory = mkdtempSync(join(tmpdir(), 'moonhub-browser-'));
+const port = process.env.MOONHUB_BROWSER_PORT ?? '18092';
 const repos = join(directory, 'repos');
 const database = join(directory, 'browser.db');
 let server;
@@ -36,6 +37,9 @@ try {
   const commit = git(['commit-tree', tree, '-p', 'master', '-m', 'Nested browser fixture']);
   git(['update-ref', 'refs/heads/feature/breadcrumbs', commit]);
   git(['update-ref', 'refs/heads/release', 'master']);
+  git(['update-ref', 'refs/heads/feature/context', commit]);
+  git(['update-ref', 'refs/tags/feature/context', 'master']);
+  execFileSync('git', ['init', '--bare', '--initial-branch=master', '--quiet', join(repos, 'alice/empty.git')]);
   const diffTree = (value) => {
     const source = git(['hash-object', '-w', '--stdin'], value);
     const test = git(['hash-object', '-w', '--stdin'], 'test { assert_true(true) }\n');
@@ -138,7 +142,7 @@ try {
   execFileSync('git', ['clone', '--bare', '--no-hardlinks', '--quiet', join(repos, 'alice/demo.git'), join(repos, 'alice/public.git')]);
   cpSync(join(root, 'db'), join(directory, 'db'), { recursive: true });
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
-    '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', '18092',
+    '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', port,
     '--root-user', 'browser-root', '--root-password', 'browser-test-password'], {
     cwd: directory, env: { ...process.env, MOONHUB_DIFF_WORKER: join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'), DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -150,7 +154,7 @@ try {
   let ready = false;
   for (let attempt = 0; attempt < 200; attempt++) {
     try {
-      const response = await fetch('http://127.0.0.1:18092/-/login');
+      const response = await fetch(`http://127.0.0.1:${port}/-/login`);
       await response.body?.cancel();
       if (response.ok) { ready = true; break; }
     } catch { /* Native server is still initializing. */ }
@@ -166,7 +170,7 @@ try {
     db.prepare('INSERT INTO user (id, name_key, display_name, password_hash) VALUES (2, ?, ?, ?)').run('outsider', 'Outside user', password_hash);
     db.exec(`INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'alice', 'Alice', 'personal');
       INSERT INTO team_member (team_id, user_id, role) VALUES (1, 1, 'owner');
-      INSERT INTO repository (id, team_id, name, visibility, default_branch) VALUES (1, 1, 'demo', 'private', 'master'), (2, 1, 'public', 'public', 'master');`);
+      INSERT INTO repository (id, team_id, name, visibility, default_branch) VALUES (1, 1, 'demo', 'private', 'master'), (2, 1, 'public', 'public', 'master'), (3, 1, 'empty', 'private', 'master');`);
   } finally { db.close(); }
   console.log('MoonHub browser fixture ready');
 } catch (error) {

@@ -59,7 +59,7 @@ async function main() {
   git(['update-ref', 'refs/heads/main', initial]);
   const first = git(['commit-tree', tree('first\n'), '-p', initial, '-m', 'Feature']);
   git(['update-ref', 'refs/heads/feature', first]);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const split = cookie.indexOf('=');
   await context.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: base }]);
@@ -71,7 +71,7 @@ async function main() {
   await page.locator('select[name=source]').selectOption('feature');
   await page.locator('select[name=target]').selectOption('main');
   await page.locator('input[name=title]').fill('Make repository notifications useful for every reviewer');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   const mrUrl = base + '/root/demo/merge-requests/1';
   await page.waitForURL(mrUrl);
   await page.locator('select[name=reviewer]').selectOption(String(query("SELECT id FROM \"user\" WHERE name_key = 'reviewer'")[0].id));
@@ -115,7 +115,7 @@ async function main() {
   await reviewer.locator('select[name=decision]').selectOption('approved');
   await Promise.all([reviewer.waitForURL(mrUrl), reviewer.getByRole('button', { name: 'Submit review', exact: true }).click()]);
   await page.goto(mrUrl);
-  await page.getByRole('button', { name: 'Merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Merge pull request', exact: true }).click();
   await until(() => query('SELECT status FROM merge_request')[0].status === 'merged', 'merge did not complete');
   await reviewer.goto(base + '/-/notifications');
   await reviewer.getByText('Merge request merged', { exact: false }).waitFor();

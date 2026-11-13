@@ -63,7 +63,7 @@ test('commit MoonDiff modes, server pairing, worker highlighting and SPA remount
   await page.getByLabel('Wrap lines', { exact: true }).uncheck();
   await expect(page.locator('.structured-diff')).toHaveClass(/nowrap/);
   await page.getByRole('button', { name: 'Next change', exact: true }).click();
-  await page.getByRole('link', { name: 'Files', exact: true }).first().click();
+  await page.locator('.repository-tabs').getByRole('link', { name: 'Code', exact: true }).click();
   await expect(header.locator('.structured-toolbar')).toHaveCount(0);
   await expect(header.locator('.brand-area, .breadcrumbs, .header-inbox')).toHaveCount(3);
   await page.goBack();
@@ -446,7 +446,8 @@ for (const width of [1440, 390]) test(`split block scrollbars share offsets acro
 });
 
 test('split block scrolling handles wheel, keyboard, collapse, zoom, resize and reset', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  // Start below the 1440px content cap so resizing grows the diff viewport.
+  await page.setViewportSize({ width: 1200, height: 1000 });
   await blockScrollPage(page);
   const file = diffFile(page, 'grouped.mbt');
   const block = file.locator('.structured-scroll-block').first();
@@ -478,7 +479,9 @@ test('split block scrolling handles wheel, keyboard, collapse, zoom, resize and 
   await expect.poll(() => old.evaluate(node => Math.abs(node.clientWidth - node.closest('.structured-scroll-block')!.querySelector('.diff-source.old')!.clientWidth))).toBeLessThan(2);
   await page.evaluate(() => { document.documentElement.style.zoom = ''; });
   await old.evaluate(node => { node.scrollLeft = node.scrollWidth; });
+  const beforeResize = await old.evaluate(node => node.clientWidth);
   await page.setViewportSize({ width: 1800, height: 1000 });
+  await expect.poll(() => old.evaluate(node => node.clientWidth)).toBeGreaterThan(beforeResize);
   await expect.poll(() => old.evaluate(node => node.scrollLeft - (node.scrollWidth - node.clientWidth))).toBe(0);
   await expect.poll(() => block.evaluate(node => parseFloat(node.style.getPropertyValue('--split-old-offset')))).toBe(await old.evaluate(node => -node.scrollLeft));
   await page.getByLabel('Wrap lines', { exact: true }).check();
@@ -796,7 +799,7 @@ for (const action of ['mode', 'navigate'] as const) test(`delayed grammar import
     await expect(page.getByRole('button', { name: 'Token', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(file.locator('.diff-source.new')).toContainText([/const message = "after";/]);
   } else {
-    await page.getByRole('link', { name: 'Files', exact: true }).first().click();
+    await page.locator('.repository-tabs').getByRole('link', { name: 'Code', exact: true }).click();
     await expect(page.locator('.structured-diff')).toHaveCount(0);
   }
   release();
@@ -1004,11 +1007,12 @@ test('commit header stays usable on narrow screens and retains the account menu'
   await expect(header.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   const navigation = page.getByRole('button', { name: 'Open navigation', exact: true });
-  await expect(navigation).toBeVisible();
-  await navigation.click();
-  await expect(page.locator('#app-sidebar')).toHaveAttribute('aria-modal', 'true');
+  await expect(navigation).toHaveCount(0);
+  await expect(page.locator('#app-sidebar')).toHaveCount(0);
+  await header.locator('.global-navigation > summary').click();
+  await expect(header.locator('.global-navigation nav')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#app-sidebar')).not.toHaveAttribute('aria-modal', 'true');
+  await expect(header.locator('.global-navigation > summary')).toBeFocused();
   await expect(header.getByLabel('Account menu', { exact: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
@@ -1282,7 +1286,7 @@ for (const action of ['click', 'history'] as const) test(`view URL updates rejec
     const response = await route.fetch(); started(); await gate;
     await route.fulfill({ response });
   });
-  if (action === 'click') await page.getByRole('link', { name: 'Files', exact: true }).first().click();
+  if (action === 'click') await page.locator('.repository-tabs').getByRole('link', { name: 'Code', exact: true }).click();
   else await page.goBack();
   await intercepted;
   const pendingURL = page.url();

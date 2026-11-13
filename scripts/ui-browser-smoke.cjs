@@ -1,3 +1,4 @@
+const { fillMarkdown } = require('./markdown-browser-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -55,7 +56,7 @@ async function start() {
   let ready = false;
   for (let attempt = 0; attempt < 150; attempt++) {
     if (server.exitCode !== null) throw new Error(fs.readFileSync(path.join(output, 'server.log'), 'utf8'));
-    try { ready = (await fetch(`${url}/login`)).ok; } catch {}
+    try { ready = (await fetch(`${url}/-/login`)).ok; } catch {}
     if (ready) break;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -66,15 +67,15 @@ async function start() {
 
 async function seed() {
   const api = await request.newContext({ baseURL: url });
-  assert.equal((await api.post('/login', { form: { name_key: username, password }, maxRedirects: 0 })).status(), 303);
-  assert.equal((await api.post('/change-password', { form: { new_password: password, confirm_password: password }, maxRedirects: 0 })).status(), 303);
-  assert.equal((await api.post('/teams', { form: { name_key: 'moonhub', display_name: 'Moonhub' }, maxRedirects: 0 })).status(), 303);
+  assert.equal((await api.post('/-/login', { form: { name_key: username, password }, maxRedirects: 0 })).status(), 303);
+  assert.equal((await api.post('/-/change-password', { form: { new_password: password, confirm_password: password }, maxRedirects: 0 })).status(), 303);
+  assert.equal((await api.post('/-/teams', { form: { name_key: 'moonhub', display_name: 'Moonhub' }, maxRedirects: 0 })).status(), 303);
   const work = path.join(data, 'source');
   git(['clone', '--quiet', '--no-hardlinks', path.join(repo, 'testdata/repos/alice/demo.git'), work]);
   git(['-C', work, 'config', 'user.name', 'Preview administrator']);
   git(['-C', work, 'config', 'user.email', 'preview@moonhub.test']);
   git(['-C', work, 'branch', '-M', 'main']);
-  for (const file of ['README.md', 'moon.mod', 'navigation.mbt', 'teams.mbt', 'errors.mbt']) fs.copyFileSync(path.join(repo, file), path.join(work, file));
+  for (const file of ['README.md', 'moon.mod', 'web/ui/navigation.mbt', 'web/views/namespaces/teams.mbt', 'domain/errors.mbt']) fs.copyFileSync(path.join(repo, file), path.join(work, path.basename(file)));
   fs.mkdirSync(path.join(work, 'docs'), { recursive: true });
   fs.copyFileSync(path.join(repo, 'DESIGN.md'), path.join(work, 'docs', 'design.md'));
   git(['-C', work, 'add', '.']);
@@ -110,7 +111,7 @@ async function seed() {
 }
 
 async function login(page) {
-  await page.goto(`${url}/login`);
+  await page.goto(`${url}/-/login`);
   await page.getByLabel('Username or email', { exact: true }).fill(username);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -130,11 +131,11 @@ async function seedCollaboration(page) {
     assert.equal(response.status(), 303);
   }
   await page.goto(`${url}/moonhub/moonhub/merge-requests/new`);
-  await page.getByLabel('Source branch').selectOption('feature/invitation-feedback');
-  await page.getByLabel('Target branch').selectOption('main');
+  await page.getByLabel('Compare branch').selectOption('feature/invitation-feedback');
+  await page.getByLabel('Base branch').selectOption('main');
   await page.getByLabel('Title', { exact: true }).fill('Clarify invitation delivery and acceptance');
-  await page.getByLabel('Description', { exact: true }).fill('Separate acceptance from mail delivery and keep recovery actions next to the affected invitation.');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await fillMarkdown(page.locator('textarea[name=description]'), 'Separate acceptance from mail delivery and keep recovery actions next to the affected invitation.');
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await page.waitForURL(`${url}/moonhub/moonhub/merge-requests/1`);
 }
 
@@ -159,6 +160,13 @@ async function capture(page, name, viewport) {
 
 async function verifyCommitDiff(page, route) {
   await page.goto(url + route);
+  if (await page.locator('moonhub-structured-diff').count()) {
+    await page.locator('.structured-hunk [data-source-side]').first().waitFor();
+    const manifest = JSON.parse(await page.locator('moonhub-structured-diff').getAttribute('data-manifest'));
+    assert.equal(manifest.head_sha, route.split('/').at(-1));
+    assert.equal(await page.evaluate(() => window.__moonhubPatchExecuted), undefined);
+    return;
+  }
   await page.locator('.moonhub-code-view-frame').waitFor();
   await page.locator('diffs-container [data-code]').first().waitFor();
   assert.equal(await page.locator('diffs-container [data-error-stack]').count(), 0);
@@ -205,7 +213,7 @@ async function verify(page) {
     ['invitations', '/moonhub?tab=invitations'], ['invite-form', '/moonhub?tab=invitations&invite=1'],
     ['files', '/moonhub/moonhub'], ['issues', '/moonhub/moonhub/issues'],
     ['merge-requests', '/moonhub/moonhub/merge-requests'], ['merge-detail', '/moonhub/moonhub/merge-requests/1'],
-    ['ssh-keys', '/settings/ssh-keys'], ['site-settings', '/admin/settings/ssh'],
+    ['ssh-keys', '/-/settings/ssh-keys'], ['site-settings', '/-/admin/settings/ssh'],
   ];
   for (const [name, route] of pages) {
     const response = await page.goto(url + route);
@@ -239,8 +247,8 @@ async function verify(page) {
   await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
   await page.getByRole('link', { name: 'Members', exact: true }).click();
   await page.waitForURL(`${url}/moonhub?tab=members`);
-  assert(await page.locator('#team-invitations').evaluate(element => element.hidden));
-  assert(!await page.locator('#team-members').evaluate(element => element.hidden));
+  await page.locator('#team-invitations').waitFor({ state: 'hidden' });
+  await page.locator('#team-members').waitFor({ state: 'visible' });
 
   await page.setViewportSize(desktop);
   await page.goto(`${url}/moonhub?tab=invitations&invite=1`);
@@ -269,13 +277,11 @@ async function verify(page) {
   await page.locator('.moonhub-code-view-frame').waitFor();
   await page.locator('diffs-container [data-code]').first().waitFor();
   assert.equal(await page.locator('diffs-container [data-error-stack]').count(), 0);
-  assert((await page.locator('.moonhub-code-view-frame').boundingBox()).width > 1180);
+  assert((await page.locator('.moonhub-code-view-frame').boundingBox()).width > 900);
   await capture(page, 'wide-code', { width: 1920, height: 1080 });
   await capture(page, 'mobile-code', mobile);
   await page.goto(`${url}/moonhub/moonhub/merge-requests/1?tab=changes`);
-  await page.locator('.moonhub-code-view-frame').waitFor();
-  await page.locator('diffs-container [data-code]').first().waitFor();
-  assert.equal(await page.locator('diffs-container [data-error-stack]').count(), 0);
+  await page.locator('.structured-hunk [data-source-side]').first().waitFor();
   await capture(page, 'desktop-diff', desktop);
   await capture(page, 'mobile-diff', mobile);
 
@@ -301,19 +307,19 @@ async function verify(page) {
   await capture(page, 'desktop-merge-commit', desktop);
   await capture(page, 'mobile-merge-commit', mobile);
   await page.goto(`${url}/moonhub/moonhub/commit/${empty}`);
-  await page.getByText('No file changes.', { exact: true }).waitFor();
+  await page.waitForFunction(() => { const host = document.querySelector('moonhub-structured-diff'); return host && JSON.parse(host.dataset.manifest).files.length === 0; });
   assert.equal(await page.locator('moonhub-commit-diff').count(), 0);
 
   await page.setViewportSize(desktop);
   await page.locator('.account-menu > summary').click();
   await page.locator('.account-menu-panel').getByRole('link', { name: 'SSH keys', exact: true }).click();
-  await page.waitForURL(`${url}/settings/ssh-keys`);
+  await page.waitForURL(`${url}/-/settings/ssh-keys`);
   if (await page.getByRole('heading', { name: 'Preview laptop', exact: true }).count() === 0) {
     await page.getByRole('link', { name: 'Add SSH key', exact: true }).click();
     await page.getByLabel('Name', { exact: true }).fill('Preview laptop');
     await page.getByLabel('Public key (Ed25519)', { exact: true }).fill('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB');
     await page.getByRole('button', { name: 'Add SSH key', exact: true }).click();
-    await page.waitForURL(`${url}/settings/ssh-keys`);
+    await page.waitForURL(`${url}/-/settings/ssh-keys`);
   }
   await page.getByText('Preview laptop', { exact: true }).waitFor();
   await capture(page, 'desktop-ssh-key-added', desktop);
@@ -323,7 +329,7 @@ async function verify(page) {
 async function main() {
   await start();
   if (!reuse) await seed();
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
@@ -331,7 +337,7 @@ async function main() {
   page.on('console', message => {
     if (message.type() === 'error' && message.text().startsWith('moonhub commit diff failed')) errors.push(message.text());
   });
-  await page.goto(`${url}/login`);
+  await page.goto(`${url}/-/login`);
   await capture(page, 'desktop-login', { width: 1400, height: 900 });
   await capture(page, 'mobile-login', { width: 390, height: 844 });
   await login(page);

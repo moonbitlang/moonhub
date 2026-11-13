@@ -26,7 +26,7 @@ async function frame(page) {
 }
 
 async function authenticate(context) {
-  const response = await context.request.post(preview.url + '/login', {
+  const response = await context.request.post(preview.url + '/-/login', {
     form: { name_key: preview.username, password: preview.password }, maxRedirects: 0,
   });
   assert.equal(response.status(), 303);
@@ -56,8 +56,12 @@ async function verifyDelayedShell(browser, scenario) {
         await page.locator('main').waitFor();
         const before = await frame(page);
         assert.deepEqual(before.missingIcons, [], `${scenario.name} ${route}: initial icons`);
-        assert.equal(before.main.y, 56, `${scenario.name} ${route}: initial content position`);
-        if (scenario.width > 900) assert.equal(before.sidebar.width, scenario.collapsed ? 64 : 224);
+        const contentTop = await page.evaluate(() => document.querySelector('.site-header').getBoundingClientRect().bottom + (document.querySelector('.repository-tabs')?.getBoundingClientRect().height ?? 0));
+        assert.equal(before.main.y, contentTop, `${scenario.name} ${route}: initial content position`);
+        if (route === '/moonhub/moonhub') {
+          assert.equal(before.sidebar, null);
+          assert.equal(before.main.x, 0);
+        } else if (scenario.width > 900) assert.equal(before.sidebar.width, scenario.collapsed ? 64 : 224);
         else assert.equal(before.sidebar.visibility, 'hidden');
         if (route === '/') {
           assert(before.search.height > 0, 'search space must exist before enhancement');
@@ -106,7 +110,7 @@ async function verifyFallback(browser, scriptsEnabled) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   try {
     const results = [];
     for (const scenario of [
