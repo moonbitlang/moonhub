@@ -16,14 +16,14 @@ keywords = [ "cli", "git", "collaboration" ]
 description = "MoonHub collaboration CLI for merge requests, issues and CI"
 
 import {
-  "moonbitlang/async@0.22.4",
-  "moonbitlang/x@0.5.5",
-  "moonbitstack/moondb@0.1.8",
-  "moonbitstack/moonsqlite@0.3.0",
-  "moonbitlang/moonback@0.8.5",
+  "moonbitlang/async@0.22.9",
+  "moonbitlang/x@0.5.7",
+  "moonbitstack/moondb@0.2.8",
+  "moonbitstack/moonsqlite@0.3.7",
+  "moonbitlang/moonback@0.8.10",
   "moonbit-community/rabbita@0.17.0",
   "moonbit-community/email@0.0.1",
-  "moonbit-community/moondiff@0.1.3",
+  "moonbit-community/moondiff@0.1.4",
 }
 
 preferred_target = "native"
