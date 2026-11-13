@@ -34,6 +34,8 @@ pub fn render_error(Int32, String, Map[String, String], current_user? : @domain.
 
 pub fn render_repo_nav(@domain.RepoId, String, String?, controls? : @moonback.Html) -> @moonback.Html
 
+pub fn render_secret_variable_tabs(@domain.RepoId, String, Bool) -> @moonback.Html
+
 pub fn render_structured_diff(@gitops.DiffManifest, @gitops.FileDiff?, @protocol.Options, String, String, view_url~ : String, toolbar_target? : String) -> @moonback.Html
 
 pub fn render_team_repositories(@identity.TeamSummary, Array[@repository.TeamRepository], Bool) -> @moonback.Html
