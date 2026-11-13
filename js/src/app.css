@@ -945,6 +945,18 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
   .commit-metadata { grid-column: 1 / 3; grid-row: 2; }
   .commit-history { grid-row: 1 / 3; }
 }
+.repository-home { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: 32px; }
+.repository-files, .repository-releases { min-width: 0; }
+.repository-releases { padding-block: 12px; overflow-wrap: anywhere; font-size: 13px; }
+.repository-releases h2 { font-size: 16px; margin: 0 0 16px; }
+.repository-releases h2 a { color: var(--color-text); }
+.repository-releases h3 { margin: 12px 0 6px; font-size: 15px; }
+.repository-releases p { margin: 6px 0 12px; }
+.latest-release { color: var(--color-success); }
+@media (max-width: 900px) {
+  .repository-home { grid-template-columns: minmax(0, 1fr); }
+  .repository-releases { border-top: 1px solid var(--color-border); }
+}
 .readme-preview { border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; }
 .readme-preview > h2 { padding: 12px 20px; border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); font-size: 14px; }
 .readme-preview .markdown-body { padding: 28px; }
@@ -960,6 +972,13 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 .code-line { display: block; min-height: 1.5em; white-space: pre; }
 .code-line:target { background: var(--color-warning-soft); }
 pre[data-file-content] .line-number { display: inline-block; width: 4em; padding-right: 1em; color: var(--color-muted); text-align: right; user-select: none; }
+body:has(.repository-shell) .release-row { display: block; padding: 24px; margin-top: 20px; border: 1px solid var(--color-border); border-radius: 6px; }
+body:has(.repository-shell) .release-row .status-badge { display: inline-block; margin-bottom: 12px; }
+.release-assets { border: 1px solid var(--color-border); border-radius: 6px; margin: 24px 0; }
+.release-assets > summary { cursor: pointer; padding: 16px; background: var(--color-surface-subtle); font-weight: 600; }
+.release-assets ul { margin: 0; padding: 0 16px; list-style: none; }
+.release-assets li { display: flex; gap: 16px; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--color-border-muted); }
+.release-assets li > a { flex: 1; overflow-wrap: anywhere; }
 @media (min-width: 901px) {
   .repository-tabs { position: sticky; top: var(--header-height); z-index: 39; }
   html[data-sidebar-collapsed=true] body:has(.repository-shell) .repository-tabs .nav-label { display: inline; }

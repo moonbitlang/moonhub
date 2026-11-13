@@ -27,7 +27,7 @@ pub let releases_module : @moonback.Module = Module(ctx => {
           }
           for release in releases {
             b <+
-              "<article class=\"release-row\"><div><h2><a href=\"/\{repo.path()}/releases/\{release.id.to_string()}\">\{release.title}</a></h2><p>\{release.tag} · <code class=\"release-digest\">\{release.commit_sha}</code></p></div><span class=\"status-badge\">\{if release.draft {"Draft"} else if release.prerelease {"Prerelease"} else {"Published"}}</span></article>"
+              "<article class=\"release-row\"><div><h2><a href=\"/\{repo.path()}/releases/\{release.id.to_string()}\">\{release.title}</a></h2><p><span class=\"path\">\{release.tag}</span> · <a href=\"/\{repo.path()}/commit/\{release.commit_sha}\"><code>\{release.commit_sha[:12].to_owned()}</code></a> · \{@web_ui.timestamp(release.published_at.unwrap_or(release.created_at), relative=true)}</p></div><span class=\"status-badge\">\{if release.draft {"Draft"} else if release.prerelease {"Prerelease"} else {"Published"}}</span><div class=\"markdown-body release-notes\">\{@web_ui.markdown(release.body, repo=Some(repo))}</div></article>"
           }
         }),
         current_user=user,
@@ -96,14 +96,15 @@ pub let releases_module : @moonback.Module = Module(ctx => {
         assets,
         Html(b => {
           b <+
-            "<a href=\"/\{repo.path()}/releases\">Releases</a><div class=\"page-heading\"><h1>\{release.title}</h1><span class=\"status-badge\">\{if release.draft {"Draft"} else if release.prerelease {"Prerelease"} else {"Published"}}</span></div><p>\{release.tag} · <a href=\"/\{repo.path()}/commit/\{release.commit_sha}\"><code class=\"release-digest\">\{release.commit_sha}</code></a></p><div class=\"release-notes\">\{release.body}</div><h2>Assets</h2>"
+            "<a href=\"/\{repo.path()}/releases\">Releases</a><div class=\"page-heading\"><h1>\{release.title}</h1><span class=\"status-badge\">\{if release.draft {"Draft"} else if release.prerelease {"Prerelease"} else {"Published"}}</span></div><p>\{release.tag} · <a href=\"/\{repo.path()}/commit/\{release.commit_sha}\"><code class=\"release-digest\">\{release.commit_sha}</code></a></p><p class=\"muted\">\{release.author} · \{@web_ui.timestamp(release.published_at.unwrap_or(release.created_at))}</p><div class=\"markdown-body release-notes\">\{@web_ui.markdown(release.body, repo=Some(repo))}</div><details class=\"release-assets\" open><summary>Assets (\{release.assets.length().to_string()})</summary><ul>"
           if release.assets.is_empty() {
-            b <+ "<p>No assets uploaded.</p>"
+            b <+ "<li>No assets uploaded.</li>"
           }
           for asset in release.assets {
             b <+
-              "<article class=\"release-row\"><div><a href=\"/\{repo.path()}/releases/assets/\{asset.id.to_string()}/download\">\{asset.name}</a><p>\{asset.size.to_string()} bytes</p><code class=\"release-digest\">\{asset.digest}</code></div></article>"
+              "<li><a data-native-navigation href=\"/\{repo.path()}/releases/assets/\{asset.id.to_string()}/download\">\{asset.name}</a><span class=\"muted\">\{asset.size.to_string()} bytes</span><code class=\"release-digest\">\{asset.digest}</code></li>"
           }
+          b <+ "</ul></details>"
           if release.draft && manager {
             b <+
               "<p>Publishing fixes this version’s commit and assets. Published assets cannot be replaced.</p><form method=\"post\" action=\"/\{repo.path()}/releases/\{release.id.to_string()}/publish\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button type=\"submit\">Publish release</button></form>"

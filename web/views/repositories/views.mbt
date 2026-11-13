@@ -171,6 +171,7 @@ async fn render_tree(
   repo~ : @domain.RepoId,
   rev~ : String,
   path~ : String,
+  release_service~ : @releases.Service,
   clone_url~ : String? = None,
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
@@ -186,6 +187,14 @@ async fn render_tree(
     err => raise err
   }
   let base = "\{@web_ui.repo_link(repo)}/tree/\{@web_context.url_escape_path(rev)}"
+  let latest_release = if path.is_empty() {
+    Some(release_service.latest(@releases.access(repo, current_user))) catch {
+      @domain.NotFound(message="no published release") => None
+      err => raise err
+    }
+  } else {
+    None
+  }
   let navigation = code_navigation(git_dir, rev)
   let commits = @gitops.list_commits(git_dir, rev) catch { _ => [] }
   let readme = entries
@@ -224,8 +233,11 @@ async fn render_tree(
     Html(b => {
       b <+
         "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls=render_code_controls(repo, rev, navigation))}"
+      if path.is_empty() {
+        b <+ "<div class=\"repository-home\">"
+      }
       b <+
-        "<div class=\"content-stack\">\{render_file_breadcrumbs(repo, rev, path)}"
+        "<div class=\"content-stack repository-files\">\{render_file_breadcrumbs(repo, rev, path)}"
       b <+ "<div class=\"commit-summary\">"
       if commits.get(0) is Some(commit) {
         b <+
@@ -283,6 +295,18 @@ async fn render_tree(
         b <+ "</section>"
       }
       b <+ "</div>"
+      if path.is_empty() {
+        b <+
+          "<aside class=\"repository-releases\" aria-label=\"Releases\"><h2><a href=\"\{@web_ui.repo_link(repo)}/releases\">Releases</a></h2>"
+        match latest_release {
+          Some(release) =>
+            b <+
+              "<span class=\"status-badge latest-release\">Latest</span><h3><a href=\"\{@web_ui.repo_link(repo)}/releases/\{release.id.to_string()}\">\{release.title}</a></h3><p class=\"path\">\{release.tag}</p><p class=\"muted\">\{@web_ui.timestamp(release.published_at.unwrap_or(release.created_at), relative=true)}</p>"
+          None => b <+ "<p class=\"muted\">No stable releases published.</p>"
+        }
+        b <+
+          "<a href=\"\{@web_ui.repo_link(repo)}/releases\">View all releases</a></aside></div>"
+      }
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map),
     current_user~,
