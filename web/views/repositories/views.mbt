@@ -197,6 +197,14 @@ async fn render_tree(
   }
   let navigation = code_navigation(git_dir, rev)
   let commits = @gitops.list_commits(git_dir, rev) catch { _ => [] }
+  // TODO: Optimize commit counting with caching by SHA and bitmap indexes.
+  let commit_count = match commits.get(0) {
+    Some(commit) =>
+      @gitops.run_git(git_dir, ["rev-list", "--count", commit.hash, "--"])
+      .trim()
+      .to_owned()
+    None => "0"
+  }
   let readme = entries
     .iter()
     .find_first(entry => {
@@ -246,7 +254,7 @@ async fn render_tree(
         b <+ "<span class=\"muted\">No commits yet.</span>"
       }
       b <+
-        "<a class=\"commit-history\" href=\"\{@web_ui.repo_link(repo)}/commits?rev=\{@web_context.url_escape_path(rev)}\"><span class=\"ui-icon\" data-icon=\"history\" aria-hidden=\"true\"></span>Commits</a></div>"
+        "<a class=\"commit-history\" href=\"\{@web_ui.repo_link(repo)}/commits?rev=\{@web_context.url_escape_path(rev)}\"><span class=\"ui-icon\" data-icon=\"history\" aria-hidden=\"true\"></span><span><strong>\{commit_count}</strong> \{if commit_count == "1" { "commit" } else { "commits" }}</span></a></div>"
       b <+
         "<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
       if !path.is_empty() {

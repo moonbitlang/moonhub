@@ -28,10 +28,13 @@ repository managers and opens the existing branch protection page by default.
 Code removes the whole feature sidebar, including its workspace switcher and
 collapse controls, and uses the available width. Other feature sidebars remain.
 The branch/tag picker, file finder and green Code menu sit above the files.
-The head commit summary places the history icon and **Commits** at the right.
-Its title and hash open commit details; Commits keeps the selected revision in
-`/commits?rev=...`. No commit total is inferred from the bounded query. Empty
-repositories keep a usable empty-history link without invalid commit links.
+The head commit summary places the history icon and full commit count at the
+right, with **1 commit**, **52 commits** or **0 commits** as appropriate. Its title
+and hash open commit details; the count keeps the selected revision in
+`/commits?rev=...`. The total counts all commits reachable from the summary's
+commit SHA, independently of the 50-entry history query. A TODO records future
+SHA-based caching and bitmap index optimization. Empty repositories keep a
+usable empty-history link without invalid commit links.
 File pages keep History. A safely rendered README follows the files. File
 pages add directory navigation, line anchors, path/source copying and Markdown
 Preview/Code switching. Creation and import forms explicitly show Owner,
@@ -75,7 +78,7 @@ After:
 
 ![Commit history without a feature sidebar](images/repository-ux/commit-history-desktop.png)
 
-<img src="images/repository-ux/code-empty-mobile.png" alt="Empty repository with a usable Commits link at 390px" width="390">
+<img src="images/repository-ux/code-empty-mobile.png" alt="Empty repository with a usable 0 commits link at 390px" width="390">
 
 </details>
 
@@ -262,6 +265,12 @@ section to reduce accidental submissions.
   adds no public interfaces or shared layout parameters.
 
 ## Validation results and limitations
+
+The commit-count update passed 40 repository page tests and five focused browser
+tests covering branch/tag selection, empty repositories, responsive layouts and
+native navigation. The HTTP regression includes 52 reachable commits to verify
+totals beyond the 50-entry history limit. Nine Code screenshots were refreshed.
+The table below records the earlier full UX acceptance run.
 
 | Check | Result |
 | --- | --- |

@@ -175,7 +175,7 @@ async test "directory commit summary separates detail links from revision histor
           ),
         )
         assert_true(summary.contains("data-icon=\"history\""))
-        assert_true(summary.contains(">Commits</a>"))
+        assert_true(summary.contains("<strong>1</strong> commit</span></a>"))
         assert_true(!body.contains(">History</a>"))
       }
     }
@@ -197,11 +197,55 @@ async test "directory commit summary separates detail links from revision histor
     assert_eq(response.code, 200, msg=body)
     assert_true(body.contains("No commits yet."))
     assert_true(body.contains("class=\"commit-history\""))
+    assert_true(body.contains("<strong>0</strong> commits</span></a>"))
     assert_true(!body.contains("href=\"/alice/empty/commit/"))
     let (response, body) = @web_testkit.http_get_path_with_cookie(
       port, "/alice/empty/commits", cookie,
     )
     assert_eq(response.code, 200)
     assert_true(body.contains("No commits."))
+  })
+}
+
+///|
+async test "repository commit counts follow the selected revision beyond the history limit" {
+  @web_testkit.with_repository_test_app((port, _, root, cookie, _) => {
+    let dir = root + "/alice/demo.git"
+    let base = @gitops.branch_sha(dir, "master")
+    let tree = @gitops.run_git(dir, ["rev-parse", base + "^{tree}"])
+      .trim()
+      .to_owned()
+    let mut head = base
+    for i = 0; i < 51; i = i + 1 {
+      head = @gitops.merge_git(dir, [
+          "commit-tree",
+          tree,
+          "-p",
+          head,
+          "-m",
+          "History commit \{i}",
+        ])
+        .trim()
+        .to_owned()
+    }
+    ignore(
+      @gitops.run_git(dir, ["update-ref", "refs/heads/feature/history", head]),
+    )
+    ignore(@gitops.run_git(dir, ["update-ref", "refs/tags/v1", base]))
+    for
+      (route, count) in [
+        ("/alice/demo", "1</strong> commit"),
+        ("/alice/demo?rev=feature%2Fhistory", "52</strong> commits"),
+        ("/alice/demo/tree/feature/history", "52</strong> commits"),
+        ("/alice/demo/tree/feature/history/src", "52</strong> commits"),
+        ("/alice/demo?rev=v1", "1</strong> commit"),
+        ("/alice/demo/tree/" + head, "52</strong> commits"),
+      ] {
+      let (response, body) = @web_testkit.http_get_path_with_cookie(
+        port, route, cookie,
+      )
+      assert_eq(response.code, 200, msg=route + body)
+      assert_true(body.contains("<strong>" + count + "</span></a>"), msg=route)
+    }
   })
 }
