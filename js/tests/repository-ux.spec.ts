@@ -189,7 +189,7 @@ for (const width of [320, 390, 900, 1440]) {
     await expect(page.locator('[data-sidebar-open], #app-sidebar')).toHaveCount(0);
     await expect(page.locator('.code-toolbar').getByRole('link', { name: 'History', exact: true })).toHaveCount(0);
     const summary = page.locator('.commit-summary');
-    const history = summary.getByRole('link', { name: 'Commits', exact: true });
+    const history = summary.getByRole('link', { name: '1 commit', exact: true });
     await expect(history).toHaveAttribute('href', '/alice/demo/commits?rev=master');
     const links = await summary.locator('a').evaluateAll(links => links.map(a => a.getAttribute('href')));
     expect(links[0]).toBe(links[1]);
@@ -217,6 +217,7 @@ for (const width of [320, 390, 900, 1440]) {
       const chosen = new URL((await choice.getAttribute('href'))!, page.url()).searchParams.get('rev')!;
       await choice.click();
       await expect(page.locator('.commit-history')).toHaveAttribute('href', '/alice/demo/commits?rev=' + chosen);
+      await expect(page.locator('.commit-history')).toHaveText(label.startsWith('Branch:') ? '2 commits' : '1 commit');
       await expect(page.locator('.commit-subject')).toHaveAttribute('href', '/alice/demo/commit/' + chosen);
       await expect(release).toHaveCount(1);
       await page.locator('.commit-history').click();
@@ -232,6 +233,7 @@ for (const width of [320, 390, 900, 1440]) {
     await expect(release).toHaveCount(0);
     await page.goto('/alice/empty');
     await expect(page.locator('.commit-summary')).toContainText('No commits yet.');
+    await expect(page.locator('.commit-history')).toHaveText('0 commits');
     await expect(page.locator('a[href*="/empty/commit/"]')).toHaveCount(0);
     await page.locator('.commit-history').click();
     await expect(page.locator('main')).toContainText('No commits.');

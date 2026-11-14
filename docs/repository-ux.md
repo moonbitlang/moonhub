@@ -12,7 +12,7 @@ Rabbita document navigation, React code view and EasyMDE editors.
 | Area | Implemented presentation |
 | --- | --- |
 | Shared shell | Persistent repository tabs; independent global drawer; feature sidebars; manager-only Settings; keyboard focus restoration and native details fallback |
-| Code and commits | Branch/tag picker, bounded file finder, green SSH Code menu, head commit summary with a right-aligned Commits history link, root-only Releases summary, safe README preview, directory navigation, line references, exact text/path copy, Markdown Preview/Code switch |
+| Code and commits | Branch/tag picker, bounded file finder, green SSH Code menu, head commit summary with the full commit count linked to revision history, root-only Releases summary, safe README preview, directory navigation, line references, exact text/path copy, Markdown Preview/Code switch |
 | Create/import | Shared owner, name, visibility and source fields; existing queued/running/failed feedback, retry, discard and Refresh behavior |
 | Issues | Title search, Open/Closed filters, All/Assigned to me sidebar, compact rows, discussion cards, assignee/related PR/subscription rail, independent close/comment actions and `#` copy references |
 | Pull requests | User-facing PR names with unchanged `/merge-requests` routes; base ← compare; normal/draft selection; Conversation/Commits/Files changed; version-aware review panel; reviewers in the right rail; checks and merge readiness below Conversation |
@@ -27,11 +27,14 @@ fallback when the index reaches its limit or cannot be decoded. README previews
 are bounded to 256 KiB. Branch/tag choices distinguish same-named references;
 ambiguous choices use object identities. No recursive browser crawl is used.
 
-Code directory pages place **Commits**, with a history icon, at the right of the
-head commit summary above the files. The subject and hash open commit details;
-Commits opens `/commits?rev=...` with the current branch, tag or commit. No total
-is inferred from the bounded history query. Empty repositories keep an empty
-history link without a commit-detail link. File pages retain **History**.
+Code directory pages place the full commit count, with a history icon, at the
+right of the head commit summary above the files: **1 commit**, **52 commits** or
+**0 commits** for an empty repository. The subject and hash open commit details;
+the count opens `/commits?rev=...` with the current branch, tag or commit. The
+total counts all commits reachable from the summary's commit SHA, independently
+of the 50-entry history query. A TODO records future SHA-based caching and bitmap
+index optimization. Empty repositories keep an empty-history link without a
+commit-detail link. File pages retain **History**.
 
 Only the repository root displays a Releases summary, including roots selected
 through branch, tag or commit navigation. Its 296px rail has a 32px gap; at 900px
