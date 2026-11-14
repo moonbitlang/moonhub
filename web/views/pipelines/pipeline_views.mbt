@@ -111,15 +111,15 @@ fn render_pipeline_list(
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) + "/pipelines"
   @web_ui.layout(
-    "Pipelines",
+    "Actions",
     assets,
     Html(b => {
       b <+
-        "<div class=\"page-heading page-heading--actions\"><div><h1>Pipelines</h1><p class=\"page-subtitle\">\{scope.repo.path()} · Workflow execution and triggers</p></div>"
+        "<div class=\"page-heading page-heading--actions\"><div><h1>Actions</h1><p class=\"page-subtitle\">\{scope.repo.path()} · Workflow execution and triggers</p></div>"
       if manager && tab == "runs" {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">Run workflow</a>"
       }
-      b <+ "</div><nav class=\"page-tabs\" aria-label=\"Pipeline views\">"
+      b <+ "</div><nav class=\"page-tabs\" aria-label=\"Actions views\">"
       for
         (key, label) in [
           ("runs", "Runs"),
@@ -141,7 +141,7 @@ fn render_pipeline_list(
           "<section class=\"bounded-section\"><h2>Automatic workflows</h2><p class=\"muted\">Choose whether repository owners and administrators can trigger workflows by pushing code.</p>"
         if saved {
           b <+
-            "<p class=\"settings-success\" role=\"status\">Pipeline settings saved.</p>"
+            "<p class=\"settings-success\" role=\"status\">Actions settings saved.</p>"
         }
         b <+
           "<form class=\"form-stack\" method=\"post\" action=\"\{base}/settings\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"checkbox-field\"><input type=\"checkbox\" name=\"push_enabled\" value=\"1\""
@@ -232,7 +232,39 @@ fn render_pipeline_list(
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),
-    navigation=@web_ui.RepositoryNavigation(scope.repo, "pipelines", manager),
+    sidebar_content=if tab == "runs" {
+      Some(
+        Html(b => {
+          let seen : Map[String, Bool] = Map([])
+          b <+
+            "<nav class=\"nav-group context-navigation workflow-navigation\" aria-label=\"Workflows in this view\"><p class=\"nav-group-label\">Workflows in this view</p>"
+          for run in runs {
+            if !seen.contains(run.workflow_path) {
+              seen[run.workflow_path] = true
+              b <+
+                "<a class=\"nav-item\" href=\"\{base}?tab=runs&amp;workflow=\{@web_context.url_escape_path(run.workflow_path)}&amp;status=\{@web_context.url_escape_path(status)}&amp;branch=\{@web_context.url_escape_path(branch)}\">\{run.workflow_name}</a>"
+            }
+          }
+          if runs.is_empty() {
+            b <+ "<p class=\"muted\">No workflows in this view.</p>"
+          }
+          b <+ "</nav>"
+        }),
+      )
+    } else {
+      None
+    },
+    navigation=@web_ui.RepositoryNavigation(
+      scope.repo,
+      if tab == "settings" {
+        "action-settings"
+      } else if tab == "events" {
+        "pipeline-events"
+      } else {
+        "pipelines"
+      },
+      manager,
+    ),
   )
 }
 
@@ -274,7 +306,7 @@ fn render_pipeline_form(
     assets,
     Html(b => {
       b <+
-        "<a class=\"back-link\" href=\"\{base}\">Back to pipelines</a><div class=\"page-heading\"><div><h1>Run workflow</h1><p class=\"page-subtitle\">Select a branch, then a workflow available on that revision.</p></div></div>"
+        "<a class=\"back-link\" href=\"\{base}\">Back to Actions</a><div class=\"page-heading\"><div><h1>Run workflow</h1><p class=\"page-subtitle\">Select a branch, then a workflow available on that revision.</p></div></div>"
       if error is Some(message) {
         b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
@@ -442,16 +474,16 @@ fn render_pipeline_detail(
     run.number.to_string()
   let result = pipeline_result(run.state, run.conclusion)
   @web_ui.layout(
-    "Pipeline #\{run.number.to_string()}",
+    "Run #\{run.number.to_string()}",
     assets,
     Html(b => {
       b <+
-        "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Pipelines</a> / #\{run.number.to_string()}</p><h1>\{pipeline_html(run.workflow_name)}</h1></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{pipeline_display_state(result)}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
+        "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Actions</a> / #\{run.number.to_string()}</p><h1>\{pipeline_html(run.workflow_name)}</h1></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{pipeline_display_state(result)}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
       b <+
         "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha[:12].to_owned())}</span> · created \{@web_ui.timestamp(run.created_at)}</p>"
       if merge is Some(merge) {
         b <+
-          "<p><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{merge.number.to_string()}?version=\{merge.version.to_string()}\">Merge request !\{merge.number.to_string()}, version \{merge.version.to_string()}</a></p><p class=\"muted mr-shas\"><span>Source <code>\{merge.source_sha[:12].to_owned()}</code></span><span>Target <code>\{merge.target_sha[:12].to_owned()}</code></span></p>"
+          "<p><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{merge.number.to_string()}?version=\{merge.version.to_string()}\">Pull request !\{merge.number.to_string()}, version \{merge.version.to_string()}</a></p><p class=\"muted mr-shas\"><span>Source <code>\{merge.source_sha[:12].to_owned()}</code></span><span>Target <code>\{merge.target_sha[:12].to_owned()}</code></span></p>"
       }
       if manager {
         b <+ "<div class=\"mr-actions\">"
@@ -469,7 +501,7 @@ fn render_pipeline_detail(
         b <+ "</div>"
       }
       b <+
-        "<p class=\"muted\">Rerun snapshot executes this saved revision. <a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/new?branch=\{@web_context.url_escape_path(run.source_branch)}&amp;workflow=\{@web_context.url_escape_path(run.workflow_path)}\">Run latest branch revision</a></p><div class=\"pipeline-workspace\"><nav class=\"job-navigation\" aria-label=\"Pipeline jobs\"><h2>Jobs</h2>"
+        "<p class=\"muted\">Rerun snapshot executes this saved revision. <a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/new?branch=\{@web_context.url_escape_path(run.source_branch)}&amp;workflow=\{@web_context.url_escape_path(run.workflow_path)}\">Run latest branch revision</a></p><div class=\"pipeline-workspace\"><nav class=\"job-navigation\" aria-label=\"Workflow jobs\"><h2>Jobs</h2>"
       for page in jobs {
         let state = pipeline_job_state(page.job.state)
         let conclusion = pipeline_conclusion(page.job.conclusion)

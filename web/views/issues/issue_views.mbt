@@ -32,12 +32,12 @@ fn render_issue_list(
         b <+ ">\{value}</a>"
       }
       b <+
-        "</nav><form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" name=\"q\" maxlength=\"200\" value=\"\{query}\"></label><label class=\"field\"><span>Assignee</span><select aria-label=\"Assignee\" name=\"assigned\"><option value=\"all\">Anyone</option><option value=\"me\""
+        "</nav><form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" data-page-search placeholder=\"Search titles\" name=\"q\" maxlength=\"200\" value=\"\{query}\"></label><label class=\"field\"><span>Assignee</span><select aria-label=\"Assignee\" name=\"assigned\"><option value=\"all\">Anyone</option><option value=\"me\""
       if mine {
         b <+ " selected"
       }
       b <+
-        ">Assigned to me</option></select></label><button class=\"secondary-button\" type=\"submit\">Filter</button><a href=\"\{base}?status=\{status}\">Reset</a></form><ul class=\"mr-list\">"
+        ">Assigned to me</option></select></label><button class=\"secondary-button\" type=\"submit\">Filter</button><a href=\"\{base}?status=\{status}\">Reset</a></form><ul class=\"mr-list compact-records\">"
       for i, issue in issues {
         if i < 50 {
           b <+
@@ -61,7 +61,15 @@ fn render_issue_list(
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),
-    navigation=@web_ui.RepositoryNavigation(scope.repo, "issues", manager),
+    navigation=@web_ui.RepositoryNavigation(
+      scope.repo,
+      if mine {
+        "issues-assigned"
+      } else {
+        "issues"
+      },
+      manager,
+    ),
   )
 }
 
@@ -156,19 +164,10 @@ fn render_issue_detail(
             "<a href=\"\{base}/edit\">Edit issue</a><form method=\"post\" action=\"\{base}/\{if issue.status == "open" { "close" } else { "reopen" }}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"edit_version\" value=\"\{issue.edit_version.to_string()}\"><button type=\"submit\">\{if issue.status == "open" { "Close issue" } else { "Reopen issue" }}</button></form>"
         }
         b <+
-          "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create merge request</a>"
+          "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create pull request</a>"
       }
       b <+
-        "</div>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<div class=\"markdown-body discussion-description\">\{@web_ui.markdown(issue.description, repo=Some(scope.repo))}</div>"
-      if !related.is_empty() {
-        b <+
-          "<section class=\"issue-related\"><h3>Related merge requests</h3><ul class=\"mr-list\">"
-        for mr in related {
-          b <+
-            "<li><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number.to_string()}\">!\{mr.number.to_string()} \{mr.title}</a> <span class=\"muted\">\{@web_ui.merge_status(mr)}</span></li>"
-        }
-        b <+ "</ul></section>"
-      }
+        "</div><div class=\"mr-workspace issue-workspace\"><div class=\"mr-main\"><div class=\"markdown-body discussion-description\"><h2>\{issue.author} opened this issue</h2>\{@web_ui.markdown(issue.description, repo=Some(scope.repo))}</div>"
       b <+ "<ol class=\"mr-timeline\">"
       for i, item in activities {
         if i < 50 {
@@ -200,6 +199,19 @@ fn render_issue_detail(
         b <+
           "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}/comment\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><label class=\"field\"><span>Comment</span><textarea aria-label=\"Comment\" name=\"body\" required rows=\"4\" maxlength=\"20000\"></textarea></label><button type=\"submit\">Add comment</button></form>"
       }
+      b <+
+        "</div><aside class=\"mr-sidebar\" aria-label=\"Issue details\"><h3>Assignee</h3><p>\{if issue.assignee.is_empty() { "Unassigned" } else { issue.assignee }}</p>"
+      if !related.is_empty() {
+        b <+
+          "<section class=\"issue-related\"><h3>Related pull requests</h3><ul class=\"mr-list\">"
+        for mr in related {
+          b <+
+            "<li><a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number.to_string()}\">!\{mr.number.to_string()} \{mr.title}</a> <span class=\"muted\">\{@web_ui.merge_status(mr)}</span></li>"
+        }
+        b <+ "</ul></section>"
+      }
+      b <+
+        "<h3>Notifications</h3>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}<button class=\"secondary-button\" type=\"button\" data-copy-reference=\"#\{issue.number.to_string()}\" hidden>Copy reference</button><span data-copy-status role=\"status\"></span></aside></div>"
     }),
     head_end=@web_assets.repository_assets_head(assets),
     current_user=Some(user),

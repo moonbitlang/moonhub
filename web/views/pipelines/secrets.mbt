@@ -179,12 +179,13 @@ fn render_secrets(
     assets,
     Html(b => {
       b <+
-        "<section class=\"ssh-settings repository-secrets\"><div class=\"page-heading page-heading--actions\"><div><h1>Repository secrets</h1><p class=\"muted\">Credentials for selected pipeline workflows.</p></div><a class=\"button-link\" href=\"\{base}/new\">Add secret</a></div>"
+        "<section class=\"ssh-settings repository-secrets\"><div class=\"page-heading page-heading--actions\"><div><h1>Repository secrets</h1><p class=\"muted\">Credentials for selected workflows.</p></div><a class=\"button-link\" href=\"\{base}/new\">Add secret</a></div>"
+      b <+ "\{@web_ui.render_secret_variable_tabs(repo, "secrets", true)}"
       if saved {
         b <+ "<p class=\"flash-success\" role=\"status\">Secret saved.</p>"
       }
       b <+
-        "<p>Each secret is limited to one branch and workflow. Merge request checks cannot use secrets. Saved values are never displayed.</p>"
+        "<p>Each secret is limited to one branch and workflow. Pull request checks cannot use secrets. Saved values are never displayed.</p>"
       if secrets.is_empty() {
         b <+
           "<p class=\"ssh-keys-empty muted\">No repository secrets. Add a secret to pass credentials to a workflow.</p>"

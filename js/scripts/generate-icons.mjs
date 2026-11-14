@@ -8,7 +8,7 @@ const icons = {
   check: 'Check', 'circle-check': 'CircleCheck', 'circle-dot': 'CircleDot',
   code: 'Code', contact: 'Contact', copy: 'Copy', download: 'Download',
   ellipsis: 'Ellipsis', file: 'File', folder: 'Folder', folders: 'Folders',
-  'tag': 'Tag',
+  'tag': 'Tag', history: 'History',
   'git-branch': 'GitBranch', 'git-commit': 'GitCommitHorizontal',
   'git-pull-request': 'GitPullRequest', globe: 'Globe', grid: 'Grid2X2',
   key: 'KeyRound', lock: 'Lock', 'log-out': 'LogOut', mail: 'Mail', menu: 'Menu',

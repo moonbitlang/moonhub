@@ -22,7 +22,7 @@ async test "pipeline pages list runs, show jobs, and cancel with CSRF" {
           port, "/alice/demo/pipelines", alice,
         )
         assert_eq(list_response.code, 200)
-        assert_true(list_body.contains("Pipelines"))
+        assert_true(list_body.contains("Actions"))
         assert_true(list_body.contains("/alice/demo/pipelines/1"))
         let (detail_response, detail_body) = @web_testkit.http_get_path_with_cookie(
           port, "/alice/demo/pipelines/1", alice,

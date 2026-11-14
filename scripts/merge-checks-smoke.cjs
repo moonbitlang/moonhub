@@ -207,10 +207,10 @@ async function main() {
   await page.getByRole('button', { name: 'Protect branch', exact: true }).click();
   await page.waitForURL('**/settings/branches');
   await page.goto(base + '/root/demo/merge-requests/new');
-  await page.getByLabel('Source branch', { exact: true }).selectOption('feature');
-  await page.getByLabel('Target branch', { exact: true }).selectOption('main');
+  await page.getByLabel('Compare branch', { exact: true }).selectOption('feature');
+  await page.getByLabel('Base branch', { exact: true }).selectOption('main');
   await page.getByLabel('Title', { exact: true }).fill('Verify merged source before merge');
-  await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await page.waitForURL('**/merge-requests/1');
   await until(() => query('SELECT id FROM pipeline_run').length === 1, 'first check was not queued');
   await stopServer();
@@ -220,13 +220,13 @@ async function main() {
   assert.equal(git(['show', '-s', '--format=%P', first.commit_sha]), target + ' ' + source);
   assert.equal(query('SELECT COUNT(*) AS n FROM pipeline_run')[0].n, 1, 'restart duplicated a check');
   await page.reload();
-  assert.equal(await page.getByRole('button', { name: 'Merge request', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Merge pull request', exact: true }).count(), 1);
   const old = source;
   const failingTree = tree([`040000 tree ${candidateGithub(proposedWorkflow)}\t.github`, `100644 blob ${blob('FAIL\n')}\tREADME.md`]);
   source = git(['commit-tree', failingTree, '-p', old, '-m', 'Fail required check']);
   git(['update-ref', 'refs/heads/feature', source]);
   await page.reload();
-  assert.equal(await page.getByRole('button', { name: 'Merge request', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Merge pull request', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Approve and run checks', exact: true }).click();
   await until(() => query('SELECT id FROM pipeline_run').length === 2, 'updated check was not queued');
   const failed = await executeCheck('failure', proposedWorkflow);
@@ -252,7 +252,7 @@ async function main() {
   }
   await page.getByRole('link', { name: `Run #${failed.number} and logs`, exact: true }).click();
   await page.waitForURL('**/pipelines/' + failed.number);
-  await page.getByRole('link', { name: 'Merge request !1, version 2', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Pull request !1, version 2', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Rerun snapshot', exact: true }).click();
   await until(() => query('SELECT id FROM pipeline_run').length === 3, 'rerun not created');
   const rerun = await executeCheck('failure', proposedWorkflow);
@@ -266,7 +266,7 @@ async function main() {
   await until(() => query('SELECT id FROM pipeline_run').length === 4, 'fixed check not queued');
   await executeCheck('success', proposedWorkflow);
   await page.reload();
-  await page.getByRole('button', { name: 'Merge request', exact: true }).click();
+  await page.getByRole('button', { name: 'Merge pull request', exact: true }).click();
   await until(() => query('SELECT status FROM merge_request')[0].status === 'merged', 'merge did not finish');
   assert.equal(git(['rev-parse', 'main^{tree}']), git(['rev-parse', query('SELECT commit_sha FROM pipeline_run WHERE number = 4')[0].commit_sha + '^{tree}']));
   assert.deepEqual(pageErrors, []);

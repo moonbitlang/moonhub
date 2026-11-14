@@ -12,7 +12,7 @@ import {
 }
 
 // Values
-pub fn layout(String, Map[String, String], @moonback.Html, head_end? : @moonback.Html, header_content? : @moonback.Html?, body_class? : String, current_user? : @domain.CurrentUser?, navigation? : PageNavigation) -> @moonback.Html
+pub fn layout(String, Map[String, String], @moonback.Html, head_end? : @moonback.Html, header_content? : @moonback.Html?, body_class? : String, sidebar_content? : @moonback.Html?, current_user? : @domain.CurrentUser?, navigation? : PageNavigation) -> @moonback.Html
 
 pub fn markdown(String, repo? : @domain.RepoId?) -> @moonback.Html
 
@@ -32,7 +32,9 @@ pub fn render_diff_options(@protocol.Options, String) -> @moonback.Html
 
 pub fn render_error(Int32, String, Map[String, String], current_user? : @domain.CurrentUser?) -> @moonback.Html
 
-pub fn render_repo_nav(@domain.RepoId, String, String?) -> @moonback.Html
+pub fn render_repo_nav(@domain.RepoId, String, String?, controls? : @moonback.Html) -> @moonback.Html
+
+pub fn render_secret_variable_tabs(@domain.RepoId, String, Bool) -> @moonback.Html
 
 pub fn render_structured_diff(@gitops.DiffManifest, @gitops.FileDiff?, @protocol.Options, String, String, view_url~ : String, toolbar_target? : String) -> @moonback.Html
 

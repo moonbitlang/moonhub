@@ -1,3 +1,4 @@
+const { fillMarkdown } = require('./markdown-browser-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -61,7 +62,7 @@ async function main() {
   compose(['up', '-d', '--no-build', '--wait', '--wait-timeout', '180']);
   const base = 'http://' + compose(['port', 'web', '8080']);
   const sshPort = compose(['port', 'ssh', '2222']).split(':').at(-1);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const owner = await browser.newPage();
   const errors = [];
   owner.on('pageerror', error => errors.push(error.message));
@@ -120,22 +121,22 @@ async function main() {
 
   await owner.goto(base + '/engineering/service/issues/new');
   await owner.getByLabel('Title', { exact: true }).fill('Retry failed imports without losing work');
-  await owner.getByLabel('Description', { exact: true }).fill('Track recoverable import failures and verify bounded retries.');
+  await fillMarkdown(owner.locator('textarea[name=description]'), 'Track recoverable import failures and verify bounded retries.');
   await owner.getByLabel('Assignee', { exact: true }).selectOption({ label: 'Reviewer (@reviewer)' });
   await capture(owner, 'issue-new');
   await owner.getByRole('button', { name: 'Create issue', exact: true }).click();
   await owner.waitForURL(base + '/engineering/service/issues/1');
-  await owner.getByLabel('Comment', { exact: true }).fill('This change needs a reviewed merge request.');
+  await fillMarkdown(owner.locator('textarea[name=body]'), 'This change needs a reviewed merge request.');
   await owner.getByRole('button', { name: 'Add comment', exact: true }).click();
   await capture(owner, 'issue-detail');
-  await owner.getByRole('link', { name: 'Create merge request', exact: true }).click();
+  await owner.getByRole('link', { name: 'Create pull request', exact: true }).click();
   assert.equal(await owner.getByLabel('Related issue number (optional)', { exact: true }).inputValue(), '1');
   await owner.getByLabel('Title', { exact: true }).fill('Add bounded retries for repository imports');
-  await owner.getByLabel('Description', { exact: true }).fill('Implements the retry behavior tracked in the linked issue.');
-  await owner.getByLabel('Source branch', { exact: true }).selectOption('feature/retry');
-  await owner.getByLabel('Target branch', { exact: true }).selectOption('main');
+  await fillMarkdown(owner.locator('textarea[name=description]'), 'Implements the retry behavior tracked in the linked issue.');
+  await owner.getByLabel('Compare branch', { exact: true }).selectOption('feature/retry');
+  await owner.getByLabel('Base branch', { exact: true }).selectOption('main');
   await capture(owner, 'mr-new');
-  await owner.getByRole('button', { name: 'Create merge request', exact: true }).click();
+  await owner.getByRole('button', { name: 'Create pull request', exact: true }).click();
   await owner.waitForURL(base + '/engineering/service/merge-requests/1');
   await owner.goto(base + '/engineering/service/settings/branches');
   await owner.getByLabel('Branch name', { exact: true }).fill('main');
@@ -150,7 +151,7 @@ async function main() {
   const mrUrl = base + '/engineering/service/merge-requests/1';
   await reviewer.goto(mrUrl);
   await reviewer.getByLabel('Review', { exact: true }).selectOption('approved');
-  await reviewer.getByLabel('Comment', { exact: true }).fill('Approved version one.');
+  await fillMarkdown(reviewer.locator('textarea[name=body]'), 'Approved version one.');
   await reviewer.getByRole('button', { name: 'Submit review', exact: true }).click();
   fs.writeFileSync(path.join(checkout, 'retry.mbt'), 'fn retry_count() -> Int { 4 }\n');
   git(['add', '.']);
@@ -159,18 +160,18 @@ async function main() {
   const source = git(['rev-parse', 'HEAD']);
   await owner.goto(mrUrl);
   await owner.getByText('Outdated', { exact: true }).waitFor();
-  assert.equal(await owner.getByRole('button', { name: 'Merge request', exact: true }).count(), 0);
+  assert.equal(await owner.getByRole('button', { name: 'Merge pull request', exact: true }).count(), 0);
   await reviewer.goto(mrUrl + '?tab=changes');
   await reviewer.locator('moonhub-commit-diff').waitFor();
   await reviewer.waitForFunction(() => document.querySelector('moonhub-commit-diff pre[data-patch]')?.hidden);
   await capture(reviewer, 'mr-changes');
   await reviewer.goto(mrUrl);
   await reviewer.getByLabel('Review', { exact: true }).selectOption('approved');
-  await reviewer.getByLabel('Comment', { exact: true }).fill('Reviewed the updated commit.');
+  await fillMarkdown(reviewer.locator('textarea[name=body]'), 'Reviewed the updated commit.');
   await reviewer.getByRole('button', { name: 'Submit review', exact: true }).click();
   await owner.goto(mrUrl);
   await capture(owner, 'mr-reviewed');
-  await owner.getByRole('button', { name: 'Merge request', exact: true }).click();
+  await owner.getByRole('button', { name: 'Merge pull request', exact: true }).click();
   for (let i = 0; i < 40; i++) {
     await owner.goto(mrUrl);
     if (await owner.getByText('Merged as', { exact: false }).count()) break;
@@ -182,7 +183,7 @@ async function main() {
   assert.equal(git(['show', '-s', '--format=%P', 'origin/main']), `${initial} ${source}`);
   assert(!git(['ls-remote', 'origin']).includes('refs/moonhub/'));
   await owner.goto(base + '/engineering/service/issues/1');
-  await owner.getByRole('heading', { name: 'Related merge requests', exact: true }).waitFor();
+  await owner.getByRole('heading', { name: 'Related pull requests', exact: true }).waitFor();
   await owner.getByRole('button', { name: 'Close issue', exact: true }).click();
   await owner.getByRole('button', { name: 'Reopen issue', exact: true }).waitFor();
   await capture(owner, 'issue-closed');

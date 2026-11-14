@@ -1,4 +1,35 @@
 ///|
+fn render_review_composer(
+  base : String,
+  csrf : String,
+  mr : @collaboration.MergeRequest,
+  user : @domain.CurrentUser,
+  version : Int64,
+  contributor : Bool,
+  allow_self_approval : Bool,
+  busy : Bool,
+  tab : String,
+) -> @moonback.Html {
+  Html(b => {
+    if contributor && version == mr.version && version > 0L {
+      b <+
+        "<details class=\"review-composer\" id=\"mr-review-form\"><summary>\{if tab == "changes" { "Review changes" } else { "Write a comment or review" }}</summary><p class=\"muted\">Reviews apply to this entire version. Inline comments are published immediately.</p><form class=\"form-stack mr-form mr-review-form\" method=\"post\" action=\"\{base}/review\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><label class=\"field\"><span>Comment</span><textarea aria-label=\"Comment\" name=\"body\" rows=\"4\" maxlength=\"20000\"></textarea></label><div class=\"mr-review-actions\"><label class=\"field\"><span>Review</span><select aria-label=\"Review\" name=\"decision\"><option value=\"comment\">Comment</option>"
+      if mr.status == "open" && !mr.draft && !busy {
+        if user.id != mr.author_id || allow_self_approval {
+          b <+ "<option value=\"approved\">Approve</option>"
+        }
+        if user.id != mr.author_id {
+          b <+
+            "<option value=\"changes_requested\">Request changes</option><option value=\"withdrawn\">Withdraw review</option>"
+        }
+      }
+      b <+
+        "</select></label><button type=\"submit\">Submit review</button></div></form></details>"
+    }
+  })
+}
+
+///|
 fn merge_action(
   base : String,
   csrf : String,
@@ -30,17 +61,17 @@ fn render_merge_list(
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests"
   @web_ui.layout(
-    "Merge Requests",
+    "Pull requests",
     assets,
     Html(b => {
       b <+
-        "<div class=\"mr-page-heading\"><div><h1>Merge requests</h1><p class=\"page-subtitle\">\{scope.repo.path()}</p></div><div class=\"mr-actions\">"
+        "<div class=\"mr-page-heading\"><div><h1>Pull requests</h1><p class=\"page-subtitle\">\{scope.repo.path()}</p></div><div class=\"mr-actions\">"
       if contributor {
         b <+
-          "<a class=\"button-link\" href=\"\{base}/new\">New merge request</a>"
+          "<a class=\"button-link\" href=\"\{base}/new\">New pull request</a>"
       }
       b <+
-        "</div></div><nav class=\"page-tabs\" aria-label=\"Merge request status\">"
+        "</div></div><nav class=\"page-tabs\" aria-label=\"Pull request status\">"
       for value in ["open", "merged", "closed"] {
         b <+
           "<a href=\"\{base}?status=\{value}&amp;q=\{@web_context.url_escape_path(query)}&amp;mine=\{mine}\""
@@ -50,10 +81,10 @@ fn render_merge_list(
         b <+ ">\{value}</a>"
       }
       b <+
-        "</nav><form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" name=\"q\" value=\"\{query}\" maxlength=\"200\"></label><label class=\"field\"><span>View</span><select name=\"mine\">"
+        "</nav><form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"status\" value=\"\{status}\"><label class=\"field\"><span>Search titles</span><input type=\"search\" data-page-search placeholder=\"Search titles\" name=\"q\" value=\"\{query}\" maxlength=\"200\"></label><label class=\"field\"><span>View</span><select name=\"mine\">"
       for
         (key, label) in [
-          ("all", "All merge requests"),
+          ("all", "All pull requests"),
           ("author", "Authored by me"),
           ("reviews", "Needs my review"),
         ] {
@@ -84,7 +115,7 @@ fn render_merge_list(
       }
       if rows.is_empty() {
         b <+
-          "<li class=\"muted\">No matching merge requests. Change your filters or create a new request.</li>"
+          "<li class=\"muted\">No matching pull requests. Change your filters or create a new request.</li>"
       }
       b <+ "</ul><nav class=\"mr-actions\" aria-label=\"Pagination\">"
       if page > 1L {
@@ -101,7 +132,13 @@ fn render_merge_list(
     current_user=Some(user),
     navigation=@web_ui.RepositoryNavigation(
       scope.repo,
-      "merge-requests",
+      if mine == "author" {
+        "pull-author"
+      } else if mine == "reviews" {
+        "pull-reviews"
+      } else {
+        "merge-requests"
+      },
       manager,
     ),
   )
@@ -130,11 +167,11 @@ fn render_merge_new(
   }
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests"
   @web_ui.layout(
-    "New merge request",
+    "New pull request",
     assets,
     Html(b => {
       b <+
-        "<a href=\"\{base}\">\{scope.repo.path()} / Merge Requests</a><h1>New merge request</h1>"
+        "<a href=\"\{base}\">\{scope.repo.path()} / Pull requests</a><h1>New pull request</h1>"
       if error is Some(error) {
         b <+ "<p class=\"flash-error\" role=\"alert\">\{error}</p>"
       }
@@ -144,7 +181,7 @@ fn render_merge_new(
       } else {
         b <+
           "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}\" data-branch-comparison><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"mr-branch-fields\">"
-        for field in ["source", "target"] {
+        for field in ["target", "source"] {
           let selected = form
             .get(field)
             .unwrap_or(
@@ -158,7 +195,7 @@ fn render_merge_new(
               },
             )
           b <+
-            "<label class=\"field\"><span>\{if field == "source" { "Source branch" } else { "Target branch" }}</span><select aria-label=\"\{if field == "source" { "Source branch" } else { "Target branch" }}\" name=\"\{field}\" required>"
+            "<label class=\"field\"><span>\{if field == "source" { "Compare branch" } else { "Base branch" }}</span><select aria-label=\"\{if field == "source" { "Compare branch" } else { "Base branch" }}\" name=\"\{field}\" required>"
           for branch in branches {
             b <+ "<option value=\"\{branch}\""
             if branch == selected {
@@ -167,14 +204,18 @@ fn render_merge_new(
             b <+ ">\{branch}</option>"
           }
           b <+ "</select></label>"
+          if field == "target" {
+            b <+
+              "<span class=\"branch-direction\" aria-label=\"receives changes from\">←</span>"
+          }
         }
         b <+
-          "</div><p class=\"settings-notice\" data-branch-warning hidden role=\"status\">Source and target must be different branches.</p><label class=\"field\"><span>Title</span><input name=\"title\" maxlength=\"200\" required value=\"\{form.get("title").unwrap_or("")}\"></label><label class=\"field\"><span>Description</span><textarea aria-label=\"Description\" name=\"description\" rows=\"7\" maxlength=\"20000\">\{form.get("description").unwrap_or("")}</textarea></label><label class=\"field\"><span>Related issue number (optional)</span><input type=\"number\" min=\"1\" name=\"issue\" value=\"\{form.get("issue").unwrap_or("")}\"></label><label class=\"mr-checkbox\"><input type=\"checkbox\" name=\"draft\""
+          "</div><p class=\"settings-notice\" data-branch-warning hidden role=\"status\">Source and target must be different branches.</p><label class=\"field\"><span>Title</span><input name=\"title\" maxlength=\"200\" required value=\"\{form.get("title").unwrap_or("")}\"></label><label class=\"field\"><span>Description</span><textarea aria-label=\"Description\" name=\"description\" rows=\"7\" maxlength=\"20000\">\{form.get("description").unwrap_or("")}</textarea></label><label class=\"field\"><span>Related issue number (optional)</span><input type=\"number\" min=\"1\" name=\"issue\" value=\"\{form.get("issue").unwrap_or("")}\"></label><label class=\"field\"><span>Creation mode</span><select name=\"draft\"><option value=\"\">Ready for review</option><option value=\"on\""
         if form.get("draft") == Some("on") {
-          b <+ " checked"
+          b <+ " selected"
         }
         b <+
-          "><span>Draft</span></label><div class=\"mr-actions\"><button type=\"submit\">Create merge request</button><a href=\"\{base}\">Cancel</a></div></form>"
+          ">Draft pull request</option></select></label><div class=\"mr-actions\"><button type=\"submit\">Create pull request</button><a href=\"\{base}\">Cancel</a></div></form>"
       }
     }),
     current_user=Some(user),
@@ -283,7 +324,7 @@ fn render_merge_detail(
           "<button class=\"icon-button mobile-menu-button diff-navigation\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
       }
       b <+
-        "<a class=\"back-link\" href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">Merge requests</a><div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{@web_ui.merge_status(mr).to_lower()}\">\{@web_ui.merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{target}</code></p>"
+        "<a class=\"back-link\" href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">Pull requests</a><div class=\"mr-page-heading\"><h1 class=\"mr-title\">\{mr.title} <span class=\"muted\">!\{mr.number.to_string()}</span></h1><span class=\"mr-state\" data-state=\"\{@web_ui.merge_status(mr).to_lower()}\">\{@web_ui.merge_status(mr)}</span></div><p class=\"mr-branch-summary\">\{mr.author} wants to merge <code>\{mr.source}</code> into <code>\{target}</code></p>"
       if editable {
         b <+
           "<details class=\"secondary-details mr-more-actions\"><summary>More actions</summary><div class=\"mr-actions\">"
@@ -301,7 +342,7 @@ fn render_merge_detail(
         }
         b <+ "</details>"
       }
-      b <+ "<nav class=\"mr-tabs\" aria-label=\"Merge request views\">"
+      b <+ "<nav class=\"mr-tabs\" aria-label=\"Pull request views\">"
       for value in ["discussion", "commits", "changes"] {
         b <+
           "<a href=\"\{base}?tab=\{value}&amp;version=\{version.to_string()}\{if value == "changes" { commit_query } else { "" }}\""
@@ -309,7 +350,7 @@ fn render_merge_detail(
           b <+ " aria-current=\"page\""
         }
         b <+
-          ">\{match value { "discussion" => "Discussion"; "commits" => "Commits"; _ => "Changes" }}</a>"
+          ">\{match value { "discussion" => "Conversation"; "commits" => "Commits"; _ => "Files changed" }}</a>"
       }
       b <+ "</nav>"
       if mr.version > 0L {
@@ -336,6 +377,10 @@ fn render_merge_detail(
       }
       b <+
         "<div class=\"mr-workspace\" data-view=\"\{tab}\"><div class=\"mr-main\">"
+      if tab == "changes" {
+        b <+
+          "\{render_review_composer(base, csrf, mr, user, version, contributor, allow_self_approval, busy, tab)}"
+      }
       if tab == "discussion" {
         if mr.issue_number > 0L {
           b <+
@@ -471,7 +516,7 @@ fn render_merge_detail(
               b <+
                 "<h2 class=\"mr-commit-title\">\{commit.subject}</h2><p class=\"muted\">\{commit.author} · \{commit.date} · <a href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{commit.hash}\">Commit details</a></p><p class=\"muted mr-shas\">\{if comparison.parent_count > 1 { "Merge commit compared with first parent" } else if comparison.parent_count == 0 { "Root commit compared with empty tree" } else { "Compared with parent" }} <code>\{comparison.base_sha[:12].to_owned()}</code> → <code>\{comparison.head_sha[:12].to_owned()}</code></p>"
               b <+
-                "<p class=\"muted\">Showing one commit in v\{version.to_string()}. Reviews apply to the entire MR version. <a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}\">View all changes</a></p>"
+                "<p class=\"muted\">Showing one commit in v\{version.to_string()}. Reviews apply to the entire pull request version. <a href=\"\{base}?tab=changes&amp;version=\{version.to_string()}\">View all changes</a></p>"
             } else {
               b <+
                 "<p class=\"muted mr-shas\">All changes in v\{version.to_string()}: merge base <code>\{comparison.base_sha[:12].to_owned()}</code> → source <code>\{comparison.head_sha[:12].to_owned()}</code></p>"
@@ -581,92 +626,101 @@ fn render_merge_detail(
           b <+ "</section>"
         }
       }
-      b <+
-        "</div><aside class=\"mr-sidebar\" aria-label=\"Review and merge readiness\">"
-      b <+
-        "<section class=\"mr-merge-panel\" aria-label=\"Merge status\"><h3>Merge status</h3>"
-      if mr.status == "merged" {
+      if tab == "discussion" {
         b <+
-          "<p>Merged as <a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{mr.merged_sha}\">\{mr.merged_sha}</a></p>"
-      } else if busy {
-        b <+ "<p role=\"status\">Merge queued or running.</p>"
-      } else {
-        b <+
-          "<p>\{approved.to_string()} approvals · \{required.to_string()} required</p>"
-        if !mr.job_error.is_empty() {
-          b <+
-            "<p class=\"flash-error\" role=\"alert\">\{@domain.public_merge_job_error(mr.job_error)}</p>"
-        }
-        if !blocker.is_empty() {
-          b <+ "<p role=\"status\">\{blocker}</p>"
-        } else {
-          b <+ "<p class=\"settings-success\">No conflicts. Ready to merge.</p>"
-        }
-        if manager && blocker.is_empty() && version == mr.version {
-          b <+
-            "\{merge_action(base, csrf, "merge", "Merge request", version, edit_version=mr.edit_version)}"
-        }
-        if !manager && mr.status == "open" {
-          b <+
-            "<p class=\"muted\">A team owner or administrator can merge this request.</p>"
-        }
+          "\{render_review_composer(base, csrf, mr, user, version, contributor, allow_self_approval, busy, tab)}"
       }
-      if user.id == mr.author_id && mr.status == "open" && !allow_self_approval {
-        b <+
-          "<p class=\"permission-hint\">You authored this merge request and cannot approve it yourself. \{if required > 0L { "Another team member must approve this version." } else { "You can request an independent review." }}</p>"
-      }
-      b <+ "</section>"
-      if !checks.is_empty() {
-        b <+
-          "<section class=\"mr-merge-panel\" aria-label=\"Pipeline checks\"><h3>Pipeline checks</h3><ul class=\"mr-list\">"
-        for check in checks {
-          let state = if check.state == "completed" {
-            check.conclusion
-          } else {
-            check.state
-          }
-          let label = match state {
-            "awaiting_approval" => "Awaiting manager approval"
-            "pending" => "Preparing"
-            "queued" => "Queued"
-            "running" => "Running"
-            "success" => "Passed"
-            "failure" => "Failed"
-            "cancelled" => "Cancelled"
-            "timed_out" => "Timed out"
-            "lost" => "Runner lost"
-            "skipped" => "Skipped"
-            _ => "Could not prepare checks"
-          }
+      if tab == "discussion" {
+        if !checks.is_empty() {
           b <+
-            "<li><div class=\"mr-actions\"><strong class=\"path\">\{check.workflow_path}</strong><span class=\"mr-state\" data-state=\"\{state}\">\{label}</span>"
-          if check.run_number is Some(number) {
+            "<section class=\"mr-merge-panel\" aria-label=\"Checks\"><h3>Checks</h3><ul class=\"mr-list\">"
+          for check in checks {
+            let state = if check.state == "completed" {
+              check.conclusion
+            } else {
+              check.state
+            }
+            let label = match state {
+              "awaiting_approval" => "Awaiting manager approval"
+              "pending" => "Preparing"
+              "queued" => "Queued"
+              "running" => "Running"
+              "success" => "Passed"
+              "failure" => "Failed"
+              "cancelled" => "Cancelled"
+              "timed_out" => "Timed out"
+              "lost" => "Runner lost"
+              "skipped" => "Skipped"
+              _ => "Could not prepare checks"
+            }
             b <+
-              "<a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/\{number.to_string()}\">Run #\{number.to_string()} and logs</a>"
+              "<li><div class=\"mr-actions\"><strong class=\"path\">\{check.workflow_path}</strong><span class=\"mr-state\" data-state=\"\{state}\">\{label}</span>"
+            if check.run_number is Some(number) {
+              b <+
+                "<a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/\{number.to_string()}\">Run #\{number.to_string()} and logs</a>"
+            }
+            b <+
+              "</div><p class=\"muted\">\{if check.required { "Required for merge" } else { "Automatic workflow · optional for merge" }}</p>"
+            if !check.error.is_empty() {
+              b <+ "<p class=\"flash-error\" role=\"alert\">\{check.error}</p>"
+            }
+            b <+ "</li>"
           }
-          b <+
-            "</div><p class=\"muted\">\{if check.required { "Required for merge" } else { "Automatic workflow · optional for merge" }}</p>"
-          if !check.error.is_empty() {
-            b <+ "<p class=\"flash-error\" role=\"alert\">\{check.error}</p>"
+          b <+ "</ul><p><a href=\"\{base}?tab=\{tab}\">Refresh checks</a></p>"
+          if manager &&
+            mr.status == "open" &&
+            !mr.draft &&
+            !busy &&
+            version == mr.version &&
+            checks
+            .iter()
+            .any(check => {
+              check.state == "awaiting_approval" || check.state == "error"
+            }) {
+            b <+
+              "\{merge_action(base, csrf, "approve-checks", "Approve and run checks", version)}"
           }
-          b <+ "</li>"
+          b <+ "</section>"
         }
-        b <+ "</ul><p><a href=\"\{base}?tab=\{tab}\">Refresh checks</a></p>"
-        if manager &&
-          mr.status == "open" &&
-          !mr.draft &&
-          !busy &&
-          version == mr.version &&
-          checks
-          .iter()
-          .any(check => {
-            check.state == "awaiting_approval" || check.state == "error"
-          }) {
+        b <+
+          "<section class=\"mr-merge-panel\" aria-label=\"Merge status\"><h3>Merge status</h3>"
+        if mr.status == "merged" {
           b <+
-            "\{merge_action(base, csrf, "approve-checks", "Approve and run checks", version)}"
+            "<p>Merged as <a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{mr.merged_sha}\">\{mr.merged_sha}</a></p>"
+        } else if busy {
+          b <+ "<p role=\"status\">Merge queued or running.</p>"
+        } else {
+          b <+
+            "<p>\{approved.to_string()} approvals · \{required.to_string()} required</p>"
+          if !mr.job_error.is_empty() {
+            b <+
+              "<p class=\"flash-error\" role=\"alert\">\{@domain.public_merge_job_error(mr.job_error)}</p>"
+          }
+          if !blocker.is_empty() {
+            b <+ "<p role=\"status\">\{blocker}</p>"
+          } else {
+            b <+
+              "<p class=\"settings-success\">No conflicts. Ready to merge.</p>"
+          }
+          if manager && blocker.is_empty() && version == mr.version {
+            b <+
+              "\{merge_action(base, csrf, "merge", "Merge pull request", version, edit_version=mr.edit_version)}"
+          }
+          if !manager && mr.status == "open" {
+            b <+
+              "<p class=\"muted\">A team owner or administrator can merge this request.</p>"
+          }
+        }
+        if user.id == mr.author_id &&
+          mr.status == "open" &&
+          !allow_self_approval {
+          b <+
+            "<p class=\"permission-hint\">You authored this pull request and cannot approve it yourself. \{if required > 0L { "Another team member must approve this version." } else { "You can request an independent review." }}</p>"
         }
         b <+ "</section>"
       }
+      b <+
+        "</div><aside class=\"mr-sidebar\" aria-label=\"Pull request details\"><button class=\"secondary-button\" type=\"button\" data-copy-reference=\"!\{mr.number.to_string()}\" hidden>Copy reference</button><span data-copy-status role=\"status\"></span>"
       b <+
         "<details class=\"mr-reviewers\" data-mobile-details open aria-label=\"Requested reviewers\"><summary>Reviewers</summary>"
       if reviewers.is_empty() {
@@ -703,21 +757,6 @@ fn render_merge_detail(
           "</select></label><button type=\"submit\">Request review</button></form>"
       }
       b <+ "</details>"
-      if contributor && version == mr.version && version > 0L {
-        b <+
-          "<details class=\"review-composer\" id=\"mr-review-form\"><summary>Write a comment or review</summary><form class=\"form-stack mr-form mr-review-form\" method=\"post\" action=\"\{base}/review\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"version\" value=\"\{version.to_string()}\"><label class=\"field\"><span>Comment</span><textarea aria-label=\"Comment\" name=\"body\" rows=\"4\" maxlength=\"20000\"></textarea></label><div class=\"mr-review-actions\"><label class=\"field\"><span>Review</span><select aria-label=\"Review\" name=\"decision\"><option value=\"comment\">Comment</option>"
-        if mr.status == "open" && !mr.draft && !busy {
-          if user.id != mr.author_id || allow_self_approval {
-            b <+ "<option value=\"approved\">Approve</option>"
-          }
-          if user.id != mr.author_id {
-            b <+
-              "<option value=\"changes_requested\">Request changes</option><option value=\"withdrawn\">Withdraw review</option>"
-          }
-        }
-        b <+
-          "</select></label><button type=\"submit\">Submit review</button></div></form></details>"
-      }
       b <+
         "<details class=\"secondary-details\"><summary>Notification preferences</summary>\{@web_ui.render_thread_subscription(subscription, notification_csrf)}</details></aside></div>"
     }),
@@ -749,17 +788,17 @@ fn render_branch_rules(
     assets,
     Html(b => {
       b <+
-        "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">\{scope.repo.path()} / Merge Requests</a><h1>Branch protection</h1><ul class=\"mr-list\">"
+        "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">\{scope.repo.path()} / Pull requests</a><h1>Branch protection</h1><ul class=\"mr-list\">"
       for rule in rules {
         let branch = rule.branch
         let approvals = rule.required_approvals
         b <+
-          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Merge requests only · \{approvals.to_string()} approvals required · \{if rule.allow_self_approval { "Author approval allowed" } else { "Author approval disabled" }}</p></div>"
+          "<li class=\"mr-rule\"><div><strong class=\"path\">\{branch}</strong><p class=\"muted\">Pull requests only · \{approvals.to_string()} approvals required · \{if rule.allow_self_approval { "Author approval allowed" } else { "Author approval disabled" }}</p></div>"
         for path in rule.checks {
           b <+ "<p class=\"path\">\{path}</p>"
         }
         b <+
-          "<details class=\"mr-edit\"><summary>Edit rule</summary>\{render_branch_rule_form(base, csrf, Some(rule))}</details><form method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{branch}\"><button type=\"submit\" name=\"action\" value=\"remove\">Remove protection</button></form></li>"
+          "<details class=\"mr-edit\"><summary>Edit rule</summary>\{render_branch_rule_form(base, csrf, Some(rule))}</details><details class=\"danger-confirmation\"><summary>Remove protection</summary><p>Removing protection allows direct pushes to <code>\{branch}</code>. Confirm removal of this branch rule.</p><form method=\"post\" action=\"\{base}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"branch\" value=\"\{branch}\"><button class=\"danger-button\" type=\"submit\" name=\"action\" value=\"remove\">Remove protection</button></form></details></li>"
       }
       if rules.is_empty() {
         b <+ "<li class=\"muted\">No protected branches.</li>"
@@ -801,6 +840,6 @@ fn render_branch_rule_form(
       b <+ " checked"
     }
     b <+
-      "><span>Allow authors to approve their own merge requests</span></label><p class=\"muted\">Author approval counts toward required approvals for this branch. Disabled by default.</p><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
+      "><span>Allow authors to approve their own pull requests</span></label><p class=\"muted\">Author approval counts toward required approvals for this branch. Disabled by default.</p><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
   })
 }

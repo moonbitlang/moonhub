@@ -278,11 +278,25 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     media.addEventListener("change", sync); return () => media.removeEventListener("change", sync);
   }, []);
   const options = useMemo(() => ({
-    ...codeViewOptions, enableLineSelection: Boolean(inline?.form),
+    ...codeViewOptions, enableLineSelection: Boolean(inline?.form) || files.length === 0,
     enableGutterUtility: Boolean(inline?.form), diffStyle: mode,
     overflow: wrap ? "wrap" as const : "scroll" as const,
   }), [mode, wrap, inline, items]);
   const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
+  useEffect(() => {
+    if (files.length) return;
+    const selectHash = () => {
+      const match = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
+      if (!match || !items[0]) return;
+      const start = Math.max(1, Number(match[1])), end = Math.max(start, Number(match[2] ?? match[1]));
+      setSelection({ id: items[0].id, range: { start, end } });
+      viewerRef.current?.scrollTo({ type: 'range', id: items[0].id, range: { start, end }, align: 'center' });
+    };
+    const frame = requestAnimationFrame(selectHash);
+    window.addEventListener('hashchange', selectHash);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('hashchange', selectHash); };
+  }, [items]);
+
   useEffect(() => {
     const thread = inline?.threads.find(thread => thread.id === inline.target);
     if (!thread) return;
@@ -437,7 +451,10 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
       <CodeView
         ref={viewerRef}
         selectedLines={selection}
-        onSelectedLinesChange={setSelection}
+        onSelectedLinesChange={value => {
+          setSelection(value);
+          if (!files.length && value) history.replaceState(history.state, '', '#L' + value.range.start + (value.range.end !== value.range.start ? '-L' + value.range.end : ''));
+        }}
         renderAnnotation={(annotation, item) => {
           if (!inline || item.type !== "diff" || !("side" in annotation)) return null;
           const side = annotation.side === "deletions" ? "old" : "new";
@@ -705,7 +722,7 @@ class MoonhubFileViewElement extends HTMLElement {
     mount.className = "moonhub-file-view";
     this.append(mount);
     try {
-      const items = fileToItems(name, fallback.textContent ?? "");
+      const items = fileToItems(name, this.querySelector<HTMLElement>("[data-file-source]")?.textContent ?? fallback.textContent ?? "");
       this.#root = renderCodeView(mount, items);
       fallback.hidden = true;
     } catch (error) {

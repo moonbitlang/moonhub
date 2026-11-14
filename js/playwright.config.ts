@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const externalURL = process.env.MOONHUB_TEST_URL;
+const fixtureURL = `http://127.0.0.1:${process.env.MOONHUB_BROWSER_PORT ?? '18092'}`;
 
 export default defineConfig({
   testDir: './tests',
@@ -12,7 +13,7 @@ export default defineConfig({
     timeout: 120000,
   },
   use: {
-    baseURL: externalURL ?? 'http://127.0.0.1:18092',
+    baseURL: externalURL ?? fixtureURL,
     headless: true,
     launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH },
   },

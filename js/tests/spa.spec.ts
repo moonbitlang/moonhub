@@ -177,7 +177,7 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   await page.evaluate(() => { (window as any).documentIdentity = document; });
   await page.locator('a[href="/alice/demo"]:visible').first().click();
   await expect(page.locator('#main-content')).toContainText('README');
-  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Repository navigation', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
   await page.getByRole('link', { name: 'New issue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'New issue', exact: true })).toBeVisible();
   await expect(page.locator('.CodeMirror')).toHaveCount(1);
@@ -188,7 +188,7 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   let created = 0;
   page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/alice/demo/issues') created++; });
   await page.getByRole('button', { name: 'Create issue', exact: true }).click();
-  await expect(page).toHaveURL(/\/issues\/1$/);
+  await expect(page).toHaveURL(/\/issues\/\d+$/);
   await expect(page.getByRole('heading', { name: /Hydrated issue/ })).toBeVisible();
   await expect(page.locator('.markdown-body strong').first()).toHaveText('SPA description');
   expect(created).toBe(1);
@@ -201,7 +201,7 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   let edits = 0;
   page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/alice/demo/issues/1/edit') edits++; });
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(page).toHaveURL(/\/issues\/1$/);
+  await expect(page).toHaveURL(/\/issues\/\d+$/);
   await expect(page.getByRole('heading', { name: /Edited hydrated issue/ })).toBeVisible();
   await expect(page.locator('.discussion-description strong')).toHaveText('Edited SPA description');
   await expect(page.getByText('Opened by Alice · Assigned to Alice', { exact: true })).toBeVisible();
@@ -211,13 +211,15 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   await expect(page.locator('[name=description]')).toHaveValue('**Edited SPA description**');
   await expect(page.locator('[name=assignee]')).toHaveValue('1');
   await expect(page.locator('[name=edit_version]')).toHaveValue('2');
-  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Repository navigation', exact: true }).getByRole('link', { name: 'Issues', exact: true }).click();
   await page.getByRole('link', { name: 'New issue', exact: true }).click();
   await expect(page.locator('.CodeMirror')).toHaveCount(1);
   await expect(page.locator('.markdown-editor-toolbar')).toHaveCount(1);
   await page.locator('a[href="/alice/demo"]:visible').first().click();
   await expect(page.locator('.CodeMirror')).toHaveCount(0);
-  await page.locator('a').filter({ hasText: 'README.md' }).first().click();
+  await page.locator('.file-table a').filter({ hasText: 'README.md' }).first().click();
+  await expect(page.locator('moonhub-file-view')).toBeAttached();
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
   await expect(page.locator('moonhub-file-view')).toBeVisible();
   await expect(page.locator('moonhub-file-view .moonhub-file-view')).toBeVisible();
 
@@ -450,6 +452,7 @@ test('direct authenticated visits hydrate editors and code views, and anchors re
   await page.goto('/alice/demo/issues/new'); await hydrated(page);
   await expect(page.locator('.CodeMirror')).toHaveCount(1);
   await page.goto('/alice/demo/blob/master/README.md'); await hydrated(page);
+  await page.getByRole('button', { name: 'Code', exact: true }).click();
   await expect(page.locator('moonhub-file-view .moonhub-file-view')).toBeVisible();
   await page.evaluate(() => { (window as any).documentIdentity = document; });
   await page.getByRole('link', { name: 'Skip to content' }).focus();
@@ -533,7 +536,7 @@ test('MR target edits preserve history and work on desktop and mobile without Ja
     await page.locator('select[name=source]').selectOption('feature/breadcrumbs');
     await page.locator('select[name=target]').selectOption('master');
     await page.getByLabel('Title', { exact: true }).fill('Change target browser fixture');
-    await page.getByRole('button', { name: 'Create merge request', exact: true }).click();
+    await page.getByRole('button', { name: 'Create pull request', exact: true }).click();
     await expect(page).toHaveURL(/merge-requests\/\d+$/);
     const detail = page.url();
     await page.locator('.mr-more-actions > summary').click();
