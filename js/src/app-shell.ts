@@ -211,11 +211,14 @@ function installNavigation() {
     event.preventDefault();
     if (url.pathname === currentURL.pathname && url.search === currentURL.search && url.hash) {
       cancelNavigation();
+      const oldURL = location.href;
       positions.set(historyIndex, [scrollX, scrollY]);
       historyIndex = history.state.moonhub + 1;
       history.pushState({ moonhub: historyIndex }, '', url);
       currentURL = url;
       scrollToPage(url);
+      // pushState emits no hashchange; notify views even for a repeated fragment.
+      window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL: url.href }));
       return;
     }
     void navigate(url);
