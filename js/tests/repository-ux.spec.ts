@@ -95,6 +95,100 @@ test('Markdown preview and code preserve exact clipboard contents and line links
   await expect(page.locator('[data-file-preview]')).toBeHidden();
 });
 
+async function expectSourceLines(page: Page, start: number, end = start) {
+  await expect(page.locator('[data-file-code]')).toBeVisible();
+  await expect(page.locator('[data-file-preview]')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Code', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const lines = page.locator('moonhub-file-view [data-line][data-selected-line]');
+  await expect.poll(() => lines.evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('data-line')))))
+    .toEqual(Array.from({ length: end - start + 1 }, (_, i) => start + i));
+  await expect(lines.first()).toBeInViewport();
+  await expect(lines.last()).toBeInViewport();
+}
+
+for (const width of [390, 1440]) {
+  test(`Preview source links reveal, select and scroll code without requests at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await login(page);
+    await page.goto('/alice/demo/blob/preview-line-links/line-links.md');
+    await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+    await expect(page.locator('.moonhub-file-view')).toBeAttached();
+    const url = page.url();
+    const requests: string[] = [];
+    page.on('request', request => {
+      if (request.isNavigationRequest() || request.headers()['accept'] === 'application/vnd.moonhub.page+json') requests.push(request.url());
+    });
+    await page.evaluate(() => {
+      (window as any).uxDocument = document;
+      (window as any).uxHashChanges = [];
+      window.addEventListener('hashchange', event => (window as any).uxHashChanges.push([event.oldURL, event.newURL]));
+    });
+    const changes: string[][] = [];
+    for (const [label, hash, start, end] of [
+      ['Near source', '#L2', 2, 2],
+      ['Distant source', '#L180', 180, 180],
+      ['Source range', '#L180-L183', 180, 183],
+    ] as const) {
+      // Repeat the same fragment after manually returning to Preview.
+      for (let click = 0; click < 2; click++) {
+        await page.getByRole('button', { name: 'Preview', exact: true }).click();
+        await expect(page.locator('[data-file-code]')).toBeHidden();
+        const oldURL = page.url();
+        await page.locator('[data-file-preview]').getByRole('link', { name: label, exact: true }).click();
+        await expect(page).toHaveURL(url + hash);
+        await expectSourceLines(page, start, end);
+        changes.push([oldURL, url + hash]);
+      }
+    }
+    expect(await page.evaluate(() => (window as any).uxHashChanges)).toEqual(changes);
+    expect(await page.evaluate(() => (window as any).uxDocument === document)).toBe(true);
+    expect(requests).toEqual([]);
+  });
+}
+
+test('direct source URLs, native hash history and ordinary anchors retain the document', async ({ page }) => {
+  await login(page);
+  for (const [hash, start, end] of [['#L180', 180, 180], ['#L180-L183', 180, 183], ['#L2', 2, 2]] as const) {
+    await page.goto('/alice/demo/blob/preview-line-links/line-links.md' + hash);
+    await expectSourceLines(page, start, end);
+  }
+  const url = page.url().split('#')[0];
+  const requests: string[] = [];
+  page.on('request', request => {
+    if (request.isNavigationRequest() || request.headers()['accept'] === 'application/vnd.moonhub.page+json') requests.push(request.url());
+  });
+  await page.evaluate(() => {
+    (window as any).uxDocument = document;
+    (window as any).uxHashChanges = [];
+    window.addEventListener('hashchange', event => (window as any).uxHashChanges.push([event.oldURL, event.newURL, event.isTrusted]));
+  });
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('[data-file-preview]').getByRole('link', { name: 'Distant source', exact: true }).click();
+  await expectSourceLines(page, 180);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.goBack();
+  await expect(page).toHaveURL(url + '#L2');
+  await expectSourceLines(page, 2);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.goForward();
+  await expect(page).toHaveURL(url + '#L180');
+  await expectSourceLines(page, 180);
+  expect(await page.evaluate(() => (window as any).uxHashChanges)).toEqual([
+    [url + '#L2', url + '#L180', false],
+    [url + '#L180', url + '#L2', true],
+    [url + '#L2', url + '#L180', true],
+  ]);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('[data-file-preview]').getByRole('link', { name: 'Back to top', exact: true }).click();
+  await expect(page).toHaveURL(url + '#main-content');
+  await expect(page.locator('[data-file-preview]')).toBeVisible();
+  await expect(page.locator('[data-file-code]')).toBeHidden();
+  await expect(page.locator('#main-content')).toBeFocused();
+  await expect(page.locator('#main-content')).toBeInViewport();
+  expect(await page.evaluate(() => (window as any).uxDocument === document)).toBe(true);
+  expect(requests).toEqual([]);
+});
+
 test('pull request creation and review use existing fields, versions and independent references', async ({ page }) => {
   await login(page);
   await page.goto('/alice/demo/merge-requests/new');

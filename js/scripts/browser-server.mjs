@@ -52,6 +52,16 @@ try {
   git(['update-ref', 'refs/heads/moondiff-feature', diffHead]);
   const singleTree = (files) => git(['mktree'], Object.entries(files).map(([name, value]) =>
     `${name === 'metadata.txt' && value.startsWith('after') ? '100755' : '100644'} blob ${git(['hash-object', '-w', '--stdin'], value)}\t${JSON.stringify(name)}\n`).join(''));
+  const lineLinks = [
+    '# Preview source links', '',
+    '[Near source](#L2)', '',
+    '[Distant source](#L180)', '',
+    '[Source range](#L180-L183)', '',
+    '[Back to top](#main-content)', '',
+    ...Array.from({ length: 220 }, (_, i) => `Fixture source line ${i + 11}.`),
+  ].join('\n') + '\n';
+  const lineLinksCommit = git(['commit-tree', singleTree({ 'line-links.md': lineLinks }), '-p', 'master', '-m', 'Preview source line links']);
+  git(['update-ref', 'refs/heads/preview-line-links', lineLinksCommit]);
   const stable = 'fn stable() -> Int { 1 }\n';
   const singleBase = git(['commit-tree', singleTree({
     'deleted.mbt': 'fn removed_file() -> Int { 42 }\n',
