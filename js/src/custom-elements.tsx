@@ -13,7 +13,7 @@ import {
   type CodeViewHandle,
   WorkerPoolContextProvider,
 } from "@pierre/diffs/react";
-import { type CSSProperties, type ReactNode, type RefObject, useMemo, useRef, useState, useEffect, useLayoutEffect } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import DiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?worker&url";
 
@@ -271,6 +271,20 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
   const [wrap, setWrap] = useState(true);
   const [selectedFile, setSelectedFile] = useState(files[0]?.id ?? "");
   const manualMode = useRef(false);
+  const pendingSourceLine = useRef<number | undefined>(undefined);
+  const sourceScrollFrame = useRef<number | undefined>(undefined);
+  const revealSourceLine = useCallback((node: HTMLElement) => {
+    if (pendingSourceLine.current === undefined || sourceScrollFrame.current !== undefined || !node.checkVisibility()) return;
+    sourceScrollFrame.current = requestAnimationFrame(() => {
+      sourceScrollFrame.current = undefined;
+      if (pendingSourceLine.current === undefined || !node.checkVisibility()) return;
+      const line = node.shadowRoot?.querySelector<HTMLElement>(`[data-line="${pendingSourceLine.current}"]`);
+      if (!line) return;
+      pendingSourceLine.current = undefined;
+      // Wait for the viewer's height to reach document layout before scrolling the page.
+      line.scrollIntoView({ block: 'center' });
+    });
+  }, []);
   useEffect(() => { ready?.(); }, [ready]);
   useEffect(() => {
     const media = matchMedia("(max-width: 900px)");
@@ -281,21 +295,32 @@ function MoonhubCodeView({ items, ready, inline }: { items: CodeViewItem<undefin
     ...codeViewOptions, enableLineSelection: Boolean(inline?.form) || files.length === 0,
     enableGutterUtility: Boolean(inline?.form), diffStyle: mode,
     overflow: wrap ? "wrap" as const : "scroll" as const,
-  }), [mode, wrap, inline, items]);
+    onPostRender: files.length === 0 ? revealSourceLine : undefined,
+  }), [mode, wrap, inline, items, revealSourceLine]);
   const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
   useEffect(() => {
     if (files.length) return;
     const selectHash = () => {
+      pendingSourceLine.current = undefined;
       const match = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
       if (!match || !items[0]) return;
       const start = Math.max(1, Number(match[1])), end = Math.max(start, Number(match[2] ?? match[1]));
+      pendingSourceLine.current = start;
       setSelection({ id: items[0].id, range: { start, end } });
       viewerRef.current?.scrollTo({ type: 'range', id: items[0].id, range: { start, end }, align: 'center' });
+      const node = viewerRef.current?.getInstance()?.getRenderedItems()[0]?.element;
+      if (node) revealSourceLine(node);
     };
     const frame = requestAnimationFrame(selectHash);
     window.addEventListener('hashchange', selectHash);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('hashchange', selectHash); };
-  }, [items]);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (sourceScrollFrame.current !== undefined) cancelAnimationFrame(sourceScrollFrame.current);
+      sourceScrollFrame.current = undefined;
+      pendingSourceLine.current = undefined;
+      window.removeEventListener('hashchange', selectHash);
+    };
+  }, [items, revealSourceLine]);
 
   useEffect(() => {
     const thread = inline?.threads.find(thread => thread.id === inline.target);
