@@ -34,6 +34,11 @@ for (const width of [320, 390, 900, 1440]) {
     await expect(page.locator('.readme-preview')).toContainText('README.md');
     await page.keyboard.press('t');
     await expect(page.locator('[data-file-query]')).toBeFocused();
+    const panel = (await page.locator('.file-finder-panel').boundingBox())!;
+    expect(panel.x).toBeGreaterThanOrEqual(20);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(width - 20);
+    expect(panel.y).toBeGreaterThanOrEqual(0);
+    expect(panel.y + panel.height).toBeLessThanOrEqual(1000);
     await page.locator('[data-file-query]').fill('README');
     await expect(page.locator('[data-file-result]:visible')).toHaveCount(1);
     await page.keyboard.press('t');
@@ -57,6 +62,39 @@ for (const width of [320, 390, 900, 1440]) {
     }
   });
 }
+
+test('file finder follows its trigger through resizing and scrolling with a long file list', async ({ page }) => {
+  await login(page);
+  await page.goto('/alice/demo?rev=moondiff-paged-base');
+  await page.keyboard.press('t');
+  const finder = page.locator('[data-file-finder]');
+  const panel = finder.locator('.file-finder-panel');
+  const query = finder.locator('[data-file-query]');
+  await expect(query).toBeFocused();
+  await expect(finder.locator('[data-file-result]')).toHaveCount(107);
+  for (const [width, height] of [[2560, 1000], [1440, 700], [900, 700], [390, 700], [320, 360], [390, 360]]) {
+    await page.setViewportSize({ width, height });
+    const trigger = (await finder.locator('summary').boundingBox())!;
+    const bounds = (await panel.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(20);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 20);
+    expect(bounds.y).toBeGreaterThanOrEqual(6);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(height - 6);
+    expect(bounds.y >= trigger.y + trigger.height || bounds.y + bounds.height <= trigger.y).toBe(true);
+    await query.click();
+    await expect(finder.locator('[data-file-result]').first()).toBeInViewport();
+    expect(await panel.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    await panel.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await expect(finder.locator('[data-file-result]').last()).toBeInViewport();
+    await panel.evaluate(element => { element.scrollTop = 0; });
+  }
+  await page.setViewportSize({ width: 1440, height: 700 });
+  const before = (await panel.boundingBox())!;
+  await page.evaluate(() => window.scrollBy(0, 30));
+  await expect.poll(async () => Math.round((await panel.boundingBox())!.y)).toBe(Math.round(before.y - 30));
+  await page.locator('h1').click();
+  await expect(finder).not.toHaveAttribute('open', '');
+});
 
 test('title search shortcut and URL filters survive history navigation', async ({ page }) => {
   await login(page);
@@ -250,9 +288,13 @@ test('repository code controls and native line anchors work without JavaScript',
   const native = await context.newPage();
   await native.goto(new URL('/alice/demo', page.url()).href);
   await expect(native.locator('#app-sidebar, [data-sidebar-open], [data-sidebar-collapse]')).toHaveCount(0);
+  await native.locator('[data-file-finder] > summary').click();
   for (const width of [320, 390, 900, 1440]) {
     await native.setViewportSize({ width, height: 1000 });
     await expect(native.locator('.repository-releases')).toBeVisible();
+    const panel = (await native.locator('.file-finder-panel').boundingBox())!;
+    expect(panel.x).toBeGreaterThanOrEqual(20);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(width - 20);
     expect(await native.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (width <= 900) {
       const rail = (await native.locator('.repository-releases').boundingBox())!;
@@ -260,6 +302,7 @@ test('repository code controls and native line anchors work without JavaScript',
       expect(rail.y).toBeGreaterThan(readme.y + readme.height);
     }
   }
+  await native.locator('[data-file-finder] > summary').click();
   await native.locator('.commit-history').click();
   await expect(native.locator('main')).toContainText('Commits');
   await native.goBack();

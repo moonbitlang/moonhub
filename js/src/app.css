@@ -949,7 +949,23 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 .branch-picker-panel { width: min(320px, calc(100vw - 40px)); }
 .branch-picker-panel a, .file-finder-results a, .directory-navigation a { display: block; padding: 8px; border-radius: 4px; color: var(--color-text); overflow-wrap: anywhere; }
 .branch-picker-panel a:hover, .file-finder-results a:hover, .directory-navigation a:hover { background: var(--color-surface-subtle); text-decoration: none; }
-.file-finder-panel { left: min(0px, calc(180px - 35vw)); }
+/* Keep a viewport-contained fallback when anchor positioning is unavailable. */
+.file-finder-panel { position: fixed; z-index: 45; inset: 0; margin: auto; height: fit-content; }
+@supports (position-area: block-end) and (justify-self: anchor-center) {
+  .file-finder > summary { anchor-name: --file-finder-trigger; }
+  .file-finder-panel {
+    position-anchor: --file-finder-trigger;
+    inset: auto;
+    margin: 6px 20px;
+    position-area: block-end span-all;
+    justify-self: anchor-center;
+    position-try-fallbacks: flip-block;
+    position-try-order: most-block-size;
+    /* Try the other side before resizing reduces the panel to just its input. */
+    min-height: min(160px, 30dvh);
+    max-height: min(60dvh, calc(100% - 12px));
+  }
+}
 .file-finder-results { margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: 12px; }
 .commit-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px 12px; align-items: center; padding: 12px 16px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-subtle); }
 .commit-summary .commit-subject { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--color-text); }
