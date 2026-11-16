@@ -87,7 +87,7 @@ html[data-ui-enhanced] [hidden][data-filter-control], html[data-ui-enhanced] [hi
 .breadcrumbs [aria-current] { color: var(--color-text); font-weight: 600; }
 .breadcrumbs .breadcrumb-separator { width: 14px; height: 14px; flex: 0 0 14px; color: var(--color-subtle); }
 .site-header .breadcrumbs ol { flex-wrap: nowrap; }
-.site-header .breadcrumbs a { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.site-header .breadcrumbs a { display: block; align-content: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .header-sign-in { flex-shrink: 0; margin-left: auto; white-space: nowrap; }
 .account-menu { position: relative; flex-shrink: 0; margin-left: auto; }
 .account-menu > summary { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 3px 5px; border-radius: 6px; cursor: pointer; list-style: none; }
@@ -1049,6 +1049,8 @@ body:has(.repository-shell) .mr-branch-fields { display: grid; grid-template-col
   .site-header__inner > .brand-area, .site-header__inner > .brand { grid-column: 2; grid-row: 1; }
   .site-header__inner > .header-inbox { grid-column: 3; grid-row: 1; }
   .site-header__inner > .account-menu, .site-header__inner > .header-sign-in { grid-column: 4; grid-row: 1; }
+  html[data-ui-enhanced] .site-header__inner:has([data-sidebar-open]) > .global-navigation { display: none; }
+  html[data-ui-enhanced] .site-header__inner:has([data-sidebar-open]) > .brand-area { grid-column: 1 / 3; gap: 8px; }
 }
 body:has(.repository-shell) .repo-header { border-bottom: 0; padding-bottom: 0; }
 .code-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

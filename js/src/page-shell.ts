@@ -6,6 +6,7 @@ export function mountShell(signal: AbortSignal) {
   const sidebar = document.querySelector<HTMLElement>("#app-sidebar");
   const main = document.querySelector<HTMLElement>("#main-content");
   const header = document.querySelector<HTMLElement>(".site-header");
+  const globalMenu = document.querySelector<HTMLDetailsElement>('.global-navigation');
   const openButton = document.querySelector<HTMLButtonElement>("[data-sidebar-open]");
   const collapseButton = document.querySelector<HTMLButtonElement>("[data-sidebar-collapse]");
   const scrim = document.querySelector<HTMLButtonElement>(".sidebar-scrim");
@@ -63,6 +64,10 @@ export function mountShell(signal: AbortSignal) {
     openButton?.addEventListener("click", () => setDrawer(!root.hasAttribute("data-navigation-open")), { signal });
     document.querySelectorAll("[data-sidebar-close]").forEach(button => button.addEventListener("click", () => setDrawer(false), { signal }));
     mobile.addEventListener("change", () => {
+      if (mobile.matches && globalMenu?.open) {
+        globalMenu.open = false;
+        openButton?.focus();
+      }
       setDrawer(false, false);
       sidebar.inert = mobile.matches;
     }, { signal });
@@ -91,7 +96,6 @@ export function mountShell(signal: AbortSignal) {
     }
   }, { signal });
   const menus = [...document.querySelectorAll<HTMLDetailsElement>("[data-dismissable]")];
-  const globalMenu = document.querySelector<HTMLDetailsElement>('.global-navigation');
   globalMenu?.addEventListener('toggle', () => {
     if (main) main.inert = globalMenu.open;
     if (sidebar) sidebar.inert = globalMenu.open || mobile.matches && !root.hasAttribute('data-navigation-open');
