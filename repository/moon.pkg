@@ -7,6 +7,7 @@ import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
   "moonbitlang/x/encoding/percent",
