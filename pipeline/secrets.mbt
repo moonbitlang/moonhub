@@ -38,14 +38,14 @@ pub async fn save_secret(
   pool : @database.Database,
   root : String,
   actor : @domain.CurrentUser,
-  repo : @domain.RepoId,
+  scope : @repository.RepositoryScope,
   name : String,
   value : String?,
   branch : String,
   workflow_path : String,
   version : Int64,
 ) -> Unit {
-  let scope = require_run_author(pool, actor, repo)
+  ignore(require_run_author(pool, actor, scope.repo))
   guard @workflow.valid_secret_name(name) && version >= 0L else {
     raise @domain.BadRequest(
       message="Use a secret name containing letters, numbers and underscores, without a reserved prefix or leading number.",
@@ -62,8 +62,8 @@ pub async fn save_secret(
     }
   }
   validate_workflow_path(workflow_path)
-  @repository.with_repository_write(pool, root, actor, scope, (scope, dir) => {
-    ignore(require_run_author(pool, actor, repo))
+  @repository.with_repository_write(pool, root, actor, scope, (_, dir) => {
+    ignore(require_run_author(pool, actor, scope.repo))
     ignore(@gitops.branch_sha(dir, branch)) catch {
       @gitops.Failure(_) =>
         raise @domain.BadRequest(
@@ -72,7 +72,7 @@ pub async fn save_secret(
       err => raise err
     }
     // Git validation yields; recheck access before persisting any credential.
-    ignore(require_run_author(pool, actor, repo))
+    ignore(require_run_author(pool, actor, scope.repo))
     pool.with_client(client => {
       client.with_transaction(
         tx => {
