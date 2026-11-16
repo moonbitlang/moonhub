@@ -69,10 +69,16 @@ async test "ambiguous prepared refs block new writes instead of inventing a succ
       "\{"b".repeat(40)} \{"c".repeat(40)} refs/heads/master",
     )
     try
-      with_repository_write(pool, root, actor, repo, (_, _) => {
-        fail("entered write while recovery was ambiguous")
-        ()
-      })
+      with_repository_write(
+        pool,
+        root,
+        actor,
+        repository_scope(pool, actor, repo),
+        (_, _) => {
+          fail("entered write while recovery was ambiguous")
+          ()
+        },
+      )
     catch {
       @domain.BadRequest(message~) =>
         assert_true(message.contains("unconfirmed push event"))

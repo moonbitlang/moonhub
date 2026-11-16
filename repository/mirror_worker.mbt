@@ -134,6 +134,7 @@ async fn transfer_mirror(
   {
     let lock = repository_write_lock(root, job.scope.repo)
     defer lock.close()
+    require_current_scope(pool, job.scope)
     let dir = resolve_repository_dir(root, job.scope.repo)
     ignore(require_mirror_manager(pool, job.actor, job.scope.repo))
     recover_ref_events_locked(pool, job.scope, dir)
@@ -322,6 +323,7 @@ async fn recover_mirror_repositories(
     try {
       let lock = repository_write_lock(root, scope.repo)
       defer lock.close()
+      require_current_scope(pool, scope)
       let dir = resolve_repository_dir(root, scope.repo)
       recover_mirror_refs_locked(pool, scope, dir)
     } catch {

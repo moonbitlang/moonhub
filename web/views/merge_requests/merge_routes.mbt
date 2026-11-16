@@ -133,9 +133,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
   })
   ctx.post("/:owner/:repo/merge-requests", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
-    let form = @web_context.protected_form(req, "merge-requests")
     let repo = @web_context.repo_param(req)
-    let created = @repository.with_repository_write(pool, root, actor, repo, (
+    let scope = @repository.repository_scope(pool, actor, repo)
+    let form = @web_context.protected_form(req, "merge-requests")
+    let created = @repository.with_repository_write(pool, root, actor, scope, (
       scope,
       git_dir,
     ) => {
@@ -208,6 +209,14 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       try {
         let lock = @repository.repository_write_lock(root, scope.repo)
         defer lock.close()
+        @repository.authorize_repository(
+          pool,
+          actor,
+          scope.repo,
+          @repository.Read,
+        )
+        @repository.require_current_scope(pool, scope)
+        let git_dir = @repository.resolve_repository_dir(root, scope.repo)
         mr = @collaboration.refresh_merge_request(
           pool,
           scope,
@@ -557,6 +566,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
   ctx.post("/:owner/:repo/merge-requests/:number/:action", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
+    let scope = @repository.repository_scope(pool, actor, repo)
     let number = @web_context.positive_resource_number(
       @web_context.required_param(req, "number", "merge request"),
     )
@@ -570,7 +580,6 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let mut inline_error : String? = None
     try {
       let prepared = if action == "inline-comment" {
-        let scope = @repository.repository_scope(pool, actor, repo)
         let git_dir = @repository.resolve_repository_dir(root, repo)
         let mr = @collaboration.require_merge_request(pool, scope, number)
         Some(
@@ -601,7 +610,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       } else {
         None
       }
-      @repository.with_repository_write(pool, root, actor, repo, (
+      @repository.with_repository_write(pool, root, actor, scope, (
         scope,
         git_dir,
       ) => {
@@ -881,13 +890,14 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
   ctx.post("/:owner/:repo/settings/branches", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
+    let scope = @repository.repository_scope(pool, actor, repo)
     let form = @web_context.protected_form(req, "branch-rules")
     let approvals = match form.get("approvals").unwrap_or("1") {
       "0" => 0L
       "1" => 1L
       _ => raise @domain.BadRequest(message="invalid approval requirement")
     }
-    @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
+    @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
       @collaboration.save_branch_rule(
         pool,
         scope,

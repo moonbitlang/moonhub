@@ -775,7 +775,7 @@ async fn invoke_tool(
       let description = markdown_arg(
         pool, root, scope, actor, args, "description", "",
       )
-      @repository.with_repository_write(pool, root, actor, repo, (scope, dir) => {
+      @repository.with_repository_write(pool, root, actor, scope, (scope, dir) => {
         @user_api.mr_json(
           @collaboration.create_merge_request(
             pool,
@@ -844,7 +844,7 @@ async fn invoke_tool(
       } else {
         None
       }
-      @repository.with_repository_write(pool, root, actor, repo, (scope, dir) => {
+      @repository.with_repository_write(pool, root, actor, scope, (scope, dir) => {
         let mr = @collaboration.require_merge_request(pool, scope, id)
         let mr = if [
             "moonhub_approve_merge_checks", "moonhub_merge_merge_request",

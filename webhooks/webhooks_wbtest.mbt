@@ -344,7 +344,13 @@ async test "push events include contributors tags deletes and crash recovery ind
         "update-ref", "refs/tags/recovered", sha,
       ]),
     )
-    @repository.with_repository_write(pool, root, actor, repo, (_, _) => ())
+    @repository.with_repository_write(
+      pool,
+      root,
+      actor,
+      @repository.repository_scope(pool, actor, repo),
+      (_, _) => (),
+    )
     assert_eq(deliveries(pool, actor, repo, id).length(), 4)
     @repository.record_received_transaction(
       pool,
