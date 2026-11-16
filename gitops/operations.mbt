@@ -145,7 +145,7 @@ pub async fn branch_sha(git_dir : String, branch : String) -> String {
 }
 
 ///|
-pub async fn file_lock(path : String) -> @fs.File {
+pub async fn file_lock(path : String, mode~ : @fs.Lock = Exclusive) -> @fs.File {
   let kind = Some(@fs.kind(path, follow_symlink=false)) catch {
     @os_error.OSError(_) as err if err.is_ENOENT() => None
     err => raise err
@@ -165,7 +165,7 @@ pub async fn file_lock(path : String) -> @fs.File {
   }
   @async.with_timeout(
     15000,
-    () => lock.lock(Exclusive),
+    () => lock.lock(mode),
     error=Failure(
       message="repository is busy; retry after the current push or merge",
     ),
