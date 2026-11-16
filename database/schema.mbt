@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 40L
+pub let database_schema_version : Int64 = 41L
 
 ///|
 let database_initialization_state : String =
@@ -48,7 +48,7 @@ fn database_needs_initialization(state : DbRow) -> Bool raise {
 fn initialize_database_schema(
   client : DbClient,
   baseline : String?,
-  storage_migration : String,
+  migrations : Array[(Int64, String)],
 ) -> Unit raise {
   client.with_transaction(
     tx => {
@@ -65,9 +65,20 @@ fn initialize_database_schema(
           }
           tx.driver.exec_script(sql)
         }
-        // The schema 38 baseline and all later migrations commit together.
-        tx.driver.exec_script(storage_migration)
-        ignore(tx.execute("PRAGMA user_version = 40"))
+        // Apply only missing versions; migration 040 contains ALTER TABLE.
+        // The baseline, migrations and version commit atomically.
+        for target in [39L, 40L, 41L] {
+          if version < target {
+            guard migrations.iter().find_first(item => item.0 == target)
+              is Some((_, sql)) else {
+              raise @domain.BadRequest(
+                message="database state changed during initialization; retry initialization",
+              )
+            }
+            tx.driver.exec_script(sql)
+          }
+        }
+        ignore(tx.execute("PRAGMA user_version = \{database_schema_version}"))
       }
     },
     immediate=true,
@@ -89,14 +100,19 @@ pub async fn initialize_db(pool : Database) -> Unit {
     } else {
       None
     }
-    let storage_migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()
-    let release_migration = @fs.read_file("db/migrations/040_releases.sql").text()
+    let migrations : Array[(Int64, String)] = []
+    for
+      (target, path) in [
+        (39L, "db/migrations/039_blob_storage.sql"),
+        (40L, "db/migrations/040_releases.sql"),
+        (41L, "db/migrations/041_repository_cleanup.sql"),
+      ] {
+      if version < target {
+        migrations.push((target, @fs.read_file(path).text()))
+      }
+    }
     pool.with_client(client => {
-      initialize_database_schema(
-        client,
-        baseline,
-        storage_migration + "\n" + release_migration,
-      )
+      initialize_database_schema(client, baseline, migrations)
     })
   }
 }
