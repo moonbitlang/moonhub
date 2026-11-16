@@ -210,6 +210,52 @@ async test "control paths reject symlinks directories and dangling lock symlinks
 }
 
 ///|
+async test "import publication rejects a replaced staging token without marking the new claim failed" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let team = @identity.get_team_by_name_key(pool, "alice").unwrap()
+    let repo = enqueue_repository(
+      pool, root, actor, team, "staged", "private", "",
+    )
+    let lock = repository_write_lock(root, repo)
+    defer lock.close()
+    @async.with_task_group(group => {
+      let worker = group.spawn(() => run_next_repository_job(pool, root, None))
+      let job = @async.with_timeout(10000, () => {
+        for ;; {
+          let job = require_repository_job(pool, team, repo.name)
+          if job.status == "running" &&
+            !job.stage_token.is_empty() &&
+            @fs.exists(
+              "\{root}/.imports/\{job.id}-\{job.stage_token}.git/moonhub-provisioned",
+            ) {
+            break job
+          }
+          @async.pause()
+        }
+      })
+      let replacement = "f".repeat(32)
+      assert_true(job.stage_token != replacement)
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "UPDATE repository_job SET stage_token=? WHERE repository_id=?",
+            params=[replacement, job.id],
+          ),
+        )
+      })
+      lock.unlock()
+      assert_true(worker.wait())
+      let current = require_repository_job(pool, team, repo.name)
+      assert_eq(current.stage_token, replacement)
+      assert_eq(current.status, "running")
+      assert_false(@fs.exists(repo.git_dir(root)))
+      assert_false(can_access_repository(pool, actor, repo, Read))
+    })
+  })
+}
+
+///|
 async test "scope validation distinguishes absence from changed team or normalized name" {
   @test_support.with_repository_test_data((pool, _) => {
     let actor = @identity.active_user_by_name(pool, "alice")
