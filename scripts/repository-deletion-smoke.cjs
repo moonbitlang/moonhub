@@ -119,35 +119,105 @@ async function main() {
 
   // Hold the current control inode while SSH captures its identity and queues.
   // The fixture publishes a replacement inside that same critical section.
-  const holder = child('python3', ['-u', '-c',
-    'import fcntl,sys\nf=open(sys.argv[1],"r+")\nfcntl.flock(f,fcntl.LOCK_EX)\nprint("held",flush=True)\nsys.stdin.read(1)\n', lockPath]);
-  await until(() => holder.output.includes('held'), 'control lock holder');
-  fs.rmSync(ready);
-  const stale = child(binary, ['ssh-serve', credential], { SSH_ORIGINAL_COMMAND: "git-receive-pack 'root/demo.git'", MOONHUB_GIT: git });
-  stale.stdin.end();
-  await until(() => opened(stale.pid, lockPath), 'old SSH request did not queue');
+  for (const service of ['git-receive-pack', 'git-upload-pack']) {
+    const holder = child('python3', ['-u', '-c',
+      'import fcntl,sys\nf=open(sys.argv[1],"r+")\nfcntl.flock(f,fcntl.LOCK_EX)\nprint("held",flush=True)\nsys.stdin.read(1)\n', lockPath]);
+    await until(() => holder.output.includes('held'), 'control lock holder');
+    fs.rmSync(ready, { force: true });
+    const stale = child(binary, ['ssh-serve', credential], { SSH_ORIGINAL_COMMAND: `${service} 'root/demo.git'`, MOONHUB_GIT: git });
+    stale.stdin.end();
+    await until(() => opened(stale.pid, lockPath), 'old SSH request did not queue');
+    db(c => {
+      c.exec('BEGIN IMMEDIATE');
+      c.prepare('DELETE FROM repository WHERE id=?').run(repoId());
+      c.exec("INSERT INTO repository(team_id,name) SELECT id,'demo' FROM team WHERE name_key='root'; COMMIT");
+    });
+    fs.rmSync(gitDir, { recursive: true });
+    run('git', ['init', '--bare', gitDir]);
+    const bare = args => run('git', ['--git-dir=' + gitDir, ...args]);
+    const blob = run('git', ['--git-dir=' + gitDir, 'hash-object', '-w', '--stdin'], { input: 'replacement\n' });
+    const tree = run('git', ['--git-dir=' + gitDir, 'mktree'], { input: `100644 blob ${blob}\tkeep\n` });
+    const commit = bare(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit-tree', tree, '-m', 'Replacement']);
+    bare(['update-ref', 'refs/heads/main', commit]);
+    fs.writeFileSync(path.join(gitDir, 'keep'), 'replacement');
+    holder.stdin.end('x');
+    assert.equal(await holder.done, 0, holder.output);
+    await until(() => stale.exitCode !== null || fs.existsSync(ready), 'stale SSH request did not finish');
+    assert.equal(fs.existsSync(ready), false, 'stale SSH request started Git');
+    assert.notEqual(await stale.done, 0, `old SSH ${service} entered a rebuilt repository`);
+    assert.match(stale.output, /repository has changed/);
+    assert.equal(bare(['rev-parse', 'refs/heads/main']), commit);
+    assert.equal(fs.readFileSync(path.join(gitDir, 'keep'), 'utf8'), 'replacement');
+    assert.equal(fs.statSync(lockPath).ino, inode);
+  }
+
+  // Ordinary users may read the public original, but cannot read the private
+  // replacement. Pause after final authorization and before Git opens the path.
   db(c => {
-    c.exec('BEGIN IMMEDIATE');
-    c.prepare('DELETE FROM repository WHERE id=?').run(repoId());
-    c.exec("INSERT INTO repository(team_id,name) SELECT id,'demo' FROM team WHERE name_key='root'; COMMIT");
+    c.exec(`INSERT INTO "user"(name_key,display_name,password_hash,is_site_admin) VALUES('reader','Reader','fixture',0)`);
+    c.prepare("UPDATE repository SET visibility='public' WHERE id=?").run(repoId());
   });
-  fs.rmSync(gitDir, { recursive: true });
-  run('git', ['init', '--bare', gitDir]);
-  const bare = args => run('git', ['--git-dir=' + gitDir, ...args]);
-  const blob = run('git', ['--git-dir=' + gitDir, 'hash-object', '-w', '--stdin'], { input: 'replacement\n' });
-  const tree = run('git', ['--git-dir=' + gitDir, 'mktree'], { input: `100644 blob ${blob}\tkeep\n` });
-  const commit = bare(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit-tree', tree, '-m', 'Replacement']);
-  bare(['update-ref', 'refs/heads/main', commit]);
-  fs.writeFileSync(path.join(gitDir, 'keep'), 'replacement');
-  holder.stdin.end('x');
-  assert.equal(await holder.done, 0, holder.output);
-  assert.notEqual(await stale.done, 0, 'old SSH writer entered a rebuilt repository');
-  assert.match(stale.output, /repository has changed/);
-  assert.equal(fs.existsSync(ready), false, 'stale SSH request started Git');
-  assert.equal(bare(['rev-parse', 'refs/heads/main']), commit);
-  assert.equal(fs.readFileSync(path.join(gitDir, 'keep'), 'utf8'), 'replacement');
-  assert.equal(fs.statSync(lockPath).ino, inode);
-  console.log('REPOSITORY_DELETION_SMOKE_OK: Web/SSH exclusion, stable inode, cleanup, stale SSH rejection');
+  run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', path.join(temp, 'reader-key')]);
+  const readerCredential = run(binary, ['ssh-key-add', 'reader'], { input: fs.readFileSync(path.join(temp, 'reader-key.pub')) }).split('\t')[0];
+  const readId = repoId();
+  const publicCommit = run('git', ['--git-dir=' + gitDir, 'rev-parse', 'refs/heads/main']);
+  run('git', ['--git-dir=' + gitDir, 'update-ref', 'refs/heads/public-original', publicCommit]);
+  const publicRefs = run('git', ['--git-dir=' + gitDir, 'show-ref']).split('\n').sort();
+  const readers = [];
+  for (let index = 0; index < 2; index++) {
+    const readGate = path.join(temp, `read-gate-${index}`);
+    const readReady = path.join(temp, `read-ready-${index}`);
+    const readGit = path.join(temp, `read-git-${index}`);
+    run('mkfifo', [readGate]);
+    fs.writeFileSync(readGit, `#!/bin/sh\nprintf ready > ${quote(readReady)}\nread -r release < ${quote(readGate)}\nexec /usr/bin/git "$@"\n`, { mode: 0o700 });
+    const process = child(binary, ['ssh-serve', readerCredential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'", MOONHUB_GIT: readGit });
+    process.stdin.end('0000');
+    await until(() => fs.existsSync(readReady), 'parallel SSH read did not enter Git');
+    readers.push({ process, readGate });
+  }
+  const readForm = await request(route);
+  assert.equal(readForm.status, 200);
+  const readCsrf = readForm.body.match(/name="csrf_token" value="([^"]+)"/)[1];
+  let readDeletionCompleted = false;
+  const readDeletion = request(route, { csrf_token: readCsrf, repository_id: String(readId), confirmation: 'root/demo' })
+    .then(result => { readDeletionCompleted = true; return result; });
+  await until(() => opened(web.pid, lockPath), 'deletion did not queue behind shared SSH reads');
+  assert.equal(readDeletionCompleted, false);
+  assert.equal(repoId(), readId);
+  for (const [index, { process, readGate }] of readers.entries()) {
+    fs.writeFileSync(readGate, 'release\n');
+    assert.equal(await process.done, 0, process.output);
+    assert.match(process.output, /refs\/heads\/public-original/);
+    assert.match(process.output, new RegExp(publicCommit));
+    const advertised = [...process.output.matchAll(/([0-9a-f]{40}) (refs\/heads\/[^\0\n]+)/g)]
+      .map(match => `${match[1]} ${match[2]}`).sort();
+    assert.deepEqual(advertised, publicRefs, 'old read advertised refs outside the original repository');
+    if (index === 0) {
+      assert.equal(readDeletionCompleted, false, 'deletion passed a remaining shared reader');
+      assert.equal(repoId(), readId);
+    }
+  }
+  assert.equal((await readDeletion).status, 303);
+  await until(() => db(c => c.prepare('SELECT count(*) n FROM repository_file_garbage').get().n) === 0, 'read cleanup journal was not drained');
+  assert.equal(fs.existsSync(gitDir), false);
+  run(binary, ['repo-create', 'root/demo']);
+  assert.notEqual(repoId(), readId);
+  assert.equal(db(c => c.prepare('SELECT visibility FROM repository WHERE id=?').get(repoId()).visibility), 'private');
+  const replacementBlob = run('git', ['--git-dir=' + gitDir, 'hash-object', '-w', '--stdin'], { input: 'private replacement\n' });
+  const replacementTree = run('git', ['--git-dir=' + gitDir, 'mktree'], { input: `100644 blob ${replacementBlob}\tprivate\n` });
+  const replacementCommit = run('git', ['--git-dir=' + gitDir, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit-tree', replacementTree, '-m', 'Private replacement']);
+  run('git', ['--git-dir=' + gitDir, 'update-ref', 'refs/heads/private-replacement', replacementCommit]);
+  for (const { process } of readers) {
+    assert.doesNotMatch(process.output, /refs\/heads\/private-replacement/);
+    assert.equal(process.output.includes(replacementCommit), false);
+  }
+  const denied = child(binary, ['ssh-serve', readerCredential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'" });
+  denied.stdin.end('0000');
+  assert.notEqual(await denied.done, 0, 'ordinary reader entered private replacement');
+  assert.doesNotMatch(denied.output, /refs\/heads\//);
+  assert.equal(denied.output.includes(replacementCommit), false);
+  assert.equal(fs.statSync(lockPath).ino, inode, 'read lifecycle replaced the control inode');
+  console.log('REPOSITORY_DELETION_SMOKE_OK: shared SSH reads, Web/SSH exclusion, stable inode, cleanup, stale reads and writes, private ref isolation');
 }
 main().catch(error => { console.error(error); for (const process of children) console.error(process.output); process.exitCode = 1; }).finally(async () => {
   for (const process of children) { try { global.process.kill(-process.pid, 'SIGTERM'); } catch {} }

@@ -201,18 +201,16 @@ pub async fn serve_git_ssh(
     request.repo,
     request.operation,
   )
-  let write_lock = if request.operation == @repository.Write {
-    Some(@repository.repository_write_lock(root, scope.repo))
+  let lock = if request.operation == @repository.Write {
+    @repository.repository_write_lock(root, scope.repo)
   } else {
-    None
+    @repository.repository_read_lock(root, scope.repo)
   }
-  defer (if write_lock is Some(lock) { lock.close() })
+  defer lock.close()
   ignore(
     authorize_git_operation(pool, credential, request.repo, request.operation),
   )
-  if request.operation == @repository.Write {
-    @repository.require_current_scope(pool, scope)
-  }
+  @repository.require_current_scope(pool, scope)
   let git_dir = @repository.resolve_repository_dir(root, scope.repo)
   if request.operation == @repository.Write {
     @repository.recover_ref_events_locked(pool, scope, git_dir)
@@ -256,9 +254,7 @@ pub async fn serve_git_ssh(
   ignore(
     authorize_git_operation(pool, credential, request.repo, request.operation),
   )
-  if request.operation == @repository.Write {
-    @repository.require_current_scope(pool, scope)
-  }
+  @repository.require_current_scope(pool, scope)
   pool.with_client(client => {
     let (table, key_id) = match credential {
       UserKey(id) => ("ssh_key", id)

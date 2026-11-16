@@ -194,20 +194,24 @@ destination before enabling sync. Mirror transport
 settings are independent of SSH import configuration; transfer-only credential
 files are generated and cleaned by the worker. See [push mirrors](mirrors.md).
 
-Repository writes, creation, publication and Git cleanup share a permanent
-control file at `<root>/.locks/repositories/<sha256>.lock`, where the digest is
-SHA256 of the UTF-8 normalized `owner/repository` name. Mirror operations use
-`<root>/.locks/mirrors/<id>.lock`. Control directories are created with mode
+SSH reads, repository writes, creation, publication and Git cleanup share a
+permanent control file at `<root>/.locks/repositories/<sha256>.lock`, where the
+digest is SHA256 of the UTF-8 normalized `owner/repository` name. Mirror
+operations use `<root>/.locks/mirrors/<id>.lock`. Control directories use mode
 `0700` and files with `0600`; symlinks and unexpected file types are rejected.
 Keep these files for the lifetime of the storage root, including after deleting
 or rebuilding a repository. Removing a control file can split queued writers
-between different inodes. Lock acquisition retains the 15-second timeout.
+between different inodes. SSH reads hold shared locks; pushes, deletion, cleanup
+and other mutations hold exclusive locks. Reads may run in parallel, while
+mutations wait for every reader to finish. Lock acquisition retains the
+15-second timeout.
 
 Requests capture the repository ID, team ID and name before asynchronous work.
 After acquiring the control lock they recheck access and that exact identity,
-then resolve the Git path. Existing reads retain their current in-flight
-semantics. Creation and import publication use the same name lock; imports do
-the transfer in private staging, then verify the running job and staging token
+then resolve the Git path. SSH holds its lock through final authorization, the
+Git subprocess and exit cleanup, releasing it on errors and cancellation.
+Creation and import publication use the same name lock; imports transfer data
+in private staging, then verify the running job and staging token
 before publishing. Deletion reserves SQLite with `BEGIN IMMEDIATE`, rechecks
 identity, access and busy resources, and atomically journals files with the
 cascading database deletion. Cleanup takes the resource lock before checking
@@ -237,8 +241,9 @@ initialization, not used as a global service locator inside business code.
 
 The Linux self-check runs `node scripts/repository-deletion-smoke.cjs` after
 the native build. It uses separate Web and SSH processes, pipe/FD barriers and
-a disposable SQLite/Git fixture to verify cross-process exclusion and rejection
-of a stale SSH writer after a same-name rebuild. Python 3 supplies the fixture's
+a disposable SQLite/Git fixture to verify parallel SSH reads, cross-process
+exclusion, private replacement ref isolation and rejection of stale SSH readers
+and writers after a same-name rebuild. Python 3 supplies the fixture's
 control-lock holder; no external SSH server or service is required.
 
 Each production package owns its tests. Run the entire suite or a single
