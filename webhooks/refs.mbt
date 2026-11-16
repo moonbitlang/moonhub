@@ -20,9 +20,10 @@ async fn recover_refs(
     // Advance even when this repository needs operator intervention.
     cursor = scope.id
     try {
-      let dir = @repository.resolve_repository_dir(root, scope.repo)
-      let lock = @gitops.repository_write_lock(dir)
+      let lock = @repository.repository_write_lock(root, scope.repo)
       defer lock.close()
+      @repository.require_current_scope(pool, scope)
+      let dir = @repository.resolve_repository_dir(root, scope.repo)
       @repository.recover_webhook_refs_locked(pool, scope, dir)
     } catch {
       _ =>

@@ -14,6 +14,12 @@ pub async fn create_managed_repository(
       message="repository owner must be an existing personal or organization team",
     )
   }
+  let lock = repository_write_lock(root, repo)
+  defer lock.close()
+  guard @identity.get_team_by_name_key(pool, repo.owner).map(t => t.id) ==
+    Some(team.id) else {
+    raise @domain.NotFound(message="repository team no longer matches")
+  }
   let exists = pool.with_client(client => {
     client.query_opt(
       "SELECT id FROM repository WHERE team_id = ? AND name = ?",
@@ -23,6 +29,7 @@ pub async fn create_managed_repository(
   guard exists is None else {
     raise @domain.BadRequest(message="repository is already registered")
   }
+  pool.with_client(client => require_repository_name_available(client, repo))
   let root = @domain.trim_trailing_slash(@fs.realpath(root))
   let git_dir = repo.git_dir(root)
   if import_existing {

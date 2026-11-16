@@ -266,9 +266,9 @@ async fn create_run_event(
   jobs~ : Array[String] = [],
   scheduled_minute~ : Int64 = -1L,
 ) -> Run {
-  ignore(require_run_author(pool, actor, repo))
+  let scope = require_run_author(pool, actor, repo)
   validate_workflow_path(workflow_path)
-  @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
+  @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
     ignore(require_run_author(pool, actor, repo))
     if scheduled_minute >= 0L {
       let previous = pool.with_client(c => {
@@ -428,13 +428,14 @@ pub async fn rerun_run(
   repo : @domain.RepoId,
   number : Int64,
 ) -> Run {
+  let scope = require_run_author(pool, actor, repo)
   let previous = get_run(pool, actor, repo, number)
   guard previous.state is Completed else {
     raise @domain.BadRequest(
       message="only completed pipeline runs can be rerun",
     )
   }
-  @repository.with_repository_write(pool, root, actor, repo, (scope, git_dir) => {
+  @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
     ignore(require_run_author(pool, actor, repo))
     let merge_check_id : Int64 = pool.with_client(client => {
       client

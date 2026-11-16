@@ -482,30 +482,36 @@ async test "updates arriving during a mirror transfer stay queued and source wri
       })
       let sha = @gitops.branch_sha(repo.git_dir(root), "master")
       // Acquiring this lock while SSH is stalled proves the network does not hold it.
-      with_repository_write(pool, root, actor, repo, (_, dir) => {
-        let line = "\{"0".repeat(40)} \{sha} refs/heads/during-transfer"
-        record_received_transaction(
-          pool,
-          actor,
-          repo,
-          "d".repeat(32),
-          "prepared",
-          line,
-        )
-        ignore(
-          @gitops.merge_git(dir, [
-            "update-ref", "refs/heads/during-transfer", sha,
-          ]),
-        )
-        record_received_transaction(
-          pool,
-          actor,
-          repo,
-          "d".repeat(32),
-          "committed",
-          line,
-        )
-      })
+      with_repository_write(
+        pool,
+        root,
+        actor,
+        repository_scope(pool, actor, repo),
+        (_, dir) => {
+          let line = "\{"0".repeat(40)} \{sha} refs/heads/during-transfer"
+          record_received_transaction(
+            pool,
+            actor,
+            repo,
+            "d".repeat(32),
+            "prepared",
+            line,
+          )
+          ignore(
+            @gitops.merge_git(dir, [
+              "update-ref", "refs/heads/during-transfer", sha,
+            ]),
+          )
+          record_received_transaction(
+            pool,
+            actor,
+            repo,
+            "d".repeat(32),
+            "committed",
+            line,
+          )
+        },
+      )
       @fs.write_file(release, "")
       assert_true(transfer.wait())
     })

@@ -18,6 +18,7 @@ pub async fn serve(config : Config) -> Unit {
     let pool = @database.new_db_pool(@database.db_config_from_env(), group)
     group.add_defer(() => pool.close())
     @database.initialize_db(pool)
+    @repository.start_repository_cleanup_worker(pool, config.root, group)
     @attachments.start_cleanup_worker(pool, config.root, group)
     @identity.ensure_root_invitation(pool, config.root_user)
     @mail.start_mail_worker(pool, group)

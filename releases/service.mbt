@@ -301,7 +301,7 @@ pub async fn Service::create(
     self.pool,
     self.root,
     actor,
-    access.repo,
+    @repository.repository_scope(self.pool, access.actor.unwrap(), access.repo),
     (scope, dir) => {
       let sha = release_commit(self.root, access.repo, tag, target)
       let pin = "refs/moonhub/releases/" + @identity.random_hex(16)
@@ -375,7 +375,7 @@ pub async fn Service::edit(
     self.pool,
     self.root,
     access.actor.unwrap(),
-    access.repo,
+    @repository.repository_scope(self.pool, access.actor.unwrap(), access.repo),
     (_, dir) => {
       let before = self.get(access, id)
       let next_title = title.unwrap_or(before.title)
@@ -454,7 +454,7 @@ pub async fn Service::publish(
     self.pool,
     self.root,
     access.actor.unwrap(),
-    access.repo,
+    @repository.repository_scope(self.pool, access.actor.unwrap(), access.repo),
     (_, dir) => {
       let before = self.get(access, id)
       ignore(self.authorize(access, true))

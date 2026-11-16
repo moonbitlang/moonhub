@@ -6,6 +6,7 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",
   "moonbitlang/async",
+  "moonbitlang/async/fs",
   "moonbitlang/core/debug",
 }
 
@@ -18,11 +19,17 @@ pub fn can_access_repository(@database.Database, @domain.CurrentUser, @domain.Re
 
 pub fn can_read_repository(@database.Database, @domain.CurrentUser?, @domain.RepoId) -> Bool raise
 
+pub async fn change_repository_visibility(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, String, String) -> Unit
+
+pub async fn cleanup_deleted_repositories(@database.Database, String) -> Unit
+
 pub async fn confirm_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String) -> Unit
 
 pub async fn create_managed_repository(@database.Database, String, @domain.RepoId, String, Bool) -> Unit
 
 pub let default_mirror_config : MirrorConfig
+
+pub async fn delete_repository(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, String) -> Unit
 
 pub async fn discard_repository_job(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String) -> Unit
 
@@ -66,6 +73,12 @@ pub fn repository_job_source(@database.Database, @domain.CurrentUser, Repository
 
 pub fn repository_scope(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
 
+pub fn repository_settings(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositorySettings raise
+
+pub async fn repository_write_lock(String, @domain.RepoId) -> @fs.File
+
+pub fn require_current_scope(@database.Database, RepositoryScope) -> Unit raise
+
 pub fn require_mirror_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
 
 pub fn require_repository_job(@database.Database, @identity.TeamSummary, String) -> RepositoryJob raise
@@ -92,6 +105,8 @@ pub fn ssh_address_config_from_env() -> SshAddressConfig raise
 
 pub fn start_mirror_worker(@database.Database, String, MirrorConfig, @async.TaskGroup[Unit]) -> Unit
 
+pub fn start_repository_cleanup_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+
 pub fn start_repository_worker(@database.Database, String, RepoImportConfig?, @async.TaskGroup[Unit], addresses? : SshAddressConfig) -> Unit
 
 pub async fn sync_next_mirror(@database.Database, String, MirrorConfig) -> Bool
@@ -102,7 +117,7 @@ pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[Tea
 
 pub async fn visible_repositories(@database.Database, String, @domain.CurrentUser?) -> Array[@domain.RepoId]
 
-pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, @domain.RepoId, async (RepositoryScope, String) -> A) -> A
+pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, RepositoryScope, async (RepositoryScope, String) -> A) -> A
 
 // Errors
 
@@ -175,6 +190,11 @@ pub(all) struct RepositoryScope {
   id : Int64
   repo : @domain.RepoId
   team_id : Int64
+}
+
+pub struct RepositorySettings {
+  scope : RepositoryScope
+  visibility : String
 }
 
 pub struct ResolvedRepoImport {

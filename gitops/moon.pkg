@@ -4,6 +4,7 @@ import {
   "moonbitlang/async",
   "hackwaly/moonhub/domain",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "moonbitlang/async/process",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/string",

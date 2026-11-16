@@ -78,6 +78,18 @@ command verifies its release and configuration acknowledgement, so an older
 independent executor prevents `MOONHUB_DEPLOY_OK` even when Web/SSH are healthy.
 See the local DinD upgrade and recovery procedure in [production.md](production.md).
 
+## Repository lock protocol upgrade
+
+The stable control-lock protocol requires a coordinated version switch. Stop
+both Web and SSH and terminate all old-version writers and background workers,
+including existing SSH sessions and standalone management commands, before
+starting the new version. The deployment scripts already stop Web and SSH
+together before replacement; verify no writer survives outside those services.
+Do not run old `moonhub-write.lock` writers alongside new `.locks` writers, in
+an upgrade or rollback. They do not exclude each other. No database migration
+is needed. Preserve `<repository-root>/.locks` across upgrades, backups, cleanup
+and same-name rebuilds; never delete individual control files to clear a lock.
+
 ## Logs, retries and recovery
 
 Use the GitHub Actions run and its deployment job summary to find the SSM

@@ -45,7 +45,7 @@ pub async fn save_secret(
   workflow_path : String,
   version : Int64,
 ) -> Unit {
-  ignore(require_run_author(pool, actor, repo))
+  let scope = require_run_author(pool, actor, repo)
   guard @workflow.valid_secret_name(name) && version >= 0L else {
     raise @domain.BadRequest(
       message="Use a secret name containing letters, numbers and underscores, without a reserved prefix or leading number.",
@@ -62,7 +62,7 @@ pub async fn save_secret(
     }
   }
   validate_workflow_path(workflow_path)
-  @repository.with_repository_write(pool, root, actor, repo, (scope, dir) => {
+  @repository.with_repository_write(pool, root, actor, scope, (scope, dir) => {
     ignore(require_run_author(pool, actor, repo))
     ignore(@gitops.branch_sha(dir, branch)) catch {
       @gitops.Failure(_) =>

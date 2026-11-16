@@ -174,9 +174,10 @@ pub async fn run_next_merge_job(
     team_id: row.get_name("team_id"),
     repo: { owner: row.get_name("owner"), name: row.get_name("name"), },
   }
-  let git_dir = @repository.resolve_repository_dir(root, scope.repo)
-  let lock = @gitops.repository_write_lock(git_dir)
+  let lock = @repository.repository_write_lock(root, scope.repo)
   defer lock.close()
+  @repository.require_current_scope(pool, scope)
+  let git_dir = @repository.resolve_repository_dir(root, scope.repo)
   @repository.recover_ref_events_locked(pool, scope, git_dir)
   let mr = require_merge_request(pool, scope, row.get_name("number"))
   if mr.job_status != "pending" && mr.job_status != "running" {

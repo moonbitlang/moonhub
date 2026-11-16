@@ -116,6 +116,10 @@ pub async fn initialize_mirror_host(
   let scope = require_mirror_manager(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
+  let repository_lock = repository_write_lock(root, scope.repo)
+  defer repository_lock.close()
+  require_current_scope(pool, scope)
+  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
   let url : String = pool.with_client(client => {
     guard client.query_opt(
         "SELECT url FROM repository_mirror WHERE id=? AND repository_id=? AND version=? AND active=0",
@@ -162,6 +166,10 @@ pub async fn confirm_mirror_host(
   let scope = require_mirror_manager(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
+  let repository_lock = repository_write_lock(root, scope.repo)
+  defer repository_lock.close()
+  require_current_scope(pool, scope)
+  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
   ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
   pool.with_client(client => {
     client.with_transaction(tx => {

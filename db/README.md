@@ -4,18 +4,19 @@
 including their final tables, columns, defaults, constraints, indexes, views and
 triggers. Historical data backfills are no longer part of fresh initialization.
 The minimum supported existing database version is 38. The current
-`database_schema_version` is 40. Migrations 039 and 040 extend the baseline.
+`database_schema_version` is 41. Migrations 039–041 extend the baseline.
 
 Web calls `database.initialize_db` before becoming healthy. A database at version
-40 is accepted without replaying DDL or reading schema files. Versions 38 and
-39 read the incremental migrations; migration 039 is idempotent. Version 0 is initialized only when it contains no
-user-defined database objects, including views. For an empty database, the
-initializer reads `base.sql` and migrations 039/040, obtains a write reservation with
-`BEGIN IMMEDIATE`, rechecks version and objects, then creates the baseline,
-applies migrations 039 and 040 and sets `PRAGMA user_version=40` in the same transaction.
-Any failure rolls back DDL, data and version. Existing schema 38 upgrades use the
-same write reservation and atomic commit. Do not run `base.sql` directly against
-an existing database or change `user_version` manually to bypass the checks.
+41 is accepted without replaying DDL or reading schema files. Versions 38–40
+read and apply only their missing incremental migrations in version order.
+Version 0 is initialized only when it contains no user-defined database objects,
+including views. For an empty database, the initializer reads `base.sql` and
+migrations 039–041, obtains a write reservation with `BEGIN IMMEDIATE`, rechecks
+version and objects, then creates the baseline, applies the migrations and sets
+`PRAGMA user_version=41` in the same transaction. Any failure rolls back DDL,
+data and version. Existing database upgrades use the same write reservation and
+atomic commit. Do not run `base.sql` directly against an existing database or
+change `user_version` manually to bypass the checks.
 
 Existing databases below version 38 are rejected, as are databases newer than
 the program supports. For an older database or backup:
@@ -32,9 +33,18 @@ The complete backup/restore workflow is unchanged. It preserves the database,
 repositories, attachment bytes and deployment state together. Legacy identity-only
 transfer tools are no longer supplied.
 
-Keep schema 38 as the existing-database floor. Migrations 039 and 040 continue above
+Keep schema 38 as the existing-database floor. Migrations 039–041 continue above
 this baseline; future incremental migrations must extend the supported-version
 logic in `database/schema.mbt`. Fresh databases must reach the same schema as
 upgraded databases in one atomic initialization transaction.
 
 Schema 040 adds repository releases, durable published-asset storage and cleanup, live job API grants, immutable run display titles and opt-in UTC schedule ticks. Migration 039 remains the compatibility step for historical artifact/cache locations.
+
+Schema 041 adds durable repository and attachment file cleanup journals. Deleting
+a repository saves its Git and mirror directories for cleanup in the deletion
+transaction. Attachment cascades journal their file IDs through a trigger;
+Actions artifacts, caches and Release files retain their existing journals.
+The server retries cleanup with cross-process volume locks and rejects unsafe
+paths. Missing files count as cleaned. The repository name stays reserved until
+its old Git directory is removed; mirror and attachment tasks use immutable IDs
+so they cannot remove files belonging to a later repository with the same name.

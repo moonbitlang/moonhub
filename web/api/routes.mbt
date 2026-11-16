@@ -192,32 +192,29 @@ pub let api_module : @moonback.Module = Module(ctx => {
         ["title", "description", "source", "target", "draft", "issue"],
         images=(pool, root, scope, actor),
       )
-      @repository.with_repository_write(
-        pool,
-        root,
-        actor,
-        @web_context.repo_param(req),
-        (scope, git_dir) => {
-          let draft = field(body, "draft", fallback="false")
-          guard ["true", "false"].contains(draft) else {
-            raise @domain.BadRequest(message="draft must be true or false")
-          }
-          let mr = @collaboration.create_merge_request(
-            pool,
-            scope,
-            git_dir,
-            actor,
-            field(body, "title"),
-            field(body, "description", fallback=""),
-            field(body, "source"),
-            field(body, "target"),
-            draft == "true",
-            issue=number(field(body, "issue", fallback="0"), zero=true),
-            authorize_checks=false,
-          )
-          mr_json(mr)
-        },
-      )
+      @repository.with_repository_write(pool, root, actor, scope, (
+        scope,
+        git_dir,
+      ) => {
+        let draft = field(body, "draft", fallback="false")
+        guard ["true", "false"].contains(draft) else {
+          raise @domain.BadRequest(message="draft must be true or false")
+        }
+        let mr = @collaboration.create_merge_request(
+          pool,
+          scope,
+          git_dir,
+          actor,
+          field(body, "title"),
+          field(body, "description", fallback=""),
+          field(body, "source"),
+          field(body, "target"),
+          draft == "true",
+          issue=number(field(body, "issue", fallback="0"), zero=true),
+          authorize_checks=false,
+        )
+        mr_json(mr)
+      })
     }),
   )
   ctx.get(
@@ -497,185 +494,182 @@ pub let api_module : @moonback.Module = Module(ctx => {
       } else {
         None
       }
-      @repository.with_repository_write(
-        pool,
-        root,
-        actor,
-        @web_context.repo_param(req),
-        (scope, git_dir) => {
-          let mr = @collaboration.require_merge_request(pool, scope, id)
-          let current = if [
-              "comment", "edit", "delete-comment", "restore-comment", "reply", "resolve-discussion",
-              "reopen-discussion", "inline-comment",
-            ].contains(action) {
-            mr
-          } else {
-            @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
-          }
-          let mut reply_id : Int64? = None
-          let mut created_discussion : Int64? = None
-          match action {
-            "inline-comment" =>
-              created_discussion = Some(
-                @collaboration.create_prepared_merge_discussion(
-                  pool,
-                  scope,
-                  actor,
-                  current,
-                  prepared.unwrap(),
-                ),
-              )
-            "reply" =>
-              reply_id = Some(
-                @collaboration.reply_merge_discussion(
-                  pool,
-                  scope,
-                  actor,
-                  current,
-                  number(field(body, "discussion")),
-                  field(body, "body"),
-                ),
-              )
-            "resolve-discussion" | "reopen-discussion" =>
-              @collaboration.set_merge_discussion_resolved(
+      @repository.with_repository_write(pool, root, actor, scope, (
+        scope,
+        git_dir,
+      ) => {
+        let mr = @collaboration.require_merge_request(pool, scope, id)
+        let current = if [
+            "comment", "edit", "delete-comment", "restore-comment", "reply", "resolve-discussion",
+            "reopen-discussion", "inline-comment",
+          ].contains(action) {
+          mr
+        } else {
+          @collaboration.refresh_merge_request(pool, scope, git_dir, mr)
+        }
+        let mut reply_id : Int64? = None
+        let mut created_discussion : Int64? = None
+        match action {
+          "inline-comment" =>
+            created_discussion = Some(
+              @collaboration.create_prepared_merge_discussion(
+                pool,
+                scope,
+                actor,
+                current,
+                prepared.unwrap(),
+              ),
+            )
+          "reply" =>
+            reply_id = Some(
+              @collaboration.reply_merge_discussion(
                 pool,
                 scope,
                 actor,
                 current,
                 number(field(body, "discussion")),
-                number(field(body, "state_version")),
-                action == "resolve-discussion",
-              )
-            "edit" => {
-              guard body.contains("title") ||
-                body.contains("description") ||
-                body.contains("target") else {
-                raise @domain.BadRequest(
-                  message="MR edit requires title, description or target",
-                )
-              }
-              @collaboration.update_merge_request(
-                pool,
-                scope,
-                git_dir,
-                actor,
-                current,
-                field(body, "title", fallback=current.title),
-                field(body, "description", fallback=current.description),
-                field(body, "target", fallback=current.target),
-                number(field(body, "edit_version")),
-              )
-            }
-            "delete-comment" | "restore-comment" =>
-              @collaboration.set_merge_comment_deleted(
-                pool,
-                scope,
-                actor,
-                current,
-                number(field(body, "comment")),
-                number(field(body, "version")),
-                action == "delete-comment",
-              )
-            "review" | "comment" =>
-              @collaboration.submit_merge_review(
-                pool,
-                actor,
-                current,
-                number(field(body, "version")),
-                if action == "comment" {
-                  "comment"
-                } else {
-                  field(body, "decision")
-                },
-                field(body, "body", fallback=""),
-              )
-            "request-review" =>
-              @collaboration.request_merge_review(
-                pool,
-                actor,
-                scope,
-                current,
-                number(field(body, "reviewer")),
-                number(field(body, "version")),
-              )
-            "merge" =>
-              @collaboration.enqueue_merge(
-                pool,
-                scope,
-                actor,
-                current,
-                number(field(body, "version")),
-                edit_version=body
-                  .get("edit_version")
-                  .map(value => {
-                    guard value is String(value) else {
-                      raise @domain.BadRequest(
-                        message="edit_version must be a decimal string",
-                      )
-                    }
-                    number(value)
-                  }),
-              )
-            "approve-checks" =>
-              @collaboration.approve_merge_checks(
-                pool,
-                scope,
-                actor,
-                current,
-                number(field(body, "version")),
-              )
-            "close" | "reopen" | "draft" | "ready" => {
-              @collaboration.edit_merge_request(
-                pool,
-                scope,
-                actor,
-                current,
-                action,
-                "",
-                "",
-                expected=number(field(body, "edit_version")),
-              )
-              if action == "reopen" {
-                // Observe the reopened source before releasing the repository
-                // lock; a subsequent push is a separate synchronize event.
-                ignore(
-                  @collaboration.refresh_merge_request(
-                    pool,
-                    scope,
-                    git_dir,
-                    @collaboration.require_merge_request(pool, scope, id),
-                  ),
-                )
-              }
-            }
-            _ => raise @domain.BadRequest(message="unsupported MR action")
-          }
-          if created_discussion is Some(id) {
-            {
-              "discussion": discussion_json(
-                @collaboration.merge_discussion(pool, scope, actor, current, id),
+                field(body, "body"),
               ),
+            )
+          "resolve-discussion" | "reopen-discussion" =>
+            @collaboration.set_merge_discussion_resolved(
+              pool,
+              scope,
+              actor,
+              current,
+              number(field(body, "discussion")),
+              number(field(body, "state_version")),
+              action == "resolve-discussion",
+            )
+          "edit" => {
+            guard body.contains("title") ||
+              body.contains("description") ||
+              body.contains("target") else {
+              raise @domain.BadRequest(
+                message="MR edit requires title, description or target",
+              )
             }
-          } else if ["reply", "resolve-discussion", "reopen-discussion"].contains(
+            @collaboration.update_merge_request(
+              pool,
+              scope,
+              git_dir,
+              actor,
+              current,
+              field(body, "title", fallback=current.title),
+              field(body, "description", fallback=current.description),
+              field(body, "target", fallback=current.target),
+              number(field(body, "edit_version")),
+            )
+          }
+          "delete-comment" | "restore-comment" =>
+            @collaboration.set_merge_comment_deleted(
+              pool,
+              scope,
+              actor,
+              current,
+              number(field(body, "comment")),
+              number(field(body, "version")),
+              action == "delete-comment",
+            )
+          "review" | "comment" =>
+            @collaboration.submit_merge_review(
+              pool,
+              actor,
+              current,
+              number(field(body, "version")),
+              if action == "comment" {
+                "comment"
+              } else {
+                field(body, "decision")
+              },
+              field(body, "body", fallback=""),
+            )
+          "request-review" =>
+            @collaboration.request_merge_review(
+              pool,
+              actor,
+              scope,
+              current,
+              number(field(body, "reviewer")),
+              number(field(body, "version")),
+            )
+          "merge" =>
+            @collaboration.enqueue_merge(
+              pool,
+              scope,
+              actor,
+              current,
+              number(field(body, "version")),
+              edit_version=body
+                .get("edit_version")
+                .map(value => {
+                  guard value is String(value) else {
+                    raise @domain.BadRequest(
+                      message="edit_version must be a decimal string",
+                    )
+                  }
+                  number(value)
+                }),
+            )
+          "approve-checks" =>
+            @collaboration.approve_merge_checks(
+              pool,
+              scope,
+              actor,
+              current,
+              number(field(body, "version")),
+            )
+          "close" | "reopen" | "draft" | "ready" => {
+            @collaboration.edit_merge_request(
+              pool,
+              scope,
+              actor,
+              current,
               action,
-            ) {
-            {
-              "reply_id": reply_id.map(id => id.to_string()).unwrap_or(""),
-              "discussion": discussion_json(
-                @collaboration.merge_discussion(
+              "",
+              "",
+              expected=number(field(body, "edit_version")),
+            )
+            if action == "reopen" {
+              // Observe the reopened source before releasing the repository
+              // lock; a subsequent push is a separate synchronize event.
+              ignore(
+                @collaboration.refresh_merge_request(
                   pool,
                   scope,
-                  actor,
-                  current,
-                  number(field(body, "discussion")),
+                  git_dir,
+                  @collaboration.require_merge_request(pool, scope, id),
                 ),
-              ),
+              )
             }
-          } else {
-            mr_json(@collaboration.require_merge_request(pool, scope, id))
           }
-        },
-      )
+          _ => raise @domain.BadRequest(message="unsupported MR action")
+        }
+        if created_discussion is Some(id) {
+          {
+            "discussion": discussion_json(
+              @collaboration.merge_discussion(pool, scope, actor, current, id),
+            ),
+          }
+        } else if ["reply", "resolve-discussion", "reopen-discussion"].contains(
+            action,
+          ) {
+          {
+            "reply_id": reply_id.map(id => id.to_string()).unwrap_or(""),
+            "discussion": discussion_json(
+              @collaboration.merge_discussion(
+                pool,
+                scope,
+                actor,
+                current,
+                number(field(body, "discussion")),
+              ),
+            ),
+          }
+        } else {
+          mr_json(@collaboration.require_merge_request(pool, scope, id))
+        }
+      })
     }),
   )
   ctx.get(

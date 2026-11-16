@@ -115,6 +115,10 @@ pub async fn enqueue_repository(
 ) -> @domain.RepoId {
   require_repository_manager(pool, actor, team)
   let repo = @domain.parse_transport_repo("\{team.name_key}/\{name}")
+  let lock = repository_write_lock(root, repo)
+  defer lock.close()
+  require_repository_manager(pool, actor, team)
+  pool.with_client(client => require_repository_name_available(client, repo))
   let source = if source_url.is_empty() {
     None
   } else {
@@ -195,6 +199,14 @@ pub async fn discard_repository_job(
   let job = require_repository_job(pool, team, name)
   guard job.status == "failed" else {
     raise @domain.BadRequest(message="only failed operations can be discarded")
+  }
+  let lock = repository_write_lock(root, job.repo)
+  defer lock.close()
+  require_repository_manager(pool, actor, team)
+  guard require_repository_job(pool, team, name).id == job.id else {
+    raise @domain.BadRequest(
+      message="repository has changed; reload its settings",
+    )
   }
   guard !@fs.exists(job.repo.git_dir(root)) else {
     raise @domain.BadRequest(

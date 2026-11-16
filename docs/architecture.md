@@ -21,8 +21,8 @@ unchanged.
 | `cmd/moonhub-diff-worker` | One-request isolated diff executable; protocol IO and pure calculation only |
 | `identity` | Login sessions, accounts, personal namespaces, teams, invitations and profiles |
 | `mail` | Delivery settings, transactional outbox claiming and delivery worker |
-| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events, recovery and outbound push mirrors |
-| `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and pending upload cleanup |
+| `repository` | Repository authorization, registration, provisioning/import jobs, SSH endpoint configuration, durable ref-update events, recovery, outbound push mirrors, settings and repository file cleanup |
+| `attachments` | Repository-scoped image/file metadata, filesystem storage, inline image conversion, transactional references and durable attachment file cleanup |
 | `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to database triggers |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
@@ -194,6 +194,35 @@ destination before enabling sync. Mirror transport
 settings are independent of SSH import configuration; transfer-only credential
 files are generated and cleaned by the worker. See [push mirrors](mirrors.md).
 
+Repository writes, creation, publication and Git cleanup share a permanent
+control file at `<root>/.locks/repositories/<sha256>.lock`, where the digest is
+SHA256 of the UTF-8 normalized `owner/repository` name. Mirror operations use
+`<root>/.locks/mirrors/<id>.lock`. Control directories are created with mode
+`0700` and files with `0600`; symlinks and unexpected file types are rejected.
+Keep these files for the lifetime of the storage root, including after deleting
+or rebuilding a repository. Removing a control file can split queued writers
+between different inodes. Lock acquisition retains the 15-second timeout.
+
+Requests capture the repository ID, team ID and name before asynchronous work.
+After acquiring the control lock they recheck access and that exact identity,
+then resolve the Git path. Existing reads retain their current in-flight
+semantics. Creation and import publication use the same name lock; imports do
+the transfer in private staging, then verify the running job and staging token
+before publishing. Deletion reserves SQLite with `BEGIN IMMEDIATE`, rechecks
+identity, access and busy resources, and atomically journals files with the
+cascading database deletion. Cleanup takes the resource lock before checking
+its journal, live owners and paths, including when the files are already gone.
+An interrupted cleanup can safely finish the remaining journal entry on restart.
+
+When locks nest, acquire the mirror lock, then the repository lock, then a short
+database transaction. Filesystem operations stay outside database transactions.
+A mirror worker selects an ID, locks it, claims it with `BEGIN IMMEDIATE`, and
+only then creates its data directory. A failed claim creates no data directory.
+Deletion holds only the repository lock and rejects a syncing mirror through
+its transactional busy check; it never waits for a mirror lock while holding
+the repository lock. Mirror network transfers release the repository lock after
+taking their local snapshot.
+
 The browser rendering boundary is described in [frontend architecture](frontend.md).
 `web/spa` has no business or HTTP dependency. It holds only presentation data;
 `web/client` never imports server or business packages. Existing feature templates
@@ -205,6 +234,12 @@ Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.
 
 ## Tests
+
+The Linux self-check runs `node scripts/repository-deletion-smoke.cjs` after
+the native build. It uses separate Web and SSH processes, pipe/FD barriers and
+a disposable SQLite/Git fixture to verify cross-process exclusion and rejection
+of a stale SSH writer after a same-name rebuild. Python 3 supplies the fixture's
+control-lock holder; no external SSH server or service is required.
 
 Each production package owns its tests. Run the entire suite or a single
 package from the module root:

@@ -139,6 +139,7 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
         "secrets" => ("Repository secrets", "/settings/secrets")
         "variables" => ("Repository variables", "/settings/variables")
+        "danger-zone" => ("Danger Zone", "/settings/danger-zone")
         _ => ("Files", "")
       }
       [
@@ -235,7 +236,7 @@ fn render_sidebar(
         let settings = manager &&
           [
             "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
-            "deploy-keys",
+            "deploy-keys", "danger-zone",
           ].contains(active)
         let items = if settings {
           [
@@ -303,8 +304,22 @@ fn render_sidebar(
           "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/mail", "Email delivery", "mail", active == "mail")}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "git-commit", active == "pipeline-providers")}</nav>"
       _ => ()
     }
+    b <+ "</div><div class=\"sidebar-footer"
+    let danger = navigation is RepositoryNavigation(_, active, true) &&
+      [
+        "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
+        "deploy-keys", "danger-zone",
+      ].contains(active)
+    if danger {
+      b <+ " sidebar-footer--danger"
+    }
+    b <+ "\">"
+    if danger && navigation is RepositoryNavigation(repo, active, _) {
+      b <+
+        "<nav class=\"sidebar-danger\" aria-label=\"Dangerous settings\">\{render_navigation_item(repo_link(repo) + "/settings/danger-zone", "Danger Zone", "triangle-alert", active == "danger-zone")}</nav>"
+    }
     b <+
-      "</div><div class=\"sidebar-footer\"><button class=\"nav-item sidebar-collapse\" type=\"button\" data-sidebar-collapse aria-controls=\"app-sidebar\" aria-expanded=\"true\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\" hidden inert><span class=\"ui-icon\" data-icon=\"panel-left-close\" aria-hidden=\"true\"></span><span class=\"nav-label\">Collapse sidebar</span></button></div></aside><button class=\"sidebar-scrim\" type=\"button\" data-sidebar-close aria-label=\"Close navigation\" hidden></button>"
+      "<button class=\"nav-item sidebar-collapse\" type=\"button\" data-sidebar-collapse aria-controls=\"app-sidebar\" aria-expanded=\"true\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\" hidden inert><span class=\"ui-icon\" data-icon=\"panel-left-close\" aria-hidden=\"true\"></span><span class=\"nav-label\">Collapse sidebar</span></button></div></aside><button class=\"sidebar-scrim\" type=\"button\" data-sidebar-close aria-label=\"Close navigation\" hidden></button>"
   })
 }
 
@@ -315,7 +330,7 @@ fn render_repository_tabs(navigation : PageNavigation) -> @moonback.Html {
       let settings = manager &&
         [
           "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
-          "deploy-keys",
+          "deploy-keys", "danger-zone",
         ].contains(active)
       let section = if settings {
         "settings"

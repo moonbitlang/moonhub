@@ -223,7 +223,7 @@ async test "queued inline diff leaves ordinary HTTP requests and repository writ
         let (status, _) = api_test_request(port, "/user", token, None)
         assert_eq(status, 200)
         @async.with_timeout(500, () => {
-          @repository.with_repository_write(pool, root, actor, repo, (_, _) => {
+          @repository.with_repository_write(pool, root, actor, scope, (_, _) => {
             ()
           })
         })
