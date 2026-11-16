@@ -23,6 +23,7 @@ pub async fn create_managed_repository(
   guard exists is None else {
     raise @domain.BadRequest(message="repository is already registered")
   }
+  pool.with_client(client => require_repository_name_available(client, repo))
   let root = @domain.trim_trailing_slash(@fs.realpath(root))
   let git_dir = repo.git_dir(root)
   if import_existing {
