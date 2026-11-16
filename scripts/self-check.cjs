@@ -129,6 +129,7 @@ async function main() {
   await run('Diff worker build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub-diff-worker']);
   await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
+  await run('Repository deletion concurrency', process.execPath, ['scripts/repository-deletion-smoke.cjs'], 120000);
   await run('S3 storage integration', process.execPath, ['scripts/storage-s3-smoke.mjs'], 300000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
