@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub let danger_zone_module : @moonback.Module
+
 pub let deploy_keys_module : @moonback.Module
 
 pub let index_module : @moonback.Module
