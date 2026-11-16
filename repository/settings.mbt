@@ -56,7 +56,9 @@ pub async fn change_repository_visibility(
   previous : String,
   target : String,
 ) -> Unit {
-  check_settings_identity(repository_settings(pool, actor, repo), id)
+  let initial = repository_settings(pool, actor, repo)
+  check_settings_identity(initial, id)
+  let expected = initial.scope
   guard (previous == "private" && target == "public") ||
     (previous == "public" && target == "private") else {
     raise @domain.BadRequest(message="invalid visibility change")
@@ -67,6 +69,7 @@ pub async fn change_repository_visibility(
     client.with_transaction(
       tx => {
         let current = repository_settings(pool, actor, repo)
+        require_current_scope(pool, expected)
         check_settings_identity(current, id)
         guard current.visibility == previous else {
           raise @domain.BadRequest(
@@ -128,7 +131,9 @@ pub async fn delete_repository(
   id : Int64,
   confirmation : String,
 ) -> Unit {
-  check_settings_identity(repository_settings(pool, actor, repo), id)
+  let initial = repository_settings(pool, actor, repo)
+  check_settings_identity(initial, id)
+  let expected = initial.scope
   guard confirmation == repo.path() else {
     raise @domain.BadRequest(
       message="Enter the full repository name exactly: \{repo.path()}",
@@ -141,6 +146,7 @@ pub async fn delete_repository(
     client.with_transaction(
       tx => {
         check_settings_identity(repository_settings(pool, actor, repo), id)
+        require_current_scope(pool, expected)
         // The write reservation also serializes worker claims with this check.
         require_repository_idle(client, id)
         ignore(

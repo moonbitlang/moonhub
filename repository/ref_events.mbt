@@ -22,7 +22,8 @@ pub async fn set_pipeline_push_enabled(
   repo : @domain.RepoId,
   enabled : Bool,
 ) -> Unit {
-  with_repository_write(pool, root, actor, repo, (scope, _) => {
+  let scope = repository_scope(pool, actor, repo)
+  with_repository_write(pool, root, actor, scope, (scope, _) => {
     guard @identity.can_manage_team(pool, actor, scope.team_id) else {
       raise @domain.Forbidden(message="repository owner or admin required")
     }

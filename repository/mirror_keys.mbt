@@ -50,7 +50,10 @@ pub async fn rotate_mirror_key(
   let scope = require_mirror_manager(pool, actor, repo)
   let lock = mirror_lock(root, id)
   defer lock.close()
-  ignore(require_mirror_manager(pool, actor, repo))
+  let repository_lock = repository_write_lock(root, scope.repo)
+  defer repository_lock.close()
+  require_current_scope(pool, scope)
+  ignore(require_mirror_manager(pool, mirror_actor(pool, actor.id), repo))
   guard pool.with_client(client => {
     client.query_opt(
       "SELECT id FROM repository_mirror WHERE id=? AND repository_id=? AND version=?",

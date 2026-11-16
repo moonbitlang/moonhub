@@ -77,6 +77,8 @@ pub fn repository_settings(@database.Database, @domain.CurrentUser, @domain.Repo
 
 pub async fn repository_write_lock(String, @domain.RepoId) -> @fs.File
 
+pub fn require_current_scope(@database.Database, RepositoryScope) -> Unit raise
+
 pub fn require_mirror_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
 
 pub fn require_repository_job(@database.Database, @identity.TeamSummary, String) -> RepositoryJob raise
@@ -115,7 +117,7 @@ pub fn team_repositories(@database.Database, @identity.TeamSummary) -> Array[Tea
 
 pub async fn visible_repositories(@database.Database, String, @domain.CurrentUser?) -> Array[@domain.RepoId]
 
-pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, @domain.RepoId, async (RepositoryScope, String) -> A) -> A
+pub async fn[A] with_repository_write(@database.Database, String, @domain.CurrentUser, RepositoryScope, async (RepositoryScope, String) -> A) -> A
 
 // Errors
 
