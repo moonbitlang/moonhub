@@ -744,7 +744,8 @@ It runs as UID/GID 10001 and enters the Runner directly as PID 1. The provider
 must still apply mount, network, CPU, memory and PID limits when creating it.
 The workspace mount must allow execution of build outputs. The job is non-root,
 with all capabilities dropped and `no-new-privileges`; `/tmp` remains a bounded
-`noexec,nosuid,nodev` tmpfs. The provider uses a disposable disk volume for
+`exec,nosuid,nodev` tmpfs so build tools and tests can execute temporary scripts
+and binaries. The provider uses a disposable disk volume for
 `/workspace` (the standalone Runner smoke still uses a small tmpfs fixture).
 
 ```sh

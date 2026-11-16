@@ -82,7 +82,7 @@ test "workspaces are isolated disk volumes while scratch memory stays bounded" {
     assert_true(args.contains("--cpu-count"))
     return
   }
-  assert_true(args.contains("/tmp:rw,noexec,nosuid,nodev,size=64m"))
+  assert_true(args.contains("/tmp:rw,exec,nosuid,nodev,size=64m"))
   assert_true(
     args.contains("type=volume,src=moonhub-workspace-42-fresh,dst=/workspace"),
   )
