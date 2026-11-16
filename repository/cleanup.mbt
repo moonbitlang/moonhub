@@ -37,7 +37,7 @@ pub async fn cleanup_deleted_repositories(
     try {
       let owner : String = row.get_name("owner")
       let name : String = row.get_name("name")
-      let repo = @domain.parse_transport_repo("\{owner}/\{name}")
+      let repo = @domain.parse_transport_repo("\{owner}/\{name}.git")
       let repository_id : Int64 = row.get_name("repository_id")
       let resource_id : Int64 = row.get_name("resource_id")
       let kind : String = row.get_name("kind")
@@ -49,6 +49,22 @@ pub async fn cleanup_deleted_repositories(
       }
       guard relative == expected && repo.owner == owner && repo.name == name else {
         raise @domain.BadRequest(message="invalid repository cleanup path")
+      }
+      let writer = if kind == "git" {
+        repository_write_lock(root, repo)
+      } else {
+        mirror_lock(root, resource_id)
+      }
+      defer writer.close()
+      // Another worker may have completed this journal entry while we waited.
+      guard pool.with_client(client => {
+        client.query_opt(
+          "SELECT id FROM repository_file_garbage WHERE id=? AND repository_id=? AND resource_id=? AND kind=? AND path=? AND owner=? AND name=?",
+          params=[id, repository_id, resource_id, kind, relative, owner, name],
+        )
+        is Some(_)
+      }) else {
+        continue
       }
       let registered = pool.with_client(client => {
         if kind == "git" {
@@ -95,9 +111,6 @@ pub async fn cleanup_deleted_repositories(
         guard kind is Directory && @fs.realpath(path) == path else {
           raise @domain.BadRequest(message="invalid repository cleanup target")
         }
-        // Existing pushes/merges and mirror configuration writes use this lock too.
-        let writer = @gitops.repository_write_lock(path)
-        defer writer.close()
         @fs.rmdir(path, recursive=true)
       }
       pool.with_client(client => {

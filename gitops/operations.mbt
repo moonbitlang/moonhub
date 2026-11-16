@@ -145,12 +145,13 @@ pub async fn branch_sha(git_dir : String, branch : String) -> String {
 }
 
 ///|
-pub async fn repository_write_lock(git_dir : String) -> @fs.File {
-  let path = "\{git_dir}/moonhub-write.lock"
-  if @fs.exists(path) {
-    guard @fs.kind(path, follow_symlink=false) is Regular else {
-      raise Failure(message="invalid repository write lock")
-    }
+pub async fn file_lock(path : String) -> @fs.File {
+  let kind = Some(@fs.kind(path, follow_symlink=false)) catch {
+    @os_error.OSError(_) as err if err.is_ENOENT() => None
+    err => raise err
+  }
+  guard kind is (None | Some(Regular)) else {
+    raise Failure(message="invalid file lock")
   }
   let lock = @fs.open(
     path,
@@ -159,6 +160,9 @@ pub async fn repository_write_lock(git_dir : String) -> @fs.File {
     permission=0o600,
   )
   errdefer lock.close()
+  guard lock.kind() is Regular && @fs.realpath(path) == path else {
+    raise Failure(message="invalid file lock")
+  }
   @async.with_timeout(
     15000,
     () => lock.lock(Exclusive),

@@ -61,8 +61,7 @@ pub async fn change_repository_visibility(
     (previous == "public" && target == "private") else {
     raise @domain.BadRequest(message="invalid visibility change")
   }
-  let dir = resolve_repository_dir(root, repo)
-  let lock = @gitops.repository_write_lock(dir)
+  let lock = repository_write_lock(root, repo)
   defer lock.close()
   pool.with_client(client => {
     client.with_transaction(
@@ -136,8 +135,7 @@ pub async fn delete_repository(
     )
   }
   pool.with_client(client => require_repository_idle(client, id))
-  let dir = resolve_repository_dir(root, repo)
-  let lock = @gitops.repository_write_lock(dir)
+  let lock = repository_write_lock(root, repo)
   defer lock.close()
   pool.with_client(client => {
     client.with_transaction(

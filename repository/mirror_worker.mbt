@@ -38,60 +38,63 @@ fn mirror_actor(
 ///|
 fn claim_mirror(pool : @database.Database, id : Int64) -> MirrorJob? raise {
   pool.with_client(client => {
-    client.with_transaction(tx => {
-      // The per-mirror filesystem lock is already held: an old worker has stopped.
-      ignore(
-        tx.execute(
-          "UPDATE mirror_attempt SET status='failed',error='Worker lease expired',completed_at=datetime('now') WHERE mirror_id=? AND status='syncing' AND EXISTS(SELECT 1 FROM repository_mirror WHERE id=? AND status='syncing' AND locked_at<=datetime('now','-2 hours'))",
-          params=[id, id],
-        ),
-      )
-      ignore(
-        tx.execute(
-          "UPDATE repository_mirror SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,lease=NULL,locked_at=NULL,last_error='Worker lease expired' WHERE id=? AND status='syncing' AND locked_at<=datetime('now','-2 hours')",
-          params=[id],
-        ),
-      )
-      guard tx.query_opt(
-          "SELECT m.*,r.name,r.team_id,t.name_key AS owner FROM repository_mirror m JOIN repository r ON r.id=m.repository_id JOIN team t ON t.id=r.team_id WHERE m.id=? AND m.active=1 AND r.ready=1 AND m.status='pending' AND m.next_attempt_at<=datetime('now')",
-          params=[id],
+    client.with_transaction(
+      tx => {
+        // The per-mirror filesystem lock is already held: an old worker has stopped.
+        ignore(
+          tx.execute(
+            "UPDATE mirror_attempt SET status='failed',error='Worker lease expired',completed_at=datetime('now') WHERE mirror_id=? AND status='syncing' AND EXISTS(SELECT 1 FROM repository_mirror WHERE id=? AND status='syncing' AND locked_at<=datetime('now','-2 hours'))",
+            params=[id, id],
+          ),
         )
-        is Some(row) else {
-        return None
-      }
-      let repo : @domain.RepoId = {
-        owner: row.get_name("owner"),
-        name: row.get_name("name"),
-      }
-      let actor = mirror_actor(pool, row.get_name("creator_id"))
-      let scope = require_mirror_manager(pool, actor, repo)
-      let generation : Int64 = row.get_name("generation")
-      let lease = @identity.random_hex(16)
-      ignore(
-        tx.execute(
-          "UPDATE repository_mirror SET status='syncing',attempts=attempts+1,lease=?,locked_at=datetime('now') WHERE id=?",
-          params=[lease, id],
-        ),
-      )
-      let attempt_id : Int64 = tx
-        .query_one(
-          "INSERT INTO mirror_attempt(mirror_id,generation,status) VALUES(?,?,'syncing') RETURNING id",
-          params=[id, generation],
+        ignore(
+          tx.execute(
+            "UPDATE repository_mirror SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,lease=NULL,locked_at=NULL,last_error='Worker lease expired' WHERE id=? AND status='syncing' AND locked_at<=datetime('now','-2 hours')",
+            params=[id],
+          ),
         )
-        .get_name("id")
-      Some({
-        id,
-        scope,
-        actor,
-        url: row.get_name("url"),
-        host_keys: row.get_name("host_keys"),
-        force_push: row.get_name("force_push"),
-        prune: row.get_name("prune"),
-        generation,
-        lease,
-        attempt_id,
-      })
-    })
+        guard tx.query_opt(
+            "SELECT m.*,r.name,r.team_id,t.name_key AS owner FROM repository_mirror m JOIN repository r ON r.id=m.repository_id JOIN team t ON t.id=r.team_id WHERE m.id=? AND m.active=1 AND r.ready=1 AND m.status='pending' AND m.next_attempt_at<=datetime('now')",
+            params=[id],
+          )
+          is Some(row) else {
+          return None
+        }
+        let repo : @domain.RepoId = {
+          owner: row.get_name("owner"),
+          name: row.get_name("name"),
+        }
+        let actor = mirror_actor(pool, row.get_name("creator_id"))
+        let scope = require_mirror_manager(pool, actor, repo)
+        let generation : Int64 = row.get_name("generation")
+        let lease = @identity.random_hex(16)
+        ignore(
+          tx.execute(
+            "UPDATE repository_mirror SET status='syncing',attempts=attempts+1,lease=?,locked_at=datetime('now') WHERE id=?",
+            params=[lease, id],
+          ),
+        )
+        let attempt_id : Int64 = tx
+          .query_one(
+            "INSERT INTO mirror_attempt(mirror_id,generation,status) VALUES(?,?,'syncing') RETURNING id",
+            params=[id, generation],
+          )
+          .get_name("id")
+        Some({
+          id,
+          scope,
+          actor,
+          url: row.get_name("url"),
+          host_keys: row.get_name("host_keys"),
+          force_push: row.get_name("force_push"),
+          prune: row.get_name("prune"),
+          generation,
+          lease,
+          attempt_id,
+        })
+      },
+      immediate=true,
+    )
   })
 }
 
@@ -105,7 +108,15 @@ async fn transfer_mirror(
   let target = parse_ssh_import_source(job.url)
   ignore(mirror_known_hosts(target, job.host_keys))
   let work = mirror_work_root(root)
-  let stage = "\{work}/\{job.id}/\{job.lease}.git"
+  let directory = "\{work}/\{job.id}"
+  @fs.mkdir(directory, permission=0o700) catch {
+    err => if !@fs.exists(directory) { raise err }
+  }
+  guard @fs.kind(directory, follow_symlink=false) is Directory &&
+    @fs.realpath(directory) == directory else {
+    raise @domain.BadRequest(message="invalid mirror working directory")
+  }
+  let stage = "\{directory}/\{job.lease}.git"
   @fs.mkdir(stage, permission=0o700)
   defer @fs.rmdir(stage, recursive=true)
   let environment = {
@@ -121,9 +132,9 @@ async fn transfer_mirror(
     environment,
   )
   {
-    let dir = resolve_repository_dir(root, job.scope.repo)
-    let lock = @gitops.repository_write_lock(dir)
+    let lock = repository_write_lock(root, job.scope.repo)
     defer lock.close()
+    let dir = resolve_repository_dir(root, job.scope.repo)
     ignore(require_mirror_manager(pool, job.actor, job.scope.repo))
     recover_ref_events_locked(pool, job.scope, dir)
     // Copy objects rather than sharing them: source GC cannot invalidate an in-flight snapshot.
@@ -309,9 +320,9 @@ async fn recover_mirror_repositories(
     }
     cursor = scope.id
     try {
-      let dir = resolve_repository_dir(root, scope.repo)
-      let lock = @gitops.repository_write_lock(dir)
+      let lock = repository_write_lock(root, scope.repo)
       defer lock.close()
+      let dir = resolve_repository_dir(root, scope.repo)
       recover_mirror_refs_locked(pool, scope, dir)
     } catch {
       _ =>

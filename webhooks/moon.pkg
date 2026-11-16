@@ -3,7 +3,6 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
-  "hackwaly/moonhub/gitops",
   "moonbitlang/async",
   "moonbitlang/async/socket",
   "moonbitlang/async/io",
@@ -15,6 +14,7 @@ import {
 
 import {
   "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/ssh",

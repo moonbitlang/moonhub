@@ -206,7 +206,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let mut stale = ""
     if mr.status == "open" {
       try {
-        let lock = @gitops.repository_write_lock(git_dir)
+        let lock = @repository.repository_write_lock(root, scope.repo)
         defer lock.close()
         mr = @collaboration.refresh_merge_request(
           pool,
