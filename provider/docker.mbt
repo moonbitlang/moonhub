@@ -54,7 +54,7 @@ fn container_args(
       "--cpus",
       options.cpus,
       "--tmpfs",
-      "/tmp:rw,noexec,nosuid,nodev,size=64m",
+      "/tmp:rw,exec,nosuid,nodev,size=64m",
       "--mount",
       "type=volume,src=\{workspace_volume},dst=/workspace",
       "--mount",

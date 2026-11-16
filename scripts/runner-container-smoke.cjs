@@ -76,6 +76,10 @@ async function scenario(cancel) {
     'test ! -e /var/run/docker.sock',
     'test ! -e /data/moonhub.db',
     'if cat /proc/1/environ >/dev/null 2>&1; then exit 91; fi',
+    'scratch=$(mktemp -d /tmp/moonhub-executable.XXXXXX)',
+    `printf '#!/bin/sh\\necho temporary-executable-ok\\n' > "$scratch/probe"`,
+    'chmod 700 "$scratch/probe"; "$scratch/probe"',
+    'rm -r "$scratch"',
     'setsid sh -c "sleep 30" >/dev/null 2>&1 &',
     'printf "container-ready\\n"',
     ...(cancel ? ['sleep 30'] : []),
@@ -100,7 +104,7 @@ async function scenario(cancel) {
   try {
     const args = ['run', '--rm', '--name', name, '--read-only', '--cap-drop=ALL', '--security-opt', 'no-new-privileges',
       '--pids-limit=64', '--memory=512m', '--cpus=1',
-      '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=64m', '--tmpfs', '/workspace:rw,exec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700',
+      '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=64m', '--tmpfs', '/workspace:rw,exec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700',
       '--mount', `type=bind,src=${manifest},dst=/control/assignment.json,readonly`,
       '--add-host', 'host.docker.internal:host-gateway', '-e', 'MOONHUB_PROVIDER_TOKEN=controller-only-sentinel', '-i', image,
       '--server', `http://host.docker.internal:${port}`, '--assignment', '/control/assignment.json', '--allow-http'];
@@ -121,6 +125,7 @@ async function scenario(cancel) {
     assert.equal(complete, report.conclusion);
     assert.ok(soleProcess, 'job descendants remained alive at completion');
     assert.ok(log.join('').includes('container-ready'));
+    assert.ok(log.join('').includes('temporary-executable-ok'));
     if (!cancel) assert.ok(log.join('').includes('native-ok'));
     console.log(`${cancel ? 'Cancellation' : 'Execution'} smoke passed: non-root PID 1, private credentials, no daemon socket, descendants reaped.`);
   } finally {
