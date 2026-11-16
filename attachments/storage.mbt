@@ -81,9 +81,10 @@ pub async fn upload(
   let id = @identity.random_hex(32)
   let digest = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
   let byte_size = bytes.length().to_int64()
-  @fs.mkdir("\{root}/.attachments", recursive=true, permission=0o700) catch {
-    err => if !@fs.exists("\{root}/.attachments") { raise err }
-  }
+  let lock = attachment_storage_lock(root)
+  defer lock.close()
+  lock.lock(Exclusive)
+  @repository.authorize_repository(pool, actor, scope.repo, Write)
   // Reserve metadata first so a process crash leaves an expirable upload.
   pool.with_client(client => {
     ignore(
@@ -168,30 +169,23 @@ pub async fn read(
 // Claim expiry before awaiting filesystem IO so linking and expiry cannot race.
 // Previously linked images are retained through edits and soft deletes.
 pub async fn cleanup_pending(pool : @database.Database, root : String) -> Unit {
-  let ids : Array[String] = pool.with_client(client => {
-    client
-    .query_all(
-      "UPDATE attachment SET ready = 2 WHERE id IN (SELECT a.id FROM attachment a WHERE a.claimed = 0 AND (a.ready = 2 OR a.created_at < datetime('now', '-1 day')) AND NOT EXISTS (SELECT 1 FROM attachment_reference r WHERE r.attachment_id = a.id) LIMIT 100) RETURNING id",
+  let root = @domain.trim_trailing_slash(@fs.realpath(root))
+  let lock = attachment_storage_lock(root)
+  defer lock.close()
+  guard lock.try_lock(Exclusive) else { return }
+  pool.with_client(client => {
+    client.with_transaction(
+      tx => {
+        ignore(
+          tx.execute(
+            "DELETE FROM attachment WHERE id IN (SELECT a.id FROM attachment a WHERE a.claimed=0 AND (a.ready=2 OR a.created_at<datetime('now','-1 day')) AND NOT EXISTS (SELECT 1 FROM attachment_reference r WHERE r.attachment_id=a.id) LIMIT 100)",
+          ),
+        )
+      },
+      immediate=true,
     )
-    .map(row => row.get_name("id"))
   })
-  for id in ids {
-    let path = storage_path(root, id)
-    if @fs.exists(path) {
-      @fs.remove(path)
-    }
-    if @fs.exists(path + ".tmp") {
-      @fs.remove(path + ".tmp")
-    }
-    pool.with_client(client => {
-      ignore(
-        client.execute(
-          "DELETE FROM attachment WHERE id = ? AND ready = 2 AND claimed = 0",
-          params=[id],
-        ),
-      )
-    })
-  }
+  cleanup_attachment_garbage(pool, root)
 }
 
 ///|
@@ -205,7 +199,7 @@ pub fn start_cleanup_worker(
       cleanup_pending(pool, root) catch {
         _ => println("attachment cleanup failed; retrying later")
       }
-      @async.sleep(3600000)
+      @async.sleep(60000)
     }
   })
 }
