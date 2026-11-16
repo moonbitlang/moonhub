@@ -4,6 +4,7 @@ import {
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/repository",
   "moonbitlang/async/fs",
+  "moonbitlang/async/os_error",
   "moonbitlang/async",
   "moonbitlang/x/codec/base64",
   "moonbitlang/x/crypto",
