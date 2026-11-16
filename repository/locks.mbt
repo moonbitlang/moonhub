@@ -24,11 +24,28 @@ pub async fn repository_write_lock(
   root : String,
   repo : @domain.RepoId,
 ) -> @fs.File {
+  repository_lock(root, repo, Exclusive)
+}
+
+///|
+pub async fn repository_read_lock(
+  root : String,
+  repo : @domain.RepoId,
+) -> @fs.File {
+  repository_lock(root, repo, Shared)
+}
+
+///|
+async fn repository_lock(
+  root : String,
+  repo : @domain.RepoId,
+  mode : @fs.Lock,
+) -> @fs.File {
   let repo = @domain.parse_transport_repo("\{repo.path()}.git")
   let key = @crypto.bytes_to_hex_string(
     @crypto.sha256(@utf8.encode(repo.path())),
   )
-  @gitops.file_lock(control_lock_path(root, "repositories", key))
+  @gitops.file_lock(control_lock_path(root, "repositories", key), mode~)
 }
 
 ///|

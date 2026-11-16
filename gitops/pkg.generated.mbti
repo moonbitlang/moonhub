@@ -20,7 +20,7 @@ pub async fn default_ref(String) -> String
 
 pub fn diff_options(mode? : String, ignore_comments? : String, ignore_tests? : String) -> @protocol.Options raise
 
-pub async fn file_lock(String) -> @fs.File
+pub async fn file_lock(String, mode? : @fs.Lock) -> @fs.File
 
 pub fn git_args(String, Array[String]) -> Array[String]
 

@@ -15,7 +15,7 @@ unchanged.
 | `releases` | Repository versions, immutable published assets, fs/S3 locations and cleanup journals; no Pipeline or Web dependency |
 | `storage` | Backend-neutral object storage, filesystem and S3 adapters, bounded streams and integrity checks; no business, database or Web dependency |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
-| `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
+| `gitops` | Git reads, bounded merge operations, revision parsing and shared/exclusive filesystem locks |
 | `diff/protocol` | Versioned worker/data protocol and resource limits; no Git, Web or database dependency |
 | `diff/compute` | Pure MoonDiff calculation and original-file coordinate projection |
 | `cmd/moonhub-diff-worker` | One-request isolated diff executable; protocol IO and pure calculation only |
@@ -179,7 +179,7 @@ section rechecks authorization and immutable revision identity. See
 
 Repository ref-update events are below Pipeline in the dependency graph. SSH
 hooks and the merge worker record them without importing Pipeline. The Pipeline
-worker consumes their immutable commit IDs under the shared repository lock and
+worker consumes their immutable commit IDs under the repository write lock and
 creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
