@@ -112,22 +112,6 @@ async fn mirror_work_root(root : String) -> String {
 }
 
 ///|
-async fn mirror_lock(root : String, id : Int64) -> @fs.File {
-  let work = mirror_work_root(root)
-  // This lock is independent of the source repository's receive/merge lock.
-  let directory = work + "/" + id.to_string()
-  if !@fs.exists(directory) {
-    @fs.mkdir(directory, permission=0o700) catch {
-      err => if !@fs.exists(directory) { raise err }
-    }
-  }
-  guard @fs.realpath(directory) == directory else {
-    raise @domain.BadRequest(message="invalid mirror lock directory")
-  }
-  @gitops.repository_write_lock(directory)
-}
-
-///|
 pub async fn save_push_mirror(
   pool : @database.Database,
   root : String,

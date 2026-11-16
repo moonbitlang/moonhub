@@ -200,7 +200,7 @@ pub async fn serve_git_ssh(
   )
   let git_dir = @repository.resolve_repository_dir(root, request.repo)
   let write_lock = if request.operation == @repository.Write {
-    Some(@gitops.repository_write_lock(git_dir))
+    Some(@repository.repository_write_lock(root, request.repo))
   } else {
     None
   }

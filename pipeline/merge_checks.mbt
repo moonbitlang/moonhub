@@ -204,9 +204,9 @@ pub async fn run_next_merge_check(
     team_id: row.get_name("team_id"),
     repo: { owner: row.get_name("owner"), name: row.get_name("name"), },
   }
-  let git_dir = @repository.resolve_repository_dir(root, scope.repo)
-  let lock = @gitops.repository_write_lock(git_dir)
+  let lock = @repository.repository_write_lock(root, scope.repo)
   defer lock.close()
+  let git_dir = @repository.resolve_repository_dir(root, scope.repo)
   @repository.recover_ref_events_locked(pool, scope, git_dir)
   let mut mr = @collaboration.require_merge_request(
     pool,

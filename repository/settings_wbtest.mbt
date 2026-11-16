@@ -100,8 +100,7 @@ async test "waiting settings writes recheck identity and authorization" {
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       for mode in ["permission", "identity"] {
         let settings = repository_settings(pool, alice, repo)
-        let dir = resolve_repository_dir(root, repo)
-        let lock = @gitops.repository_write_lock(dir)
+        let lock = repository_write_lock(root, repo)
         @async.with_task_group(group => {
           let waiting = group.spawn(() => {
             try {

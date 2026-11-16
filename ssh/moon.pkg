@@ -7,7 +7,6 @@ import {
   "hackwaly/moonhub/domain",
   "moonbitlang/core/env",
   "moonbitlang/async/fs",
-  "hackwaly/moonhub/gitops",
   "moonbitlang/async/process",
   "hackwaly/moonhub/repository",
   "moonbitlang/async/signal",

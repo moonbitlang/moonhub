@@ -20,6 +20,8 @@ pub async fn default_ref(String) -> String
 
 pub fn diff_options(mode? : String, ignore_comments? : String, ignore_tests? : String) -> @protocol.Options raise
 
+pub async fn file_lock(String) -> @fs.File
+
 pub fn git_args(String, Array[String]) -> Array[String]
 
 pub async fn is_directory(String) -> Bool
@@ -41,8 +43,6 @@ pub async fn merged_tree(String, Revision) -> String
 pub fn parse_commit_line(String) -> CommitInfo?
 
 pub async fn read_blob(String, String, String) -> String
-
-pub async fn repository_write_lock(String) -> @fs.File
 
 pub async fn resolve_ref(String, String?) -> String
 

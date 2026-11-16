@@ -123,6 +123,14 @@ async test "cleanup journals survive reopening and validate paths and missing fi
           "INSERT INTO repository_file_garbage(repository_id,owner,name,kind,resource_id,path) VALUES(8,'alice','demo','git',8,'alice/demo.git'),(9,'alice','missing','git',9,'alice/missing.git'),(10,'alice','escape','git',10,'../outside');",
         )
       })
+      // Crash after removing the files but before deleting their durable journal.
+      let control = repository_write_lock(root, {
+        owner: "alice",
+        name: "demo",
+      })
+      defer control.close()
+      @fs.rmdir("\{root}/alice/demo.git", recursive=true)
+      control.unlock()
       pool.close()
       let reopened = @database.new_db_pool({ path, }, group)
       defer reopened.close()
@@ -148,6 +156,7 @@ async test "cleanup serializes workers and removes mirror directories after a sa
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let mirror = mirror_lock(root, 45L)
     mirror.close()
+    @fs.mkdir("\{root}/.mirrors/45", recursive=true)
     @fs.write_file("\{root}/.mirrors/45/partial", "mirror staging")
     pool.with_client(client => {
       ignore(
@@ -177,6 +186,7 @@ async test "cleanup serializes workers and removes mirror directories after a sa
     // A corrupt task pointing at a live mirror must also fail closed.
     let live = mirror_lock(root, 46L)
     live.close()
+    @fs.mkdir("\{root}/.mirrors/46", recursive=true)
     @fs.write_file("\{root}/.mirrors/46/keep", "live mirror")
     let rebuilt = repository_settings(pool, alice, repo)
     pool.with_client(client => {
