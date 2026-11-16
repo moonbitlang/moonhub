@@ -4,6 +4,7 @@ pub async fn with_repository_test_app(
   moondiff~ : Bool = false,
   diff_executor? : @gitops.DiffExecutor,
   release_origin~ : String = "https://moonhub.test",
+  body_read_started? : @async.Semaphore,
 ) -> Unit {
   @test_support.with_ssh_test_db(pool => {
     @test_support.with_git_test_repo((root, _) => {
@@ -15,7 +16,34 @@ pub async fn with_repository_test_app(
         })
       })
       let app = @moonback.App(
-        @web.app_module,
+        @moonback.Module(ctx => {
+          if body_read_started is Some(started) {
+            ctx.add_middleware(
+              @moonback.Middleware(next => {
+                (req, res) => {
+                  if req.headers.get("X-Moonhub-Test-Partial-Body") == Some("1") {
+                    @async.with_task_group(group => {
+                      let handler = group.spawn(() => next(req, res))
+                      @async.pause()
+                      // These handlers do synchronous authorization before
+                      // claiming the stream. Verify that they reached the body
+                      // read before allowing the fixture to retire the repo.
+                      try ignore(req.body.reader()) catch {
+                        _ => started.release()
+                      } noraise {
+                        _ => fail("handler has not started reading the body")
+                      }
+                      handler.wait()
+                    })
+                  } else {
+                    next(req, res)
+                  }
+                }
+              }),
+            )
+          }
+          ctx.use_(@web.app_module)
+        }),
         config=@moonback.Config(custom=[
           @moonback.Config::custom(
             @web_context.release_origin_key, release_origin,

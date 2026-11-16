@@ -71,12 +71,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let actor = api_actor(pool, req, "write")
       let repo = @web_context.repo_param(req)
       let name = @web_context.required_param(req, "secret", "secret").to_upper()
+      let scope = @repository.repository_scope(pool, actor, repo)
       let body = api_body(req, ["value", "branch", "workflow", "version"])
       @pipeline.save_secret(
         pool,
         root,
         actor,
-        repo,
+        scope,
         name,
         if body.contains("value") {
           Some(field(body, "value"))

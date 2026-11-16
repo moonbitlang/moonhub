@@ -66,3 +66,83 @@ async test "secret API requires write scope and repository management returns me
     )
   })
 }
+
+///|
+async test "secret API binds scope before reading a delayed JSON body" {
+  for rebuild in [false, true] {
+    let started = @async.Semaphore(1, initial_value=0)
+    @web_testkit.with_repository_test_app(
+      (port, pool, root, _, _) => {
+        let actor = @identity.active_user_by_name(pool, "alice")
+        let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+        let scope = @repository.repository_scope(pool, actor, repo)
+        let token = @identity.create_access_token(
+          pool, actor, "delayed", "write", 1,
+        )
+        let payload : Json = {
+          "value": "delayed-json-private-value",
+          "branch": "pipeline",
+          "workflow": ".github/workflows/build.yml",
+          "version": "0",
+        }
+        let (response, body) = @web_testkit.partial_body_request(
+          port,
+          "/-/api/v1/repos/alice/demo/secrets/TOKEN",
+          payload.stringify(),
+          {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token,
+          },
+          started,
+          () => {
+            @repository.delete_repository(
+              pool,
+              root,
+              actor,
+              repo,
+              scope.id,
+              repo.path(),
+            )
+            @repository.cleanup_deleted_repositories(pool, root)
+            if rebuild {
+              @repository.create_managed_repository(
+                pool, root, repo, "private", false,
+              )
+              ignore(
+                @test_support.workflow_commit(
+                  repo.git_dir(root),
+                  @test_support.single_job_workflow,
+                ),
+              )
+              assert_true(
+                @repository.repository_scope(pool, actor, repo).id != scope.id,
+              )
+            }
+          },
+        )
+        assert_eq(response.code, if rebuild { 400 } else { 404 })
+        assert_eq(response.headers.get("cache-control"), Some("no-store"))
+        assert_false(body.contains("delayed-json-private-value"))
+        let result = @json.parse(body)
+        assert_true(result is { "error": { "code": String(_), .. }, .. })
+        if rebuild {
+          assert_true(body.contains("repository has changed"))
+          assert_true(@pipeline.list_secrets(pool, actor, repo).is_empty())
+        }
+        pool.with_client(client => {
+          assert_true(
+            client.query_all("SELECT * FROM repository_secret").is_empty(),
+          )
+          assert_true(
+            client
+            .query_all(
+              "SELECT * FROM repository_audit WHERE kind='secret_saved'",
+            )
+            .is_empty(),
+          )
+        })
+      },
+      body_read_started=started,
+    )
+  }
+}

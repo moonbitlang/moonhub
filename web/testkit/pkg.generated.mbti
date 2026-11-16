@@ -6,6 +6,7 @@ import {
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/repository",
   "moonbitlang/async/http",
+  "moonbitlang/async/semaphore",
   "moonbitlang/moonback",
 }
 
@@ -27,6 +28,8 @@ pub fn invited_admin_password_from_outbox(@database.Database) -> String raise
 pub fn latest_invited_admin_outbox_id(@database.Database) -> Int64 raise
 
 pub async fn login_test_user(Int32, String, String) -> @http.Cookie
+
+pub async fn partial_body_request(Int32, String, String, Map[@http.CaseInsensitiveString, String], @semaphore.Semaphore, async () -> Unit) -> (@http.Response, String)
 
 pub let private_error_test_detail : String
 
@@ -54,7 +57,7 @@ pub let test_ssh_addresses : @repository.SshAddressConfig
 
 pub async fn with_production_test_app(async (@moonback.App, Int32, @database.Database) -> Unit) -> Unit
 
-pub async fn with_repository_test_app(async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit, moondiff? : Bool, diff_executor? : @gitops.DiffExecutor, release_origin? : String) -> Unit
+pub async fn with_repository_test_app(async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit, moondiff? : Bool, diff_executor? : @gitops.DiffExecutor, release_origin? : String, body_read_started? : @semaphore.Semaphore) -> Unit
 
 pub async fn with_ssh_settings_app(async (Int32, @database.Database, @http.Cookie, @http.Cookie, @http.Cookie) -> Unit, addresses? : @repository.SshAddressConfig, repo_root? : String, import_config? : @repository.RepoImportConfig?, mirror_config? : @repository.MirrorConfig) -> Unit
 

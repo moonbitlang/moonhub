@@ -210,6 +210,11 @@ Requests capture the repository ID, team ID and name before asynchronous work.
 After acquiring the control lock they recheck access and that exact identity,
 then resolve the Git path. SSH holds its lock through final authorization, the
 Git subprocess and exit cleanup, releasing it on errors and cancellation.
+Secret form and JSON handlers capture the original scope before reading the
+request body and pass it to `pipeline.save_secret`. The business service
+validates that identity under the write lock, rechecks account, write and
+management permissions, and uses the original ID for secret storage and audit
+records.
 Creation and import publication use the same name lock; imports transfer data
 in private staging, then verify the running job and staging token
 before publishing. Deletion reserves SQLite with `BEGIN IMMEDIATE`, rechecks
@@ -243,8 +248,11 @@ The Linux self-check runs `node scripts/repository-deletion-smoke.cjs` after
 the native build. It uses separate Web and SSH processes, pipe/FD barriers and
 a disposable SQLite/Git fixture to verify parallel SSH reads, cross-process
 exclusion, private replacement ref isolation and rejection of stale SSH readers
-and writers after a same-name rebuild. Python 3 supplies the fixture's
-control-lock holder; no external SSH server or service is required.
+and writers after a same-name rebuild. HTTP tests hold the last request body
+byte, signal when the handler has claimed its stream, and then delete or rebuild
+the repository before completing secret form and JSON submissions. Python 3
+supplies the fixture's control-lock holder; no external SSH server or service is
+required.
 
 Each production package owns its tests. Run the entire suite or a single
 package from the module root:

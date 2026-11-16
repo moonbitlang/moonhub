@@ -6,6 +6,7 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/pipeline/protocol",
   "hackwaly/moonhub/pipeline/workflow",
+  "hackwaly/moonhub/repository",
   "hackwaly/moonhub/storage",
   "moonbitlang/async",
   "moonbitlang/core/debug",
@@ -49,7 +50,7 @@ pub async fn run_next_merge_check(@database.Database, String) -> Bool
 
 pub async fn run_next_push_event(@database.Database, String) -> Bool
 
-pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String?, String, String, Int64) -> Unit
+pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @repository.RepositoryScope, String, String?, String, String, Int64) -> Unit
 
 pub fn save_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, Int64) -> Unit raise
 
