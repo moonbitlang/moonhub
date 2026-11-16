@@ -102,6 +102,30 @@ fn repository_job_actor(
 }
 
 ///|
+fn require_running_repository_job(
+  pool : @database.Database,
+  job : RepositoryJob,
+) -> Unit raise {
+  pool.with_client(client => {
+    guard client.query_opt(
+        "SELECT r.id FROM repository r JOIN team t ON t.id=r.team_id JOIN repository_job j ON j.repository_id=r.id WHERE r.id=? AND r.team_id=? AND t.name_key=? AND r.name=? AND r.ready=0 AND j.status='running' AND j.stage_token=?",
+        params=[
+          job.id,
+          job.team_id,
+          job.repo.owner,
+          job.repo.name,
+          job.stage_token,
+        ],
+      )
+      is Some(_) else {
+      raise @domain.BadRequest(
+        message="repository operation changed; reload before retrying",
+      )
+    }
+  })
+}
+
+///|
 async fn provision_repository(
   pool : @database.Database,
   root : String,
@@ -126,30 +150,10 @@ async fn provision_repository(
   }
   let root = @domain.trim_trailing_slash(@fs.realpath(root))
   let destination = job.repo.git_dir(root)
-  let owner = "\{root}/\{job.repo.owner}"
-  if !@fs.exists(owner) {
-    @fs.mkdir(owner, permission=0o750)
-  }
-  guard @fs.realpath(owner) == owner else {
-    raise @domain.BadRequest(
-      message="repository owner directory must not be a symbolic link",
-    )
-  }
-  if @fs.exists(destination) {
-    // The marker is written only after Git completes. It makes the final rename
-    // recoverable if the server exits before committing the database update.
-    guard @fs.realpath(destination) == destination else {
-      raise @domain.BadRequest(message="repository path already exists")
-    }
-    let marker = @fs.read_file("\{destination}/moonhub-provisioned").text() catch {
-      _ => ""
-    }
-    guard marker == job.id.to_string() else {
-      raise @domain.BadRequest(
-        message="repository data already exists and will not be overwritten",
-      )
-    }
-  } else {
+  // Import into private staging without holding the repository lock. Publication
+  // below revalidates the exact running job and token after the long transfer.
+  let prepared = !@fs.exists(destination)
+  if prepared {
     @fs.mkdir(stage, permission=0o700)
     let environment = {
       "PATH": "/usr/bin:/bin",
@@ -202,14 +206,49 @@ async fn provision_repository(
         environment,
       )
     }
-    let actor = repository_job_actor(pool, job)
-    require_repository_manager(pool, actor, team)
-    ignore(repository_job_source(pool, actor, job, addresses))
     @fs.write_file(
       "\{stage}/moonhub-provisioned",
       job.id.to_string(),
       permission=0o600,
     )
+  }
+  let lock = repository_write_lock(root, job.repo)
+  defer lock.close()
+  require_running_repository_job(pool, job)
+  let actor = repository_job_actor(pool, job)
+  require_repository_manager(pool, actor, team)
+  ignore(repository_job_source(pool, actor, job, addresses))
+  pool.with_client(client => require_repository_name_available(client, job.repo))
+  let owner = "\{root}/\{job.repo.owner}"
+  @fs.mkdir(owner, permission=0o750) catch {
+    err => if !@fs.exists(owner) { raise err }
+  }
+  guard @fs.kind(owner, follow_symlink=false) is Directory &&
+    @fs.realpath(owner) == owner else {
+    raise @domain.BadRequest(
+      message="repository owner directory must not be a symbolic link",
+    )
+  }
+  if @fs.exists(destination) {
+    // A prior publication can be recovered only by the same repository job.
+    guard @fs.realpath(destination) == destination else {
+      raise @domain.BadRequest(message="repository path already exists")
+    }
+    let marker = @fs.read_file("\{destination}/moonhub-provisioned").text() catch {
+      _ => ""
+    }
+    guard marker == job.id.to_string() else {
+      raise @domain.BadRequest(
+        message="repository data already exists and will not be overwritten",
+      )
+    }
+  } else {
+    guard prepared else {
+      raise @domain.BadRequest(
+        message="repository publication was interrupted; retry",
+      )
+    }
+    require_running_repository_job(pool, job)
     @fs.rename(stage, destination, replace=false)
   }
   let branch = @gitops.default_ref(destination)
@@ -218,6 +257,7 @@ async fn provision_repository(
   ignore(repository_job_source(pool, actor, job, addresses))
   pool.with_client(client => {
     client.with_transaction(tx => {
+      require_running_repository_job(pool, job)
       let _ = tx.execute(
         "UPDATE repository SET ready = 1, default_branch = ?, updated_at = datetime('now') WHERE id = ?",
         params=[branch, job.id],
@@ -282,7 +322,16 @@ pub async fn run_next_repository_job(
     }
     @async.with_timeout(
       timeout,
-      () => provision_repository(pool, root, config, job, stage, addresses),
+      () => {
+        provision_repository(
+          pool,
+          root,
+          config,
+          { ..job, stage_token: token, },
+          stage,
+          addresses,
+        )
+      },
       error=@domain.BadRequest(message="repository operation timed out"),
     )
   } catch {
@@ -303,8 +352,8 @@ pub async fn run_next_repository_job(
       }
       pool.with_client(client => {
         let _ = client.execute(
-          "UPDATE repository_job SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE repository_id = ?",
-          params=[message, job.id],
+          "UPDATE repository_job SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE repository_id = ? AND status='running' AND stage_token=?",
+          params=[message, job.id, token],
         )
       })
     }
