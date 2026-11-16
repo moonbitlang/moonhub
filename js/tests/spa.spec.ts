@@ -109,6 +109,14 @@ test('header breadcrumbs navigate settings and remain available on mobile', asyn
     expect(account.y + account.height).toBeLessThanOrEqual(trailBounds.y);
     const target = trail.getByRole('link', { name: 'Administration', exact: true });
     expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const offsets = await trail.locator('a').evaluateAll(links => links.map(link => {
+      const range = document.createRange();
+      range.selectNodeContents(link);
+      const text = range.getBoundingClientRect();
+      const bounds = link.getBoundingClientRect();
+      return Math.abs(text.y + text.height / 2 - bounds.y - bounds.height / 2);
+    }));
+    for (const offset of offsets) expect(offset).toBeLessThanOrEqual(1);
   }
   await trail.getByRole('link', { name: 'Administration', exact: true }).click();
   await expect(page).toHaveURL(/admin\/settings\/ssh$/);
@@ -116,6 +124,63 @@ test('header breadcrumbs navigate settings and remain available on mobile', asyn
   await hydrated(page);
   await trail.getByRole('link', { name: 'Account', exact: true }).click();
   await expect(page).toHaveURL(/settings\/profile$/);
+});
+
+test('responsive headers keep one navigation trigger and preserve both navigation scopes', async ({ page, browser }) => {
+  await signIn(page);
+  const header = page.locator('.site-header');
+  for (const width of [320, 390, 739, 900, 901, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const path of ['/alice/demo/pipelines', '/-/settings/profile']) {
+      await page.goto(path);
+      await hydrated(page);
+      await expect(header.locator('.global-navigation > summary:visible, [data-sidebar-open]:visible')).toHaveCount(1);
+      if (width <= 900) {
+        const opener = header.getByRole('button', { name: 'Open navigation', exact: true });
+        await opener.click();
+        const sidebar = page.locator('#app-sidebar');
+        await expect(sidebar).toHaveAttribute('aria-modal', 'true');
+        await sidebar.locator('.context-switcher > summary').click();
+        await expect(sidebar.getByRole('link', { name: 'All repositories', exact: true })).toBeVisible();
+        await expect(sidebar.getByRole('link', { name: 'All teams', exact: true })).toBeVisible();
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await expect(opener).toBeFocused();
+      }
+    }
+    await page.goto('/alice/demo');
+    await hydrated(page);
+    await expect(header.locator('.global-navigation > summary:visible, [data-sidebar-open]:visible')).toHaveCount(1);
+    await header.locator('.global-navigation > summary').click();
+    await expect(header.getByRole('navigation', { name: 'Global navigation', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+  }
+  const context = await browser.newContext({ javaScriptEnabled: false, storageState: await page.context().storageState(), viewport: { width: 390, height: 844 } });
+  const native = await context.newPage();
+  await native.goto(new URL('/alice/demo/pipelines', page.url()).href);
+  await expect(native.locator('.global-navigation > summary:visible, [data-sidebar-open]:visible')).toHaveCount(1);
+  await native.locator('.global-navigation > summary').click();
+  await expect(native.getByRole('navigation', { name: 'Global navigation', exact: true })).toBeVisible();
+  await expect(native.locator('#app-sidebar')).toBeVisible();
+  await context.close();
+});
+
+test('resizing an open global drawer to mobile restores the section navigation trigger', async ({ page }) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 1440, height: 844 });
+  await page.goto('/alice/demo/pipelines');
+  await hydrated(page);
+  await page.locator('.global-navigation > summary').click();
+  await expect(page.locator('main')).toHaveAttribute('inert', '');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.global-navigation')).not.toHaveAttribute('open', '');
+  await expect(page.locator('main')).not.toHaveAttribute('inert');
+  const opener = page.getByRole('button', { name: 'Open navigation', exact: true });
+  await expect(opener).toBeFocused();
+  await opener.click();
+  await expect(page.locator('#app-sidebar')).toHaveAttribute('aria-modal', 'true');
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
 });
 
 test('file breadcrumbs and parent links keep the revision through SPA and keyboard navigation', async ({ page }) => {

@@ -87,7 +87,7 @@ html[data-ui-enhanced] [hidden][data-filter-control], html[data-ui-enhanced] [hi
 .breadcrumbs [aria-current] { color: var(--color-text); font-weight: 600; }
 .breadcrumbs .breadcrumb-separator { width: 14px; height: 14px; flex: 0 0 14px; color: var(--color-subtle); }
 .site-header .breadcrumbs ol { flex-wrap: nowrap; }
-.site-header .breadcrumbs a { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.site-header .breadcrumbs a { display: block; align-content: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .header-sign-in { flex-shrink: 0; margin-left: auto; white-space: nowrap; }
 .account-menu { position: relative; flex-shrink: 0; margin-left: auto; }
 .account-menu > summary { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 3px 5px; border-radius: 6px; cursor: pointer; list-style: none; }
@@ -949,7 +949,23 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 .branch-picker-panel { width: min(320px, calc(100vw - 40px)); }
 .branch-picker-panel a, .file-finder-results a, .directory-navigation a { display: block; padding: 8px; border-radius: 4px; color: var(--color-text); overflow-wrap: anywhere; }
 .branch-picker-panel a:hover, .file-finder-results a:hover, .directory-navigation a:hover { background: var(--color-surface-subtle); text-decoration: none; }
-.file-finder-panel { left: min(0px, calc(180px - 35vw)); }
+/* Keep a viewport-contained fallback when anchor positioning is unavailable. */
+.file-finder-panel { position: fixed; z-index: 45; inset: 0; margin: auto; height: fit-content; }
+@supports (position-area: block-end) and (justify-self: anchor-center) {
+  .file-finder > summary { anchor-name: --file-finder-trigger; }
+  .file-finder-panel {
+    position-anchor: --file-finder-trigger;
+    inset: auto;
+    margin: 6px 20px;
+    position-area: block-end span-all;
+    justify-self: anchor-center;
+    position-try-fallbacks: flip-block;
+    position-try-order: most-block-size;
+    /* Try the other side before resizing reduces the panel to just its input. */
+    min-height: min(160px, 30dvh);
+    max-height: min(60dvh, calc(100% - 12px));
+  }
+}
 .file-finder-results { margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: 12px; }
 .commit-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px 12px; align-items: center; padding: 12px 16px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-subtle); }
 .commit-summary .commit-subject { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--color-text); }
@@ -1033,6 +1049,8 @@ body:has(.repository-shell) .mr-branch-fields { display: grid; grid-template-col
   .site-header__inner > .brand-area, .site-header__inner > .brand { grid-column: 2; grid-row: 1; }
   .site-header__inner > .header-inbox { grid-column: 3; grid-row: 1; }
   .site-header__inner > .account-menu, .site-header__inner > .header-sign-in { grid-column: 4; grid-row: 1; }
+  html[data-ui-enhanced] .site-header__inner:has([data-sidebar-open]) > .global-navigation { display: none; }
+  html[data-ui-enhanced] .site-header__inner:has([data-sidebar-open]) > .brand-area { grid-column: 1 / 3; gap: 8px; }
 }
 body:has(.repository-shell) .repo-header { border-bottom: 0; padding-bottom: 0; }
 .code-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
