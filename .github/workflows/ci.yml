@@ -66,6 +66,13 @@ jobs:
           persist-credentials: false
       - name: Build and exercise HTTP and Git SSH
         run: bash scripts/docker-smoke.sh
+      - name: Verify Ubuntu and Debian runner tools
+        run: |
+          docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
+            --target environment -t moonhub-runner-tools:ubuntu .
+          docker build --platform linux/amd64 --target runner-environment \
+            --build-arg MOONHUB_BASE_IMAGE=moonhub-base:local -t moonhub-runner-tools:debian .
+          bash scripts/linux-runner-tools-smoke.sh moonhub-runner-tools:ubuntu moonhub-runner-tools:debian
 
   windows-runner:
     name: Windows runner (${{ matrix.os }})

@@ -25,10 +25,15 @@ WORKDIR /opt/moonhub-actions
 COPY runner/actions/*.mjs ./
 CMD ["node", "--test", "runtime.test.mjs"]
 
-FROM base AS runner
+FROM base AS runner-environment
 RUN groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \
     && mkdir /workspace && chown runner:runner /workspace
+ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
+USER 10001:10001
+WORKDIR /workspace
+
+FROM runner-environment AS runner
 COPY --from=build /src/_build/native/release/build/cmd/moonhub-runner/moonhub-runner.exe /usr/local/bin/moonhub-runner
 COPY --from=build /out/moonhub-runner-step /usr/local/bin/moonhub-runner-step
 COPY --from=base /opt/moonhub-actions/node_modules /usr/local/lib/moonhub/actions/node_modules
@@ -37,9 +42,6 @@ COPY runner/actions/*.mjs /usr/local/lib/moonhub/actions/
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
 COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE
-ENV PATH="/opt/moon/bin:/usr/local/bin:/usr/bin:/bin"
-USER 10001:10001
-WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/moonhub-runner", "execute"]
 
 FROM runner AS runner-selfhost
