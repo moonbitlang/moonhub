@@ -24,7 +24,7 @@ pub async fn repository_write_lock(
   root : String,
   repo : @domain.RepoId,
 ) -> @fs.File {
-  repository_lock(root, repo, Exclusive)
+  @gitops.file_lock(repository_lock_path(root, repo))
 }
 
 ///|
@@ -32,26 +32,47 @@ pub async fn repository_read_lock(
   root : String,
   repo : @domain.RepoId,
 ) -> @fs.File {
-  repository_lock(root, repo, Shared)
+  @gitops.file_lock(repository_lock_path(root, repo), mode=Shared)
 }
 
 ///|
-async fn repository_lock(
-  root : String,
-  repo : @domain.RepoId,
-  mode : @fs.Lock,
-) -> @fs.File {
+async fn repository_lock_path(root : String, repo : @domain.RepoId) -> String {
   let repo = @domain.parse_transport_repo("\{repo.path()}.git")
   let key = @crypto.bytes_to_hex_string(
     @crypto.sha256(@utf8.encode(repo.path())),
   )
-  @gitops.file_lock(control_lock_path(root, "repositories", key), mode~)
+  control_lock_path(root, "repositories", key)
+}
+
+///|
+// Readers acquire this after the name control lock and keep it until Git exits.
+pub async fn repository_reader_lock(
+  root : String,
+  repository_id : Int64,
+) -> @fs.File {
+  @gitops.file_lock(
+    repository_reader_lock_path(root, repository_id),
+    mode=Shared,
+  )
+}
+
+///|
+async fn repository_reader_lock_path(root : String, id : Int64) -> String {
+  guard id > 0L else {
+    raise @domain.BadRequest(message="invalid repository identity")
+  }
+  control_lock_path(root, "repository-readers", id.to_string())
 }
 
 ///|
 async fn mirror_lock(root : String, id : Int64) -> @fs.File {
+  @gitops.file_lock(mirror_lock_path(root, id))
+}
+
+///|
+async fn mirror_lock_path(root : String, id : Int64) -> String {
   guard id >= 0L else {
     raise @domain.BadRequest(message="invalid mirror identity")
   }
-  @gitops.file_lock(control_lock_path(root, "mirrors", id.to_string()))
+  control_lock_path(root, "mirrors", id.to_string())
 }

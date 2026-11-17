@@ -54,6 +54,8 @@ pub async fn revision_comparison(String, Revision, String?) -> RevisionCompariso
 
 pub async fn run_git(String, Array[String]) -> String
 
+pub async fn try_file_lock(String, mode? : @fs.Lock) -> @fs.File?
+
 pub fn valid_commit_sha(String) -> Bool
 
 pub async fn validate_diff_anchor(String, Revision, String?, String, String, Int64, Int64) -> DiffAnchor

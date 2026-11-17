@@ -11,25 +11,13 @@ pub async fn cleanup_deleted_repositories(
   guard @fs.realpath(work) == work else {
     raise @domain.BadRequest(message="invalid repository cleanup directory")
   }
-  let lock_path = "\{work}/worker.lock"
-  let lock_kind = Some(@fs.kind(lock_path, follow_symlink=false)) catch {
-    @os_error.OSError(_) as err if err.is_ENOENT() => None
-    err => raise err
+  guard @gitops.try_file_lock("\{work}/worker.lock") is Some(lock) else {
+    return
   }
-  guard lock_kind is (None | Some(Regular)) else {
-    raise @domain.BadRequest(message="invalid repository cleanup lock")
-  }
-  let lock = @fs.open(
-    lock_path,
-    mode=ReadWrite,
-    create_mode=OpenOrCreate,
-    permission=0o600,
-  )
   defer lock.close()
-  guard lock.try_lock(Exclusive) else { return }
   let rows = pool.with_client(client => {
     client.query_all(
-      "SELECT * FROM repository_file_garbage WHERE next_attempt_at<=datetime('now') ORDER BY id LIMIT 100",
+      "SELECT * FROM repository_file_garbage WHERE next_attempt_at<=datetime('now') ORDER BY next_attempt_at,id LIMIT 100",
     )
   })
   for row in rows {
@@ -50,13 +38,30 @@ pub async fn cleanup_deleted_repositories(
       guard relative == expected && repo.owner == owner && repo.name == name else {
         raise @domain.BadRequest(message="invalid repository cleanup path")
       }
-      let writer = if kind == "git" {
-        repository_write_lock(root, repo)
+      let path = if kind == "git" {
+        repository_lock_path(root, repo)
       } else {
-        mirror_lock(root, resource_id)
+        mirror_lock_path(root, resource_id)
+      }
+      guard @gitops.try_file_lock(path) is Some(writer) else {
+        defer_busy_cleanup(pool, id)
+        continue
       }
       defer writer.close()
-      // Another worker may have completed this journal entry while we waited.
+      let readers = if kind == "git" {
+        guard @gitops.try_file_lock(
+            repository_reader_lock_path(root, repository_id),
+          )
+          is Some(readers) else {
+          defer_busy_cleanup(pool, id)
+          continue
+        }
+        Some(readers)
+      } else {
+        None
+      }
+      defer (if readers is Some(readers) { readers.close() })
+      // Recheck the journal and ownership only after holding both lifetime locks.
       guard pool.with_client(client => {
         client.query_opt(
           "SELECT id FROM repository_file_garbage WHERE id=? AND repository_id=? AND resource_id=? AND kind=? AND path=? AND owner=? AND name=?",
@@ -139,6 +144,20 @@ pub async fn cleanup_deleted_repositories(
       }
     }
   }
+}
+
+///|
+// Contention is not a failed attempt. Move busy work behind older due tasks,
+// including tasks beyond the current batch, without changing failure history.
+fn defer_busy_cleanup(pool : @database.Database, id : Int64) -> Unit raise {
+  pool.with_client(client => {
+    ignore(
+      client.execute(
+        "UPDATE repository_file_garbage SET next_attempt_at=datetime('now','+1 second') WHERE id=?",
+        params=[id],
+      ),
+    )
+  })
 }
 
 ///|
