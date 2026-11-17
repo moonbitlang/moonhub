@@ -17,6 +17,20 @@ async fn wait_for_docker(options : Options) -> Unit raise ProviderError {
 
 ///|
 async fn ensure_runner_image(options : Options) -> Unit raise ProviderError {
+  if options.linux_ci {
+    let (code, profile) = docker_control(options, [
+      "image",
+      "inspect",
+      "--format",
+      "{{index .Config.Labels \"io.moonhub.runner.execution\"}}",
+      options.runner_image,
+    ])
+    guard code == 0 && profile.trim() == "linux-ci-v1" else {
+      raise InvalidConfiguration(
+        "Prepare the matching Linux CI image before arming a single-use worker.",
+      )
+    }
+  }
   let inspected = @process.run(
     options.docker,
     ["image", "inspect", "--format", "{{.Id}}", options.runner_image],

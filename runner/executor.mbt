@@ -49,8 +49,23 @@ async fn validate_options(
     options.heartbeat_ms <= 10000 else {
     raise InvalidConfiguration("invalid job timeout or heartbeat interval")
   }
+  guard !options.linux_ci ||
+    (!options.unsafe_local && @platform.os() == "linux") else {
+    raise InvalidConfiguration(
+      "Linux CI cannot use unsafe-local or another OS.",
+    )
+  }
   guard monotonic_ms() >= 0L &&
-    prepare_agent(if options.unsafe_local { 1 } else { 0 }) == 0 else {
+    prepare_agent(
+      if options.linux_ci {
+        2
+      } else if options.unsafe_local {
+        1
+      } else {
+        0
+      },
+    ) ==
+    0 else {
     raise InvalidConfiguration(
       "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only",
     )
@@ -388,7 +403,7 @@ async fn Runtime::execute_script(
     },
     "RUNNER_TEMP": self.action_temp,
   }
-  if @platform.macos() {
+  if @platform.macos() || self.options.linux_ci {
     job_env["PATH"] = "/opt/moon/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   }
   if @platform.windows() {
@@ -460,6 +475,8 @@ async fn Runtime::execute_script(
           self.options.launcher,
           if @platform.windows() {
             [step.shell, script, "--wait-for-agent"]
+          } else if self.options.linux_ci {
+            [step.shell, script, "--linux-ci"]
           } else {
             [step.shell, script]
           },
@@ -778,6 +795,11 @@ async fn Runtime::cleanup_processes(self : Runtime) -> Unit {
   }
   if !self.options.unsafe_local {
     kill_namespace()
+    // Privileged job descendants can change UID. The outside worker removes
+    // the entire container; the ASG controller then terminates the instance.
+    if self.options.linux_ci {
+      return
+    }
     for retry = 0; retry < 100; retry = retry + 1 {
       if reap_namespace() == 0 {
         return

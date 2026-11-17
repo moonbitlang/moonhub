@@ -101,7 +101,14 @@ async fn run(args : ArrayView[String]) -> Int32 {
         "run",
         about="Register and run a docker, asg or local tart provider.",
         options=controller,
-        flags=[@argparse.FlagArg("allow-http", long="allow-http")],
+        flags=[
+          @argparse.FlagArg("allow-http", long="allow-http"),
+          @argparse.FlagArg(
+            "linux-ci",
+            long="linux-ci",
+            about="Opt in a dedicated single-use Linux CI ASG with privileged task containers.",
+          ),
+        ],
       ),
       @argparse.Command(
         "worker",
@@ -141,6 +148,7 @@ async fn run(args : ArrayView[String]) -> Int32 {
     cpus: "2",
     memory: "4096m",
     pids_limit: 256,
+    linux_ci: options.flags.get("linux-ci").unwrap_or(false),
   }
   if subcommand == "worker" {
     @provider.run_bootstrap_worker(value(options, "bootstrap-file"), base)

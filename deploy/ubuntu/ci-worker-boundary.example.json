@@ -1,0 +1,45 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "OwnInstanceBootstrapOnly",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:us-west-2:123456789012:parameter/moonhub-runner/linux-ci/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/MoonHubInstanceArn": "${ec2:SourceInstanceARN}"
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyTaskImage",
+      "Effect": "Allow",
+      "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage"],
+      "Resource": "arn:aws:ecr:us-west-2:123456789012:repository/moonhub-runner-linux-ci"
+    },
+    {
+      "Sid": "RegistryLoginAndInstanceManagementChannel",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ssm:UpdateInstanceInformation",
+        "ssm:ListInstanceAssociations",
+        "ssm:UpdateInstanceAssociationStatus",
+        "ssm:UpdateAssociationStatus",
+        "ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel",
+        "ec2messages:AcknowledgeMessage", "ec2messages:DeleteMessage",
+        "ec2messages:FailMessage", "ec2messages:GetEndpoint",
+        "ec2messages:GetMessages", "ec2messages:SendReply"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AwsBootstrapDocument",
+      "Effect": "Allow",
+      "Action": ["ssm:GetDocument", "ssm:DescribeDocument"],
+      "Resource": "arn:aws:ssm:us-west-2::document/AWS-RunShellScript"
+    }
+  ]
+}

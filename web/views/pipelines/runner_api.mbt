@@ -166,6 +166,29 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       { "version": 1 }
     }),
   )
+  ctx.post(
+    "/workers/:id/isolation",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let payload = request_json(req, ["version", "controller_id", "revision"])
+      guard payload
+        is {
+          "version": 1,
+          "controller_id": String(controller),
+          "revision": String(revision),
+          ..
+        } &&
+        @protocol.parse_decimal(revision) is Some(revision) &&
+        revision > 0L else {
+        raise @domain.BadRequest(message="Invalid isolation acknowledgement.")
+      }
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "worker"),
+      )
+      coordinator.arm_ci_worker(token, controller, id, revision)
+      { "version": 1 }
+    }),
+  )
   ctx.get("/attempts/:id/source", async fn(req, res) {
     let archive = try {
       guard @protocol.parse_decimal(

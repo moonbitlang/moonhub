@@ -78,6 +78,11 @@ a new provider enrollment. The UI cannot select arbitrary cloud resources.
 
 ## ASG mode
 
+For jobs that require sudo, nested Docker or host kernel settings, see the
+explicit [single-use Linux CI profile](linux-ci-runner.md). Its dedicated ASG
+requires external metadata isolation, instance-scoped bootstrap permissions and
+one job per EC2; the ordinary mode described below remains reusable.
+
 For the production Git/SSM deployment, image publication, systemd installation
 and rollback procedure, see [production deployment](../deploy/production.md).
 

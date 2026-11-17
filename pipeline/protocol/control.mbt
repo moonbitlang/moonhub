@@ -146,6 +146,7 @@ pub(all) struct WorkerSnapshot {
   draining : Bool
   config_revision : String
   config : Map[String, String]
+  isolation_revision : String?
 }
 
 ///|

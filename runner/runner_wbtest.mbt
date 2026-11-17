@@ -157,6 +157,7 @@ fn test_options(launcher : String, workspace : String) -> Options {
     launcher,
     allow_http: true,
     unsafe_local: true,
+    linux_ci: false,
     heartbeat_ms: 50,
   }
 }

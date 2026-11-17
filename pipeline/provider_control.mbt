@@ -496,6 +496,9 @@ pub fn Coordinator::sync_worker(
           paused: row.get_name("paused"),
           draining,
           config_revision: revision.to_string(),
+          isolation_revision: Some(
+            (row.get_name("isolation_revision") : Int64).to_string(),
+          ),
           config: @json.from_json(
             @json.parse((row.get_name("config_json") : String)),
           ),
@@ -523,6 +526,41 @@ pub fn Coordinator::drain_worker(
           ) ==
           1 else {
           raise @domain.NotFound(message="Worker not found.")
+        }
+      },
+      immediate=true,
+    )
+  })
+}
+
+///|
+pub fn Coordinator::arm_ci_worker(
+  self : Coordinator,
+  token : String,
+  controller_id : String,
+  worker_id : Int64,
+  revision : Int64,
+) -> Unit raise {
+  self.pool.with_client(client => {
+    client.with_transaction(
+      tx => {
+        let parent = authenticate_provider(tx, token)
+        guard (parent.get_name("mode") : String) == "asg" &&
+          @json.parse((parent.get_name("config_json") : String))
+          is { "execution_mode": "linux-ci", .. } &&
+          (parent.get_name("controller_id") : String) == controller_id &&
+          (parent.get_name("controller_until_ms") : Int64) > (self.clock)() &&
+          (parent.get_name("config_revision") : Int64) == revision else {
+          raise Conflict(
+            "CI isolation acknowledgement is stale or unauthorized.",
+          )
+        }
+        guard tx.execute(
+            "UPDATE pipeline_worker SET isolation_revision=? WHERE id=? AND provider_id=? AND draining=0 AND state NOT IN ('failed','drained') AND NOT EXISTS (SELECT 1 FROM pipeline_job_attempt WHERE worker_id=pipeline_worker.id)",
+            params=[revision, worker_id, (parent.get_name("id") : Int64)],
+          ) ==
+          1 else {
+          raise Conflict("CI worker has already been used or retired.")
         }
       },
       immediate=true,

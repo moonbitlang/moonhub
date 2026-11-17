@@ -390,7 +390,19 @@ pub fn Coordinator::claim(
           None => {
             if worker_id is Some(_) {
               let w = authenticate_worker(tx, token)
+              let linux_ci = @json.parse(
+                  (provider.get_name("config_json") : String),
+                )
+                is { "execution_mode": "linux-ci", .. }
               guard !(w.get_name("draining") : Bool) &&
+                (
+                  !linux_ci ||
+                  (
+                    (provider.get_name("mode") : String) == "asg" &&
+                    (w.get_name("isolation_revision") : Int64) ==
+                    (w.get_name("config_revision") : Int64)
+                  )
+                ) &&
                 (w.get_name("state") : String) == "ready" &&
                 (w.get_name("applied_revision") : Int64) ==
                 (w.get_name("config_revision") : Int64) &&
@@ -466,8 +478,13 @@ pub fn Coordinator::claim(
               )
               ignore(
                 tx.execute(
-                  "UPDATE pipeline_worker SET state='busy' WHERE id=?",
-                  params=[worker_id],
+                  "UPDATE pipeline_worker SET state='busy',draining=CASE WHEN ? THEN 1 ELSE draining END WHERE id=?",
+                  params=[
+                    (provider.get_name("mode") : String) == "asg" &&
+                    @json.parse((provider.get_name("config_json") : String))
+                    is { "execution_mode": "linux-ci", .. },
+                    worker_id,
+                  ],
                 ),
               )
             }

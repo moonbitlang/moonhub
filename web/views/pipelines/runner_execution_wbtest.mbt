@@ -127,6 +127,7 @@ async test "pull request automatically runs built-in checkout against its merged
               launcher,
               allow_http: true,
               unsafe_local: true,
+              linux_ci: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),
@@ -270,6 +271,7 @@ async test "duplicate runner is fenced while original receives remote cancellati
           launcher,
           allow_http: true,
           unsafe_local: true,
+          linux_ci: false,
           heartbeat_ms: 50,
         }
         let original = group.spawn(() => {

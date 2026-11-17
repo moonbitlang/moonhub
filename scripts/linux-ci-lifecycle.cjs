@@ -1,0 +1,99 @@
+// Real native ASG controller with strict HTTP/AWS fixtures. Privileged execution
+// is independently tested by linux-ci-smoke.cjs; no cloud resources are created.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const http = require('node:http');
+const {spawn} = require('node:child_process');
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe');
+async function scenario(failed) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-lifecycle-'));
+  const stateFile = path.join(root, 'aws.json');
+  fs.writeFileSync(stateFile, JSON.stringify({calls: [], disabled: false, terminated: false, booted: false}));
+  const state = () => JSON.parse(fs.readFileSync(stateFile));
+  const adapter = path.join(root, 'aws');
+  fs.writeFileSync(adapter, `#!${process.execPath}
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const file=${JSON.stringify(stateFile)},args=process.argv.slice(2),s=JSON.parse(fs.readFileSync(file));s.calls.push(args.slice(0,2));
+let result=null;
+if(args[0]==='sts')result={Account:'123456789012'};
+else if(args[0]==='ec2'){
+ if(args[1]==='describe-instance-types')result=[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
+ else if(args[1]==='describe-launch-template-versions')result=[{image:'ami-ci',tokens:'required',hop:1}];
+ else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:null}];
+ else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
+ else if(args[1]==='describe-instances'){result=args.at(args.indexOf('--query')+1).includes('MetadataOptions')?{State:'applied',HttpEndpoint:s.disabled?'disabled':'enabled'}:[new Date().toISOString()];}
+ else throw Error('unexpected EC2 '+args[1]);
+}else if(args[0]==='autoscaling'){
+ if(args[1]==='describe-auto-scaling-groups')result=[{name:'ci',min:0,max:1,desired:s.terminated?0:1,instances:s.terminated?[]:[{id:'i-ci',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'1'}]}];
+ else if(args[1]==='terminate-instance-in-auto-scaling-group'){s.terminated=true;assert.ok(s.disabled);}
+ else if(args[1]!=='update-auto-scaling-group')throw Error('unexpected ASG '+args[1]);
+}else if(args[0]==='ssm'){
+ if(args[1]==='describe-instance-information')result=['i-ci'];
+ else if(args[1]==='put-parameter'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));const p=JSON.parse(b.Value);assert.equal(p.linux_ci,true);assert.equal(p.runner_image,'ci:configured');s.workerToken=p.token;}
+ else if(args[1]==='add-tags-to-resource'){assert.ok(args.includes('Key=MoonHubInstanceArn,Value=arn:aws:ec2:us-west-2:123456789012:instance/i-ci'));}
+ else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes('moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
+ else if(args[1]==='get-command-invocation')result={Status:'Success'};
+ else if(args[1]==='delete-parameter')s.deleted=true;
+ else throw Error('unexpected SSM '+args[1]);
+}else throw Error('unexpected AWS '+args[0]);
+fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.stringify(result));
+`, {mode: 0o700});
+  const registration = path.join(root, 'registration'); fs.writeFileSync(registration, 'a'.repeat(64), {mode: 0o600});
+  let config, schema, providerToken, worker, armed = false, status = '', error, child, exited = false, output = '';
+  const server = http.createServer(async (req, res) => {
+    try {
+      let text = ''; for await (const chunk of req) text += chunk;
+      const body = JSON.parse(text), route = req.url.replace('/-/runner-api/v1', ''); let result;
+      const snapshot = () => ({version: 1, id: '1', mode: 'asg', paused: false, config_revision: '1', schema, config,
+        queued_jobs: armed ? 0 : 1, workers: worker ? [worker] : []});
+      if (route === '/providers/register') {
+        assert.equal(req.headers.authorization, 'Bearer ' + 'a'.repeat(64)); providerToken = body.provider_token;
+        schema = body.schema; config = {...body.defaults, runner_image: 'ci:configured'};
+        assert.equal(config.execution_mode, 'linux-ci'); result = snapshot();
+      } else {
+        assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
+        if (route === '/providers/sync') {status = body.status; result = snapshot();}
+        else if (route === '/workers/register') {
+          worker ||= {id: '1', key: 'i-ci', state: 'starting', draining: false, applied_revision: '0',
+            last_seen_ms: String(Date.now()), idle_since_ms: String(Date.now()), active_attempts: 0}; result = worker;
+        } else if (route === '/workers/1/isolation') {
+          assert.ok(state().disabled, 'armed before externally disabling metadata');
+          assert.equal(body.revision, '1'); assert.match(body.controller_id, /^[a-f0-9]{32}$/);
+          armed = true;
+          // A compromised guest can keep heartbeating and never acknowledge
+          // cleanup. Server-fenced consumption still permits outside retirement.
+          worker = {...worker, state: failed ? 'failed' : 'busy', draining: true, active_attempts: 0, last_seen_ms: String(Date.now())};
+          result = {version: 1};
+        } else throw Error('unexpected route ' + route);
+      }
+      res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(result));
+    } catch (e) {error = e; res.writeHead(500); res.end('{}');}
+  });
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    child = spawn(binary, ['run', '--linux-ci', '--server', 'http://127.0.0.1:' + server.address().port, '--allow-http',
+      '--name', 'ci', '--mode', 'asg', '--registration-token-file', registration, '--state-dir', path.join(root, 'controller'),
+      '--workspace-root', path.join(root, 'workspace'), '--aws', adapter, '--asg', 'ci', '--launch-template', 'lt-ci',
+      '--instance-types', 'm6a.large', '--runner-image', 'ci:startup'], {stdio: ['ignore', 'pipe', 'pipe']});
+    child.stdout.on('data', x => {output += x;}); child.stderr.on('data', x => {output += x;});
+    child.once('exit', () => {exited = true;});
+    const deadline = Date.now() + 90000;
+    while (!state().deleted) {
+      if (error) throw error;
+      if (exited || Date.now() > deadline) throw Error('CI lifecycle failed: ' + status + ' ' + output);
+      await delay(100);
+    }
+    assert.ok(armed); assert.ok(state().terminated);
+    assert.equal(state().calls.filter(x => x[1] === 'send-command').length, 1, 'bootstrap command was replayed');
+    assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
+    assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));
+    console.log('LINUX_CI_EXTERNAL_RETIREMENT_' + (failed ? 'FAILURE' : 'COMPLETION') + '_OK');
+  } finally {
+    if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(10000)]); if (!exited) child.kill('SIGKILL');}
+    server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
+  }
+}
+(async () => {await scenario(false); await scenario(true);})().catch(e => {console.error(e); process.exitCode = 1;});

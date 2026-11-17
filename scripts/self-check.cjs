@@ -132,6 +132,7 @@ async function main() {
   await run('Repository deletion concurrency', process.execPath, ['scripts/repository-deletion-smoke.cjs'], 120000);
   await run('S3 storage integration', process.execPath, ['scripts/storage-s3-smoke.mjs'], 300000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
+  await run('Single-use Linux CI lifecycle', process.execPath, ['scripts/linux-ci-lifecycle.cjs'], 180000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }
 

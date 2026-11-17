@@ -109,6 +109,14 @@ test "Windows ASG bootstrap uses PowerShell and keeps credentials out of history
   )
   assert_eq(document, "AWS-RunShellScript")
   assert_true(command.contains("systemd-run"))
+  let legacy : WorkerBootstrap = @json.from_json(
+    @json.parse(
+      "{\"server\":\"https://example.com\",\"token\":\"" +
+      "a".repeat(64) +
+      "\",\"allow_http\":false,\"runner_image\":\"runner:v1\"}",
+    ),
+  )
+  assert_eq(legacy.linux_ci, None)
 }
 
 ///|

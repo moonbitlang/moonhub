@@ -26,6 +26,7 @@ priv struct WorkerBootstrap {
   allow_http : Bool
   runner_image : String
   runner_os : String?
+  linux_ci : Bool?
 }
 
 ///|
@@ -232,15 +233,25 @@ async fn provision_worker(
   token : String,
   instance : CloudInstance,
   runner_os : String,
+  config : Map[String, String],
+  revision : String,
+  controller_id : String,
 ) -> Unit {
-  let (_, worker_token) = register_instance_worker(options, token, instance.id)
+  let (worker, worker_token) = register_instance_worker(
+    options,
+    token,
+    instance.id,
+  )
   let parameter = options.parameter_prefix + "/" + instance.id
   let bootstrap : WorkerBootstrap = {
     server: options.base.server,
     token: worker_token,
     allow_http: options.base.allow_http,
-    runner_image: options.base.runner_image,
+    runner_image: config
+    .get("runner_image")
+    .unwrap_or(options.base.runner_image),
     runner_os: Some(runner_os),
+    linux_ci: Some(options.base.linux_ci),
   }
   ignore(
     aws_request(
@@ -254,15 +265,43 @@ async fn provision_worker(
       }),
     ),
   )
+  if options.base.linux_ci {
+    let identity = aws_request(options, ["sts", "get-caller-identity"])
+    guard identity is { "Account": String(account), .. } &&
+      account.length() == 12 &&
+      account.iter().all(c => c.is_ascii_digit()) else {
+      raise InvalidConfiguration("Cannot establish the bootstrap instance ARN.")
+    }
+    ignore(
+      aws_request(options, [
+        "ssm",
+        "add-tags-to-resource",
+        "--resource-type",
+        "Parameter",
+        "--resource-id",
+        parameter,
+        "--tags",
+        "Key=MoonHubInstanceArn,Value=arn:aws:ec2:\{options.region}:\{account}:instance/\{instance.id}",
+      ]),
+    )
+  }
   // Only resource names occur in SSM history. The credential is downloaded by
   // the instance into a root-only tmpfs file and never appears in a shell argv.
   let (document, command) = worker_bootstrap_command(
     options.region,
     parameter,
     runner_os,
+    linux_ci=options.base.linux_ci,
   )
-  ignore(
-    aws_request(
+  let receipt = options.state_dir + "/" + instance.id + ".bootstrap-command"
+  let command_id = if options.base.linux_ci && @fs.exists(receipt) {
+    let id = @fs.read_file(receipt).text()
+    guard valid_cloud_name(id) else {
+      raise InvalidConfiguration("Invalid saved bootstrap command.")
+    }
+    id
+  } else {
+    let response = aws_request(
       options,
       ["ssm", "send-command"],
       body=Some({
@@ -271,8 +310,72 @@ async fn provision_worker(
         "Parameters": { "commands": [command] },
         "TimeoutSeconds": 60,
       }),
-    ),
-  )
+    )
+    if options.base.linux_ci {
+      guard response is { "Command": { "CommandId": String(id), .. }, .. } &&
+        valid_cloud_name(id) else {
+        raise InvalidConfiguration("Invalid bootstrap command identity.")
+      }
+      @fs.write_file(receipt, id, create_mode=@fs.CreateNew, permission=0o600)
+      id
+    } else {
+      ""
+    }
+  }
+  if options.base.linux_ci {
+    // First let SSM download this instance's bootstrap into tmpfs. The worker
+    // service waits; no task can run until the outside controller disables IMDS.
+    let response = aws_request(options, [
+      "ssm",
+      "get-command-invocation",
+      "--command-id",
+      command_id,
+      "--instance-id",
+      instance.id,
+    ])
+    guard response is { "Status": "Success", .. } else { return }
+    ignore(
+      aws_request(options, [
+        "ec2",
+        "modify-instance-metadata-options",
+        "--instance-id",
+        instance.id,
+        "--http-endpoint",
+        "disabled",
+        "--http-tokens",
+        "required",
+        "--http-put-response-hop-limit",
+        "1",
+      ]),
+    )
+    let metadata = aws_request(options, [
+      "ec2",
+      "describe-instances",
+      "--instance-ids",
+      instance.id,
+      "--query",
+      "Reservations[0].Instances[0].MetadataOptions",
+    ])
+    guard metadata is { "State": "applied", "HttpEndpoint": "disabled", .. } else {
+      return
+    }
+    if !worker.draining && worker.active_attempts == 0 {
+      ignore(
+        control_request(
+          options.base.server,
+          "/workers/" + worker.id + "/isolation",
+          token,
+          { "version": 1, "controller_id": controller_id, "revision": revision },
+          allow_http=options.base.allow_http,
+        ),
+      )
+      @fs.write_file(
+        options.state_dir + "/" + instance.id + ".armed-" + revision,
+        "armed",
+        permission=0o600,
+      )
+    }
+  }
 }
 
 ///|
@@ -370,6 +473,7 @@ async fn reconcile_group(
   group : CloudGroup,
   excess : Ref[Int32],
   runner_os : String,
+  controller_id : String,
 ) -> Unit {
   let now = @env.now().reinterpret_as_int64()
   let idle_seconds = number(snapshot.config, "idle_seconds").to_int64()
@@ -426,7 +530,15 @@ async fn reconcile_group(
             continue
           }
           if startup is Online && !snapshot.paused {
-            provision_worker(options, token, instance, runner_os)
+            provision_worker(
+              options,
+              token,
+              instance,
+              runner_os,
+              snapshot.config,
+              snapshot.config_revision,
+              controller_id,
+            )
           } else {
             // No work was issued to an unreachable/paused instance. Recover
             // its identity and use ordinary active-attempt/drain safeguards.
@@ -454,12 +566,44 @@ async fn reconcile_group(
           instance.template_version !=
           snapshot.config.get("template_version").unwrap_or("")
         let expired = now - seen > 180000L
+        if options.base.linux_ci &&
+          !worker.draining &&
+          !expired &&
+          !obsolete &&
+          !snapshot.paused &&
+          !["drained", "failed"].contains(worker.state) &&
+          !@fs.exists(
+            options.state_dir +
+            "/" +
+            instance.id +
+            ".armed-" +
+            snapshot.config_revision,
+          ) {
+          provision_worker(
+            options,
+            token,
+            instance,
+            runner_os,
+            snapshot.config,
+            snapshot.config_revision,
+            controller_id,
+          )
+          continue
+        }
         if worker.state == "starting" &&
           !expired &&
           !obsolete &&
           !worker.draining &&
           !snapshot.paused {
-          provision_worker(options, token, instance, runner_os)
+          provision_worker(
+            options,
+            token,
+            instance,
+            runner_os,
+            snapshot.config,
+            snapshot.config_revision,
+            controller_id,
+          )
           continue
         }
         let retire = obsolete ||
@@ -494,7 +638,12 @@ async fn reconcile_group(
         // only after its task lease has been reconciled to a terminal state.
         if worker.draining &&
           worker.active_attempts == 0 &&
-          (worker.state == "drained" || worker.state == "failed" || expired) {
+          (
+            options.base.linux_ci ||
+            worker.state == "drained" ||
+            worker.state == "failed" ||
+            expired
+          ) {
           ignore(
             aws_request(options, [
               "autoscaling",
@@ -504,6 +653,23 @@ async fn reconcile_group(
               "--should-decrement-desired-capacity",
             ]),
           )
+          @fs.remove(options.state_dir + "/" + instance.id + ".token") catch {
+            _ => ()
+          }
+          @fs.remove(
+            options.state_dir + "/" + instance.id + ".bootstrap-command",
+          ) catch {
+            _ => ()
+          }
+          @fs.remove(
+            options.state_dir +
+            "/" +
+            instance.id +
+            ".armed-" +
+            snapshot.config_revision,
+          ) catch {
+            _ => ()
+          }
           ignore(
             aws_request(options, [
               "ssm",
@@ -625,9 +791,18 @@ async fn run_asg(
           on_demand,
           excess,
           runner_os.val,
+          controller_id,
         )
         if spot is Some(spot) {
-          reconcile_group(options, token, snapshot, spot, excess, runner_os.val)
+          reconcile_group(
+            options,
+            token,
+            snapshot,
+            spot,
+            excess,
+            runner_os.val,
+            controller_id,
+          )
         }
         // Termination decrements desired capacity. Always refresh before scaling
         // so a stale count cannot recreate the instance just retired.
@@ -805,6 +980,11 @@ async fn validate_cloud_configuration(
     raise InvalidConfiguration("Unsupported worker AMI architecture.")
   }
   if images[0].platform == Some("windows") {
+    guard !options.base.linux_ci else {
+      raise InvalidConfiguration(
+        "Linux CI cannot use a Windows launch template.",
+      )
+    }
     guard images[0].architecture == "x86_64" else {
       raise InvalidConfiguration("Windows workers require an x86_64 AMI.")
     }
@@ -826,6 +1006,12 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
   guard bootstrap.runner_os.unwrap_or("linux") == @platform.os() else {
     raise InvalidConfiguration("Worker OS does not match its launch template.")
   }
+  if bootstrap.linux_ci == Some(true) {
+    guard !@fs.exists(base.workspace_root + "/ci-consumed") else {
+      raise InvalidConfiguration("This CI instance has already executed a job.")
+    }
+    @fs.remove(path)
+  }
   run_worker(
     {
       ..base,
@@ -833,6 +1019,7 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
       runner_server: bootstrap.server,
       allow_http: bootstrap.allow_http,
       runner_image: bootstrap.runner_image,
+      linux_ci: bootstrap.linux_ci.unwrap_or(false),
     },
     bootstrap.token,
   )
@@ -859,6 +1046,7 @@ fn worker_bootstrap_command(
   region : String,
   parameter : String,
   runner_os : String,
+  linux_ci~ : Bool = false,
 ) -> (String, String) {
   if runner_os == "windows" {
     (
@@ -876,6 +1064,18 @@ fn worker_bootstrap_command(
       "$action=New-ScheduledTaskAction -Execute 'C:\\ProgramData\\MoonHub\\bin\\moonhub-runner.exe' -Argument 'worker --bootstrap-file C:\\ProgramData\\MoonHub\\private\\bootstrap.json'; " +
       "$settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable; " +
       "Register-ScheduledTask -TaskName 'MoonHubRunnerWorker' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -User 'SYSTEM' -RunLevel Highest -Settings $settings -Force | Out-Null; Start-ScheduledTask -TaskName 'MoonHubRunnerWorker' }",
+    )
+  } else if linux_ci {
+    (
+      "AWS-RunShellScript",
+      "set -eu; test -x /usr/local/libexec/moonhub-ci-host; " +
+      "install -d -m 700 /run/moonhub-runner; umask 077; aws ssm get-parameter --region " +
+      region +
+      " --name " +
+      parameter +
+      " --with-decryption --query Parameter.Value --output text > /run/moonhub-runner/bootstrap.json; " +
+      "systemctl is-active --quiet moonhub-runner-worker || systemd-run --unit=moonhub-runner-worker --collect " +
+      "/usr/local/libexec/moonhub-ci-host /run/moonhub-runner/bootstrap.json",
     )
   } else {
     (
