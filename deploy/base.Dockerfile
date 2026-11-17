@@ -12,7 +12,11 @@ ARG MOONBIT_VERSION=0.10.19+8e43a47fb-nightly
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl build-essential git gh libssl-dev libssl3 util-linux \
+    bash ca-certificates curl wget git git-lfs gh openssh-client openssl rsync jq \
+    build-essential clang clang-format clang-tidy lld llvm cmake ninja-build meson \
+    pkg-config autoconf automake libtool libtool-bin bison flex ccache libssl-dev libssl3 zlib1g-dev \
+    python3 python3-dev python3-pip python3-venv python-is-python3 \
+    zip unzip tar gzip bzip2 xz-utils zstd file patch diffutils findutils procps util-linux ripgrep \
     docker.io gosu openssh-server tini \
     && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_*
 
