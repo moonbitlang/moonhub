@@ -8,7 +8,7 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe');
-async function scenario(failed) {
+async function scenario(failed, vanished = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-lifecycle-'));
   const stateFile = path.join(root, 'aws.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], disabled: false, terminated: false, booted: false}));
@@ -67,9 +67,13 @@ fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.strin
           assert.ok(state().disabled, 'armed before externally disabling metadata');
           assert.equal(body.revision, '1'); assert.match(body.controller_id, /^[a-f0-9]{32}$/);
           armed = true;
+          if (vanished) {
+            const current = state(); current.terminated = true;
+            fs.writeFileSync(stateFile, JSON.stringify(current));
+          }
           // A compromised guest can keep heartbeating and never acknowledge
           // cleanup. Server-fenced consumption still permits outside retirement.
-          worker = {...worker, state: failed ? 'failed' : 'busy', draining: true, active_attempts: 0, last_seen_ms: String(Date.now())};
+          worker = {...worker, state: failed ? 'failed' : 'busy', draining: !vanished, active_attempts: 0, last_seen_ms: String(Date.now())};
           result = {version: 1};
         } else throw Error('unexpected route ' + route);
       }
@@ -84,21 +88,25 @@ fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.strin
       '--instance-types', 'm6a.large', '--runner-image', 'ci:startup'], {stdio: ['ignore', 'pipe', 'pipe']});
     child.stdout.on('data', x => {output += x;}); child.stderr.on('data', x => {output += x;});
     child.once('exit', () => {exited = true;});
-    const deadline = Date.now() + 90000;
+    const deadline = Date.now() + (vanished ? 25000 : 90000);
     while (!state().deleted || fs.existsSync(path.join(root, 'controller/i-ci.ci-retire'))) {
       if (error) throw error;
       if (exited || Date.now() > deadline) throw Error('CI lifecycle failed: ' + status + ' ' + output);
       await delay(100);
     }
     assert.ok(armed); assert.ok(state().terminated);
+    if (vanished) assert.equal(state().calls.filter(x => x[1] === 'terminate-instance-in-auto-scaling-group').length, 0);
     assert.ok(state().deleteFailed, 'cleanup retry was not exercised');
     assert.equal(state().calls.filter(x => x[1] === 'send-command').length, 1, 'bootstrap command was replayed');
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
     assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));
-    console.log('LINUX_CI_EXTERNAL_RETIREMENT_' + (failed ? 'FAILURE' : 'COMPLETION') + '_OK');
+    console.log('LINUX_CI_EXTERNAL_RETIREMENT_' + (vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(10000)]); if (!exited) child.kill('SIGKILL');}
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
   }
 }
-(async () => {await scenario(false); await scenario(true);})().catch(e => {console.error(e); process.exitCode = 1;});
+(async () => {
+  if (process.argv.includes('--unexpected-termination')) { await scenario(false, true); return; }
+  await scenario(false); await scenario(true); await scenario(false, true);
+})().catch(e => {console.error(e); process.exitCode = 1;});

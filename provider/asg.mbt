@@ -237,6 +237,15 @@ async fn provision_worker(
   revision : String,
   controller_id : String,
 ) -> Unit {
+  if options.base.linux_ci {
+    // Journal before publishing any instance credential. Spot interruption or
+    // ASG health replacement can remove an instance without our terminate path.
+    @fs.write_file(
+      options.state_dir + "/" + instance.id + ".ci-retire",
+      "retire",
+      permission=0o600,
+    )
+  }
   let (worker, worker_token) = register_instance_worker(
     options,
     token,
@@ -882,11 +891,6 @@ async fn run_asg(
         cleanup_retired_ci(options, remaining)
         let count = fresh_on.instances.length() +
           fresh_spot.map(g => g.instances.length()).unwrap_or(0)
-        let live = fresh_on.instances.map(instance => instance.id)
-        if fresh_spot is Some(group) {
-          live.append(group.instances.map(instance => instance.id))
-        }
-        cleanup_retired_ci(options, live)
         let now = @env.now().reinterpret_as_int64()
         let prefer_spot = snapshot.config.get("purchase_policy") ==
           Some("spot-with-on-demand-fallback") &&

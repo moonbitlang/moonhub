@@ -89,6 +89,8 @@ must never be assigned to its task instances.
 It also needs `ssm:DescribeParameters` for nonsecret cleanup-name checks. A local
 retirement journal survives controller interruption and retries parameter removal
 after EC2 confirms termination; already absent parameters count as cleaned.
+The journal is created before publishing bootstrap credentials, so unexpected
+Spot interruption or ASG health replacement also triggers cleanup.
 
 ## Network and retirement
 
