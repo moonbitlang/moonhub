@@ -27,8 +27,10 @@ function child(command, args, extra = {}) {
   const process = spawn(command, args, { cwd: root, env: { ...env, ...extra }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   children.add(process);
   process.output = '';
-  process.stdout.on('data', data => { process.output += data; });
-  process.stderr.on('data', data => { process.output += data; });
+  process.stdoutText = '';
+  process.stderrText = '';
+  process.stdout.on('data', data => { process.output += data; process.stdoutText += data; });
+  process.stderr.on('data', data => { process.output += data; process.stderrText += data; });
   process.done = new Promise((resolve, reject) => {
     process.once('error', reject);
     process.once('close', code => { children.delete(process); resolve(code); });
@@ -151,8 +153,7 @@ async function main() {
     assert.equal(fs.statSync(lockPath).ino, inode);
   }
 
-  // Ordinary users may read the public original, but cannot read the private
-  // replacement. Pause after final authorization and before Git opens the path.
+  // Admitted readers retain only the immutable ID's lifetime lock.
   db(c => {
     c.exec(`INSERT INTO "user"(name_key,display_name,password_hash,is_site_admin) VALUES('reader','Reader','fixture',0)`);
     c.prepare("UPDATE repository SET visibility='public' WHERE id=?").run(repoId());
@@ -160,46 +161,118 @@ async function main() {
   run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', path.join(temp, 'reader-key')]);
   const readerCredential = run(binary, ['ssh-key-add', 'reader'], { input: fs.readFileSync(path.join(temp, 'reader-key.pub')) }).split('\t')[0];
   const readId = repoId();
-  const publicCommit = run('git', ['--git-dir=' + gitDir, 'rev-parse', 'refs/heads/main']);
-  run('git', ['--git-dir=' + gitDir, 'update-ref', 'refs/heads/public-original', publicCommit]);
-  const publicRefs = run('git', ['--git-dir=' + gitDir, 'show-ref']).split('\n').sort();
-  const readers = [];
-  for (let index = 0; index < 2; index++) {
-    const readGate = path.join(temp, `read-gate-${index}`);
-    const readReady = path.join(temp, `read-ready-${index}`);
-    const readGit = path.join(temp, `read-git-${index}`);
+  const readerPath = id => path.join(repos, '.locks/repository-readers', `${id}.lock`);
+  const canLock = (target, shared = false) => run('python3', ['-c',
+    'import fcntl,sys\nf=open(sys.argv[1],"r+")\ntry:\n fcntl.flock(f,(fcntl.LOCK_SH if sys.argv[2]=="shared" else fcntl.LOCK_EX)|fcntl.LOCK_NB)\n print("free")\nexcept BlockingIOError:\n print("busy")\n',
+    target, shared ? 'shared' : 'exclusive']) === 'free';
+  const alive = pid => { try { global.process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
+  const csrfFor = async route => {
+    const form = await request(route);
+    assert.equal(form.status, 200, form.body);
+    return form.body.match(/name="csrf_token" value="([^"]+)"/)[1];
+  };
+  const journal = id => db(c => c.prepare("SELECT * FROM repository_file_garbage WHERE repository_id=? AND kind='git'").get(id));
+  async function gatedRead(label, { key = readerCredential, options = [], extra = {} } = {}) {
+    const readGate = path.join(temp, `${label}-gate`);
+    const readReady = path.join(temp, `${label}-ready`);
+    const terminated = path.join(temp, `${label}-terminated`);
+    const readGit = path.join(temp, `${label}-git`);
     run('mkfifo', [readGate]);
-    fs.writeFileSync(readGit, `#!/bin/sh\nprintf ready > ${quote(readReady)}\nread -r release < ${quote(readGate)}\nexec /usr/bin/git "$@"\n`, { mode: 0o700 });
-    const process = child(binary, ['ssh-serve', readerCredential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'", MOONHUB_GIT: readGit });
+    // This stand-in records SIGTERM but remains alive until released or SIGKILL.
+    // Its FIFO and PID are barriers; no timing assumption establishes lock safety.
+    fs.writeFileSync(readGit, `#!/usr/bin/python3
+import os,signal,sys
+terminated=${JSON.stringify(terminated)}
+def term(signum, frame):
+ with open(terminated,'w') as f: f.write('terminated')
+signal.signal(signal.SIGTERM,term)
+fd=os.open(${JSON.stringify(readGate)},os.O_RDWR)
+with open(${JSON.stringify(readReady)},'w') as f: f.write(str(os.getpid()))
+os.read(fd,1)
+os.close(fd)
+if os.path.exists(terminated): sys.exit(0)
+os.execv('/usr/bin/git',['git']+sys.argv[1:])
+`, { mode: 0o700 });
+    const process = child(binary, ['ssh-serve', key, ...options], {
+      SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'", MOONHUB_GIT: readGit, ...extra,
+    });
     process.stdin.end('0000');
-    await until(() => fs.existsSync(readReady), 'parallel SSH read did not enter Git');
-    readers.push({ process, readGate });
+    await until(() => {
+      assert.equal(process.exitCode, null, process.output);
+      return fs.existsSync(readReady) && fs.readFileSync(readReady, 'utf8').length > 0 && !opened(process.pid, lockPath);
+    }, 'SSH read did not finish admission');
+    return { process, readGate, terminated, pid: Number(fs.readFileSync(readReady, 'utf8')) };
   }
-  const readForm = await request(route);
-  assert.equal(readForm.status, 200);
-  const readCsrf = readForm.body.match(/name="csrf_token" value="([^"]+)"/)[1];
-  let readDeletionCompleted = false;
-  const readDeletion = request(route, { csrf_token: readCsrf, repository_id: String(readId), confirmation: 'root/demo' })
-    .then(result => { readDeletionCompleted = true; return result; });
-  await until(() => opened(web.pid, lockPath), 'deletion did not queue behind shared SSH reads');
-  assert.equal(readDeletionCompleted, false);
-  assert.equal(repoId(), readId);
-  for (const [index, { process, readGate }] of readers.entries()) {
-    fs.writeFileSync(readGate, 'release\n');
-    assert.equal(await process.done, 0, process.output);
-    assert.match(process.output, /refs\/heads\/public-original/);
-    assert.match(process.output, new RegExp(publicCommit));
-    const advertised = [...process.output.matchAll(/([0-9a-f]{40}) (refs\/heads\/[^\0\n]+)/g)]
+  const readers = [await gatedRead('parallel-0'), await gatedRead('parallel-1')];
+  assert.equal(canLock(lockPath), true, 'admitted reads kept the name write lock busy');
+  assert.equal(canLock(readerPath(readId)), false, 'cleanup passed live readers');
+  const readerInode = fs.statSync(readerPath(readId)).ino;
+  assert.equal(fs.statSync(readerPath(readId)).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(path.dirname(readerPath(readId))).mode & 0o777, 0o700);
+
+  // Real receive-pack, hooks, secret persistence and visibility changes all finish
+  // before either stalled read is released.
+  const transport = path.join(temp, 'transport');
+  fs.writeFileSync(transport, `#!/bin/sh\nfor arg do SSH_ORIGINAL_COMMAND=$arg; done\nexport SSH_ORIGINAL_COMMAND\nexec ${quote(binary)} ssh-serve ${quote(credential)}\n`, { mode: 0o700 });
+  const source = path.join(temp, 'source');
+  run('git', ['clone', '--no-hardlinks', '--branch', 'main', gitDir, source]);
+  fs.writeFileSync(path.join(source, 'pushed'), 'during read\n');
+  run('git', ['-C', source, 'add', 'pushed']);
+  run('git', ['-C', source, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Push during read']);
+  run('git', ['-C', source, 'push', 'test-host:root/demo.git', 'main'], {
+    env: { ...env, GIT_SSH: transport, GIT_SSH_VARIANT: 'ssh', MOONHUB_GIT: '/usr/bin/git' },
+  });
+  const publicCommit = run('git', ['-C', source, 'rev-parse', 'HEAD']);
+  assert.equal(run('git', ['--git-dir=' + gitDir, 'rev-parse', 'refs/heads/main']), publicCommit);
+  const secretRoute = '/root/demo/settings/secrets';
+  assert.equal((await request(secretRoute, { csrf_token: await csrfFor(secretRoute + '/new'),
+    name: 'READ_TEST', value: 'fixture-secret', branch: 'main', workflow: '.github/workflows/test.yml', version: '0' })).status, 303);
+  assert.equal(db(c => c.prepare("SELECT count(*) n FROM repository_secret WHERE repository_id=? AND name='READ_TEST'").get(readId).n), 1);
+  const visibilityRoute = '/root/demo/settings/danger-zone/visibility';
+  assert.equal((await request(visibilityRoute, { csrf_token: await csrfFor(visibilityRoute),
+    repository_id: String(readId), previous: 'public', visibility: 'private' })).status, 303);
+  const newlyDenied = child(binary, ['ssh-serve', readerCredential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'" });
+  newlyDenied.stdin.end('0000');
+  assert.notEqual(await newlyDenied.done, 0, 'new read bypassed private visibility');
+  assert.equal(newlyDenied.stdoutText, '', 'denied read advertised refs');
+  const publicRefs = run('git', ['--git-dir=' + gitDir, 'show-ref']).split('\n').sort();
+  for (const [index, reader] of readers.entries()) {
+    assert.equal(reader.process.exitCode, null, 'existing read was cancelled by privatization');
+    fs.writeFileSync(reader.readGate, 'x');
+    assert.equal(await reader.process.done, 0, reader.process.output);
+    const advertised = [...reader.process.stdoutText.matchAll(/([0-9a-f]{40}) (refs\/heads\/[^\0\n]+)/g)]
       .map(match => `${match[1]} ${match[2]}`).sort();
-    assert.deepEqual(advertised, publicRefs, 'old read advertised refs outside the original repository');
-    if (index === 0) {
-      assert.equal(readDeletionCompleted, false, 'deletion passed a remaining shared reader');
-      assert.equal(repoId(), readId);
-    }
+    assert.deepEqual(advertised, publicRefs, 'old read advertised refs outside its repository');
+    assert.equal(canLock(readerPath(readId)), index === readers.length - 1, 'cleanup passed a remaining reader');
   }
-  assert.equal((await readDeletion).status, 303);
-  await until(() => db(c => c.prepare('SELECT count(*) n FROM repository_file_garbage').get().n) === 0, 'read cleanup journal was not drained');
+
+  // Logical deletion completes while Git is alive; cleanup must wait for reap.
+  const deletedReaders = [await gatedRead('deleted-0', { key: credential }), await gatedRead('deleted-1', { key: credential })];
+  assert.equal((await request(route, { csrf_token: await csrfFor(route), repository_id: String(readId), confirmation: 'root/demo' })).status, 303);
+  assert.equal(repoId(), undefined);
+  for (const reader of deletedReaders) {
+    await until(() => fs.existsSync(reader.terminated), 'deletion did not signal the original reader');
+    assert.equal(alive(reader.pid), true, 'Git exited before the cancellation barrier');
+  }
+  assert.ok(journal(readId));
+  assert.equal(journal(readId).attempts, 0, 'lock contention incremented failures');
+  assert.equal(fs.existsSync(path.join(gitDir, 'HEAD')), true);
+  assert.throws(() => run(binary, ['repo-create', 'root/demo']), /still being deleted/);
+  fs.writeFileSync(deletedReaders[0].readGate, 'x');
+  assert.notEqual(await deletedReaders[0].process.done, 0, 'deleted reader reported success');
+  assert.equal(alive(deletedReaders[0].pid), false, 'reader lock released before process reap');
+  assert.equal(alive(deletedReaders[1].pid), true);
+  assert.equal(canLock(readerPath(readId)), false);
+  assert.ok(journal(readId));
+  assert.equal(fs.existsSync(path.join(gitDir, 'HEAD')), true);
+  // The remaining reader ignores TERM: runtime must force-kill it after 5000ms.
+  await until(() => deletedReaders[1].process.exitCode !== null, 'reader ignoring termination was not force-killed');
+  assert.notEqual(await deletedReaders[1].process.done, 0);
+  assert.equal(alive(deletedReaders[1].pid), false);
+  assert.equal(canLock(readerPath(readId)), true);
+  await until(() => !journal(readId), 'read cleanup journal was not drained');
   assert.equal(fs.existsSync(gitDir), false);
+  assert.equal(fs.statSync(readerPath(readId)).ino, readerInode, 'cleanup replaced reader control inode');
   run(binary, ['repo-create', 'root/demo']);
   assert.notEqual(repoId(), readId);
   assert.equal(db(c => c.prepare('SELECT visibility FROM repository WHERE id=?').get(repoId()).visibility), 'private');
@@ -207,17 +280,56 @@ async function main() {
   const replacementTree = run('git', ['--git-dir=' + gitDir, 'mktree'], { input: `100644 blob ${replacementBlob}\tprivate\n` });
   const replacementCommit = run('git', ['--git-dir=' + gitDir, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit-tree', replacementTree, '-m', 'Private replacement']);
   run('git', ['--git-dir=' + gitDir, 'update-ref', 'refs/heads/private-replacement', replacementCommit]);
-  for (const { process } of readers) {
-    assert.doesNotMatch(process.output, /refs\/heads\/private-replacement/);
-    assert.equal(process.output.includes(replacementCommit), false);
+  for (const { process } of [...readers, ...deletedReaders]) {
+    assert.doesNotMatch(process.stdoutText, /refs\/heads\/private-replacement/);
+    assert.equal(process.stdoutText.includes(replacementCommit), false);
   }
   const denied = child(binary, ['ssh-serve', readerCredential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'" });
   denied.stdin.end('0000');
   assert.notEqual(await denied.done, 0, 'ordinary reader entered private replacement');
-  assert.doesNotMatch(denied.output, /refs\/heads\//);
-  assert.equal(denied.output.includes(replacementCommit), false);
-  assert.equal(fs.statSync(lockPath).ino, inode, 'read lifecycle replaced the control inode');
-  console.log('REPOSITORY_DELETION_SMOKE_OK: shared SSH reads, Web/SSH exclusion, stable inode, cleanup, stale reads and writes, private ref isolation');
+  assert.equal(denied.stdoutText, '');
+  assert.equal(fs.statSync(lockPath).ino, inode, 'read lifecycle replaced the name control inode');
+
+  for (const reason of ['external', 'identity', 'validation', 'maximum']) {
+    const currentId = repoId();
+    const reader = await gatedRead(reason, { key: credential,
+      options: reason === 'maximum' ? ['--read-max-seconds', '1'] : [] });
+    if (reason === 'external') reader.process.kill('SIGTERM');
+    if (reason === 'identity') db(c => c.prepare("UPDATE repository SET name='renamed' WHERE id=?").run(currentId));
+    if (reason === 'validation') db(c => c.exec('ALTER TABLE repository RENAME TO unavailable_repository'));
+    await until(() => fs.existsSync(reader.terminated), `${reason} did not terminate Git`);
+    assert.equal(alive(reader.pid), true);
+    assert.equal(canLock(readerPath(currentId)), false, `${reason} released before Git exited`);
+    fs.writeFileSync(reader.readGate, 'x');
+    assert.notEqual(await reader.process.done, 0, `${reason} read reported success`);
+    assert.equal(alive(reader.pid), false);
+    assert.equal(canLock(readerPath(currentId)), true);
+    assert.equal(canLock(lockPath), true);
+    assert.equal(reader.process.stdoutText, '', 'diagnostic contaminated Git stdout');
+    if (reason === 'identity') db(c => c.prepare("UPDATE repository SET name='demo' WHERE id=?").run(currentId));
+    if (reason === 'validation') {
+      db(c => c.exec('ALTER TABLE unavailable_repository RENAME TO repository'));
+      assert.doesNotMatch(reader.process.stderrText, /SELECT|unavailable_repository|no such table/);
+    }
+    if (reason === 'maximum') assert.match(reader.process.stderrText, /maximum duration/);
+  }
+  const failed = child(binary, ['ssh-serve', credential], { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'", MOONHUB_GIT: path.join(temp, 'missing-git') });
+  failed.stdin.end('0000');
+  assert.notEqual(await failed.done, 0, 'missing Git succeeded');
+  assert.equal(failed.stdoutText, '');
+  assert.doesNotMatch(failed.stderrText, /missing-git/);
+  assert.equal(canLock(readerPath(repoId())), true);
+  assert.equal(canLock(lockPath), true);
+  // Real upload-pack's idle timeout, with stdin deliberately held open.
+  const idle = child(binary, ['ssh-serve', credential, '--read-idle-timeout-seconds', '1', '--read-max-seconds', '10'],
+    { SSH_ORIGINAL_COMMAND: "git-upload-pack 'root/demo.git'", MOONHUB_GIT: '/usr/bin/git' });
+  await until(() => idle.stdoutText.includes('refs/heads/private-replacement'), 'idle read did not advertise refs');
+  await until(() => idle.exitCode !== null, 'upload-pack idle timeout did not fire');
+  assert.notEqual(await idle.done, 0);
+  assert.doesNotMatch(idle.stderrText, /maximum duration/);
+  assert.equal(canLock(readerPath(repoId())), true);
+  assert.equal(canLock(lockPath), true);
+  console.log('REPOSITORY_DELETION_SMOKE_OK: admission and reader lifetimes, real push, secrets, visibility, deletion cancellation, forced reap, deadlines, stale identity and private ref isolation');
 }
 main().catch(error => { console.error(error); for (const process of children) console.error(process.output); process.exitCode = 1; }).finally(async () => {
   for (const process of children) { try { global.process.kill(-process.pid, 'SIGTERM'); } catch {} }
