@@ -644,6 +644,15 @@ async fn reconcile_group(
             worker.state == "failed" ||
             expired
           ) {
+          if options.base.linux_ci {
+            // Persist before requesting termination. A controller interruption
+            // or ambiguous AWS response must not lose parameter cleanup.
+            @fs.write_file(
+              options.state_dir + "/" + instance.id + ".ci-retire",
+              "retire",
+              permission=0o600,
+            )
+          }
           ignore(
             aws_request(options, [
               "autoscaling",
@@ -681,6 +690,60 @@ async fn reconcile_group(
         }
       }
     }
+  }
+}
+
+///|
+async fn cleanup_retired_ci(
+  options : ManagedOptions,
+  live : Array[String],
+) -> Unit {
+  if !options.base.linux_ci {
+    return
+  }
+  for name in @fs.readdir(options.state_dir) {
+    guard name.strip_suffix(".ci-retire") is Some(raw) else { continue }
+    let id = raw.to_owned()
+    guard id.has_prefix("i-") && valid_cloud_name(id) else {
+      raise InvalidConfiguration("Invalid CI retirement journal.")
+    }
+    if live.contains(id) {
+      continue
+    }
+    let state = aws_request(options, [
+      "ec2",
+      "describe-instances",
+      "--filters",
+      "Name=instance-id,Values=" + id,
+      "--query",
+      "Reservations[].Instances[].State.Name",
+    ])
+    guard state is ["terminated"] || state == Json::array([]) else { continue }
+    let parameter = options.parameter_prefix + "/" + id
+    let parameters = aws_request(options, [
+      "ssm",
+      "describe-parameters",
+      "--parameter-filters",
+      "Key=Name,Option=Equals,Values=" + parameter,
+      "--query",
+      "Parameters[].Name",
+    ])
+    if parameters != Json::array([]) {
+      guard parameters == Json::array([Json(parameter)]) else {
+        raise InvalidConfiguration("Unexpected CI cleanup parameter.")
+      }
+      ignore(
+        aws_request(options, ["ssm", "delete-parameter", "--name", parameter]),
+      )
+    }
+    for file in @fs.readdir(options.state_dir) {
+      if file == id + ".token" ||
+        file == id + ".bootstrap-command" ||
+        file.has_prefix(id + ".armed-") {
+        @fs.remove(options.state_dir + "/" + file)
+      }
+    }
+    @fs.remove(options.state_dir + "/" + name)
   }
 }
 
@@ -812,8 +875,18 @@ async fn run_asg(
         } else {
           None
         }
+        let remaining = fresh_on.instances.map(instance => instance.id)
+        if fresh_spot is Some(group) {
+          remaining.append(group.instances.map(instance => instance.id))
+        }
+        cleanup_retired_ci(options, remaining)
         let count = fresh_on.instances.length() +
           fresh_spot.map(g => g.instances.length()).unwrap_or(0)
+        let live = fresh_on.instances.map(instance => instance.id)
+        if fresh_spot is Some(group) {
+          live.append(group.instances.map(instance => instance.id))
+        }
+        cleanup_retired_ci(options, live)
         let now = @env.now().reinterpret_as_int64()
         let prefer_spot = snapshot.config.get("purchase_policy") ==
           Some("spot-with-on-demand-fallback") &&

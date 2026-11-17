@@ -24,7 +24,7 @@ else if(args[0]==='ec2'){
  else if(args[1]==='describe-launch-template-versions')result=[{image:'ami-ci',tokens:'required',hop:1}];
  else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:null}];
  else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
- else if(args[1]==='describe-instances'){result=args.at(args.indexOf('--query')+1).includes('MetadataOptions')?{State:'applied',HttpEndpoint:s.disabled?'disabled':'enabled'}:[new Date().toISOString()];}
+ else if(args[1]==='describe-instances'){const q=args.at(args.indexOf('--query')+1);result=q.includes('MetadataOptions')?{State:'applied',HttpEndpoint:s.disabled?'disabled':'enabled'}:q.includes('State.Name')?[s.terminated?'terminated':'running']:[new Date().toISOString()];}
  else throw Error('unexpected EC2 '+args[1]);
 }else if(args[0]==='autoscaling'){
  if(args[1]==='describe-auto-scaling-groups')result=[{name:'ci',min:0,max:1,desired:s.terminated?0:1,instances:s.terminated?[]:[{id:'i-ci',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'1'}]}];
@@ -36,7 +36,11 @@ else if(args[0]==='ec2'){
  else if(args[1]==='add-tags-to-resource'){assert.ok(args.includes('Key=MoonHubInstanceArn,Value=arn:aws:ec2:us-west-2:123456789012:instance/i-ci'));}
  else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes('moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
  else if(args[1]==='get-command-invocation')result={Status:'Success'};
- else if(args[1]==='delete-parameter')s.deleted=true;
+ else if(args[1]==='delete-parameter'){
+   if(!s.deleteFailed){s.deleteFailed=true;fs.writeFileSync(file,JSON.stringify(s));process.exit(1);}
+   s.deleted=true;
+ }
+ else if(args[1]==='describe-parameters')result=s.deleted?[]:['/moonhub-runner/ci/i-ci'];
  else throw Error('unexpected SSM '+args[1]);
 }else throw Error('unexpected AWS '+args[0]);
 fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.stringify(result));
@@ -81,12 +85,13 @@ fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.strin
     child.stdout.on('data', x => {output += x;}); child.stderr.on('data', x => {output += x;});
     child.once('exit', () => {exited = true;});
     const deadline = Date.now() + 90000;
-    while (!state().deleted) {
+    while (!state().deleted || fs.existsSync(path.join(root, 'controller/i-ci.ci-retire'))) {
       if (error) throw error;
       if (exited || Date.now() > deadline) throw Error('CI lifecycle failed: ' + status + ' ' + output);
       await delay(100);
     }
     assert.ok(armed); assert.ok(state().terminated);
+    assert.ok(state().deleteFailed, 'cleanup retry was not exercised');
     assert.equal(state().calls.filter(x => x[1] === 'send-command').length, 1, 'bootstrap command was replayed');
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
     assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));

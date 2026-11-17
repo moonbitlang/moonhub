@@ -86,6 +86,9 @@ The controller additionally needs scoped `ssm:AddTagsToResource`,
 `ssm:GetCommandInvocation`, `ec2:DescribeInstances` and
 `ec2:ModifyInstanceMetadataOptions` for this dedicated fleet. Those permissions
 must never be assigned to its task instances.
+It also needs `ssm:DescribeParameters` for nonsecret cleanup-name checks. A local
+retirement journal survives controller interruption and retries parameter removal
+after EC2 confirms termination; already absent parameters count as cleaned.
 
 ## Network and retirement
 
