@@ -13,10 +13,22 @@ async function scenario(failed, vanished = false) {
   const stateFile = path.join(root, 'aws.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], disabled: false, terminated: false, booted: false}));
   const state = () => JSON.parse(fs.readFileSync(stateFile));
+  const saveState = value => {
+    const temporary = stateFile + '.parent';
+    fs.writeFileSync(temporary, JSON.stringify(value)); fs.renameSync(temporary, stateFile);
+  };
   const adapter = path.join(root, 'aws');
   fs.writeFileSync(adapter, `#!${process.execPath}
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const file=${JSON.stringify(stateFile)},args=process.argv.slice(2),s=JSON.parse(fs.readFileSync(file));s.calls.push(args.slice(0,2));
+const save = () => {
+ const temporary=file+'.'+process.pid;
+ const handle=fs.openSync(temporary,'w');
+ // Widen the former truncate/write race while readers keep seeing the old
+ // complete document until the atomic rename publishes the new state.
+ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);
+ fs.writeFileSync(handle,JSON.stringify(s));fs.closeSync(handle);fs.renameSync(temporary,file);
+};
 let result=null;
 if(args[0]==='sts')result={Account:'123456789012'};
 else if(args[0]==='ec2'){
@@ -37,13 +49,13 @@ else if(args[0]==='ec2'){
  else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes('moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
  else if(args[1]==='get-command-invocation')result={Status:'Success'};
  else if(args[1]==='delete-parameter'){
-   if(!s.deleteFailed){s.deleteFailed=true;fs.writeFileSync(file,JSON.stringify(s));process.exit(1);}
+   if(!s.deleteFailed){s.deleteFailed=true;save();process.exit(1);}
    s.deleted=true;
  }
  else if(args[1]==='describe-parameters')result=s.deleted?[]:['/moonhub-runner/ci/i-ci'];
  else throw Error('unexpected SSM '+args[1]);
 }else throw Error('unexpected AWS '+args[0]);
-fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.stringify(result));
+save();if(result!==null)console.log(JSON.stringify(result));
 `, {mode: 0o700});
   const registration = path.join(root, 'registration'); fs.writeFileSync(registration, 'a'.repeat(64), {mode: 0o600});
   let config, schema, providerToken, worker, armed = false, status = '', error, child, exited = false, output = '';
@@ -69,7 +81,7 @@ fs.writeFileSync(file,JSON.stringify(s));if(result!==null)console.log(JSON.strin
           armed = true;
           if (vanished) {
             const current = state(); current.terminated = true;
-            fs.writeFileSync(stateFile, JSON.stringify(current));
+            saveState(current);
           }
           // A compromised guest can keep heartbeating and never acknowledge
           // cleanup. Server-fenced consumption still permits outside retirement.
