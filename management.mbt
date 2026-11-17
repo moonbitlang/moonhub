@@ -25,9 +25,25 @@ fn management_command() -> @argparse.Command {
         PositionArg("type"),
         PositionArg("key"),
       ]),
-      @argparse.Command("ssh-serve", hidden=true, positionals=[
-        PositionArg("id"),
-      ]),
+      @argparse.Command(
+        "ssh-serve",
+        hidden=true,
+        positionals=[PositionArg("id")],
+        options=[
+          OptionArg(
+            "read-idle-timeout-seconds",
+            long="read-idle-timeout-seconds",
+            env="MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS",
+            default_values=["120"],
+          ),
+          OptionArg(
+            "read-max-seconds",
+            long="read-max-seconds",
+            env="MOONHUB_SSH_READ_MAX_SECONDS",
+            default_values=["3600"],
+          ),
+        ],
+      ),
       @argparse.Command("ssh-pre-receive", hidden=true, positionals=[
         PositionArg("id"),
         PositionArg("repository"),
@@ -181,6 +197,21 @@ fn cli_key_id(matches : @argparse.Matches) -> Int64 raise {
 }
 
 ///|
+fn ssh_read_seconds(matches : @argparse.Matches, name : String) -> Int32 raise {
+  let value = cli_value(matches, name)
+  let seconds = @string.parse_int(value) catch { _ => 0 }
+  guard !value.is_empty() &&
+    value.iter().all(ch => ch.is_ascii_digit()) &&
+    seconds >= 1 &&
+    seconds <= 2147483 else {
+    raise @domain.BadRequest(
+      message="\{name} must be an integer between 1 and 2147483 seconds",
+    )
+  }
+  seconds
+}
+
+///|
 async fn run_management_cli(args : ArrayView[String]) -> Int32 {
   let matches = management_command().parse(argv=args, env=@env.get_env_vars())
   guard matches.subcommand is Some((command, options)) else { return 1 }
@@ -221,6 +252,10 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
           pool,
           @ssh.SshCredential::parse(cli_value(options, "id")),
           cli_value(matches, "root"),
+          read_idle_timeout_seconds=ssh_read_seconds(
+            options, "read-idle-timeout-seconds",
+          ),
+          read_max_seconds=ssh_read_seconds(options, "read-max-seconds"),
         )
       "ssh-ref-transaction" =>
         @ssh.record_ref_transaction(
