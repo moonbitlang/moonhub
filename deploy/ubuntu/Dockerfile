@@ -30,7 +30,7 @@ LABEL io.moonhub.runner.environment="ubuntu-24.04"
 
 # Compile only the standalone runner and its non-Web dependencies.
 FROM environment AS native-build
-ARG MOONBIT_VERSION=0.10.19+8e43a47fb-nightly
+ARG MOONBIT_VERSION=0.10.21+06da1ed44
 ENV MOON_HOME=/opt/moon
 COPY deploy/install-moonbit.sh /tmp/install-moonbit.sh
 RUN sh /tmp/install-moonbit.sh "$MOONBIT_VERSION" && chmod -R a+rX /opt/moon

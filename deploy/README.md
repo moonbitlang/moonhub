@@ -67,7 +67,7 @@ The base installs dependencies with `npm ci`; the application image builds brows
 assets and compiles the native executable on Linux, without running tests. No
 host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
 to select an archived MoonBit toolchain release;
-its default is `0.10.19+8e43a47fb-nightly`, matching the formatter syntax in this
+its default is `0.10.21+06da1ed44`, matching the formatter syntax in this
 repository. Upgrade the dependency base and Runner together with the application;
 older toolchains cannot parse the new `#derive(...)` attributes or inclusive
 range patterns. Dependency resolution checks the downloaded packages without

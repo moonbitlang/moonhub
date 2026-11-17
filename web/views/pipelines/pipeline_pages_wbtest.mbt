@@ -222,7 +222,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
           assert_eq(jobs.length(), 1)
           guard jobs[0]
             is Object(
-              { "id": String(job_id), "attempt_id": String(attempt_id), .. }
+              { "id": String(job_id), "attempt_id": String(attempt_id), .. },
             ) else {
             fail("numeric IDs leaked into browser JSON")
           }
@@ -243,7 +243,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
                 "has_more": more,
                 "chunks": Array(chunks),
                 ..
-              }
+              },
             ) else {
             fail("invalid log page")
           }

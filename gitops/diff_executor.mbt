@@ -14,6 +14,7 @@ pub struct DiffExecutor {
   priv mut next_task_id : Int64
   priv mut coalesced_requests : Int64
   priv mut cache : Map[String, (DiffCacheValue, Int64)]
+  priv mut cache_reserved_entries : Int32
   priv mut cache_bytes : Int64
   priv cache_limit_bytes : Int64
   priv mut cache_evictions : Int64
@@ -53,7 +54,8 @@ pub fn DiffExecutor::new(
     inflight: Map([]),
     next_task_id: 0L,
     coalesced_requests: 0L,
-    cache: Map([]),
+    cache: Map([], capacity=4),
+    cache_reserved_entries: 4,
     cache_bytes: 0L,
     cache_limit_bytes,
     cache_evictions: 0L,
