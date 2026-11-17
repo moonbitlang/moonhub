@@ -45,29 +45,38 @@ async fn DiffCacheValue::retained_bytes(self : DiffCacheValue) -> Int64 {
 
 ///|
 fn DiffExecutor::cache_index_bytes(self : DiffExecutor) -> Int64 {
-  // Index/header: 64 bytes plus 8 bytes per bucket. Empty caches are uncharged.
+  // Index/header: 64 bytes plus 16 bytes per reserved entry, allowing for
+  // unused buckets. Reserve entries explicitly instead of observing the map's
+  // private bucket count. Empty caches are uncharged.
   if self.cache.is_empty() {
     0L
   } else {
-    64L + 8L * self.cache.capacity().to_int64()
+    64L + 16L * self.cache_reserved_entries.to_int64()
   }
+}
+
+///|
+fn DiffExecutor::resize_cache(
+  self : DiffExecutor,
+  reserved_entries : Int32,
+) -> Unit {
+  let resized = Map([], capacity=reserved_entries)
+  for key, entry in self.cache {
+    resized[key] = entry
+  }
+  self.cache = resized
+  self.cache_reserved_entries = reserved_entries
 }
 
 ///|
 fn DiffExecutor::shrink_cache(self : DiffExecutor) -> Unit {
   if self.cache.is_empty() {
-    self.cache = Map([])
+    self.resize_cache(4)
     self.cache_bytes = 0L
-  } else if self.cache.capacity().to_int64() >
-    (4L * self.cache.length().to_int64()).max(8L) {
+  } else if self.cache_reserved_entries.to_int64() >
+    (4L * self.cache.length().to_int64()).max(4L) {
     self.cache_bytes -= self.cache_index_bytes()
-    // Six entries fit in the standard map's eight minimum buckets. Reserve by
-    // entry count (not bucket count) to avoid growing while rebuilding.
-    let smaller = Map([], capacity=self.cache.length().max(6))
-    for key, entry in self.cache {
-      smaller[key] = entry
-    }
-    self.cache = smaller
+    self.resize_cache(self.cache.length().next_power_of_two().max(4))
     self.cache_bytes += self.cache_index_bytes()
   }
 }
@@ -110,7 +119,7 @@ fn DiffExecutor::cache_result(
   value_bytes : Int64,
 ) -> Unit {
   // Entry/link/tuple overhead: 128 bytes, plus key and value. The smallest
-  // retained index uses eight buckets (128 bytes including its header).
+  // retained index reserves four entries (128 bytes including its header).
   let size = 128L + diff_string_bytes(key) + value_bytes
   // Decide before touching the map, including a previous value at this key.
   if size > self.cache_limit_bytes - 128L {
@@ -121,10 +130,13 @@ fn DiffExecutor::cache_result(
   if self.cache.remove_and_get(key) is Some((_, old_size)) {
     self.cache_bytes -= old_size
   }
+  if self.cache.length() == self.cache_reserved_entries {
+    self.resize_cache(self.cache_reserved_entries * 2)
+  }
   self.cache[key] = (value, size)
   self.cache_bytes += size + self.cache_index_bytes()
   // All mutations and compaction are synchronous: other tasks only see a
-  // complete cache whose entries and actual bucket allocation fit the budget.
+  // complete cache whose entries and reserved index estimate fit the budget.
   self.shrink_cache()
   while self.cache_bytes > self.cache_limit_bytes {
     let (oldest, (_, old_size)) = self.cache.iter().next().unwrap()

@@ -184,16 +184,21 @@ counted repeatedly. The estimates are:
 | Serialized diff document | `S(document)` |
 | Manifest | `64 + 8 × array.capacity()`, plus `128` per file and `S(s)` for every string field, including a present `path_error` |
 | Cache entry | `128 + S(key) + value estimate` |
-| Nonempty hash index | `64 + 8 × Map.capacity()` |
-| Empty cache | Zero; reset to the minimum eight-bucket map |
+| Nonempty hash index | `64 + 16 × reserved entry count`, allowing for unused buckets |
+| Empty cache | Zero; reset to a map reserving four entries |
 
 An insertion that cannot fit with the minimum index overhead is skipped before
 changing the cache, preserving existing entries, including an older value at the
 same key. Otherwise, replacing a key deducts its previous cost and makes it most
 recently used. Entries are removed from the least-recently-used end until the
 total estimate fits the budget. The insertion-ordered linked hash map gives
-average O(1) lookup, hit refresh and single-entry eviction. When its bucket count
-exceeds `max(8, 4 × entry count)`, the index is rebuilt in LRU order to shrink it.
+average O(1) lookup, hit refresh and single-entry eviction. The index reserves a
+power-of-two entry count, starting at four, and doubles its reservation before
+inserting beyond it. The constructor's capacity hint keeps inserts within that
+reservation from growing the map. When the reservation exceeds
+`max(4, 4 × entry count)`, the index is rebuilt in LRU order with the smallest
+power-of-two reservation that fits, with a minimum of four. Index accounting
+uses these reservations rather than the map's private bucket count.
 Mutations and compaction are synchronous. Manifest accounting reads objects
 directly without generating per-file JSON.
 

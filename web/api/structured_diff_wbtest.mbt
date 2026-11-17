@@ -55,7 +55,7 @@ async test "structured diff preserves patch compatibility permissions and valida
           "options": { "mode": String("line"), .. },
           "document": {
             "sections": Array(
-              [{ "hunks": Array([{ "id": String(hunk_id), .. }, ..]), .. }, ..]
+              [{ "hunks": Array([{ "id": String(hunk_id), .. }, ..]), .. }, ..],
             ),
             ..
           },

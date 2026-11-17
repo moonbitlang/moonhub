@@ -103,7 +103,7 @@ EC2. See [CD setup and operations](deploy/github-cd.md).
 
 ## MoonBit toolchain
 
-Use `moonc v0.10.19+8e43a47fb-nightly` (November 3, 2026), the exact
+Use `moonc v0.10.21+06da1ed44` (November 16, 2026), the exact
 version pinned in `deploy/base.Dockerfile`, or a compatible newer compiler.
 The source and generated interfaces use `#derive(...)` attributes, which older
 compilers do not support. Local self-checks install the pinned version into a

@@ -36,7 +36,7 @@ async fn mcp_http(
     }
     if params.get("_meta")
       is Some(
-        { "io.modelcontextprotocol/protocolVersion": String(version), .. }
+        { "io.modelcontextprotocol/protocolVersion": String(version), .. },
       ) {
       headers["MCP-Protocol-Version"] = version
     }
@@ -1427,7 +1427,7 @@ async test "MCP structured diff and inline comments use the same fixed document"
                 [
                   { "hunks": Array([{ "id": String(hunk_id), .. }, ..]), .. },
                   ..,
-                ]
+                ],
               ),
               ..
             },
@@ -1465,7 +1465,7 @@ async test "MCP structured diff and inline comments use the same fixed document"
         "result": {
           "structuredContent": {
             "items": Array(
-              [{ "anchor": { "context": String(context), .. }, .. }, ..]
+              [{ "anchor": { "context": String(context), .. }, .. }, ..],
             ),
             ..
           },

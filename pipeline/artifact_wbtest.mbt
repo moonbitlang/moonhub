@@ -606,7 +606,7 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
         id,
         sig,
         "YQ==",
-        Bytes::new(maximum_artifact_block_bytes + 1),
+        Bytes::make(maximum_artifact_block_bytes + 1, b'\x00'),
       )
     catch {
       @domain.BadRequest(_) => ()

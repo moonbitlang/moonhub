@@ -301,7 +301,7 @@ async test "optional pull request discovery cannot turn API write permission int
       json
       is {
         "checks": Array(
-          [{ "required": False, "status": String("awaiting_approval"), .. }]
+          [{ "required": False, "status": String("awaiting_approval"), .. }],
         ),
         ..
       },

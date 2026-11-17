@@ -148,7 +148,7 @@ async fn main {
       | "variable"
       | "help"
       | "--version"
-      | "-V"
+      | "-V",
     ) => @sys.exit(@cli.execute(args[1:]))
     Some("storage-check") => {
       let code = try {
@@ -234,7 +234,7 @@ async fn main {
       | "repo-create"
       | "pipeline-provider-create"
       | "pipeline-provider-ensure"
-      | "pipeline-rerun"
+      | "pipeline-rerun",
     ) as command => {
       let code = run_management_cli(args[1:]) catch {
         err => {

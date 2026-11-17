@@ -100,7 +100,7 @@ pub struct DiffAnchor {
   end_line : Int64
   context : String
 }
-pub fn DiffAnchor::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffAnchor::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn DiffAnchor::to_json(Self) -> @json.Json
 
 pub struct DiffExecutor {
@@ -138,7 +138,7 @@ pub struct DiffFile {
   new_blob : String
   path_error : String?
 }
-pub fn DiffFile::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffFile::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn DiffFile::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -152,7 +152,7 @@ pub struct DiffManifest {
   has_more : Bool
   files : Array[DiffFile]
 }
-pub fn DiffManifest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DiffManifest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn DiffManifest::to_json(Self) -> @json.Json
 
 pub(all) struct DiffSelection {
@@ -174,7 +174,7 @@ pub struct FileDiff {
   document : @protocol.Document?
   error : String?
 }
-pub fn FileDiff::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn FileDiff::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn FileDiff::to_json(Self) -> @json.Json
 pub impl @json.ToJson for FileDiff
 

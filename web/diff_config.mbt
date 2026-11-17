@@ -5,7 +5,7 @@ fn diff_executor_from_env(
   observe~ : (Json) -> Unit = _ => (),
 ) -> @gitops.DiffExecutor raise {
   let cache_limit_bytes = @env.get_env_var("MOONHUB_DIFF_CACHE_BYTES").map(raw => {
-    let value = @string.parse_int64(raw.trim(), base=10) catch {
+    let value = @string.parse_int64(raw.trim(), radix=10) catch {
       _ =>
         raise @domain.BadRequest(
           message="MOONHUB_DIFF_CACHE_BYTES must be a non-negative Int64 byte count",
