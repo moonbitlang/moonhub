@@ -26,7 +26,7 @@ hosted software inventory. Windows Server 2022 retains its existing provider
 checks. Other hosted selectors still fail validation.
 
 `deploy/ubuntu/Dockerfile` supplies real Ubuntu 24.04 userspace, fixed Node
-runtimes and a native runner built for the same architecture:
+runtimes with npm/npx and a native runner built for the same architecture:
 
 ```sh
 docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
@@ -36,6 +36,27 @@ docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
 
 Configure that image and the labels `self-hosted,linux,x64,ubuntu-24.04` together.
 Existing Debian providers should not acquire the Ubuntu capability label.
+
+Both Linux runner images include the following baseline tools:
+
+| Purpose | Included tools |
+| --- | --- |
+| JavaScript | Node.js 24 with its bundled npm/npx; Node.js 20 for actions that request it |
+| C/C++ | GCC, G++, Make, Clang, clang-format, clang-tidy, LLVM, lld, CMake, Ninja, Meson, pkg-config, Autotools, Libtool, Bison, Flex and ccache |
+| Native headers | C/C++ standard libraries, OpenSSL, zlib and Python development headers |
+| Python | Python 3, `python` alias, pip and venv; use a virtual environment for project dependencies |
+| Source and deployment | Git, Git LFS, GitHub CLI, OpenSSH client (`ssh`, `scp`, `sftp`, agent and key tools), OpenSSL, rsync, curl and wget |
+| Shell utilities | jq, ripgrep, file, patch, diff, find, process tools, zip/unzip, tar, gzip, bzip2, xz and zstd |
+
+Compiler and Python packages follow each distribution's repositories. Workflows
+that require a particular version or another language SDK must install it
+explicitly. Changes apply after rebuilding the image and updating the provider's
+saved runner image. GitHub CI builds the Ubuntu environment and exercises both
+Linux toolsets as UID 10001 with a read-only root filesystem and no network:
+
+```sh
+bash scripts/linux-runner-tools-smoke.sh moonhub-runner:ubuntu-24.04 moonhub-runner:debian
+```
 
 ## Branch and path filters
 

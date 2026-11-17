@@ -9,12 +9,19 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 # runner. Build with --platform linux/amd64 for the ubuntu-24.04 x64 capability.
 FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b AS environment
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl git gh build-essential libssl-dev util-linux \
+    bash ca-certificates curl wget git git-lfs gh openssh-client openssl rsync jq \
+    build-essential clang clang-format clang-tidy lld llvm cmake ninja-build meson \
+    pkg-config autoconf automake libtool libtool-bin bison flex ccache libssl-dev zlib1g-dev \
+    python3 python3-dev python3-pip python3-venv python-is-python3 \
+    zip unzip tar gzip bzip2 xz-utils zstd file patch diffutils findutils procps util-linux ripgrep \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 runner \
     && useradd --uid 10001 --gid runner --create-home runner \
     && mkdir /workspace && chown runner:runner /workspace
 COPY --from=action-dependencies /usr/local/bin/node /usr/local/bin/node
+COPY --from=action-dependencies /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 COPY --from=node20 /usr/local/bin/node /opt/actions/node20/bin/node
 COPY --from=action-dependencies /opt/moonhub-actions/node_modules /usr/local/lib/moonhub/actions/node_modules
 COPY runner/actions/*.mjs /usr/local/lib/moonhub/actions/
