@@ -40,6 +40,28 @@ fn container_args(
       .replace_all(old="/", new="\\") +
       ",dst=C:\\control,readonly",
     ])
+  } else if options.linux_ci {
+    // This daemon belongs to one job inside one single-use EC2. No host Docker
+    // socket or bootstrap files enter the task container.
+    args.append([
+      "--privileged",
+      "--cgroupns",
+      "private",
+      "--pids-limit",
+      "512",
+      "--memory",
+      options.memory,
+      "--cpus",
+      options.cpus,
+      "--tmpfs",
+      "/tmp:rw,exec,nosuid,nodev,size=1g",
+      "--mount",
+      "type=volume,src=\{workspace_volume},dst=/workspace",
+      "--mount",
+      "type=volume,src=\{workspace_volume}-docker,dst=/var/lib/docker",
+      "--mount",
+      "type=bind,src=\{assignment_path},dst=/control/assignment.json,readonly",
+    ])
   } else {
     args.append([
       "--read-only",
@@ -80,6 +102,9 @@ fn container_args(
       "/control/assignment.json"
     },
   )
+  if options.linux_ci {
+    args.push("--linux-ci")
+  }
   if options.allow_http {
     args.push("--allow-http")
   }
@@ -197,6 +222,9 @@ async fn execute_assignment(
   // as the claim is consumed, even if the assignment directory cannot be made.
   defer @async.protect_from_cancel(() => {
     cleanup_workspace(options, container_name(attempt_id), workspace_volume)
+    if options.linux_ci {
+      remove_workspace(options, workspace_volume + "-docker")
+    }
     // The directory may still be mounted after a cancelled Docker client.
     // Remove the container first so Windows can release its bind mount.
     @fs.rmdir(root, recursive=true) catch {
@@ -213,6 +241,13 @@ async fn execute_assignment(
       )
     }
     create_workspace(options, workspace_volume, container_name(attempt_id))
+    if options.linux_ci {
+      create_workspace(
+        options,
+        workspace_volume + "-docker",
+        container_name(attempt_id),
+      )
+    }
   }
   let assignment_path = root + "/assignment.json"
   @fs.write_file(

@@ -1,4 +1,5 @@
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS node20
+FROM docker:27.5.1-dind@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce AS dind
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS action-dependencies
 WORKDIR /opt/moonhub-actions
 COPY runner/actions/package.json runner/actions/package-lock.json ./
@@ -61,3 +62,20 @@ ENTRYPOINT ["/usr/local/bin/moonhub-runner", "execute"]
 FROM runner AS tools-sdk-check
 WORKDIR /work
 ENTRYPOINT ["node", "scripts/openseek-tools-sdk-smoke.mjs"]
+
+# Explicit privileged profile for single-use Linux CI ASGs only. The outside
+# worker/controller enforce one claim and instance retirement. No daemon socket
+# from that worker is mounted here; this daemon owns only this job's containers.
+FROM runner AS ci-runner
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sudo docker.io iptables iproute2 gosu kmod \
+    && rm -rf /var/lib/apt/lists/* \
+    && printf 'runner ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/moonhub-ci \
+    && chmod 440 /etc/sudoers.d/moonhub-ci
+COPY --from=dind /usr/local/bin/dind /usr/local/libexec/moonhub-dind
+COPY deploy/ubuntu/ci-entrypoint.sh /usr/local/libexec/moonhub-ci-entrypoint
+RUN chmod 755 /usr/local/libexec/moonhub-ci-entrypoint
+LABEL io.moonhub.runner.execution="linux-ci-v1"
+ENV PATH=/opt/moon/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENTRYPOINT ["/usr/local/libexec/moonhub-ci-entrypoint"]

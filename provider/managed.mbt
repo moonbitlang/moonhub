@@ -67,6 +67,17 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
     )
   }
   if options.mode == "asg" {
+    if options.base.linux_ci {
+      schema.push(
+        config_field(
+          "execution_mode",
+          "Execution mode",
+          "choice",
+          "Privileged Linux CI on a dedicated single-use EC2. Requires isolated networking and instance-scoped bootstrap permissions.",
+          choices=["linux-ci"],
+        ),
+      )
+    }
     schema.push(
       config_field(
         "instance_type",
@@ -154,6 +165,9 @@ pub fn config_defaults(options : ManagedOptions) -> Map[String, String] {
     defaults["standby_workers"] = "1"
   }
   if options.mode == "asg" {
+    if options.base.linux_ci {
+      defaults["execution_mode"] = "linux-ci"
+    }
     defaults["instance_type"] = options.instance_types[0]
     defaults["max_workers"] = "1"
     defaults["standby_workers"] = "0"
@@ -189,6 +203,11 @@ priv struct RegistrationBinding {
 
 ///|
 pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit {
+  guard !options.base.linux_ci || options.mode == "asg" else {
+    raise InvalidConfiguration(
+      "Linux CI requires a dedicated Linux ASG controller.",
+    )
+  }
   guard ["docker", "asg", "tart"].contains(options.mode) &&
     !options.name.is_empty() else {
     raise InvalidConfiguration(

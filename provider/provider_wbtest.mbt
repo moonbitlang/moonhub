@@ -15,6 +15,7 @@ fn test_options() -> Options {
     memory: "512m",
     cpus: "1",
     pids_limit: 128,
+    linux_ci: false,
   }
 }
 

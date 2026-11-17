@@ -101,13 +101,20 @@ int wmain(int argc, wchar_t **argv) {
 #include <unistd.h>
 #ifdef __linux__
 #include <sys/prctl.h>
+#include "ci-profile.h"
 #endif
 
 int main(int argc, char **argv) {
-  if (argc != 3 || argv[2][0] != '/') return 125;
+  if ((argc != 3 && argc != 4) || argv[2][0] != '/') return 125;
+  int linux_ci = argc == 4 && strcmp(argv[3], "--linux-ci") == 0;
+  if (argc == 4 && !linux_ci) return 125;
   if (setsid() < 0) return 125;
 #ifdef __linux__
-  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) return 125;
+  if (linux_ci) {
+    if (!moonhub_ci_profile()) return 125;
+  } else if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) return 125;
+#else
+  if (linux_ci) return 125;
 #endif
   if (strcmp(argv[1], "bash") == 0) {
     execl("/bin/bash", "bash", "--noprofile", "--norc", "-eo", "pipefail", argv[2], (char *)0);

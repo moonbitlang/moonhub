@@ -76,6 +76,7 @@ async test "real runner consumes captured vars in env conditions Action inputs p
               launcher,
               allow_http: true,
               unsafe_local: true,
+              linux_ci: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),

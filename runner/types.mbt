@@ -14,6 +14,7 @@ pub(all) struct Options {
   launcher : String
   allow_http : Bool
   unsafe_local : Bool
+  linux_ci : Bool
   heartbeat_ms : Int32
 }
 

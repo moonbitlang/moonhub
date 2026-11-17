@@ -101,6 +101,7 @@ async fn run_provider_cli(args : ArrayView[String]) -> Int32 {
       memory: cli_value(options, "memory"),
       cpus: cli_value(options, "cpus"),
       pids_limit: provider_cli_int(options, "pids-limit"),
+      linux_ci: false,
     },
     token,
   )

@@ -85,6 +85,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
               launcher,
               allow_http: true,
               unsafe_local: true,
+              linux_ci: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),

@@ -1,10 +1,11 @@
 ///|
-async test "schemas 38 through 40 upgrade without replaying completed migrations" {
+async test "schemas 38 through 41 upgrade without replaying completed migrations" {
   let baseline = @fs.read_file("db/base.sql").text()
   let storage = @fs.read_file("db/migrations/039_blob_storage.sql").text()
   let releases = @fs.read_file("db/migrations/040_releases.sql").text()
+  let cleanup = @fs.read_file("db/migrations/041_repository_cleanup.sql").text()
   @async.with_task_group(group => {
-    for version in [38, 39, 40] {
+    for version in [38, 39, 40, 41] {
       let pool = new_db_pool({ path: ":memory:", }, group)
       defer pool.close()
       pool.with_client(client => {
@@ -14,6 +15,9 @@ async test "schemas 38 through 40 upgrade without replaying completed migrations
         }
         if version >= 40 {
           client.batch_execute(releases)
+        }
+        if version >= 41 {
+          client.batch_execute(cleanup)
         }
         client.batch_execute(
           "PRAGMA user_version=\{version}; INSERT INTO team(name_key,display_name,kind) VALUES('retained','Retained','org');",
@@ -26,7 +30,7 @@ async test "schemas 38 through 40 upgrade without replaying completed migrations
           (
             client.query_one("PRAGMA user_version").get_name("user_version") :
             Int64),
-          41L,
+          database_schema_version,
         )
         assert_eq(
           (

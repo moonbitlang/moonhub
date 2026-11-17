@@ -59,6 +59,7 @@ int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #include <errno.h>
 #ifdef __linux__
 #include <sys/prctl.h>
+#include "ci-profile.h"
 #endif
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -79,10 +80,11 @@ int64_t moonhub_runner_monotonic(void) {
 }
 
 int32_t moonhub_runner_prepare(int32_t local) {
-  if (local) return 0;
+  if (local == 1) return 0;
 #ifdef __linux__
   if (getpid() != 1 || geteuid() == 0) return -1;
   if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) return -1;
+  if (local == 2) return moonhub_ci_profile() && prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 0 ? 0 : -1;
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) return -1;
   return 0;
 #elif defined(__APPLE__)

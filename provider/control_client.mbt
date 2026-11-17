@@ -44,6 +44,11 @@ fn configured_options(
     raise InvalidConfiguration("Invalid task limits.")
   }
   let image = config.get("runner_image").unwrap_or(base.runner_image)
+  guard (config.get("execution_mode") == Some("linux-ci")) == base.linux_ci else {
+    raise InvalidConfiguration(
+      "Worker execution mode differs from its bootstrap.",
+    )
+  }
   let options = { ..base, runner_image: image, memory: memory + "m", cpus, }
   validate_options(options)
   options
@@ -217,6 +222,10 @@ async fn run_backend_worker(
         @async.sleep(base.poll_ms)
         continue
       }
+      if base.linux_ci && ready.isolation_revision != Some(applied.val) {
+        @async.sleep(base.poll_ms)
+        continue
+      }
       // A claim can already be committed on the server while its response is
       // still in flight. Preserve that pending claim when a ready heartbeat
       // conflicts with the newly busy server-side worker.
@@ -235,6 +244,14 @@ async fn run_backend_worker(
         Some(claimed) => {
           validate_assignment(claimed.assignment, runner_os=backend.os)
           state.val = "busy"
+          if current.val.linux_ci {
+            @fs.write_file(
+              base.workspace_root + "/ci-consumed",
+              claimed.assignment.attempt_id,
+              create_mode=@fs.CreateNew,
+              permission=0o600,
+            )
+          }
           (backend.execute)(
             current.val,
             claimed.assignment,
@@ -248,6 +265,9 @@ async fn run_backend_worker(
               state.val = "failed"
               raise CleanupFailure
             }
+          }
+          if current.val.linux_ci {
+            break
           }
           // A completed job has consumed the prepared workspace. Replenish
           // resources before advertising standby or accepting another claim.

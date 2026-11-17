@@ -24,6 +24,7 @@ pub(all) struct Options {
   memory : String
   cpus : String
   pids_limit : Int32
+  linux_ci : Bool
 }
 
 ///|

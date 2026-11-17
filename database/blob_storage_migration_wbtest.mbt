@@ -15,6 +15,7 @@ async test "blob storage migration preserves legacy rows and journals cascade de
           #|DROP TABLE attachment_file_garbage;
           #|DROP TRIGGER repository_cleanup_name_guard;
           #|DROP TABLE repository_file_garbage;
+          #|ALTER TABLE pipeline_worker DROP COLUMN isolation_revision;
           #|PRAGMA user_version=38;
           #|INSERT INTO pipeline_run(repository_id,number,requested_by_user_id,workflow_path,workflow_name,source_branch,commit_sha,source_ref,definition_version,workflow_source,definition_json)
           #|VALUES(1,1,(SELECT id FROM user LIMIT 1),'.github/workflows/build.yml','legacy','main','0000000000000000000000000000000000000000','refs/pipeline/legacy',1,'legacy','{}');
