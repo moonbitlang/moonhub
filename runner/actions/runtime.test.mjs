@@ -714,3 +714,22 @@ test('job API credential is host-bound, masked, scoped to one invocation and usa
   assert.equal((await runtime.script('true','bash','.',{GH_TOKEN:token})).code,0);
   assert.equal(await fs.stat(directory).then(()=>true,()=>false),false);
 });
+
+test('capability probe path reaches scripts and JavaScript pre main post despite action path additions', async t => {
+  const {config, runtime} = await fixture(t);
+  const probes = path.join(config.temp, 'capability-bin'), shadow = path.join(config.workspace, 'shadow');
+  await fs.mkdir(probes); await fs.mkdir(shadow);
+  await fs.writeFile(path.join(probes, 'docker'), '#!/bin/sh\nprintf "docker\\n" >> "$MOONHUB_CAPABILITY_BIN/request"\nexit 125\n', {mode:0o700});
+  await fs.writeFile(path.join(shadow, 'docker'), '#!/bin/sh\nexit 0\n', {mode:0o700});
+  runtime.baseEnv.MOONHUB_CAPABILITY_BIN = probes;
+  runtime.state.path.push(shadow);
+  const uses = await action(config, 'capability', 'runs:\n  using: node24\n  pre: probe.cjs\n  main: probe.cjs\n  post: probe.cjs\n', {
+    'probe.cjs': "require('node:child_process').spawnSync('docker',['info']);"
+  });
+  assert.equal((await runtime.action(uses,{})).code, 0);
+  assert.equal(await runtime.posts(), 0);
+  assert.equal((await runtime.script('docker build . || true', 'bash')).code, 0);
+  const requests = (await fs.readFile(path.join(probes,'request'),'utf8')).trim().split('\n');
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every(value => value === 'docker'));
+});

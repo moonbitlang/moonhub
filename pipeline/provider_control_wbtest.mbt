@@ -244,6 +244,7 @@ async test "worker identities share grants but claim independently and drain ato
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
+        missing_capability: "",
         outputs: Map([]),
       }),
     )

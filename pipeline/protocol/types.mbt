@@ -46,6 +46,18 @@ pub let environment_assignment_version : Int32 = 11
 pub let release_assignment_version : Int32 = 12
 
 ///|
+pub let execution_assignment_version : Int32 = 13
+
+///|
+#derive(Debug, ToJson, FromJson)
+pub(all) struct ExecutionContext {
+  environment : String
+  environment_version : String
+  profile : String
+  probe_capabilities : Bool
+}
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct ApiRuntime {
   token : String
@@ -56,7 +68,7 @@ pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
-    environment_assignment_version, release_assignment_version,
+    environment_assignment_version, release_assignment_version, execution_assignment_version,
   ].contains(version)
 }
 
@@ -155,8 +167,8 @@ pub(all) struct LogRequest {
 }
 
 ///|
-#derive(ToJson)
 pub(all) struct CompleteRequest {
+  missing_capability : String
   version : Int32
   conclusion : String
   last_log_sequence : String
@@ -179,8 +191,9 @@ pub(all) struct LeaseState {
 }
 
 ///|
-#derive(Debug, ToJson, FromJson)
+#derive(Debug)
 pub(all) struct Assignment {
+  execution : ExecutionContext?
   version : Int32
   attempt_id : String
   run_id : String
@@ -441,6 +454,10 @@ pub impl @json.FromJson for CompleteRequest with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid completion"))
   }
   {
+    missing_capability: @json.from_json(
+      fields.get("missing_capability").unwrap_or(Json::string("")),
+      path=path.add_key("missing_capability"),
+    ),
     version: @json.from_json(
       fields.get("version").unwrap_or(Json::null()),
       path=path.add_key("version"),
@@ -481,3 +498,103 @@ pub extend ApiRuntime with @json.ToJson::{to_json}
 ///|
 #deprecated
 pub extend ApiRuntime with @json.FromJson::{from_json}
+
+///|
+pub impl @json.FromJson for Assignment with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid assignment"))
+  }
+  {
+    execution: match fields.get("execution") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("execution")))
+    },
+    version: @json.from_json(
+      fields.get("version").unwrap_or(Json::null()),
+      path=path.add_key("version"),
+    ),
+    attempt_id: @json.from_json(
+      fields.get("attempt_id").unwrap_or(Json::null()),
+      path=path.add_key("attempt_id"),
+    ),
+    run_id: @json.from_json(
+      fields.get("run_id").unwrap_or(Json::null()),
+      path=path.add_key("run_id"),
+    ),
+    job_id: @json.from_json(
+      fields.get("job_id").unwrap_or(Json::null()),
+      path=path.add_key("job_id"),
+    ),
+    repository: @json.from_json(
+      fields.get("repository").unwrap_or(Json::null()),
+      path=path.add_key("repository"),
+    ),
+    commit_sha: @json.from_json(
+      fields.get("commit_sha").unwrap_or(Json::null()),
+      path=path.add_key("commit_sha"),
+    ),
+    lease_until_ms: @json.from_json(
+      fields.get("lease_until_ms").unwrap_or(Json::null()),
+      path=path.add_key("lease_until_ms"),
+    ),
+    server_time_ms: @json.from_json(
+      fields.get("server_time_ms").unwrap_or(Json::null()),
+      path=path.add_key("server_time_ms"),
+    ),
+    state: @json.from_json(
+      fields.get("state").unwrap_or(Json::null()),
+      path=path.add_key("state"),
+    ),
+    job: @json.from_json(
+      fields.get("job").unwrap_or(Json::null()),
+      path=path.add_key("job"),
+    ),
+  }
+}
+
+///|
+pub impl ToJson for CompleteRequest with fn to_json(self) {
+  let fields : Map[String, Json] = {
+    "version": self.version,
+    "conclusion": self.conclusion,
+    "last_log_sequence": self.last_log_sequence,
+    "outputs": ToJson::to_json(self.outputs),
+  }
+  if !self.missing_capability.is_empty() {
+    fields["missing_capability"] = Json::string(self.missing_capability)
+  }
+  Json::object(fields)
+}
+
+///|
+#deprecated
+pub extend ExecutionContext with @debug.Debug::{to_repr}
+
+///|
+#deprecated
+pub extend ExecutionContext with ToJson::{to_json}
+
+///|
+#deprecated
+pub extend ExecutionContext with @json.FromJson::{from_json}
+
+///|
+pub impl ToJson for Assignment with fn to_json(self) {
+  let fields : Map[String, Json] = {
+    "version": self.version,
+    "attempt_id": self.attempt_id,
+    "run_id": self.run_id,
+    "job_id": self.job_id,
+    "repository": self.repository,
+    "commit_sha": self.commit_sha,
+    "lease_until_ms": self.lease_until_ms,
+    "server_time_ms": self.server_time_ms,
+    "state": self.state,
+    "job": ToJson::to_json(self.job),
+  }
+  if self.execution is Some(execution) {
+    fields["execution"] = ToJson::to_json(execution)
+  }
+  Json::object(fields)
+}

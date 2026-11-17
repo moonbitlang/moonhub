@@ -260,7 +260,7 @@ fn validate_assignment(
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
@@ -269,7 +269,9 @@ fn validate_assignment(
     assignment.job.api_permissions <= 7 &&
     (
       assignment.job.api_permissions == 0 ||
-      assignment.version == @protocol.release_assignment_version
+      [
+        @protocol.release_assignment_version, @protocol.execution_assignment_version,
+      ].contains(assignment.version)
     ) &&
     assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&

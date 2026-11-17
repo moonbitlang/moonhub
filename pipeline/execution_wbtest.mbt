@@ -40,6 +40,7 @@ fn completion(
     version: 1,
     conclusion,
     last_log_sequence: last.to_string(),
+    missing_capability: "",
     outputs: Map([]),
   }
 }

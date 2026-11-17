@@ -10,6 +10,11 @@ starts. Its EC2 VM boundary, instance IAM boundary and externally enforced VPC
 network policy protect other systems. Container privilege is never enabled on
 the Web host, its DinD provider or a reusable shared worker.
 
+A logical execution environment can route jobs here automatically after learning
+that they need Docker, container root or host-kernel access. See
+[adaptive execution routing](execution-routing.md); provider repository grants and
+these isolation gates still apply.
+
 ## Images and enrollment
 
 Build the matching image from a reviewed commit on a dedicated build host:

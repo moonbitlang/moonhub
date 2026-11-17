@@ -1188,6 +1188,7 @@ async test "MCP CI tools create query cancel rerun and reject out of scope log r
         version: 1,
         conclusion: "cancelled",
         last_log_sequence: "1",
+        missing_capability: "",
         outputs: Map([]),
       }),
     )

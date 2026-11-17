@@ -266,6 +266,18 @@ async fn run_backend_worker(
               raise CleanupFailure
             }
           }
+          if claimed.assignment.execution is Some(e) &&
+            e.profile == "restricted" {
+            ignore(
+              control_request(
+                base.server,
+                "/workers/execution-cleanup",
+                token,
+                { "version": 1, "attempt_id": claimed.assignment.attempt_id },
+                allow_http=base.allow_http,
+              ),
+            )
+          }
           if current.val.linux_ci {
             break
           }

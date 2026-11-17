@@ -8,7 +8,7 @@ async fn validate_options(
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) &&
     assignment.state == "leased" &&
     (
@@ -24,7 +24,9 @@ async fn validate_options(
     assignment.job.api_permissions <= 7 &&
     (
       assignment.job.api_permissions == 0 ||
-      assignment.version == @protocol.release_assignment_version
+      [
+        @protocol.release_assignment_version, @protocol.execution_assignment_version,
+      ].contains(assignment.version)
     ) else {
     raise InvalidConfiguration(
       "job API permissions require assignment version 12",
@@ -33,13 +35,14 @@ async fn validate_options(
   guard !assignment.job.id_token_write ||
     [
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("OIDC permissions require assignment version 10")
   }
   guard !assignment.job.runs_on.contains("windows-2025") ||
     [
       @protocol.environment_assignment_version, @protocol.release_assignment_version,
+      @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("Windows 2025 requires assignment version 11")
   }
@@ -84,7 +87,7 @@ async fn validate_options(
       @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("matrix contexts require assignment version 6")
   }
@@ -92,7 +95,7 @@ async fn validate_options(
     [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("job dataflow requires assignment version 7")
   }
@@ -111,7 +114,7 @@ async fn validate_options(
     [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration("dispatch context requires assignment version 8")
   }
@@ -135,7 +138,7 @@ async fn validate_options(
   guard assignment.job.variables.is_empty() ||
     [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.execution_assignment_version,
     ].contains(assignment.version) else {
     raise InvalidConfiguration(
       "repository variables require assignment version 9",
@@ -227,6 +230,7 @@ async fn validate_options(
             @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
             @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
             @protocol.environment_assignment_version, @protocol.release_assignment_version,
+            @protocol.execution_assignment_version,
           ].contains(assignment.version) &&
           valid_moonbit_version(step.moonbit_version)
         } else {
@@ -237,7 +241,7 @@ async fn validate_options(
             @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
             @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
             @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-            @protocol.release_assignment_version,
+            @protocol.release_assignment_version, @protocol.execution_assignment_version,
           ].contains(assignment.version) &&
           step.moonbit_version.is_empty() &&
           checkouts == 1
@@ -287,7 +291,7 @@ async fn validate_options(
         @protocol.scheduling_assignment_version, @protocol.dataflow_assignment_version,
         @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
         @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-        @protocol.release_assignment_version,
+        @protocol.release_assignment_version, @protocol.execution_assignment_version,
       ].contains(assignment.version) else {
       raise InvalidConfiguration("secret steps require assignment version 4")
     }
@@ -432,6 +436,12 @@ async fn Runtime::execute_script(
       env.get("PATH").unwrap_or("/usr/local/bin:/usr/bin:/bin")
   }
   env["GITHUB_WORKSPACE"] = self.options.workspace
+  if !self.capability_dir.is_empty() {
+    env["PATH"] = self.capability_dir +
+      ":" +
+      env.get("PATH").unwrap_or("/usr/bin:/bin")
+    env["MOONHUB_CAPABILITY_BIN"] = self.capability_dir
+  }
   env["GITHUB_SHA"] = self.assignment.commit_sha
   env["GITHUB_REPOSITORY"] = self.assignment.repository
   let script = if @platform.windows() &&
@@ -707,6 +717,12 @@ async fn Runtime::execute_steps(
     } else {
       "failure"
     }
+    self.capture_capability()
+    if !self.missing_capability.is_empty() {
+      self.job_outputs.clear()
+      self.step_state(index, "failure", 125)
+      return "failure"
+    }
     self.step_state(index, state, code)
     if code != 0 {
       failed = true
@@ -761,6 +777,10 @@ async fn Runtime::monitor(self : Runtime) -> String {
         return reason
       }
       err => raise err
+    }
+    self.capture_capability()
+    if !self.missing_capability.is_empty() {
+      return "failure"
     }
     if monotonic_ms() >= next {
       let request : @protocol.VersionRequest = { version: @protocol.version, }
@@ -846,6 +866,25 @@ async fn execute_assignment(
   },
 ) -> Report {
   let options = validate_options(assignment, options)
+  let execution = assignment.execution
+  guard execution is None ||
+    assignment.version == @protocol.execution_assignment_version else {
+    raise InvalidConfiguration(
+      "Execution routing requires assignment version 13",
+    )
+  }
+  guard assignment.version != @protocol.execution_assignment_version ||
+    execution is Some(_) else {
+    raise InvalidConfiguration("Execution context missing")
+  }
+  if execution is Some(e) {
+    guard ["restricted", "linux-ci"].contains(e.profile) &&
+      e.profile == (if options.linux_ci { "linux-ci" } else { "restricted" }) &&
+      @platform.job_os(assignment.job.runs_on) == "linux" &&
+      (!e.probe_capabilities || e.profile == "restricted") else {
+      raise InvalidConfiguration("Execution profile does not match the worker")
+    }
+  }
   let scratch = @fs.tmpdir(prefix="moonhub-runner-")
   defer (@async.protect_from_cancel(() => @fs.rmdir(scratch, recursive=true)) catch {
     _ => ()
@@ -857,7 +896,17 @@ async fn execute_assignment(
   } else {
     options
   }
+  let capability_dir = if execution is Some(e) && e.probe_capabilities {
+    scratch + "/capabilities"
+  } else {
+    ""
+  }
+  if !capability_dir.is_empty() {
+    prepare_capability_probes(capability_dir)
+  }
   let runtime : Runtime = {
+    capability_dir,
+    missing_capability: "",
     post,
     execution_id: execution_nonce(),
     assignment,
@@ -982,6 +1031,13 @@ async fn execute_assignment(
   })
   let outcome = completed.unwrap_or("cancelled")
   let report = @async.protect_from_cancel(() => {
+    if outcome == "failure" &&
+      !runtime.missing_capability.is_empty() &&
+      @fs.exists(runtime.action_temp + "/state.json") {
+      ignore(runtime.execute_action_posts(scratch, true)) catch {
+        _ => ()
+      }
+    }
     let mut outcome = try {
       runtime.cleanup_processes()
       outcome
@@ -1014,17 +1070,30 @@ async fn execute_assignment(
         }
       }
     }
+    if !runtime.missing_capability.is_empty() {
+      runtime.job_outputs.clear()
+    }
     let request : @protocol.CompleteRequest = {
       version: @protocol.version,
       conclusion: outcome,
       last_log_sequence: runtime.sequence.to_string(),
+      missing_capability: if outcome == "failure" {
+        runtime.missing_capability
+      } else {
+        ""
+      },
       outputs: runtime.job_outputs,
     }
     let body = ToJson::to_json(request)
+    if assignment.version != @protocol.execution_assignment_version &&
+      body is Object(fields) {
+      ignore(fields.remove("missing_capability"))
+    }
     if ![
         @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
         @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
         @protocol.environment_assignment_version, @protocol.release_assignment_version,
+        @protocol.execution_assignment_version,
       ].contains(assignment.version) &&
       body is Object(fields) {
       // Older coordinators validate the original completion field set.
@@ -1035,6 +1104,7 @@ async fn execute_assignment(
           @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
           @protocol.variable_assignment_version, @protocol.oidc_assignment_version,
           @protocol.environment_assignment_version, @protocol.release_assignment_version,
+          @protocol.execution_assignment_version,
         ].contains(assignment.version) &&
         !runtime.job_outputs.is_empty() => {
         // A definitive rejection did not commit the original completion. The
@@ -1051,6 +1121,7 @@ async fn execute_assignment(
           version: @protocol.version,
           conclusion: outcome,
           last_log_sequence: runtime.sequence.to_string(),
+          missing_capability: "",
           outputs: Map([]),
         }
         Some(runtime.request("complete", ToJson::to_json(rejected))) catch {

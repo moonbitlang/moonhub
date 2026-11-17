@@ -21,6 +21,10 @@ pub fn delete_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, 
 
 pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
 
+pub fn execution_history(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> @json.Json raise
+
+pub fn execution_policy(@database.Database, @domain.CurrentUser, @domain.RepoId) -> ExecutionPolicy raise
+
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
@@ -48,6 +52,8 @@ pub async fn run_due_schedules(@database.Database, String, now_ms? : Int64) -> U
 pub async fn run_next_merge_check(@database.Database, String) -> Bool
 
 pub async fn run_next_push_event(@database.Database, String) -> Bool
+
+pub fn save_execution_policy(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64, Bool) -> Unit raise
 
 pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String?, String, String, Int64) -> Unit
 
@@ -113,6 +119,8 @@ pub fn Coordinator::complete(Self, Int64, String, @protocol.CompleteRequest) -> 
 pub fn Coordinator::create_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope) -> Provider raise
 pub fn Coordinator::drain_worker(Self, String, Int64) -> Unit raise
 pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope?, preserve_existing? : Bool) -> Provider raise
+pub fn Coordinator::execution_cleanup(Self, String, Int64) -> Unit raise
+pub fn Coordinator::execution_environments(Self, @domain.CurrentUser) -> Array[ExecutionEnvironment] raise
 pub fn Coordinator::expire_attempts(Self) -> Int32 raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int32) -> @protocol.LeaseState raise
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise
@@ -130,6 +138,7 @@ pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64,
 pub fn Coordinator::register_runner(Self, String, @protocol.RegisterProviderRequest) -> @protocol.ProviderSnapshot raise
 pub fn Coordinator::register_worker(Self, String, @protocol.WorkerRegistration) -> @protocol.WorkerView raise
 pub fn Coordinator::revoke_provider(Self, @domain.CurrentUser, Int64) -> Unit raise
+pub fn Coordinator::save_execution_environment(Self, @domain.CurrentUser, String, Int64, ExecutionEnvironmentConfig) -> Unit raise
 pub fn Coordinator::save_provider_config(Self, @domain.CurrentUser, Int64, Int64, Map[String, String]) -> Unit raise
 pub fn Coordinator::set_provider_labels(Self, @domain.CurrentUser, Int64, Array[String]) -> Unit raise
 pub fn Coordinator::set_provider_paused(Self, @domain.CurrentUser, Int64, Bool) -> Unit raise
@@ -149,6 +158,43 @@ pub(all) struct DispatchChoices {
   commit : String
   workflows : Array[WorkflowChoice]
 }
+
+#derive(@debug.Debug, @json.ToJson)
+pub struct ExecutionEnvironment {
+  name : String
+  revision : String
+  config : ExecutionEnvironmentConfig
+}
+#deprecated
+pub fn ExecutionEnvironment::to_json(Self) -> @json.Json
+#deprecated
+pub fn ExecutionEnvironment::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct ExecutionEnvironmentConfig {
+  label : String
+  architecture : String
+  environment_version : String
+  routing : String
+  restricted_provider : String
+  linux_ci_provider : String
+}
+#deprecated
+pub fn ExecutionEnvironmentConfig::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+#deprecated
+pub fn ExecutionEnvironmentConfig::to_json(Self) -> @json.Json
+#deprecated
+pub fn ExecutionEnvironmentConfig::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug, @json.ToJson)
+pub struct ExecutionPolicy {
+  capability_retry : Bool
+  revision : String
+}
+#deprecated
+pub fn ExecutionPolicy::to_json(Self) -> @json.Json
+#deprecated
+pub fn ExecutionPolicy::to_repr(Self) -> @debug.Repr
 
 #derive(@debug.Debug)
 pub struct JobRun {

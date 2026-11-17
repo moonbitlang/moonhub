@@ -4,16 +4,16 @@
 including their final tables, columns, defaults, constraints, indexes, views and
 triggers. Historical data backfills are no longer part of fresh initialization.
 The minimum supported existing database version is 38. The current
-`database_schema_version` is 42. Migrations 039–042 extend the baseline.
+`database_schema_version` is 43. Migrations 039–043 extend the baseline.
 
 Web calls `database.initialize_db` before becoming healthy. A database at version
-42 is accepted without replaying DDL or reading schema files. Versions 38–41
+43 is accepted without replaying DDL or reading schema files. Versions 38–42
 read and apply only their missing incremental migrations in version order.
 Version 0 is initialized only when it contains no user-defined database objects,
 including views. For an empty database, the initializer reads `base.sql` and
-migrations 039–042, obtains a write reservation with `BEGIN IMMEDIATE`, rechecks
+migrations 039–043, obtains a write reservation with `BEGIN IMMEDIATE`, rechecks
 version and objects, then creates the baseline, applies the migrations and sets
-`PRAGMA user_version=42` in the same transaction. Any failure rolls back DDL,
+`PRAGMA user_version=43` in the same transaction. Any failure rolls back DDL,
 data and version. Existing database upgrades use the same write reservation and
 atomic commit. Do not run `base.sql` directly against an existing database or
 change `user_version` manually to bypass the checks.
@@ -33,7 +33,7 @@ The complete backup/restore workflow is unchanged. It preserves the database,
 repositories, attachment bytes and deployment state together. Legacy identity-only
 transfer tools are no longer supplied.
 
-Keep schema 38 as the existing-database floor. Migrations 039–042 continue above
+Keep schema 38 as the existing-database floor. Migrations 039–043 continue above
 this baseline; future incremental migrations must extend the supported-version
 logic in `database/schema.mbt`. Fresh databases must reach the same schema as
 upgraded databases in one atomic initialization transaction.
@@ -52,3 +52,7 @@ so they cannot remove files belonging to a later repository with the same name.
 Schema 042 adds `pipeline_worker.isolation_revision`, defaulting to zero. The
 outside controller must acknowledge the current configuration revision after
 disabling EC2 metadata before a privileged single-use worker can claim a job.
+
+Schema 043 adds logical execution environments, repository retry policies, job
+routing snapshots, bounded capability observations and per-attempt diagnostics.
+See [adaptive execution routing](../docs/execution-routing.md).

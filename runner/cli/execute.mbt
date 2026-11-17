@@ -72,7 +72,13 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     unsafe_local: options.flags.get("unsafe-local").unwrap_or(false),
     linux_ci: options.flags.get("linux-ci").unwrap_or(false),
     heartbeat_ms: 5000,
-  })
+  }) catch {
+    @runner.InvalidConfiguration(message) => {
+      @stdio.stderr.write("moonhub-runner: \{message}\n")
+      return 2
+    }
+    err => raise err
+  }
   println(ToJson::to_json(report).stringify())
   if !report.reported {
     2

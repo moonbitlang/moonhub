@@ -87,7 +87,20 @@ fn command_description(group : String, action : String) -> String {
     ("mr", "") =>
       "Manage merge requests and reviews; Closes #123 closes issues after merge."
     ("issue", "") => "List, create, edit and discuss repository issues."
-    ("ci", "") => "Inspect workflow runs and logs; execute tokens control runs."
+    ("ci", "") =>
+      "Inspect workflow runs, execution routing and repository retry policy."
+    ("environment", "") =>
+      "Manage logical Linux execution environments; site administrator required."
+    ("environment", "list") =>
+      "List execution environment mappings and configuration revisions."
+    ("environment", "set") =>
+      "Save an environment from --body-file JSON at --version; 0 creates it."
+    ("ci", "policy") =>
+      "Read the repository capability retry policy and revision."
+    ("ci", "set-policy") =>
+      "Set --mode capability-retry or no-retry at --version; owner/admin and execute token required."
+    ("ci", "execution") =>
+      "Show execution profiles, providers and capability failures for each attempt."
     ("inbox", "") =>
       "Your notifications and review requests; defaults to list, no --repo needed."
     ("attachment", "") =>
@@ -184,6 +197,13 @@ fn command_description(group : String, action : String) -> String {
 ///|
 fn command_examples(group : String, action : String) -> String {
   let example = match (group, action) {
+    ("environment", "list") => "moonhub environment list --json"
+    ("environment", "set") =>
+      "moonhub environment set ubuntu-x64 --version 0 --body-file environment.json"
+    ("ci", "execution") => "moonhub ci execution 12 --repo OWNER/NAME --json"
+    ("ci", "policy") => "moonhub ci policy --repo OWNER/NAME --json"
+    ("ci", "set-policy") =>
+      "moonhub ci set-policy --repo OWNER/NAME --version 0 --mode capability-retry\nThis permits one whole-job retry and may repeat external side effects."
     ("auth", "" | "setup" | "login") =>
       setup_instructions("https://your-moonhub-server")
     ("auth", "status") =>

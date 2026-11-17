@@ -276,6 +276,39 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     }
     return 0
   }
+  if group == "environment" {
+    let base = "/admin/execution-environments"
+    let result = if action == "list" {
+      request(server, token, base, None, allow_http~)
+    } else {
+      let name = required(options, "name")
+      guard @domain.valid_segment(name) else {
+        raise Invalid("Invalid execution environment name")
+      }
+      let config = @json.parse(
+        read_text_input(
+          required(matches, "body-file"),
+          16384L,
+          "environment configuration",
+        ),
+      ) catch {
+        _ => raise Invalid("Invalid execution environment JSON")
+      }
+      request(
+        server,
+        token,
+        base + "/" + name,
+        Some({ "revision": required(matches, "version"), "config": config }),
+        allow_http~,
+      )
+    }
+    if matches.flags.get("json").unwrap_or(false) {
+      println(result.stringify())
+    } else {
+      render(result)
+    }
+    return 0
+  }
   let repo = if group == "inbox" {
     ""
   } else {
@@ -600,6 +633,21 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       }
       ("\{base}/issues/\{id}/edit", Some(Json(fields)))
     }
+    ("ci", "policy") => ("\{base}/execution-policy", None)
+    ("ci", "set-policy") => {
+      let mode = required(matches, "mode")
+      guard ["capability-retry", "no-retry"].contains(mode) else {
+        raise Invalid("--mode must be capability-retry or no-retry")
+      }
+      (
+        "\{base}/execution-policy",
+        Some({
+          "revision": required(matches, "version"),
+          "capability_retry": mode == "capability-retry",
+        }),
+      )
+    }
+    ("ci", "execution") => ("\{base}/runs/\{id}/execution", None)
     ("ci", "list") => ("\{base}/runs", None)
     ("ci", "view") => ("\{base}/runs/\{id}", None)
     ("ci", "logs") =>

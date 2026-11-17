@@ -334,6 +334,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         version: 1,
         conclusion: "success",
         last_log_sequence: "1",
+        missing_capability: "",
         outputs: Map([]),
       }
       assert_eq(

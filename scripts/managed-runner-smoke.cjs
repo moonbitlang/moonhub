@@ -8,7 +8,7 @@ const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhu
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const registration = 'a'.repeat(64);
 
-async function scenario(mode, failCleanup = false, stale = false, terminal = false, claimRace = false) {
+async function scenario(mode, failCleanup = false, stale = false, terminal = false, claimRace = false, executionRouting = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
   for (const directory of ['controller', 'workspace']) {
     fs.mkdirSync(path.join(root, directory), {mode:0o700});
@@ -140,6 +140,14 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         worker.state = worker.draining && body.state === 'ready' ? 'drained' : body.state;
         worker.applied_revision = body.applied_revision; worker.last_seen_ms = String(Date.now());
         result = {version:1,provider_id:'1',worker_id:worker.id,paused,draining:worker.draining,config_revision:revision,config};
+      } else if (route === '/workers/execution-cleanup') {
+        assert.ok(executionRouting);
+        const worker=workers.find(w => req.headers.authorization === 'Bearer '+w.secret);assert.ok(worker);
+        assert.equal(body.version,1);assert.equal(body.attempt_id,String(claims));
+        const st=state();assert.equal(st.runs,claims);assert.equal(st.volumes.length,0,'capability retry acknowledged before volume cleanup');
+        assert.deepEqual(fs.readdirSync(path.join(root,'workspace')),['.existing'],'capability retry acknowledged before manifest cleanup');
+        assert.ok(st.calls.some(c=>c[0]==='rm' && c.includes('moonhub-pipeline-'+body.attempt_id)),'capability retry acknowledged before container removal');
+        worker.cleanupCount=(worker.cleanupCount || 0)+1;result={ok:true};
       } else if (route === '/claims') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
         if (applied !== revision || claimRace && claims >= 2) result = {version:1,assignment:null};
@@ -147,6 +155,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
           claims++; queued = 0;
           const now = Date.now();
           result = {version:1,assignment:claims <= 2 ? {version:1,attempt_id:String(claims),run_id:'1',job_id:String(claims),repository:'alice/demo',commit_sha:'a'.repeat(40),lease_until_ms:String(now + 60000),server_time_ms:String(now),state:'leased',job:{id:'build',name:'Build',runs_on:['self-hosted','linux'],timeout_minutes:1,steps:[{id:'check',name:'Check',run:'true',shell:'bash',working_directory:'.',env:{},timeout_minutes:0}]}} : null};
+          if(executionRouting && result.assignment){result.assignment.version=13;result.assignment.execution={environment:'ubuntu',environment_version:'v1',profile:'restricted',probe_capabilities:true};}
           if (claims === 1 && !failCleanup) {config = {...config,cpus:'1'}; revision = '2';}
           if (claimRace && claims <= 2) {
             assert.equal(workers.length, 1, 'claim race replaced the worker');
@@ -230,6 +239,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     for (const directory of ['controller', 'workspace']) {
       assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
     }
+    if(executionRouting)assert.equal(workers[0].cleanupCount,2,'missing outside cleanup acknowledgement');
     console.log(`Managed ${mode}${claimRace ? ' claim race' : terminal ? ' retired worker' : failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
     clearTimeout(releaseTimer); releaseClaim?.();
@@ -238,4 +248,4 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {if(process.argv.includes('--asg-boot')) {await scenario('asg');return;}if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {if(process.argv.includes('--execution-routing')) {await scenario('docker',false,false,false,false,true);return;}if(process.argv.includes('--asg-boot')) {await scenario('asg');return;}if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});

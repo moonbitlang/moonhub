@@ -15,7 +15,14 @@ fn command_groups() -> Array[(String, Array[String])] {
       ],
     ),
     ("issue", ["list", "create", "view", "comment", "close", "reopen", "edit"]),
-    ("ci", ["list", "run", "view", "logs", "rerun", "cancel"]),
+    (
+      "ci",
+      [
+        "list", "run", "view", "logs", "rerun", "cancel", "execution", "policy",
+        "set-policy",
+      ],
+    ),
+    ("environment", ["list", "set"]),
     ("inbox", ["list", "read"]),
     ("attachment", ["upload"]),
     (
@@ -107,6 +114,8 @@ fn action_options(group : String, action : String) -> Array[String] {
     ("issue", "create") => ["title", "body-file", "assignee"]
     ("issue", "comment") => ["body-file"]
     ("issue", "edit") => ["edit-version", "title", "body-file", "assignee"]
+    ("environment", "set") => ["version", "body-file"]
+    ("ci", "set-policy") => ["version", "mode"]
     ("ci", "run") => ["branch", "workflow", "jobs", "inputs-file"]
     ("ci", "logs") => ["attempt", "after"]
     ("inbox", "list") => ["filter", "page"]
@@ -139,6 +148,8 @@ fn required_action_options(group : String, action : String) -> Array[String] {
       ["discussion", "state-version"]
     ("issue", "create") => ["title"]
     ("issue", "comment") => ["body-file"]
+    ("environment", "set") => ["version", "body-file"]
+    ("ci", "set-policy") => ["version", "mode"]
     ("ci", "run") => ["branch", "workflow"]
     ("ci", "logs") => ["attempt"]
     ("attachment", "upload") => ["file"]
@@ -205,6 +216,9 @@ fn command() -> @argparse.Command {
         },
         subcommands=actions.map(action => {
           let positional = match (group, action) {
+            ("environment", "set") =>
+              Some(("name", "Execution environment name."))
+            ("ci", "policy" | "set-policy") => None
             ("secret" | "variable", "set" | "delete") =>
               Some(
                 ("name", "Repository secret/variable name, for example REGION."),

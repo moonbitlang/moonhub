@@ -214,6 +214,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
               version: 1,
               conclusion: "success",
               last_log_sequence: "0",
+              missing_capability: "",
               outputs: Map([]),
             }),
           )

@@ -392,3 +392,13 @@ configuration. Values are supplied through a regular UTF-8 `--body-file` (up to
 48 KiB; empty files are allowed). Create with `--version 0`; updates/deletes use
 the current version. See [repository variables](repository-variables.md) for
 permissions, limits, API routes and immutable execution snapshots.
+
+## Execution environment routing
+
+Site admins use `environment list` and `environment set NAME --version REVISION
+--body-file environment.json` to map Ubuntu environments to execution providers.
+Repository owners/admins read `ci policy` and explicitly enable one capability
+retry with `ci set-policy --version REVISION --mode capability-retry` (execute
+token required). Use `no-retry` to disable and `ci execution RUN_NUMBER --json`
+to inspect profile, provider and failure reasons. See [execution routing](execution-routing.md)
+for configuration, side-effect semantics and protocol upgrade requirements.

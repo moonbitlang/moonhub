@@ -29,10 +29,13 @@ async function scenario(cancel) {
         if (body.text.includes('CI_DOCKER_READY')) cancelReady = true;
       } else if (operation === 'complete') conclusion = body.conclusion;
       else assert.ok(['heartbeat', 'steps'].includes(operation));
+      // Lease validation requires a window of at most 60 seconds. Reading the
+      // clock twice can produce 60001 ms when the second read crosses a tick.
+      const now = Date.now();
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({version: 1, execution_id: execution, attempt_id: '1',
-        state: conclusion ? 'completed' : 'running', server_time_ms: String(Date.now()),
-        lease_until_ms: String(Date.now() + 60000), deadline_ms: String(started + 180000),
+        state: conclusion ? 'completed' : 'running', server_time_ms: String(now),
+        lease_until_ms: String(now + 60000), deadline_ms: String(started + 180000),
         cancel_requested: cancel && cancelReady, log_sequence: String(sequence), conclusion}));
     } catch (error) { failure = error; res.writeHead(500); res.end('fixture rejected request'); }
   });

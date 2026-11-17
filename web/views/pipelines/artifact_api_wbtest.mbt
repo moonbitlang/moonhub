@@ -331,6 +331,7 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
           version: 1,
           conclusion: "success",
           last_log_sequence: "0",
+          missing_capability: "",
           outputs: Map([]),
         }),
       )
@@ -453,6 +454,7 @@ async test "production artifact mounts keep browser downloads repository authori
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
+        missing_capability: "",
         outputs: Map([]),
       }),
     )
