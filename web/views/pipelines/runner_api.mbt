@@ -329,6 +329,20 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       ToJson::to_json(coordinator.step_secrets(id, token, request))
     }),
   )
+  ctx.post(
+    "/workers/execution-cleanup",
+    json_handler(req => {
+      let token = bearer_token(req)
+      let body = request_json(req, ["version", "attempt_id"])
+      guard body is { "version": Number(1, ..), "attempt_id": String(raw), .. } &&
+        @protocol.parse_decimal(raw) is Some(id) &&
+        id > 0L else {
+        raise @domain.BadRequest(message="Invalid cleanup acknowledgement.")
+      }
+      coordinator.execution_cleanup(token, id)
+      { "ok": true }
+    }),
+  )
   for operation in ["start", "heartbeat", "logs", "steps", "complete"] {
     ctx.post(
       "/attempts/:id/\{operation}",
@@ -392,7 +406,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
           }
           _ => {
             let json = request_json(req, [
-              "version", "conclusion", "last_log_sequence", "outputs",
+              "version", "conclusion", "last_log_sequence", "outputs", "missing_capability",
             ])
             let request : @protocol.CompleteRequest = @json.from_json(json) catch {
               _ =>

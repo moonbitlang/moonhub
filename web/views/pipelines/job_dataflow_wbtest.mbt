@@ -215,6 +215,7 @@ async test "real runner terminates a job after the shared output budget rejects 
           version: 1,
           conclusion: "success",
           last_log_sequence: "0",
+          missing_capability: "",
           outputs: { "first": "x".repeat(16300), "second": "y".repeat(16300) },
         }
         assert_eq(c.complete(id, token, request).conclusion, "success")

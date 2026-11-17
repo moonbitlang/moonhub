@@ -14,8 +14,8 @@ async test "empty database initializes the complete baseline and repeats safely"
       )
       for
         (kind, count) in [
-          ("table", 83L),
-          ("index", 71L),
+          ("table", 88L),
+          ("index", 73L),
           ("view", 2L),
           ("trigger", 44L),
         ] {
@@ -164,7 +164,7 @@ async test "current schema initialization preserves data and schema" {
 async test "all older versions and future versions are rejected without changing data" {
   @async.with_task_group(group => {
     let versions = [ for version in 0..<38 => version ]
-    versions.push(43)
+    versions.push(44)
     versions.push(100)
     for version in versions {
       let pool = new_db_pool({ path: ":memory:", }, group)
@@ -176,7 +176,7 @@ async test "all older versions and future versions are rejected without changing
       })
       try initialize_db(pool) catch {
         @domain.BadRequest(message~) =>
-          if version > 42 {
+          if version > 43 {
             assert_eq(
               message, "database schema is newer than this moonhub version",
             )
@@ -316,7 +316,7 @@ async test "baseline transaction rechecks version and objects after preflight" {
       ])
       for
         sql in [
-          "PRAGMA user_version=37", "PRAGMA user_version=43", "PRAGMA user_version=0",
+          "PRAGMA user_version=37", "PRAGMA user_version=44", "PRAGMA user_version=0",
         ] {
         client.batch_execute(sql)
         try

@@ -211,7 +211,7 @@ export class ActionRuntime {
   }
   environment(extra = {}, context = this.context()) {
     const env = environment(this.baseEnv, this.state.env, extra);
-    env.PATH = [...this.state.path, env.PATH].filter(Boolean).join(path.delimiter);
+    env.PATH = [this.baseEnv.MOONHUB_CAPABILITY_BIN, ...this.state.path, env.PATH].filter(Boolean).join(path.delimiter);
     Object.assign(env, { GITHUB_WORKSPACE: this.workspace, GITHUB_REPOSITORY: this.config.repository, GITHUB_SHA: this.config.sha,
       GITHUB_SERVER_URL: this.config.server, GITHUB_API_URL: `${this.config.server}/-/api/v1`, GITHUB_EVENT_NAME: context.github.event_name, ...(this.dispatchContext ? { GITHUB_EVENT_PATH: this.eventPath } : {}),
       GITHUB_WORKFLOW: context.github.workflow, GITHUB_ACTOR: context.github.actor,

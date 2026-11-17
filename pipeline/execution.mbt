@@ -240,6 +240,7 @@ fn finish_attempt(
   row : @database.DbRow,
   conclusion : String,
   now : Int64,
+  retry~ : Bool = false,
 ) -> Unit raise {
   let id : Int64 = row.get_name("id")
   let job_id : Int64 = row.get_name("job_id")
@@ -257,6 +258,15 @@ fn finish_attempt(
     "UPDATE pipeline_job_attempt SET status = 'completed', conclusion = ?, finished_at = datetime('now') WHERE id = ? AND status <> 'completed'",
     params=[conclusion, id],
   )
+  if retry {
+    ignore(
+      tx.execute(
+        "UPDATE pipeline_job SET status='queued' WHERE id=? AND status<>'completed'",
+        params=[job_id],
+      ),
+    )
+    return
+  }
   let _ = tx.execute(
     "UPDATE pipeline_job SET status = 'completed', conclusion = ? WHERE id = ? AND status <> 'completed'",
     params=[conclusion, job_id],
@@ -272,6 +282,7 @@ pub fn Coordinator::expire_attempts(self : Coordinator) -> Int32 raise {
     client.with_transaction(
       tx => {
         let now = (self.clock)()
+        expire_execution_jobs(tx, now)
         let rows = tx.query_all(
           "SELECT a.*, j.run_id FROM pipeline_job_attempt a JOIN pipeline_job j ON j.id = a.job_id WHERE a.status <> 'completed' AND (a.lease_until_ms IS NULL OR a.lease_until_ms <= ? OR a.deadline_ms <= ? OR a.cancel_at_ms + ? <= ?) ORDER BY a.lease_until_ms, a.id LIMIT 100",
           params=[now, now, @protocol.cancel_grace_ms, now],
@@ -367,6 +378,7 @@ pub fn Coordinator::claim(
             params=[now, provider_id],
           ),
         )
+        expire_execution_jobs(tx, now)
         advance_all_runs(tx)
         let hash = @identity.hash_token(request.attempt_token)
         let previous = tx.query_opt(
@@ -439,7 +451,10 @@ pub fn Coordinator::claim(
               return None
             }
             let job = tx.query_opt(
-              eligible_provider_jobs + " ORDER BY j.id LIMIT 1",
+              eligible_provider_jobs +
+              " " +
+              execution_route_eligibility +
+              " ORDER BY j.id LIMIT 1",
               params=[
                 provider_id,
                 @workflow.format_version.to_int64(),
@@ -492,6 +507,7 @@ pub fn Coordinator::claim(
               "UPDATE pipeline_run SET status = 'running', updated_at = datetime('now') WHERE id = ?",
               params=[run_id],
             )
+            record_execution_attempt(tx, id, provider)
             attempt_row(tx, id, request.attempt_token)
           }
         }
@@ -535,8 +551,12 @@ pub fn Coordinator::claim(
         } else {
           0
         }
+        let execution = execution_assignment(tx, row)
         Some({
-          version: if api_permissions != 0 {
+          execution,
+          version: if execution is Some(_) {
+            @protocol.execution_assignment_version
+          } else if api_permissions != 0 {
             @protocol.release_assignment_version
           } else if job.runs_on.contains("windows-2025") {
             @protocol.environment_assignment_version
@@ -671,9 +691,22 @@ pub fn Coordinator::start(
           (row.get_name("cancel_at_ms") : Int64?) is None {
           let job = attempt_job(row)
           let job_id : Int64 = row.get_name("job_id")
+          ignore(
+            tx.execute(
+              "UPDATE pipeline_job_execution SET deadline_ms=COALESCE(deadline_ms,?) WHERE job_id=?",
+              params=[now + job.timeout_minutes.to_int64() * 60000L, job_id],
+            ),
+          )
+          let deadline = tx
+            .query_opt(
+              "SELECT deadline_ms FROM pipeline_job_execution WHERE job_id=?",
+              params=[job_id],
+            )
+            .map(r => (r.get_name("deadline_ms") : Int64))
+            .unwrap_or(now + job.timeout_minutes.to_int64() * 60000L)
           let _ = tx.execute(
             "UPDATE pipeline_job_attempt SET status = 'running', started_at_ms = ?, deadline_ms = ? WHERE id = ?",
-            params=[now, now + job.timeout_minutes.to_int64() * 60000L, id],
+            params=[now, deadline, id],
           )
           let _ = tx.execute(
             "UPDATE pipeline_job SET status = 'running' WHERE id = ?",
@@ -732,6 +765,16 @@ pub fn Coordinator::complete(
   ) else {
     raise @domain.BadRequest(message="invalid attempt conclusion")
   }
+  guard request.missing_capability.is_empty() ||
+    (
+      request.conclusion == "failure" &&
+      request.outputs.is_empty() &&
+      ["docker", "container-root", "host-kernel"].contains(
+        request.missing_capability,
+      )
+    ) else {
+    raise @domain.BadRequest(message="Invalid missing capability report.")
+  }
   self.authenticate_attempt(id, token)
   ignore(self.expire_attempts())
   let payload = if request.outputs.is_empty() {
@@ -753,6 +796,9 @@ pub fn Coordinator::complete(
         "last_log_sequence": request.last_log_sequence,
         "outputs": ToJson::to_json(outputs),
       } : Json)
+  }
+  if !request.missing_capability.is_empty() && payload is Object(fields) {
+    fields["missing_capability"] = Json::string(request.missing_capability)
   }
   let hash = @identity.hash_token(payload.stringify())
   self.pool.with_client(client => {
@@ -797,8 +843,21 @@ pub fn Coordinator::complete(
         } else {
           request.conclusion
         }
-        publish_job_outputs(tx, row, request.outputs, conclusion)
-        finish_attempt(tx, row, conclusion, (self.clock)())
+        let retry = if conclusion == "failure" &&
+          !request.missing_capability.is_empty() {
+          learn_execution_requirement(
+            tx,
+            row,
+            request.missing_capability,
+            (self.clock)(),
+          )
+        } else {
+          false
+        }
+        if !retry {
+          publish_job_outputs(tx, row, request.outputs, conclusion)
+        }
+        finish_attempt(tx, row, conclusion, (self.clock)(), retry~)
         lease_state(attempt_row(tx, id, token), (self.clock)())
       },
       immediate=true,

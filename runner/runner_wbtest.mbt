@@ -36,6 +36,7 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
     lease_until_ms: "60000",
     server_time_ms: "0",
     state: "leased",
+    execution: None,
     job: {
       variables: Map([]),
       dispatch_inputs: Map([]),

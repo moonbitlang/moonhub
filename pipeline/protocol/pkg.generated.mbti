@@ -19,6 +19,8 @@ pub let dispatch_assignment_version : Int32
 
 pub let environment_assignment_version : Int32
 
+pub let execution_assignment_version : Int32
+
 pub let lease_ms : Int64
 
 pub let max_log_bytes : Int64
@@ -81,8 +83,9 @@ pub(all) struct ArtifactRuntimeRequest {
 pub fn ArtifactRuntimeRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn ArtifactRuntimeRequest::to_json(Self) -> @json.Json
 
-#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+#derive(@debug.Debug)
 pub(all) struct Assignment {
+  execution : ExecutionContext?
   version : Int32
   attempt_id : String
   run_id : String
@@ -98,6 +101,8 @@ pub fn Assignment::from_json(@json.Json, @json.JsonPath) -> Self raise @json.Jso
 pub fn Assignment::has_valid_numbers(Self) -> Bool
 pub fn Assignment::to_json(Self) -> @json.Json
 pub fn Assignment::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for Assignment
+pub impl @json.ToJson for Assignment
 
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct ClaimRequest {
@@ -109,8 +114,8 @@ pub(all) struct ClaimRequest {
 pub fn ClaimRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn ClaimRequest::to_json(Self) -> @json.Json
 
-#derive(@json.ToJson)
 pub(all) struct CompleteRequest {
+  missing_capability : String
   version : Int32
   conclusion : String
   last_log_sequence : String
@@ -119,6 +124,7 @@ pub(all) struct CompleteRequest {
 pub fn CompleteRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn CompleteRequest::to_json(Self) -> @json.Json
 pub impl @json.FromJson for CompleteRequest
+pub impl @json.ToJson for CompleteRequest
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct ConfigField {
@@ -134,6 +140,20 @@ pub(all) struct ConfigField {
 pub fn ConfigField::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
 pub fn ConfigField::to_json(Self) -> @json.Json
 pub fn ConfigField::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct ExecutionContext {
+  environment : String
+  environment_version : String
+  profile : String
+  probe_capabilities : Bool
+}
+#deprecated
+pub fn ExecutionContext::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+#deprecated
+pub fn ExecutionContext::to_json(Self) -> @json.Json
+#deprecated
+pub fn ExecutionContext::to_repr(Self) -> @debug.Repr
 
 #derive(@debug.Debug, @json.ToJson)
 pub(all) struct JobPlan {

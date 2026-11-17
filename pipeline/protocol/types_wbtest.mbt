@@ -96,6 +96,7 @@ test "assignment validates string identifiers and bounded timestamps" {
     lease_until_ms: "60000",
     server_time_ms: "0",
     state: "leased",
+    execution: None,
     job: {
       variables: Map([]),
       dispatch_inputs: Map([]),
@@ -160,6 +161,7 @@ test "log and completion requests use explicit string sequence fields" {
     version: 1,
     conclusion: "success",
     last_log_sequence: "1",
+    missing_capability: "",
     outputs: Map([]),
   }
   assert_true(ToJson::to_json(log) is { "sequence": String("1"), .. })
@@ -299,7 +301,8 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   assert_true(action_runtime_version(10))
   assert_true(action_runtime_version(environment_assignment_version))
   assert_true(action_runtime_version(release_assignment_version))
-  assert_false(action_runtime_version(13))
+  assert_true(action_runtime_version(execution_assignment_version))
+  assert_false(action_runtime_version(14))
 }
 
 ///|
@@ -346,4 +349,46 @@ test "repository variables wire field defaults for old plans and retains exact s
     ToJson::to_json(current.variables),
   )
   assert_true(action_runtime_version(variable_assignment_version))
+}
+
+///|
+test "execution assignment decodes command probes from strict HTTP JSON" {
+  let value : Json = {
+    "version": 13,
+    "attempt_id": "1",
+    "run_id": "1",
+    "job_id": "1",
+    "repository": "test/route",
+    "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "lease_until_ms": "60000",
+    "server_time_ms": "0",
+    "state": "leased",
+    "execution": {
+      "environment": "ubuntu",
+      "environment_version": "v1",
+      "profile": "restricted",
+      "probe_capabilities": true,
+    },
+    "job": {
+      "id": "probe",
+      "name": "Probe",
+      "contents_read": false,
+      "runs_on": ["self-hosted", "linux"],
+      "timeout_minutes": 1,
+      "steps": [
+        {
+          "id": "probe",
+          "name": "Probe",
+          "run": "echo works",
+          "shell": "bash",
+          "working_directory": ".",
+          "env": {},
+          "timeout_minutes": 0,
+        },
+      ],
+    },
+  }
+  let assignment : Assignment = @json.from_json(value)
+  assert_eq(assignment.execution.unwrap().profile, "restricted")
+  assert_true(assignment.execution.unwrap().probe_capabilities)
 }

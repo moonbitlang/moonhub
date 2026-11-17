@@ -184,6 +184,7 @@ async test "saving provider labels unblocks queued work and cancels incompatible
             version: 1,
             conclusion: "cancelled",
             last_log_sequence: "0",
+            missing_capability: "",
             outputs: Map([]),
           }).conclusion,
           "cancelled",

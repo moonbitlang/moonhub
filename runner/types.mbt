@@ -49,6 +49,8 @@ priv struct Runtime {
   mut deadline : Int64
   mut stopped : String
   mut job_outputs : Map[String, String]
+  capability_dir : String
+  mut missing_capability : String
   mut reporting_until : Int64
   mut moon_home : String
   action_node : String

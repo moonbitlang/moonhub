@@ -220,6 +220,7 @@ fn insert_run_snapshot(
       )
     }
   }
+  snapshot_execution_routes(tx, run)
   schedule_run(tx, run)
   if definition_version >= 4 {
     advance_run_jobs(tx, run.id)

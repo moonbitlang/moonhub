@@ -5,6 +5,87 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   ctx.get(
+    "/admin/execution-environments",
+    api_handler(req => {
+      "items": coordinator
+      .execution_environments(api_actor(pool, req, "read"))
+      .map(e => ToJson::to_json(e)),
+    }),
+  )
+  ctx.post(
+    "/admin/execution-environments/:environment",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, ["revision", "config"])
+      let config : @pipeline.ExecutionEnvironmentConfig = @json.from_json(
+        body.get("config").unwrap_or(Json::null()),
+      ) catch {
+        _ =>
+          raise @domain.BadRequest(
+            message="Invalid execution environment configuration.",
+          )
+      }
+      coordinator.save_execution_environment(
+        actor,
+        @web_context.required_param(req, "environment", "environment"),
+        number(field(body, "revision"), zero=true),
+        config,
+      )
+      {
+        "items": coordinator
+        .execution_environments(actor)
+        .map(e => ToJson::to_json(e)),
+      }
+    }),
+  )
+  ctx.get(
+    "/repos/:owner/:repo/execution-policy",
+    api_handler(req => {
+      ToJson::to_json(
+        @pipeline.execution_policy(
+          pool,
+          api_actor(pool, req, "read"),
+          @web_context.repo_param(req),
+        ),
+      )
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/execution-policy",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "execute")
+      let repo = @web_context.repo_param(req)
+      let body = api_body(req, ["revision", "capability_retry"])
+      let retry : Bool = @json.from_json(
+        body.get("capability_retry").unwrap_or(Json::null()),
+      ) catch {
+        _ =>
+          raise @domain.BadRequest(
+            message="capability_retry must be a boolean.",
+          )
+      }
+      @pipeline.save_execution_policy(
+        pool,
+        actor,
+        repo,
+        number(field(body, "revision"), zero=true),
+        retry,
+      )
+      ToJson::to_json(@pipeline.execution_policy(pool, actor, repo))
+    }),
+  )
+  ctx.get(
+    "/repos/:owner/:repo/runs/:number/execution",
+    api_handler(req => {
+      @pipeline.execution_history(
+        pool,
+        api_actor(pool, req, "read"),
+        @web_context.repo_param(req),
+        number(@web_context.required_param(req, "number", "run")),
+      )
+    }),
+  )
+  ctx.get(
     "/repos/:owner/:repo/variables",
     api_handler(req => {
       let variables = @pipeline.list_variables(

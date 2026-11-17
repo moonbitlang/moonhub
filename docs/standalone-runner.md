@@ -162,6 +162,10 @@ destroy infrastructure or guarantee cleanup. Pause and drain first. Manual AWS
 termination or Spot interruption can leave orphan parameters; periodically remove
 these and corresponding local per-instance token files.
 
+See [adaptive Linux execution routing](execution-routing.md) for logical environments,
+capability observations and controlled retries across providers. ASG purchase policy
+remains independent of execution privileges.
+
 ## Protocol and verification
 
 Managed control uses JSON POST endpoints under `/-/runner-api/v1`:

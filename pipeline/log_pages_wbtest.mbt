@@ -41,6 +41,7 @@ async test "log polling stops only after completion and draining the final redac
         version: 1,
         conclusion: "success",
         last_log_sequence: "101",
+        missing_capability: "",
         outputs: Map([]),
       }),
     )

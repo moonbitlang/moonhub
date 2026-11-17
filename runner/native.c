@@ -127,3 +127,26 @@ int32_t moonhub_runner_reap_namespace(void) {
 }
 
 #endif
+
+#ifdef _WIN32
+int32_t moonhub_runner_capability_read(const uint8_t *path) { (void)path; return -1; }
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <string.h>
+int32_t moonhub_runner_capability_read(const uint8_t *path) {
+  int fd = open((const char *)path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) return errno == ENOENT ? 0 : -1;
+  struct stat st;
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 1 || st.st_size > 64) {
+    close(fd); return -1;
+  }
+  char value[65];
+  ssize_t count = read(fd, value, sizeof(value));
+  close(fd);
+  if (count == 7 && memcmp(value, "docker\n", 7) == 0) return 1;
+  if (count == 15 && memcmp(value, "container-root\n", 15) == 0) return 2;
+  if (count == 12 && memcmp(value, "host-kernel\n", 12) == 0) return 3;
+  return -1;
+}
+#endif

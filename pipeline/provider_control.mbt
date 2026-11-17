@@ -44,11 +44,10 @@ fn control_snapshot(
     0L
   } else {
     tx
-    .query_one("SELECT count(*) AS count FROM (\{eligible_provider_jobs})", params=[
-      id,
-      @workflow.format_version.to_int64(),
-      id,
-    ])
+    .query_one(
+      "SELECT count(*) AS count FROM (\{eligible_provider_jobs} \{execution_route_eligibility})",
+      params=[id, @workflow.format_version.to_int64(), id],
+    )
     .get_name("count")
   }
   {
