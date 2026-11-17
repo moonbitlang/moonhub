@@ -23,5 +23,6 @@ MaxSessions 4
 MaxStartups 10:30:60
 LoginGraceTime 30
 AcceptEnv GIT_PROTOCOL
+# The entrypoint appends trusted SSH read limits to this same SetEnv directive.
 SetEnv DB_PATH=/data/moonhub.db MOONHUB_REPO_ROOT=/data/repos MOONHUB_GIT=/usr/bin/git
 LogLevel VERBOSE
