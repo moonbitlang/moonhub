@@ -90,6 +90,7 @@ async test "controller lease excludes a second manager and acknowledgements are 
     )
     ignore(c.register_runner("a".repeat(64), control_registration(mode="asg")))
     let request : @protocol.ProviderSyncRequest = {
+      environment_protocol: None,
       version: 1,
       controller_id: "first",
       observed_revision: "1",
@@ -149,6 +150,7 @@ async test "worker identities share grants but claim independently and drain ato
     ignore(c.register_runner("a".repeat(64), control_registration()))
     ignore(
       c.sync_provider("b".repeat(64), {
+        environment_protocol: None,
         version: 1,
         controller_id: "manager",
         observed_revision: "1",
@@ -181,6 +183,7 @@ async test "worker identities share grants but claim independently and drain ato
       }),
     )
     let ready : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "ready",
       applied_revision: "1",
@@ -188,6 +191,7 @@ async test "worker identities share grants but claim independently and drain ato
     ignore(c.sync_worker("c".repeat(64), ready))
     ignore(c.sync_worker("d".repeat(64), ready))
     let claim : @protocol.ClaimRequest = {
+      environments: None,
       version: 1,
       runner_os: None,
       request_id: "1".repeat(32),
@@ -199,6 +203,7 @@ async test "worker identities share grants but claim independently and drain ato
     assert_true(c.claim("c".repeat(64), claim) is None)
     ignore(
       c.sync_provider("b".repeat(64), {
+        environment_protocol: None,
         version: 1,
         controller_id: "manager",
         observed_revision: "2",
@@ -307,6 +312,7 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
     let worker = c.register_worker("b".repeat(64), registration)
     clock.val += 180001L
     let snapshot = c.sync_provider("b".repeat(64), {
+      environment_protocol: None,
       version: 1,
       controller_id: "manager",
       observed_revision: "1",
@@ -319,6 +325,7 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
     assert_true(snapshot.workers[0].draining)
     try
       c.sync_worker("c".repeat(64), {
+        environments: None,
         version: 1,
         state: "ready",
         applied_revision: "1",
@@ -488,6 +495,7 @@ async test "prepared VM workers acknowledge drain only after explicit cleanup" {
       token: "c".repeat(64),
     })
     let ready : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "ready",
       applied_revision: "1",
@@ -531,6 +539,7 @@ async test "Windows prepared workspaces require explicit drain acknowledgement" 
       token: "c".repeat(64),
     })
     let ready : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "ready",
       applied_revision: "1",

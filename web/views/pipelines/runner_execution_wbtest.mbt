@@ -74,6 +74,7 @@ async test "pull request automatically runs built-in checkout against its merged
       )
       let assignment = coordinator
         .claim(provider_token, {
+          environments: None,
           version: 1,
           runner_os: None,
           request_id: @identity.random_hex(16),
@@ -238,6 +239,7 @@ async test "duplicate runner is fenced while original receives remote cancellati
       )
       let assignment = coordinator
         .claim(provider_token, {
+          environments: None,
           version: 1,
           runner_os: None,
           request_id: @identity.random_hex(16),

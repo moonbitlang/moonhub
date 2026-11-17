@@ -296,6 +296,7 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
   @async.with_task_group(group => {
     for ;; {
       let request : @protocol.ProviderSyncRequest = {
+        environment_protocol: Some(1),
         version: 1,
         controller_id,
         observed_revision: observed.val,

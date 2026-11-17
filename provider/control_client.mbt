@@ -104,10 +104,12 @@ async fn run_backend_worker(
   let state = Ref("starting")
   let claiming = Ref(false)
   let applied = Ref("0")
+  let environments : Ref[Array[@environment.Profile]] = Ref([])
   let latest : Ref[@protocol.WorkerSnapshot?] = Ref(None)
   @platform.private_directory(base.workspace_root)
   errdefer (@async.protect_from_cancel(() => {
     let request : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "failed",
       applied_revision: applied.val,
@@ -128,6 +130,7 @@ async fn run_backend_worker(
     group.spawn_bg(() => {
       for ;; {
         let request : @protocol.WorkerSyncRequest = {
+          environments: Some(environments.val.map(profile => profile.id)),
           version: 1,
           state: state.val,
           applied_revision: applied.val,
@@ -183,7 +186,25 @@ async fn run_backend_worker(
       if !prepared.val || applied.val != snapshot.config_revision {
         state.val = "starting"
         current.val = configured_options(base, snapshot.config)
-        (backend.prepare)(current.val)
+        let profiles = snapshot.environments.unwrap_or([])
+        if !profiles.is_empty() {
+          guard backend.os == "linux" && !base.linux_ci else {
+            raise InvalidConfiguration(
+              "Multiple environments require standard Linux containers.",
+            )
+          }
+          for profile in profiles {
+            let selected = {
+              ..current.val,
+              runner_image: profile.environment.image,
+            }
+            (backend.prepare)(selected)
+            verify_linux_environment(selected, profile.environment)
+          }
+        } else {
+          (backend.prepare)(current.val)
+        }
+        environments.val = profiles
         applied.val = snapshot.config_revision
         prepared.val = true
       }
@@ -193,6 +214,7 @@ async fn run_backend_worker(
       state.val = "ready"
       // Acknowledge readiness only after both cleanup and configuration finish.
       let request : @protocol.WorkerSyncRequest = {
+        environments: Some(environments.val.map(profile => profile.id)),
         version: 1,
         state: "ready",
         applied_revision: applied.val,
@@ -230,7 +252,12 @@ async fn run_backend_worker(
       // still in flight. Preserve that pending claim when a ready heartbeat
       // conflicts with the newly busy server-side worker.
       claiming.val = true
-      let assignment = claim(current.val, token, runner_os=backend.os) catch {
+      let assignment = claim(
+        current.val,
+        token,
+        runner_os=backend.os,
+        environments=Some(environments.val.map(profile => profile.id)),
+      ) catch {
         Rejected(code) if code == 401 || code == 403 => raise Rejected(code)
         _ => {
           claiming.val = false
@@ -243,6 +270,26 @@ async fn run_backend_worker(
         None => @async.sleep(base.poll_ms)
         Some(claimed) => {
           validate_assignment(claimed.assignment, runner_os=backend.os)
+          let task_options = if claimed.assignment.environment
+            is Some(environment) {
+            guard environments.val.any(profile => {
+              profile.environment.image == environment.image &&
+              profile.environment.selector == environment.selector &&
+              profile.environment.architecture == environment.architecture
+            }) else {
+              raise InvalidConfiguration(
+                "Assigned environment was not prepared by this worker.",
+              )
+            }
+            { ..current.val, runner_image: environment.image, }
+          } else {
+            guard environments.val.is_empty() else {
+              raise InvalidConfiguration(
+                "A multi-environment provider requires a pinned assignment.",
+              )
+            }
+            current.val
+          }
           state.val = "busy"
           if current.val.linux_ci {
             @fs.write_file(
@@ -253,7 +300,7 @@ async fn run_backend_worker(
             )
           }
           (backend.execute)(
-            current.val,
+            task_options,
             claimed.assignment,
             claimed.attempt_token,
           ) catch {
@@ -281,6 +328,7 @@ async fn run_backend_worker(
     (backend.cleanup)()
     state.val = "drained"
     let request : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: state.val,
       applied_revision: applied.val,

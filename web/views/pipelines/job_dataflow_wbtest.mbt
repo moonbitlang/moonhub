@@ -134,6 +134,7 @@ async test "real runner carries version outputs through conditional matrix build
             token = @identity.random_hex(32)
             assignment = c
               .claim("a".repeat(64), {
+                environments: None,
                 version: 1,
                 runner_os: None,
                 request_id: @identity.random_hex(16),
@@ -157,6 +158,7 @@ async test "real runner carries version outputs through conditional matrix build
         )
         assert_true(
           c.claim("a".repeat(64), {
+            environments: None,
             version: 1,
             runner_os: None,
             request_id: @identity.random_hex(16),
@@ -221,6 +223,7 @@ async test "real runner terminates a job after the shared output budget rejects 
         token = @identity.random_hex(32)
         assignment = c
           .claim("a".repeat(64), {
+            environments: None,
             version: 1,
             runner_os: None,
             request_id: @identity.random_hex(16),

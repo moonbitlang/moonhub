@@ -20,6 +20,8 @@ fn queue_reason_text(reason : @pipeline.QueueReason) -> String {
       "No provider is authorized for this repository."
     @pipeline.NoMatchingLabels =>
       "No authorized provider matches all required job labels."
+    @pipeline.EnvironmentUnavailable =>
+      "No authorized provider offers this job's saved execution image. Restore a matching environment before running this snapshot."
     @pipeline.ProvidersPaused => "All matching providers are paused."
     @pipeline.ProvidersBusy =>
       "All matching providers are busy with another job."
@@ -468,6 +470,7 @@ fn render_pipeline_detail(
   manager : Bool,
   csrf : String,
   merge : @pipeline.MergeCheckContext?,
+  environments~ : Map[String, @environment.Definition] = Map([]),
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) +
     "/pipelines/" +
@@ -521,6 +524,23 @@ fn render_pipeline_detail(
           b <+ " hidden"
         }
         b <+ ">\{page.reason.map(queue_reason_text).unwrap_or("")}</p>"
+        let environment = environments.get(page.job.job_key)
+        b <+ "<p class=\"muted\" data-job-environment"
+        if environment is None {
+          b <+ " hidden"
+        }
+        b <+ ">"
+        if environment is Some(selected) {
+          b <+
+            "Environment: \{selected.name} · \{selected.selector} · \{selected.architecture}"
+        }
+        b <+
+          "</p><details class=\"secondary-details environment-image\" data-job-environment-image"
+        if environment is None {
+          b <+ " hidden"
+        }
+        b <+
+          "><summary>Execution image for \{page.job.job_key}</summary><code data-job-environment-reference>\{environment.map(value => value.image).unwrap_or("")}</code></details>"
         if run.definition.jobs
           .iter()
           .find_first(job => job.id == page.job.job_key)

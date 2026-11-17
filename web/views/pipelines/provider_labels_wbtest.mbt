@@ -80,6 +80,7 @@ async test "provider label forms preserve errors, enforce admin and CSRF, and ke
     assert_eq(updated.labels, ["linux", "moonhub-build", "self-hosted"])
     assert_true(
       coordinator.claim(token, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: "1".repeat(32),
@@ -143,6 +144,7 @@ async test "saving provider labels unblocks queued work and cancels incompatible
           [repo],
         )
         let claim : @protocol.ClaimRequest = {
+          environments: None,
           version: 1,
           runner_os: None,
           request_id: "1".repeat(32),

@@ -14,17 +14,18 @@ let eligible_provider_jobs : String =
   #|AND EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label=
   #|  CASE WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='windows') THEN 'windows'
   #|  WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='macos') THEN 'macos' ELSE 'linux' END)
-  #|AND NOT EXISTS (SELECT 1 FROM pipeline_job_label label WHERE label.job_id = j.id
-  #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label p WHERE p.provider_id = ? AND p.label = label.label))
+  #|AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate
+  #|  WHERE candidate.job_id=j.id AND candidate.provider_id=?)
 
 ///|
 let attempt_select : String =
   #|SELECT a.*, j.run_id, j.job_key, r.repository_id, r.requested_by_user_id,
   #|  r.cancel_requested, r.definition_json, r.definition_version, r.commit_sha,
-  #|  repo.name AS repo_name, t.name_key AS owner_name
+  #|  repo.name AS repo_name, t.name_key AS owner_name, pinned.environment_json
   #|FROM pipeline_job_attempt a JOIN pipeline_job j ON j.id = a.job_id
   #|JOIN pipeline_run r ON r.id = j.run_id
   #|JOIN repository repo ON repo.id = r.repository_id JOIN team t ON t.id = repo.team_id
+  #|LEFT JOIN pipeline_job_environment pinned ON pinned.job_id=j.id
 
 ///|
 fn check_version(version : Int32) -> Unit raise {
@@ -312,6 +313,11 @@ pub fn Coordinator::claim(
 ) -> @protocol.Assignment? raise {
   check_version(request.version)
   check_token(request.attempt_token)
+  let prepared = request.environments.unwrap_or([])
+  guard prepared.length() <= 8 &&
+    prepared.all(id => @protocol.parse_decimal(id) is Some(value) && value > 0L) else {
+    raise @domain.BadRequest(message="Invalid prepared environments.")
+  }
   guard request.request_id.length() == 32 &&
     request.request_id
     .iter()
@@ -439,16 +445,35 @@ pub fn Coordinator::claim(
               return None
             }
             let job = tx.query_opt(
-              eligible_provider_jobs + " ORDER BY j.id LIMIT 1",
+              eligible_provider_jobs +
+              " AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate WHERE candidate.provider_id=provider.id AND candidate.job_id=j.id AND (candidate.environment_id IS NULL OR candidate.environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)))) ORDER BY j.id LIMIT 1",
               params=[
                 provider_id,
                 @workflow.format_version.to_int64(),
                 provider_id,
+                ToJson::to_json(prepared).stringify(),
               ],
             )
             guard job is Some(job) else { return None }
             let job_id : Int64 = job.get_name("id")
             let run_id : Int64 = job.get_name("run_id")
+            let selected = tx.query_one(
+              "SELECT environment_json FROM pipeline_provider_job_environment WHERE provider_id=? AND job_id=? AND (environment_id IS NULL OR environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))) ORDER BY is_default DESC,environment_id LIMIT 1",
+              params=[
+                provider_id,
+                job_id,
+                ToJson::to_json(prepared).stringify(),
+              ],
+            )
+            if (selected.get_name("environment_json") : String?)
+              is Some(environment) {
+              ignore(
+                tx.execute(
+                  "INSERT OR IGNORE INTO pipeline_job_environment(job_id,environment_json) VALUES(?,?)",
+                  params=[job_id, environment],
+                ),
+              )
+            }
             guard tx.execute(
                 "UPDATE pipeline_job SET status = 'leased' WHERE id = ? AND status = 'queued'",
                 params=[job_id],
@@ -535,8 +560,15 @@ pub fn Coordinator::claim(
         } else {
           0
         }
+        let environment : @environment.Definition? = (
+          row.get_name("environment_json") : String?).map(text => {
+          @json.from_json(@json.parse(text))
+        })
         Some({
-          version: if api_permissions != 0 {
+          environment,
+          version: if environment is Some(_) {
+            @protocol.profile_assignment_version
+          } else if api_permissions != 0 {
             @protocol.release_assignment_version
           } else if job.runs_on.contains("windows-2025") {
             @protocol.environment_assignment_version

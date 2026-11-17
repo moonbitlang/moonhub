@@ -792,6 +792,7 @@ async fn run_asg(
     tasks.spawn_bg(() => {
       for ;; {
         let request : @protocol.ProviderSyncRequest = {
+          environment_protocol: Some(1),
           version: 1,
           controller_id,
           observed_revision: observed.val,

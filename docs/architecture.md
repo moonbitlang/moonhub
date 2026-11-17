@@ -26,6 +26,7 @@ unchanged.
 | `webhooks` | Repository webhook configuration, signed delivery, leased retries and history; push capture belongs to repository and event projections to database triggers |
 | `collaboration` | Issues, merge requests, reviews, scoped queries, branch rules, versioned check requirements, review requests, transactional notifications and workers |
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
+| `pipeline/environment` | Shared Linux environment definitions, immutable-image validation and actual userspace checks; core packages only |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
 | `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, workflow OIDC signing/grants, Artifact/Cache v4 metadata, capabilities and storage policy and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
@@ -91,7 +92,9 @@ depend on `domain`. `identity` and `mail` use `database` and `domain`.
 collaboration services. `web` is the outer application adapter.
 
 `pipeline/workflow` depends only on `pipeline/actions`, `vendor/yaml` and core
-packages. `pipeline` uses `storage` for object bytes and retains authorization, quotas and cleanup intent metadata.
+packages plus the pure `pipeline/environment` definitions. Protocol, provider
+and runner share that environment package without database or Web dependencies.
+`pipeline` uses `storage` for object bytes and retains authorization, quotas and cleanup intent metadata.
 `pipeline` uses workflow/protocol definitions, repository/identity
 authorization, bounded Git operations, and the database adapter.
 `web/views/pipelines` owns the machine

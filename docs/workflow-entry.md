@@ -6,6 +6,12 @@ The first openseek acceptance target is the unmodified Tools SDK workflow at
 
 ## Runner selectors
 
+`debian-12` is also supported as a scalar selector for Linux x64. Standard
+Linux providers may offer several separately matched immutable task images;
+see [provider environments](provider-environments.md). Provider labels and one
+complete environment must satisfy a job together; capabilities are never
+combined across different environment images.
+
 Windows 2025 x64 is available as `windows-2025`; scalar `windows-latest` resolves
 to that concrete label in the saved job definition. It requires assignment v11
 and a matching real environment. See [Windows build environment](windows-build-environment.md).

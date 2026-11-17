@@ -1,5 +1,9 @@
 ///|
 pub async fn execute(args : ArrayView[String]) -> Int32 {
+  if args.length() == 1 && args[0] == "--probe-environment" {
+    println(ToJson::to_json(@runner.environment_probe()).stringify())
+    return 0
+  }
   let command = @argparse.Command(
     "runner",
     options=[
@@ -21,6 +25,11 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
       ]),
     ],
     flags=[
+      @argparse.FlagArg(
+        "probe-environment",
+        long="probe-environment",
+        about="Inspect a task image without an assignment or credentials.",
+      ),
       @argparse.FlagArg(
         "allow-http",
         long="allow-http",

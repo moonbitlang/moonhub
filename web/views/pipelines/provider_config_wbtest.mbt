@@ -52,6 +52,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       200,
     )
     let sync : @protocol.ProviderSyncRequest = {
+      environment_protocol: None,
       version: 1,
       controller_id: "controller",
       observed_revision: "1",
@@ -159,6 +160,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
     assert_true(error.contains("&lt;bad&gt;"))
     assert_true(!error.contains("<bad>"))
     let ready : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "ready",
       applied_revision: "2",

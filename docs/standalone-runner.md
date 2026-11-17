@@ -47,6 +47,10 @@ containers and labeled MoonHub workspace volumes.
 
 ## Runtime configuration
 
+Standard Linux Docker/ASG providers can offer several distribution-specific task
+images with shared capacity; see [provider environments](provider-environments.md).
+Without named environments, the existing runner-image setting remains authoritative.
+
 Open **Execution settings** beside the provider. The server renders its bounded
 schema using generic text, integer and choice fields. No AWS credentials are stored.
 

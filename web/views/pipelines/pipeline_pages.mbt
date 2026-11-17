@@ -577,6 +577,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         manager,
         @web_context.request_form_token(req, "pipelines:" + run.id.to_string()),
         @pipeline.merge_check_context(pool, actor, scope.repo, number),
+        environments=coordinator.job_environments(actor, scope.repo, number),
       ),
       headers=@web_context.private_page_headers(),
     )

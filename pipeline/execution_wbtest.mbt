@@ -13,6 +13,7 @@ fn claim_request(
   secret~ : String = attempt_secret,
 ) -> @protocol.ClaimRequest {
   {
+    environments: None,
     runner_os: None,
     version: 1,
     request_id: id.repeat(32),
@@ -105,6 +106,7 @@ fn claim_dag_attempt(
   let attempt_token = @identity.random_hex(32)
   let assignment = coordinator
     .claim(provider_token, {
+      environments: None,
       version: 1,
       runner_os: None,
       request_id: @identity.random_hex(16),
@@ -196,6 +198,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
     let build_token = @identity.random_hex(32)
     let build = coordinator
       .claim(provider_token, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: @identity.random_hex(16),
@@ -218,6 +221,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
     )
     assert_true(
       coordinator.claim(provider_token, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: @identity.random_hex(16),

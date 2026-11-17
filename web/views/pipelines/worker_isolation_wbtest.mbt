@@ -34,6 +34,7 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
     )
     ignore(
       c.sync_provider("b".repeat(64), {
+        environment_protocol: None,
         version: 1,
         controller_id: "manager",
         observed_revision: "1",
@@ -97,6 +98,7 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       200,
     )
     let snapshot = c.sync_worker("c".repeat(64), {
+      environments: None,
       version: 1,
       state: "starting",
       applied_revision: "1",

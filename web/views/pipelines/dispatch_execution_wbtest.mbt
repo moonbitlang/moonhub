@@ -107,6 +107,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
             token = @identity.random_hex(32)
             assignment = c
               .claim("a".repeat(64), {
+                environments: None,
                 version: 1,
                 runner_os: None,
                 request_id: @identity.random_hex(16),

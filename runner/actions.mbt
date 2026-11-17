@@ -72,13 +72,13 @@ async fn Runtime::execute_action_step(
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(self.assignment.version),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(self.assignment.version),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
@@ -233,13 +233,13 @@ async fn Runtime::execute_action_posts(
     "job_outputs": ToJson::to_json(self.assignment.job.outputs),
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(self.assignment.version),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(self.assignment.version),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
@@ -267,7 +267,7 @@ async fn Runtime::execute_action_posts(
   if [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }

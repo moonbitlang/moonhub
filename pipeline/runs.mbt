@@ -481,7 +481,7 @@ pub async fn rerun_run(
     ignore(require_run_author(pool, actor, repo))
     let run = pool.with_client(client => {
       client.with_transaction(tx => {
-        insert_run_snapshot(
+        let rerun = insert_run_snapshot(
           tx,
           scope.id,
           actor.id,
@@ -498,6 +498,13 @@ pub async fn rerun_run(
           cache_scope_source=previous.id,
           capture_variables=false,
         )
+        ignore(
+          tx.execute(
+            "INSERT INTO pipeline_job_environment(job_id,environment_json) SELECT current.id,pinned.environment_json FROM pipeline_job current JOIN pipeline_job old ON old.job_key=current.job_key JOIN pipeline_job_environment pinned ON pinned.job_id=old.id WHERE current.run_id=? AND old.run_id=?",
+            params=[rerun.id, previous.id],
+          ),
+        )
+        rerun
       })
     })
     committed = true

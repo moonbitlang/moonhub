@@ -118,7 +118,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       let token = bearer_token(req)
       let payload = request_json(req, [
         "version", "controller_id", "observed_revision", "applied_revision", "status",
-        "schema", "defaults",
+        "schema", "defaults", "environment_protocol",
       ])
       let request : @protocol.ProviderSyncRequest = @json.from_json(payload) catch {
         _ => raise @domain.BadRequest(message="Invalid provider sync.")
@@ -141,7 +141,9 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     "/workers/sync",
     json_handler(req => {
       let token = bearer_token(req)
-      let payload = request_json(req, ["version", "state", "applied_revision"])
+      let payload = request_json(req, [
+        "version", "state", "applied_revision", "environments",
+      ])
       let request : @protocol.WorkerSyncRequest = @json.from_json(payload) catch {
         _ => raise @domain.BadRequest(message="Invalid worker sync.")
       }
@@ -299,7 +301,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
     json_handler(req => {
       let token = bearer_token(req)
       let json = request_json(req, [
-        "version", "request_id", "attempt_token", "runner_os",
+        "version", "request_id", "attempt_token", "runner_os", "environments",
       ])
       let request : @protocol.ClaimRequest = @json.from_json(json) catch {
         _ => raise @domain.BadRequest(message="invalid claim request")

@@ -84,6 +84,7 @@ pub(all) struct RegisterProviderRequest {
 ///|
 #derive(ToJson, FromJson)
 pub(all) struct ProviderSyncRequest {
+  environment_protocol : Int32?
   version : Int32
   controller_id : String
   observed_revision : String
@@ -104,6 +105,7 @@ pub(all) struct WorkerRegistration {
 ///|
 #derive(ToJson, FromJson)
 pub(all) struct WorkerSyncRequest {
+  environments : Array[String]?
   version : Int32
   state : String
   applied_revision : String
@@ -125,6 +127,7 @@ pub(all) struct WorkerView {
 ///|
 #derive(Debug, ToJson, FromJson)
 pub(all) struct ProviderSnapshot {
+  environments : Array[@environment.Profile]?
   version : Int32
   id : String
   mode : String
@@ -139,6 +142,7 @@ pub(all) struct ProviderSnapshot {
 ///|
 #derive(Debug, ToJson, FromJson)
 pub(all) struct WorkerSnapshot {
+  environments : Array[@environment.Profile]?
   version : Int32
   provider_id : String
   worker_id : String

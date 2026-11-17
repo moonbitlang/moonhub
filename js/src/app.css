@@ -403,6 +403,23 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mail-settings h2 { margin-bottom: 16px; }
 .provider-execution-workers { margin-top: 32px; }
 .provider-execution-workers h2 { margin-bottom: 16px; }
+.provider-environments { margin-block-start: 32px; }
+.provider-environments h2 { margin-block-end: 12px; }
+.provider-environments fieldset { display: grid; gap: 16px; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.provider-environments legend { margin-block-end: 12px; font-weight: 600; }
+.provider-environments .environment-architecture { gap: 8px; }
+.environment-choice { display: flex; align-items: center; gap: 8px; min-block-size: 32px; }
+.environment-choice input { inline-size: 18px; block-size: 18px; min-block-size: 0; margin: 0; accent-color: var(--color-accent); }
+.environment-choice label { flex: 1; padding-block: 6px; cursor: pointer; }
+.provider-environment-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.environment-image { overflow-wrap: anywhere; }
+.environment-remove, .environment-add { margin-block-start: 16px; }
+.environment-default { margin-block-end: 16px; }
+.environment-form input:not([type=hidden]), .environment-form select { font-size: 16px; }
+@media (pointer: coarse) {
+  .environment-choice { min-block-size: 48px; }
+  .provider-environments button, .environment-form input:not([type=hidden]):not([type=radio]), .environment-form select { min-block-size: 48px; }
+}
 .provider-worker-history > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; list-style: none; font-weight: 600; }
 .provider-worker-history[open] > summary .ui-icon { transform: rotate(90deg); }
 .mail-settings button, .ssh-address-settings button { justify-self: start; }

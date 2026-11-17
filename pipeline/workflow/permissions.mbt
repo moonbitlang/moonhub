@@ -48,8 +48,9 @@ fn runner_labels(
       return ["self-hosted", "macos", "arm64", label]
     }
     let os = match label {
-      "ubuntu-22.04" | "ubuntu-24.04" | "ubuntu-latest" => "linux"
+      "ubuntu-latest" => "linux"
       "windows-2022" | "windows-2025" => "windows"
+      other if @environment.selectors.contains(other) => "linux"
       _ => raise InvalidWorkflow("\{ctx}: unsupported runner environment")
     }
     // The exact environment remains a required provider capability; it is not

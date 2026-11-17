@@ -53,6 +53,9 @@ fn render_provider_config(
   csrf : String,
   values : Map[String, String],
   error : String?,
+  environment_values~ : Map[String, String] = Map([]),
+  environment_target~ : String = "new",
+  environment_error~ : String? = None,
 ) -> @moonback.Html {
   let snapshot = control.snapshot
   @web_ui.layout(
@@ -69,6 +72,10 @@ fn render_provider_config(
       if snapshot.mode.is_empty() {
         b <+ "<p>Connect moonhub-runner to configure execution settings.</p>"
       } else {
+        if !snapshot.environments.unwrap_or([]).is_empty() {
+          b <+
+            "<p class=\"muted\">Linux environments below select task images. Runner image is used only when no environments are configured.</p>"
+        }
         b <+
           "<form class=\"form-stack\" method=\"post\" action=\"/-/admin/pipelines/providers/\{snapshot.id}/configuration\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"revision\" value=\"\{snapshot.config_revision}\">"
         for field in snapshot.schema {
@@ -103,6 +110,8 @@ fn render_provider_config(
         b <+ "<button type=\"submit\">Save configuration</button></form>"
       }
       b <+
+        "\{render_provider_environments(control, csrf, environment_values, environment_target, environment_error)}"
+      b <+
         "\{render_provider_workers(snapshot.workers, revision=snapshot.config_revision, target=snapshot.config.get("standby_workers").unwrap_or("0"))}</section>"
     }),
     current_user=Some(actor),
@@ -131,6 +140,92 @@ let provider_config_module : @moonback.Module = Module(ctx => {
         None,
       ),
       headers=@web_context.private_page_headers(),
+    )
+  })
+  ctx.post("/-/admin/pipelines/providers/:id/environments", async fn(req, res) {
+    let actor = @web_context.require_current_user(req)
+    let id = @web_context.positive_resource_number(
+      @web_context.required_param(req, "id", "provider"),
+    )
+    let control = coordinator.provider_control(actor, id)
+    let form = @web_context.protected_form(req, "pipeline-providers")
+    let target = form.get("profile_id").unwrap_or("new")
+    let revision = @protocol.parse_decimal(form.get("revision").unwrap_or(""))
+    if revision is Some(_) &&
+      revision != @protocol.parse_decimal(control.snapshot.config_revision) {
+      res.send_html(
+        render_provider_config(
+          assets,
+          actor,
+          control,
+          @web_context.request_form_token(req, "pipeline-providers"),
+          control.snapshot.config,
+          None,
+          environment_values=form,
+          environment_target=target,
+          environment_error=Some("Configuration changed. Reload before saving."),
+        ),
+        status=409,
+        headers=@web_context.private_page_headers(),
+      )
+      return
+    }
+    try {
+      guard revision is Some(revision) else {
+        raise @domain.BadRequest(
+          message="Missing configuration revision. Reload before saving.",
+        )
+      }
+      let (values, default_name) = updated_environment_values(control, form)
+      coordinator.save_provider_environments(
+        actor, id, revision, values, default_name,
+      )
+    } catch {
+      @pipeline.Conflict(message) => {
+        res.send_html(
+          render_provider_config(
+            assets,
+            actor,
+            control,
+            @web_context.request_form_token(req, "pipeline-providers"),
+            control.snapshot.config,
+            None,
+            environment_values=form,
+            environment_target=target,
+            environment_error=Some(message),
+          ),
+          status=409,
+          headers=@web_context.private_page_headers(),
+        )
+        return
+      }
+      @domain.BadRequest(message~) => {
+        res.send_html(
+          render_provider_config(
+            assets,
+            actor,
+            control,
+            @web_context.request_form_token(req, "pipeline-providers"),
+            control.snapshot.config,
+            None,
+            environment_values=form,
+            environment_target=target,
+            environment_error=Some(message),
+          ),
+          status=400,
+          headers=@web_context.private_page_headers(),
+        )
+        return
+      }
+      error => raise error
+    }
+    res.send_void(
+      status=303,
+      headers=@web_context.private_page_headers(
+        location="/-/admin/pipelines/providers/" +
+          id.to_string() +
+          "/configuration#linux-environments",
+      ),
     )
   })
   ctx.post("/-/admin/pipelines/providers/:id/configuration", async fn(

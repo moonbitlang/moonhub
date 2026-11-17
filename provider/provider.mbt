@@ -260,7 +260,7 @@ fn validate_assignment(
       @protocol.secret_assignment_version, @protocol.remote_assignment_version, @protocol.scheduling_assignment_version,
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
-      @protocol.release_assignment_version,
+      @protocol.release_assignment_version, @protocol.profile_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
@@ -269,13 +269,31 @@ fn validate_assignment(
     assignment.job.api_permissions <= 7 &&
     (
       assignment.job.api_permissions == 0 ||
-      assignment.version == @protocol.release_assignment_version
+      [
+        @protocol.release_assignment_version, @protocol.profile_assignment_version,
+      ].contains(assignment.version)
     ) &&
     assignment.job.timeout_minutes >= 1 &&
     assignment.job.timeout_minutes <= 360 &&
     assignment.job.steps.length() > 0 &&
     assignment.job.steps.length() <= 64 else {
     raise InvalidConfiguration("claim returned an invalid assignment")
+  }
+  match assignment.environment {
+    Some(environment) => {
+      guard assignment.version == @protocol.profile_assignment_version &&
+        runner_os == "linux" &&
+        @environment.validate_definition(environment) is None else {
+        raise InvalidConfiguration(
+          "claim returned an invalid pinned environment",
+        )
+      }
+    }
+    None => {
+      guard assignment.version != @protocol.profile_assignment_version else {
+        raise InvalidConfiguration("claim omitted its pinned environment")
+      }
+    }
   }
 }
 

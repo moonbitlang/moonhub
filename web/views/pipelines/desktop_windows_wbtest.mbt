@@ -103,6 +103,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
           let token = @identity.random_hex(32)
           let assignment = c
             .claim(provider_token, {
+              environments: None,
               version: 1,
               runner_os: Some("windows"),
               request_id: @identity.random_hex(16),
@@ -180,6 +181,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
           let token = @identity.random_hex(32)
           let assignment = c
             .claim(provider_token, {
+              environments: None,
               version: 1,
               runner_os: Some("windows"),
               request_id: @identity.random_hex(16),
