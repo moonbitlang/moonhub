@@ -43,15 +43,34 @@ case "${1:-web}" in
     exec gosu git moonhub /data/repos --assets /app/assets --host 0.0.0.0 --port 8080 "$@"
     ;;
   ssh)
+    idle=${MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS-120}
+    maximum=${MOONHUB_SSH_READ_MAX_SECONDS-3600}
+    for seconds in "$idle" "$maximum"; do
+      case "$seconds" in
+        ''|*[!0-9]*) printf '%s\n' 'SSH read timeouts must be integers between 1 and 2147483 seconds' >&2; exit 1 ;;
+      esac
+      while [ "${seconds#0}" != "$seconds" ]; do seconds=${seconds#0}; done
+      # Bound the digit count before shell integer comparisons (including overflow).
+      [ -n "$seconds" ] && [ "${#seconds}" -le 7 ] && [ "$seconds" -ge 1 ] && [ "$seconds" -le 2147483 ] || {
+        printf '%s\n' 'SSH read timeouts must be integers between 1 and 2147483 seconds' >&2; exit 1;
+      }
+    done
     install -d -m 0755 /run/sshd
+    install -d -m 0700 /run/moonhub-sshd
+    config=/run/moonhub-sshd/sshd_config
+    # Only deployment-controlled, validated values enter sshd's session environment.
+    # AcceptEnv remains limited to GIT_PROTOCOL in the static configuration.
+    # OpenSSH uses only the first SetEnv directive; extend that same directive.
+    sed "s/^SetEnv .*/& MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS=$idle MOONHUB_SSH_READ_MAX_SECONDS=$maximum/" \
+      /etc/ssh/moonhub_sshd_config > "$config"
     install -d -m 0700 /var/lib/moonhub/ssh
     key=/var/lib/moonhub/ssh/ssh_host_ed25519_key
     if [ ! -f "$key" ]; then
       ssh-keygen -q -t ed25519 -N '' -f "$key"
     fi
     chmod 0600 "$key"
-    /usr/sbin/sshd -t -f /etc/ssh/moonhub_sshd_config
-    exec /usr/sbin/sshd -D -e -f /etc/ssh/moonhub_sshd_config
+    /usr/sbin/sshd -t -f "$config"
+    exec /usr/sbin/sshd -D -e -f "$config"
     ;;
   *)
     exec gosu git "$@"
