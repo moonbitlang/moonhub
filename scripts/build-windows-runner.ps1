@@ -33,7 +33,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Action dependencies failed' }
 Copy-Item runner/actions/*.mjs "$outputRoot/actions/"
 Copy-Item runner/actions/node_modules "$outputRoot/actions/" -Recurse
 Copy-Item LICENSE "$outputRoot/licenses/MoonHub.txt"
-Copy-Item vendor/yaml/LICENSE "$outputRoot/licenses/yaml.txt"
 Copy-Item deploy/windows/runtime.json "$outputRoot/runtime.json"
 Copy-Item deploy/windows/install-vc-runtime.ps1 $outputRoot
 Copy-Item deploy/windows/build-tools.json, deploy/windows/install-build-tools.ps1 $outputRoot
