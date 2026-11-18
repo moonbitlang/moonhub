@@ -181,6 +181,15 @@ try {
     db.exec(`INSERT INTO team (id, name_key, display_name, kind) VALUES (1, 'alice', 'Alice', 'personal');
       INSERT INTO team_member (team_id, user_id, role) VALUES (1, 1, 'owner');
       INSERT INTO repository (id, team_id, name, visibility, default_branch) VALUES (1, 1, 'demo', 'private', 'master'), (2, 1, 'public', 'public', 'master'), (3, 1, 'empty', 'private', 'master');`);
+    const head = git(['rev-parse', 'refs/heads/master']);
+    const insertRun = db.prepare(`INSERT INTO pipeline_run
+      (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch,
+       commit_sha, source_ref, definition_version, workflow_source, definition_json, status, conclusion)
+      VALUES (1, ?, 1, ?, ?, 'master', ?, ?, 1, '', ?, 'completed', ?)`);
+    for (const [number, file, name, conclusion] of [[1, 'build', 'Build and package', 'success'], [2, 'lint', 'Lint', 'failure']]) {
+      insertRun.run(number, `.github/workflows/${file}.yml`, name, head,
+        `refs/moonhub/pipelines/browser-${number}`, JSON.stringify({ name, jobs: [] }), conclusion);
+    }
   } finally { db.close(); }
   console.log('MoonHub browser fixture ready');
 } catch (error) {

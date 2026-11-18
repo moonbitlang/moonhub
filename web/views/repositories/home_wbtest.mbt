@@ -161,7 +161,7 @@ async test "directory commit summary separates detail links from revision histor
         )
         assert_eq(response.code, 200, msg=body)
         let summary = body.split("class=\"commit-summary\">").collect()[1]
-          .split("</div>")
+          .split("<div class=\"table-frame file-table\">")
           .collect()[0]
         assert_eq(
           summary.split("href=\"/alice/demo/commit/" + sha + "\"").count(),

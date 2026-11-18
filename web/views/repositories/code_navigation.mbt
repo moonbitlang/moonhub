@@ -1,6 +1,7 @@
 ///|
 priv struct CodeNavigation {
   refs : Array[(String, String)]
+  default_branch : (String, String)?
   paths : Array[String]
   truncated : Bool
 }
@@ -10,8 +11,10 @@ priv struct CodeNavigation {
 // output independently of the 5,000-path presentation limit.
 async fn code_navigation(git_dir : String, rev : String) -> CodeNavigation {
   let refs : Array[(String, String)] = []
+  let mut default_branch = None
   let (code, output) = @gitops.merge_git_command(git_dir, [
-    "for-each-ref", "--format=%(refname)%00%(objectname)", "refs/heads/", "refs/tags/",
+    "for-each-ref", "--format=%(refname)%00%(objectname)%00%(HEAD)", "refs/heads/",
+    "refs/tags/",
   ]) catch {
     _ => (1, "")
   }
@@ -24,17 +27,20 @@ async fn code_navigation(git_dir : String, rev : String) -> CodeNavigation {
     let tag_names : Array[String] = []
     for line in lines {
       let parts = line.split("\u{0}").collect()
-      if parts.length() == 2 && parts[0].has_prefix("refs/tags/") {
+      if parts.length() == 3 && parts[0].has_prefix("refs/tags/") {
         tag_names.push(parts[0][10:].to_owned())
       }
     }
     for line in lines {
       let parts = line.split("\u{0}").collect()
-      if parts.length() == 2 {
+      if parts.length() == 3 {
         let full = parts[0].to_owned()
         let sha = parts[1].to_owned()
         if full.has_prefix("refs/heads/") {
           let name = full[11:].to_owned()
+          if parts[2] == "*" {
+            default_branch = Some((name, sha))
+          }
           refs.push(
             (
               if tag_names.contains(name) {
@@ -69,7 +75,7 @@ async fn code_navigation(git_dir : String, rev : String) -> CodeNavigation {
   } catch {
     _ => ([], true)
   }
-  { refs, paths, truncated, }
+  { refs, default_branch, paths, truncated, }
 }
 
 ///|

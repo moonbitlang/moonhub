@@ -46,6 +46,7 @@ pub let browser_app_module : @moonback.Module = Module(ctx => {
             @web_context.release_service_key,
             @releases.Service::new(pool, root),
           )
+          ctx.provide(@web_context.config_db_pool, pool)
         })
         ctx.provide(@web_context.browser_access_key, {
           repositories: _ => @gitops.list_repositories(root),
