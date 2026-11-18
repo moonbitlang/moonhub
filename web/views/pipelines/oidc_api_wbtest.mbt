@@ -200,6 +200,7 @@ async test "real runner carries OIDC through shell JavaScript pre main post and 
             token = @identity.random_hex(32)
             assignment = c
               .claim("a".repeat(64), {
+                environments: None,
                 version: 1,
                 runner_os: None,
                 request_id: @identity.random_hex(16),

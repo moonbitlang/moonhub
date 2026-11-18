@@ -68,6 +68,7 @@ test "ASG capacity counts busy tasks and queued jobs, respects cap and pause" {
     active_attempts: 1,
   }
   let snapshot : @protocol.ProviderSnapshot = {
+    environments: None,
     version: 1,
     id: "1",
     mode: "asg",

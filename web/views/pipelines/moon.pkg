@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/pipeline/environment",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/identity",

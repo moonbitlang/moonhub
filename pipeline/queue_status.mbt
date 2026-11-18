@@ -7,6 +7,7 @@ pub enum QueueReason {
   RequesterUnavailable
   NoAuthorizedProvider
   NoMatchingLabels
+  EnvironmentUnavailable
   ProvidersPaused
   ProvidersBusy
   NoRecentProviderContact
@@ -64,9 +65,12 @@ pub fn Coordinator::queue_reasons(
       let candidates = client.query_all(
         (
           #|SELECT p.paused, p.last_seen_ms,
-          #|NOT EXISTS (SELECT 1 FROM pipeline_job_label required WHERE required.job_id = ?
-          #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label label WHERE label.provider_id = p.id AND label.label = required.label)) AS matches_labels,
-          #|EXISTS (SELECT 1 FROM pipeline_job_attempt a WHERE a.provider_id = p.id AND a.status <> 'completed') AS busy
+          #|EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate
+          #|  WHERE candidate.job_id=? AND candidate.provider_id=p.id) AS matches_labels,
+          #|EXISTS (SELECT 1 FROM pipeline_job_attempt a WHERE a.provider_id=p.id AND a.status<>'completed')
+          #|AND (p.mode='' OR NOT EXISTS (SELECT 1 FROM pipeline_worker w WHERE w.provider_id=p.id
+          #|  AND w.state='ready' AND w.draining=0 AND w.applied_revision=p.config_revision
+          #|  AND w.last_seen_ms>CAST(strftime('%s','now') AS INTEGER)*1000-180000)) AS busy
           #|FROM pipeline_provider p WHERE p.revoked = 0 AND (p.repository_scope = 'all'
           #|  OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = p.id AND g.repository_id = ?))
         ),
@@ -80,7 +84,15 @@ pub fn Coordinator::queue_reasons(
       result[key] = if candidates.is_empty() {
         NoAuthorizedProvider
       } else if matching.is_empty() {
-        NoMatchingLabels
+        if client.query_opt(
+            "SELECT job_id FROM pipeline_job_environment WHERE job_id=?",
+            params=[job_id],
+          )
+          is Some(_) {
+          EnvironmentUnavailable
+        } else {
+          NoMatchingLabels
+        }
       } else if active.is_empty() {
         ProvidersPaused
       } else if idle.is_empty() {

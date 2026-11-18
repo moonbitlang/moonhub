@@ -82,6 +82,7 @@ async test "provider access forms preserve selected grants and require administr
     assert_false(listing.contains(token))
     assert_true(
       coordinator.claim(token, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: "1".repeat(32),

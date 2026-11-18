@@ -248,6 +248,7 @@ pub fn Coordinator::set_provider_labels(
           is Some(_) else {
           raise @domain.NotFound(message="provider not found")
         }
+        validate_environment_provider_labels(tx, id, labels)
         let _ = tx.execute(
           "DELETE FROM pipeline_provider_label WHERE provider_id = ?",
           params=[id],
@@ -264,9 +265,14 @@ pub fn Coordinator::set_provider_labels(
             #|UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, ?)
             #|WHERE provider_id = ? AND status <> 'completed'
             #|AND EXISTS (SELECT 1 FROM pipeline_job_label required
-            #|  WHERE required.job_id = pipeline_job_attempt.job_id
+            #|  LEFT JOIN pipeline_job_environment pinned ON pinned.job_id=required.job_id
+            #|  WHERE required.job_id=pipeline_job_attempt.job_id
             #|  AND NOT EXISTS (SELECT 1 FROM pipeline_provider_label current
-            #|    WHERE current.provider_id = pipeline_job_attempt.provider_id AND current.label = required.label))
+            #|    WHERE current.provider_id=pipeline_job_attempt.provider_id AND current.label=required.label
+            #|    AND (pinned.job_id IS NULL OR (current.label NOT LIKE 'ubuntu-%' AND current.label NOT LIKE 'debian-%' AND current.label NOT IN ('x64','arm64'))))
+            #|  AND (pinned.job_id IS NULL OR (required.label NOT IN (
+            #|    json_extract(pinned.environment_json,'$.name'),json_extract(pinned.environment_json,'$.selector'),json_extract(pinned.environment_json,'$.architecture'))
+            #|    AND NOT EXISTS (SELECT 1 FROM json_each(pinned.environment_json,'$.labels') own WHERE own.value=required.label))))
           ),
           params=[now, id],
         )
@@ -337,6 +343,7 @@ pub fn Coordinator::ensure_provider(
           }
         }
         let id : Int64 = row.get_name("id")
+        validate_environment_provider_labels(tx, id, labels)
         for label in labels {
           let _ = tx.execute(
             "INSERT OR IGNORE INTO pipeline_provider_label (provider_id, label) VALUES (?, ?)",

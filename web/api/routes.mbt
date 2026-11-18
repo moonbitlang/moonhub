@@ -822,12 +822,14 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let actor = api_actor(pool, req, "read")
       let repo = @web_context.repo_param(req)
       let id = number(@web_context.required_param(req, "number", "run"))
+      let environments = coordinator.job_environments(actor, repo, id)
       {
         "run": run_json(@pipeline.get_run(pool, actor, repo, id)),
         "jobs": @pipeline.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
               "key": job.job_key,
+              "environment": ToJson::to_json(environments.get(job.job_key)),
               "status": match job.state {
                 Waiting => "waiting"
                 Queued => "queued"

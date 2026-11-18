@@ -184,6 +184,7 @@ async test "release job credential publishes only its repository and is revoked 
     )
     let assignment = c
       .claim(provider, {
+        environments: None,
         version: 1,
         request_id: "a".repeat(32),
         attempt_token: attempt,

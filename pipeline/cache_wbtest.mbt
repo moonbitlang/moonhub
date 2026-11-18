@@ -178,6 +178,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
     let lease = "c".repeat(64)
     let assignment = c
       .claim(second_provider, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: "2".repeat(32),

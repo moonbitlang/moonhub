@@ -456,6 +456,7 @@ async test "run output quota is enforced transactionally across matrix jobs" {
         let token = @identity.random_hex(32)
         let a = c
           .claim(provider_secret, {
+            environments: None,
             version: 1,
             runner_os: None,
             request_id: @identity.random_hex(16),
@@ -539,6 +540,7 @@ async test "legacy definition 3 assignments keep their wire version empty datafl
       let token = @identity.random_hex(32)
       let a = c
         .claim(provider_secret, {
+          environments: None,
           version: 1,
           runner_os: None,
           request_id: @identity.random_hex(16),

@@ -1,0 +1,60 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline/environment"
+
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn image_digest(String) -> String?
+
+pub fn is_environment_label(String) -> Bool
+
+pub let selectors : Array[String]
+
+pub fn validate_definition(Definition) -> String?
+
+pub fn validate_set(Array[Definition], String) -> String?
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct Definition {
+  name : String
+  selector : String
+  architecture : String
+  image : String
+  labels : Array[String]
+}
+pub fn Definition::effective_labels(Self) -> Array[String]
+pub fn Definition::equal(Self, Self) -> Bool
+pub fn Definition::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
+pub fn Definition::matches_system(Self, String, String) -> Bool
+pub fn Definition::not_equal(Self, Self) -> Bool
+pub fn Definition::to_json(Self) -> @json.Json
+pub fn Definition::to_repr(Self) -> @debug.Repr
+
+#derive(@json.FromJson, @json.ToJson)
+pub(all) struct Probe {
+  environment_protocol : Int32
+  os_release : String
+  architecture : String
+}
+pub fn Probe::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
+pub fn Probe::to_json(Self) -> @json.Json
+
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct Profile {
+  id : String
+  environment : Definition
+  is_default : Bool
+}
+pub fn Profile::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
+pub fn Profile::to_json(Self) -> @json.Json
+pub fn Profile::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

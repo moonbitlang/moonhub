@@ -1,6 +1,6 @@
 export function mountPipelineLogs(signal: AbortSignal) {
   type StepUpdate = { step_id: string; state: string; exit_code: number };
-  type JobUpdate = { id: string; attempt_id: string; state: string; result: string; reason: string; steps: StepUpdate[] };
+  type JobUpdate = { id: string; attempt_id: string; state: string; result: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
   type RunUpdate = { state: string; result: string; jobs: JobUpdate[] };
   type LogChunk = { id: string; text: string; step_id: string };
   type LogPage = { chunks: LogChunk[]; next_cursor: string; has_more: boolean; complete: boolean };
@@ -197,6 +197,17 @@ export function mountPipelineLogs(signal: AbortSignal) {
         const nav = navigation.find(link => link.dataset.jobSelect === status.id)?.querySelector<HTMLElement>('[data-nav-job-state]'); if (nav) updateBadge(nav, status.result);
         const reason = job.element.querySelector<HTMLElement>('[data-queue-reason]')!; reason.textContent = status.reason; reason.hidden = !status.reason;
         const labels = job.element.querySelector<HTMLElement>('[data-required-labels]'); if (labels) labels.hidden = !status.reason;
+        const environment = job.element.querySelector<HTMLElement>('[data-job-environment]');
+        if (environment) {
+          environment.hidden = !status.environment;
+          environment.textContent = status.environment ? `Environment: ${status.environment.name} · ${status.environment.selector} · ${status.environment.architecture}` : '';
+        }
+        const image = job.element.querySelector<HTMLElement>('[data-job-environment-image]');
+        if (image) {
+          image.hidden = !status.environment;
+          const reference = image.querySelector<HTMLElement>('[data-job-environment-reference]');
+          if (reference) reference.textContent = status.environment?.image ?? '';
+        }
         const list = job.element.querySelector<HTMLElement>('[data-job-steps]')!; list.hidden = status.steps.length === 0;
         if (job.element.dataset.attemptId !== status.attempt_id) {
           job.element.dataset.attemptId = status.attempt_id; job.panel.dataset.logCursor = '0'; job.panel.dataset.logComplete = String(!status.attempt_id); job.panel.dataset.logMore = 'false';

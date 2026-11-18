@@ -27,6 +27,7 @@ fn test_step(
 ///|
 fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
   {
+    environment: None,
     version: 1,
     attempt_id: "1",
     run_id: "1",

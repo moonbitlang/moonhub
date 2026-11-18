@@ -174,3 +174,18 @@ test "matrix and scheduling expansion charge UTF8 budgets before allocating over
     step.repeat(64)
   expect_invalid(source, "expanded workflow")
 }
+
+///|
+test "Debian selectors normalize to an exact Linux x64 capability" {
+  let source =
+    #|on: workflow_dispatch
+    #|jobs:
+    #|  test:
+    #|    runs-on: debian-12
+    #|    steps:
+    #|      - run: echo test
+  let workflow = parse(source)
+  assert_eq(workflow.jobs[0].runs_on, [
+    "self-hosted", "linux", "x64", "debian-12",
+  ])
+}

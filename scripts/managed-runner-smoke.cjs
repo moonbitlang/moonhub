@@ -8,7 +8,7 @@ const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhu
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const registration = 'a'.repeat(64);
 
-async function scenario(mode, failCleanup = false, stale = false, terminal = false, claimRace = false) {
+async function scenario(mode, failCleanup = false, stale = false, terminal = false, claimRace = false, environmentMode = '') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-managed-'));
   for (const directory of ['controller', 'workspace']) {
     fs.mkdirSync(path.join(root, directory), {mode:0o700});
@@ -69,20 +69,29 @@ if (args[0] === 'ec2') {
   } else throw Error('unexpected volume operation');
 } else if (args[0] === 'run') {
   assert.ok(args.includes('--read-only')); assert.ok(args.includes('--cap-drop'));
+  if(args.includes('--probe-environment')) {
+    assert.ok(args.includes('none') && args.includes('10001:10001'));
+    const debian=args.some(arg=>arg.endsWith('@sha256:'+'a'.repeat(64)));
+    result=JSON.stringify({environment_protocol:1,architecture:'x64',os_release:debian && ${JSON.stringify(environmentMode)}!=='mismatch'?'ID=debian\\nVERSION_ID=12':'ID=ubuntu\\nVERSION_ID=24.04'});
+    save(); console.log(result); process.exit(0);
+  }
   const manifestMount = args.find(arg => arg.startsWith('type=bind,src='));
   const manifestPath = manifestMount.slice('type=bind,src='.length).split(',dst=')[0];
   assert.equal(fs.statSync(manifestPath).mode & 0o777, 0o444, 'non-root task cannot read a root-owned manifest');
   assert.equal(fs.statSync(require('node:path').dirname(manifestPath)).mode & 0o777, 0o700, 'host assignment directory must remain private');
+  const assignment=JSON.parse(fs.readFileSync(manifestPath));
+  if(assignment.environment) assert.ok(args.includes(assignment.environment.image),'task used another environment image');
   process.stdin.resume(); state.containerArgs = args; state.manifestPath = manifestPath; state.runs = (state.runs || 0) + 1;
   result = JSON.stringify({reported:true,conclusion:'success'});
 } else if (args[0] === 'rm') {
-  if (state.manifestPath && !fs.existsSync(state.manifestPath)) state.manifestRemovedBeforeContainer = true;
+  if (args.some(arg=>/^moonhub-pipeline-[0-9]+$/.test(arg)) && state.manifestPath && !fs.existsSync(state.manifestPath)) state.manifestRemovedBeforeContainer = true;
 } else if (args[0] === 'ps') result = '';
 else if (!['info','image','rm'].includes(args[0])) throw Error('unexpected adapter operation');
 save();
 if (result !== null) console.log(typeof result === 'string' ? result : JSON.stringify(result));
 `, {mode:0o700});
   const workers = [];
+  const environments = environmentMode ? ['debian-12','ubuntu-24.04'].map((selector,i)=>({id:String(i+11),is_default:i===0,environment:{name:selector,selector,architecture:'x64',image:'registry.example/runner@sha256:'+(i?'b':'a').repeat(64),labels:[]}})) : undefined;
   let providerToken, config, schema, revision = '1', observed = '0', applied = '0', claims = 0, queued = mode === 'asg' ? 0 : 1, paused = false, failure;
   let readyFailures = 0, recoverReadyAt = 0;
   let pendingClaim, releaseClaim, releaseTimer, raceConflicts = 0, raceWorker;
@@ -91,7 +100,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       let text = ''; for await (const chunk of req) text += chunk;
       const body = JSON.parse(text), route = req.url.replace('/-/runner-api/v1', '');
       let result;
-      const snapshot = () => ({version:1,id:'1',mode,paused,config_revision:revision,schema,config,queued_jobs:queued,workers});
+      const snapshot = () => ({version:1,id:'1',mode,paused,config_revision:revision,schema,config,queued_jobs:queued,workers,environments});
       if (route === '/providers/register') {
         assert.equal(req.headers.authorization, 'Bearer ' + registration);
         providerToken = body.provider_token; schema = body.schema; config = {...body.defaults};
@@ -99,6 +108,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         result = snapshot();
       } else if (route === '/providers/sync') {
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
+        if(environmentMode) assert.equal(body.environment_protocol,1);
         observed = body.observed_revision; applied = body.applied_revision;
         if (mode === 'asg' && state().booted) queued = 0;
         result = snapshot();
@@ -112,6 +122,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         result = worker;
       } else if (route === '/workers/sync') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
+        if(environmentMode && body.state==='ready') assert.deepEqual(body.environments,['11','12']);
         if (claimRace && pendingClaim && body.state === 'ready') {
           // The server has leased the task, but its claim response is still in
           // flight. A concurrent ready heartbeat must not retire this worker.
@@ -139,7 +150,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
         }
         worker.state = worker.draining && body.state === 'ready' ? 'drained' : body.state;
         worker.applied_revision = body.applied_revision; worker.last_seen_ms = String(Date.now());
-        result = {version:1,provider_id:'1',worker_id:worker.id,paused,draining:worker.draining,config_revision:revision,config};
+        result = {version:1,provider_id:'1',worker_id:worker.id,paused,draining:worker.draining,config_revision:revision,config,environments};
       } else if (route === '/claims') {
         const worker = workers.find(w => req.headers.authorization === 'Bearer ' + w.secret); assert.ok(worker);
         if (applied !== revision || claimRace && claims >= 2) result = {version:1,assignment:null};
@@ -147,6 +158,10 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
           claims++; queued = 0;
           const now = Date.now();
           result = {version:1,assignment:claims <= 2 ? {version:1,attempt_id:String(claims),run_id:'1',job_id:String(claims),repository:'alice/demo',commit_sha:'a'.repeat(40),lease_until_ms:String(now + 60000),server_time_ms:String(now),state:'leased',job:{id:'build',name:'Build',runs_on:['self-hosted','linux'],timeout_minutes:1,steps:[{id:'check',name:'Check',run:'true',shell:'bash',working_directory:'.',env:{},timeout_minutes:0}]}} : null};
+          if(environmentMode) {
+            assert.deepEqual(body.environments,['11','12']);
+            if(result.assignment){result.assignment.version=13;result.assignment.environment=environments[claims-1].environment;}
+          }
           if (claims === 1 && !failCleanup) {config = {...config,cpus:'1'}; revision = '2';}
           if (claimRace && claims <= 2) {
             assert.equal(workers.length, 1, 'claim race replaced the worker');
@@ -179,6 +194,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     for (;;) {
       if (failure) throw failure;
       const st = state();
+      if(environmentMode==='mismatch' && exited) {assert.equal(claims,0,'mislabeled image claimed a job');break;}
       if (stale && workers[0]?.draining) {
         assert.equal(workers[0].active_attempts, 1);
         assert.ok(!st.calls.some(c => c[1] === 'terminate-instance-in-auto-scaling-group'), 'unknown busy instance terminated without cleanup');
@@ -208,6 +224,14 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
       if (mode === 'docker' && failCleanup && exited) {assert.equal(claims,1,'claim after cleanup failure'); assert.equal(st.volumes.length,1); break;}
       if (mode === 'docker' && !failCleanup && st.runs >= 2 && st.volumes.length === 0 && applied === '2' && (!claimRace || workers[0]?.active_attempts === 0)) {
         assert.ok(st.containerArgs.includes('1'));
+        if(environmentMode) {
+          const tasks=st.calls.filter(c=>c[0]==='run' && !c.includes('--probe-environment'));
+          assert.equal(tasks.length,2);
+          assert.ok(tasks[0].includes(environments[0].environment.image));
+          assert.ok(tasks[1].includes(environments[1].environment.image));
+          assert.equal(workers.length,1,'switching distributions added worker capacity');
+          assert.ok(st.calls.filter(c=>c.includes('--probe-environment')).length>=4,'revision change skipped environment preparation');
+        }
         if (claimRace) {
           assert.equal(raceConflicts, 1, 'claim response was not held across one conflicting background heartbeat');
           assert.equal(workers.length, 1, 'claim race replaced the worker');
@@ -224,13 +248,13 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     }
     if (mode === 'asg' && !stale) assert.ok(state().ssmChecks >= 3, 'offline SSM startup delay was not exercised');
     assert.equal(state().manifestRemovedBeforeContainer, undefined, 'assignment mount was removed before container cleanup');
-    if (mode === 'docker' && !failCleanup && !terminal && !claimRace) assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
+    if (mode === 'docker' && !failCleanup && !terminal && !claimRace && environmentMode!=='mismatch') assert.ok(readyFailures > 0, 'no temporary Web outage was exercised');
     assert.equal(fs.statSync(path.join(root,'controller','provider-token')).mode & 0o777,0o600);
     assert.ok(!output.includes(providerToken));
     for (const directory of ['controller', 'workspace']) {
       assert.equal(fs.readFileSync(path.join(root, directory, '.existing'), 'utf8'), 'preserved');
     }
-    console.log(`Managed ${mode}${claimRace ? ' claim race' : terminal ? ' retired worker' : failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
+    console.log(`Managed ${mode}${environmentMode ? ' environments '+environmentMode : claimRace ? ' claim race' : terminal ? ' retired worker' : failCleanup ? ' cleanup failure' : stale ? ' stale snapshot' : ''}: passed enrollment, revision sync and safe lifecycle.`);
   } finally {
     clearTimeout(releaseTimer); releaseClaim?.();
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(r => child.once('exit',r)),delay(20000).then(() => {if (!exited) child.kill('SIGKILL');})]);}
@@ -238,4 +262,4 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
     fs.rmSync(root,{recursive:true,force:true});
   }
 }
-(async () => {if(process.argv.includes('--asg-boot')) {await scenario('asg');return;}if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);})().catch(e => {console.error(e);process.exitCode=1;});
+(async () => {if(process.argv.includes('--environments')) {await scenario('docker',false,false,false,false,'multiple');await scenario('docker',false,false,false,false,'mismatch');return;}if(process.argv.includes('--asg-boot')) {await scenario('asg');return;}if(process.argv.includes('--claim-race')) {await scenario('docker',false,false,false,true);return;}if(process.argv.includes('--terminal')) {await scenario('docker',false,false,true);return;}await scenario('docker'); await scenario('docker',true); await scenario('asg'); await scenario('asg',false,true);await scenario('docker',false,false,true);await scenario('docker',false,false,false,true);await scenario('docker',false,false,false,false,'multiple');await scenario('docker',false,false,false,false,'mismatch');})().catch(e => {console.error(e);process.exitCode=1;});

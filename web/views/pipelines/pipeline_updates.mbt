@@ -8,6 +8,7 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
     let number = pipeline_number(req)
     let run = @pipeline.get_run(pool, actor, repo, number)
     let reasons = coordinator.queue_reasons(actor, repo, number)
+    let environments = coordinator.job_environments(actor, repo, number)
     let jobs = @pipeline.list_jobs(pool, actor, repo, number).map(job => {
       let steps = match job.attempt_id {
         Some(id) => coordinator.read_steps(actor, repo, number, id)
@@ -17,6 +18,7 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
       let conclusion = pipeline_conclusion(job.conclusion)
       let json : Json = {
         "id": job.id.to_string(),
+        "environment": ToJson::to_json(environments.get(job.job_key)),
         "attempt_id": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
         "state": state,
         "result": if conclusion.is_empty() {

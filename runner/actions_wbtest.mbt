@@ -284,6 +284,23 @@ async test "contents none jobs do not fetch source or expose a source token" {
 
 ///|
 test "runner environment checks prevent mislabeled distro versions and architectures" {
+  validate_runner_environment(
+    ["self-hosted", "linux", "x64", "debian-12"],
+    "ID=debian\nVERSION_ID=12",
+    "x86_64",
+  )
+  try
+    validate_runner_environment(
+      ["self-hosted", "linux", "debian-12"],
+      "ID=ubuntu\nVERSION_ID=24.04",
+      "x86_64",
+    )
+  catch {
+    InvalidConfiguration(_) => ()
+    error => raise error
+  } noraise {
+    _ => fail("accepted Ubuntu for a Debian environment")
+  }
   let labels = ["self-hosted", "linux", "x64", "ubuntu-24.04"]
   validate_runner_environment(
     labels, "ID=ubuntu\nVERSION_ID=\"24.04\"\n", "x86_64",

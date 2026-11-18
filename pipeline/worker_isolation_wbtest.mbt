@@ -38,6 +38,7 @@ async test "single-use CI claims require the outside controller and remain consu
       }),
     )
     let sync : @protocol.ProviderSyncRequest = {
+      environment_protocol: None,
       version: 1,
       controller_id: "manager",
       observed_revision: "1",
@@ -62,6 +63,7 @@ async test "single-use CI claims require the outside controller and remain consu
     let w = c.register_worker("b".repeat(64), registration)
     let wid = @protocol.parse_decimal(w.id).unwrap()
     let ready : @protocol.WorkerSyncRequest = {
+      environments: None,
       version: 1,
       state: "ready",
       applied_revision: "1",

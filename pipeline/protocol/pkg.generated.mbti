@@ -2,6 +2,7 @@
 package "hackwaly/moonhub/pipeline/protocol"
 
 import {
+  "hackwaly/moonhub/pipeline/environment",
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
 }
@@ -32,6 +33,8 @@ pub let max_source_bytes : Int64
 pub let oidc_assignment_version : Int32
 
 pub fn parse_decimal(String) -> Int64?
+
+pub let profile_assignment_version : Int32
 
 pub let release_assignment_version : Int32
 
@@ -83,6 +86,7 @@ pub fn ArtifactRuntimeRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct Assignment {
+  environment : @environment.Definition?
   version : Int32
   attempt_id : String
   run_id : String
@@ -101,6 +105,7 @@ pub fn Assignment::to_repr(Self) -> @debug.Repr
 
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct ClaimRequest {
+  environments : Array[String]?
   runner_os : String?
   version : Int32
   request_id : String
@@ -216,6 +221,7 @@ pub fn OidcRuntimeRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct ProviderSnapshot {
+  environments : Array[@environment.Profile]?
   version : Int32
   id : String
   mode : String
@@ -232,6 +238,7 @@ pub fn ProviderSnapshot::to_repr(Self) -> @debug.Repr
 
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct ProviderSyncRequest {
+  environment_protocol : Int32?
   version : Int32
   controller_id : String
   observed_revision : String
@@ -341,6 +348,7 @@ pub fn WorkerRegistration::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct WorkerSnapshot {
+  environments : Array[@environment.Profile]?
   version : Int32
   provider_id : String
   worker_id : String
@@ -356,6 +364,7 @@ pub fn WorkerSnapshot::to_repr(Self) -> @debug.Repr
 
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct WorkerSyncRequest {
+  environments : Array[String]?
   version : Int32
   state : String
   applied_revision : String

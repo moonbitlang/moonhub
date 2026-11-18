@@ -27,6 +27,7 @@ async function until(check, message) {
 }
 
 async function capture(page, state) {
+  if (process.argv.includes('--environments') && !state.startsWith('environments')) return;
   for (const [name, width] of [['desktop', 1280], ['mobile', 390], ['small-mobile', 320]]) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForFunction(() => document.documentElement.dataset.hydrated === 'true');
@@ -167,12 +168,13 @@ if (result !== null) console.log(JSON.stringify(result));
   const split=cookie.indexOf('=');
   await context.addCookies([{name:cookie.slice(0,split),value:cookie.slice(split+1),url:base}]);
   const page=await context.newPage();
+  const configuration=page.locator('form[action$="/configuration"]');
   const errors=[]; page.on('pageerror',e => errors.push(e.message));
   await page.goto(base+'/-/admin/pipelines/providers');
   await page.getByRole('link',{name:'Configure dind',exact:true}).click();
   await page.getByRole('heading',{name:'Execution settings',exact:true}).waitFor();
-  assert.equal(await page.getByLabel('Runner image',{exact:true}).inputValue(),'moonhub:runner');
-  assert.equal(await page.locator('form.form-stack .field').count(), 10);
+  assert.equal(await configuration.getByLabel('Runner image',{exact:true}).inputValue(),'moonhub:runner');
+  assert.equal(await configuration.locator('.field').count(), 10);
   assert.equal(await page.getByLabel('Standby workers', { exact: true }).inputValue(), '0');
   assert.equal(await page.getByLabel('Memory limit per task (MiB)', { exact: true }).inputValue(), '4096');
   await capture(page,'settings');
@@ -229,15 +231,15 @@ db.commit()
   assert.equal(await page.locator('#app-sidebar').count(), 1);
   assert.equal(await page.locator('#main-content').count(), 1);
   assert.equal(await page.getByLabel('CPU limit per task', { exact: true }).inputValue(), '1');
-  await page.getByRole('link', { name: 'Pipeline providers', exact: true }).click();
+  await page.locator('#main-content').getByRole('link', { name: 'Pipeline providers', exact: true }).click();
   await page.getByRole('link', { name: 'Configure dind', exact: true }).click();
   await page.getByRole('heading', { name: 'Execution settings', exact: true }).waitFor();
   assert.equal(await page.locator('.site-header').count(), 1);
   assert.equal(await page.locator('#moonhub-page').count(), 1);
   const route = new URL(page.url()).pathname;
   assert.match(route, /^\/-\/admin\/pipelines\/providers\/[1-9][0-9]*\/configuration$/);
-  const csrf=await page.locator('input[name=csrf_token]').inputValue();
-  const current = await page.locator('form.form-stack').evaluate(form => Object.fromEntries(new FormData(form)));
+  const csrf=await configuration.locator('input[name=csrf_token]').inputValue();
+  const current = await configuration.evaluate(form => Object.fromEntries(new FormData(form)));
   const conflict=await context.request.post(base+route,{form:{...current,csrf_token:csrf,revision:'1',config_runner_image:'stale'}});
   assert.equal(conflict.status(),409);
   assert.ok((await conflict.text()).includes('Configuration changed'));
@@ -246,10 +248,53 @@ db.commit()
   await page.setContent(await invalid.text());
   await page.getByRole('alert').waitFor();
   assert.equal(await page.locator('invalid').count(),0);
-  assert.equal(await page.getByLabel('Runner image', { exact: true }).getAttribute('value'), '<invalid>'+String.fromCharCode(10));
+  assert.equal(await configuration.getByLabel('Runner image', { exact: true }).getAttribute('value'), '<invalid>'+String.fromCharCode(10));
+  await page.goto(base+route);
+  const environmentSection=page.locator('#linux-environments');
+  await environmentSection.getByRole('heading',{name:'Linux environments',exact:true}).waitFor();
+  const add=environmentSection.locator('.environment-add form');
+  async function addEnvironment(name,selector,digest) {
+    const disclosure=environmentSection.locator('.environment-add');
+    if(await disclosure.getAttribute('open')===null) await disclosure.locator('summary').click();
+    await add.getByLabel('Name',{exact:true}).fill(name);
+    await add.getByLabel('Distribution',{exact:true}).selectOption(selector);
+    await add.getByLabel('x64',{exact:true}).check();
+    await add.getByLabel('Runner image',{exact:true}).fill('registry.example/runner@sha256:'+digest.repeat(64));
+    await add.getByRole('button',{name:'Add environment',exact:true}).click();
+    try { await environmentSection.locator('[data-environment="'+name+'"]').waitFor(); }
+    catch(error) { throw new Error('Saving environment failed: '+await page.locator('#main-content').innerText(),{cause:error}); }
+  }
+  await addEnvironment('debian','debian-12','a');
+  await addEnvironment('ubuntu','ubuntu-24.04','b');
+  assert.equal(await environmentSection.locator('[data-environment]').count(),2);
+  assert.match(await environmentSection.locator('[data-environment="debian"]').innerText(),/Default/);
+  await environmentSection.locator('.environment-default').getByLabel('ubuntu',{exact:true}).check();
+  await environmentSection.getByRole('button',{name:'Save default',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-environment="ubuntu"] .provider-environment-title').textContent.includes('Default'));
+  assert.ok((await environmentSection.innerText()).includes('share this provider'));
+  assert.equal(await environmentSection.getByRole('button',{name:'Remove ubuntu',exact:true}).count(),0);
+  await capture(page,'environments');
+  const edit=environmentSection.locator('[data-environment="debian"] details');
+  await edit.locator('summary').focus(); await page.keyboard.press('Enter');
+  await edit.getByLabel('Runner image',{exact:true}).fill('runner:mutable');
+  await edit.getByRole('button',{name:'Save environment',exact:true}).click();
+  await environmentSection.getByRole('alert').waitFor();
+  assert.ok((await environmentSection.getByRole('alert').innerText()).includes('@sha256:'));
+  assert.equal(await environmentSection.locator('[data-environment="debian"] form.environment-form').getByLabel('Runner image',{exact:true}).inputValue(),'runner:mutable');
+  const failedProfile=await environmentSection.locator('[data-environment="debian"] form.environment-form').evaluate(form=>Object.fromEntries(new FormData(form)));
+  const stale=await context.request.post(base+route.replace('/configuration','/environments'),{form:{...failedProfile,revision:'1'}});
+  assert.equal(stale.status(),409);
+  const noCsrf=await context.request.post(base+route.replace('/configuration','/environments'),{form:{...failedProfile,csrf_token:''}});
+  assert.equal(noCsrf.status(),403);
+  await page.goto(base+route);
+  await environmentSection.getByRole('button',{name:'Remove debian',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-environment]').length===1);
+  assert.ok((await environmentSection.locator('[data-environment="ubuntu"]').innerText()).includes('Default'));
+  await page.reload();
+  assert.equal(await environmentSection.locator('[data-environment]').count(),1);
   assert.deepEqual(errors,[]);
   assert.ok(!controllerOutput.includes(fs.readFileSync(path.join(controllerState, 'provider-token'), 'utf8')));
-  console.log('Provider configuration acceptance passed: real CLI enrollment, full ASG schema, applied revision, CAS conflict, escaping, single page shell, worker history keyboard disclosure, desktop and mobile.');
+  console.log('Provider configuration acceptance passed: real CLI enrollment, ASG schema, environment add/edit/default/remove, CAS, CSRF, escaping, worker history, single page shell, desktop and mobile.');
   if (process.env.MOONHUB_KEEP_PREVIEW === '1') {
     fs.writeFileSync(path.join(output, 'preview.json'), JSON.stringify({ base, pid: server.pid, directory: temp, username: 'root', passwordFile: path.join(temp, 'password') }, null, 2), { mode: 0o600 });
     keep = true;

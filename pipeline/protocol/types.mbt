@@ -46,6 +46,10 @@ pub let environment_assignment_version : Int32 = 11
 pub let release_assignment_version : Int32 = 12
 
 ///|
+// V13 binds a task to an administrator-approved immutable Linux environment.
+pub let profile_assignment_version : Int32 = 13
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct ApiRuntime {
   token : String
@@ -56,7 +60,7 @@ pub fn action_runtime_version(version : Int32) -> Bool {
   [
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
-    environment_assignment_version, release_assignment_version,
+    environment_assignment_version, release_assignment_version, profile_assignment_version,
   ].contains(version)
 }
 
@@ -108,6 +112,7 @@ pub fn parse_decimal(value : String) -> Int64? {
 ///|
 #derive(ToJson, FromJson)
 pub(all) struct ClaimRequest {
+  environments : Array[String]?
   runner_os : String?
   version : Int32
   request_id : String
@@ -181,6 +186,7 @@ pub(all) struct LeaseState {
 ///|
 #derive(Debug, ToJson, FromJson)
 pub(all) struct Assignment {
+  environment : @environment.Definition?
   version : Int32
   attempt_id : String
   run_id : String

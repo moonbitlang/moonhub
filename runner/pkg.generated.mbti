@@ -2,12 +2,15 @@
 package "hackwaly/moonhub/runner"
 
 import {
+  "hackwaly/moonhub/pipeline/environment",
   "hackwaly/moonhub/pipeline/protocol",
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
 }
 
 // Values
+pub async fn environment_probe() -> @environment.Probe
+
 pub async fn run(@protocol.Assignment, String, Options, action_node? : String, action_node20? : String, action_runtime? : String) -> Report
 
 // Errors

@@ -82,6 +82,7 @@ async fn with_artifact_http(
     let lease = "b".repeat(64)
     let assignment = c
       .claim(token, {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: "1".repeat(32),
@@ -265,6 +266,7 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
       } else {
         c
         .claim("a".repeat(64), {
+          environments: None,
           version: 1,
           runner_os: None,
           request_id: "2".repeat(32),
@@ -375,6 +377,7 @@ async test "production artifact mounts keep browser downloads repository authori
     )
     let a = c
       .claim("a".repeat(64), {
+        environments: None,
         version: 1,
         runner_os: None,
         request_id: "1".repeat(32),

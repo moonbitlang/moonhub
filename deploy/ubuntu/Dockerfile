@@ -44,6 +44,7 @@ COPY cmd/moonhub-runner/ cmd/moonhub-runner/
 COPY provider/ provider/
 COPY runner/ runner/
 COPY pipeline/protocol/ pipeline/protocol/
+COPY pipeline/environment/ pipeline/environment/
 COPY pipeline/actions/ pipeline/actions/
 # The standalone source slice intentionally excludes database/Web test fixtures.
 RUN node -e 'const fs=require("fs"),path=require("path"); function visit(dir){ for(const item of fs.readdirSync(dir,{withFileTypes:true})){ const file=path.join(dir,item.name); if(item.isDirectory()) visit(file); else if(item.name==="moon.pkg") fs.writeFileSync(file,fs.readFileSync(file,"utf8").replace(/import\s*\{[^}]*\}\s*for\s*"(?:wbtest|test)"/g,"")); }} for(const dir of ["cmd","provider","runner","pipeline"]) visit(dir);' \

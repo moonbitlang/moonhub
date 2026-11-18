@@ -87,6 +87,7 @@ test "decimal wire values are canonical nonnegative and bounded" {
 ///|
 test "assignment validates string identifiers and bounded timestamps" {
   let assignment : Assignment = {
+    environment: None,
     version: 1,
     attempt_id: "9007199254740993",
     run_id: "2",
@@ -299,7 +300,8 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   assert_true(action_runtime_version(10))
   assert_true(action_runtime_version(environment_assignment_version))
   assert_true(action_runtime_version(release_assignment_version))
-  assert_false(action_runtime_version(13))
+  assert_true(action_runtime_version(profile_assignment_version))
+  assert_false(action_runtime_version(14))
 }
 
 ///|

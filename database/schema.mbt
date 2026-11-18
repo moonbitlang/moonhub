@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 42L
+pub let database_schema_version : Int64 = 43L
 
 ///|
 let database_initialization_state : String =
@@ -67,7 +67,7 @@ fn initialize_database_schema(
         }
         // Apply only missing versions; migration 040 contains ALTER TABLE.
         // The baseline, migrations and version commit atomically.
-        for target in [39L, 40L, 41L, 42L] {
+        for target in [39L, 40L, 41L, 42L, 43L] {
           if version < target {
             guard migrations.iter().find_first(item => item.0 == target)
               is Some((_, sql)) else {
@@ -107,6 +107,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
         (40L, "db/migrations/040_releases.sql"),
         (41L, "db/migrations/041_repository_cleanup.sql"),
         (42L, "db/migrations/042_worker_isolation.sql"),
+        (43L, "db/migrations/043_provider_environments.sql"),
       ] {
       if version < target {
         migrations.push((target, @fs.read_file(path).text()))

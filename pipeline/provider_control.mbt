@@ -1,5 +1,7 @@
 ///|
 pub struct ProviderControl {
+  linux_environments : Bool
+  environment_protocol : Int32
   snapshot : @protocol.ProviderSnapshot
   observed_revision : Int64
   applied_revision : Int64
@@ -40,6 +42,7 @@ fn control_snapshot(
 ) -> @protocol.ProviderSnapshot raise {
   let id : Int64 = row.get_name("id")
   let paused : Bool = row.get_name("paused")
+  let environments = provider_environments(tx, id)
   let queued : Int64 = if paused {
     0L
   } else {
@@ -52,6 +55,11 @@ fn control_snapshot(
     .get_name("count")
   }
   {
+    environments: if environments.is_empty() {
+      None
+    } else {
+      Some(environments)
+    },
     version: 1,
     id: id.to_string(),
     mode: row.get_name("mode"),
@@ -170,6 +178,8 @@ pub fn Coordinator::provider_control(
         raise @domain.NotFound(message="Provider not found.")
       }
       {
+        linux_environments: configurable_environments(tx, row),
+        environment_protocol: (row.get_name("environment_protocol") : Int64).to_int(),
         snapshot: control_snapshot(tx, row),
         observed_revision: row.get_name("observed_revision"),
         applied_revision: row.get_name("applied_revision"),
@@ -212,6 +222,12 @@ pub fn Coordinator::save_provider_config(
         if @protocol.validate_config(schema, config) is Some(message) {
           raise @domain.BadRequest(message~)
         }
+        guard config.get("execution_mode") != Some("linux-ci") ||
+          provider_environments(tx, id).is_empty() else {
+          raise @domain.BadRequest(
+            message="Remove named environments before changing the worker execution mode.",
+          )
+        }
         ignore(
           tx.execute(
             "UPDATE pipeline_provider SET config_json=?,config_revision=config_revision+1,control_status='pending' WHERE id=?",
@@ -231,6 +247,10 @@ pub fn Coordinator::sync_provider(
   request : @protocol.ProviderSyncRequest,
 ) -> @protocol.ProviderSnapshot raise {
   check_version(request.version)
+  guard request.environment_protocol is None ||
+    request.environment_protocol == Some(1) else {
+    raise @domain.BadRequest(message="Unsupported environment protocol.")
+  }
   guard @domain.valid_segment(request.controller_id) &&
     request.controller_id.length() <= 64 &&
     ["pending", "applied", "failed", "replacing"].contains(request.status) else {
@@ -250,6 +270,12 @@ pub fn Coordinator::sync_provider(
       tx => {
         let row = authenticate_provider(tx, token)
         let id : Int64 = row.get_name("id")
+        guard request.environment_protocol == Some(1) ||
+          provider_environments(tx, id).is_empty() else {
+          raise Conflict(
+            "This provider requires a controller with multiple-environment support.",
+          )
+        }
         let registered_revision : Int64 = row.get_name("config_revision")
         let now = (self.clock)()
         guard !(row.get_name("mode") : String).is_empty() &&
@@ -329,7 +355,7 @@ pub fn Coordinator::sync_provider(
         )
         ignore(
           tx.execute(
-            "UPDATE pipeline_provider SET controller_id=?,controller_until_ms=?,last_seen_ms=?,observed_revision=?,applied_revision=?,control_status=? WHERE id=?",
+            "UPDATE pipeline_provider SET controller_id=?,controller_until_ms=?,last_seen_ms=?,observed_revision=?,applied_revision=?,control_status=?,environment_protocol=? WHERE id=?",
             params=[
               request.controller_id,
               now + 60000L,
@@ -341,6 +367,7 @@ pub fn Coordinator::sync_provider(
               } else {
                 request.status
               },
+              request.environment_protocol.unwrap_or(0).to_int64(),
               id,
             ],
           ),
@@ -449,8 +476,23 @@ pub fn Coordinator::sync_worker(
         let row = authenticate_worker(tx, token)
         let id : Int64 = row.get_name("id")
         let revision : Int64 = row.get_name("config_revision")
+        let environments = provider_environments(
+          tx,
+          (row.get_name("provider_id") : Int64),
+        )
         guard applied <= revision else {
           raise @domain.BadRequest(message="Unknown worker revision.")
+        }
+        if request.state == "ready" &&
+          applied == revision &&
+          !environments.is_empty() {
+          guard request.environments is Some(prepared) &&
+            prepared.length() == environments.length() &&
+            environments.all(profile => prepared.contains(profile.id)) else {
+            raise Conflict(
+              "Prepare every configured environment before reporting readiness.",
+            )
+          }
         }
         let active = tx.query_opt(
             "SELECT id FROM pipeline_job_attempt WHERE worker_id=? AND status<>'completed'",
@@ -490,6 +532,11 @@ pub fn Coordinator::sync_worker(
           ),
         )
         {
+          environments: if environments.is_empty() {
+            None
+          } else {
+            Some(environments)
+          },
           version: 1,
           provider_id: (row.get_name("provider_id") : Int64).to_string(),
           worker_id: id.to_string(),
