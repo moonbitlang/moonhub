@@ -162,6 +162,22 @@ test "CommonMark renders setext headings, nested lists and reference links" {
 }
 
 ///|
+test "Markdown renders pipe tables with inline code" {
+  let source =
+    #|| API | Description |
+    #|| --- | --- |
+    #|| `general_category(Char) -> GeneralCategory` | Look up the category. |
+  let html = markdown_html(source, repo=Some({ owner: "alice", name: "demo", }))
+  assert_true(html.contains("<table>"))
+  assert_true(html.contains("<th>API</th>\n<th>Description</th>"))
+  assert_true(
+    html.contains(
+      "<td><code>general_category(Char) -&gt; GeneralCategory</code></td>\n<td>Look up the category.</td>",
+    ),
+  )
+}
+
+///|
 test "CommonMark links and images retain MoonHub destination rules" {
   let source =
     #|[blocked][url] <javascript:example> ![remote][image]
