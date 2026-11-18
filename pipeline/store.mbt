@@ -50,6 +50,14 @@ pub struct Run {
 }
 
 ///|
+pub struct CommitWorkflowRun {
+  number : Int64
+  workflow_name : String
+  state : RunState
+  conclusion : Conclusion?
+}
+
+///|
 #derive(Debug)
 pub struct JobRun {
   id : Int64
@@ -97,6 +105,16 @@ priv suberror InvalidRecord {
 }
 
 ///|
+fn decode_run_state(status : String) -> RunState raise {
+  match status {
+    "queued" => Queued
+    "running" => Running
+    "completed" => Completed
+    _ => raise InvalidRecord
+  }
+}
+
+///|
 fn decode_conclusion(value : String?) -> Conclusion? raise {
   match value {
     None => None
@@ -120,7 +138,6 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
   }
   let text : String = row.get_name("definition_json")
   let definition : @workflow.Workflow = @json.from_json(@json.parse(text))
-  let status : String = row.get_name("status")
   {
     id: row.get_name("id"),
     repository_id: row.get_name("repository_id"),
@@ -138,12 +155,7 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
     context: (row.get_name("context_json") : String?).map(text => {
       @json.from_json(@json.parse(text))
     }),
-    state: match status {
-      "queued" => Queued
-      "running" => Running
-      "completed" => Completed
-      _ => raise InvalidRecord
-    },
+    state: decode_run_state(row.get_name("status")),
     conclusion: decode_conclusion(row.get_name("conclusion")),
     created_at: row.get_name("created_at"),
   }
@@ -205,6 +217,40 @@ pub fn list_runs(
       ],
     )
     .map(row => Run::from_row(row))
+  })
+}
+
+///|
+/// Latest branch run for each workflow file at this commit.
+/// Pull request merge checks belong to their own revision and are excluded.
+pub fn commit_workflow_runs(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  branch~ : String,
+  sha~ : String,
+) -> Array[CommitWorkflowRun] raise {
+  let scope = @repository.repository_scope(pool, actor, repo)
+  pool.with_client(client => {
+    client
+    .query_all(
+      (
+        #|WITH runs AS (
+        #|  SELECT number, workflow_name, status, conclusion,
+        #|         ROW_NUMBER() OVER (PARTITION BY workflow_path ORDER BY number DESC) AS position
+        #|  FROM pipeline_run
+        #|  WHERE repository_id = ? AND source_branch = ? AND commit_sha = ? AND merge_check_id IS NULL
+        #|)
+        #|SELECT number, workflow_name, status, conclusion FROM runs WHERE position = 1 ORDER BY number DESC
+      ),
+      params=[scope.id, branch, sha],
+    )
+    .map(row => {
+      number: row.get_name("number"),
+      workflow_name: row.get_name("workflow_name"),
+      state: decode_run_state(row.get_name("status")),
+      conclusion: decode_conclusion(row.get_name("conclusion")),
+    })
   })
 }
 
