@@ -42,7 +42,7 @@ pub struct Concurrency {
   group : String
   cancel_in_progress : String
 }
-pub fn Concurrency::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Concurrency::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?) -> (String, Bool) raise InvalidWorkflow
 pub fn Concurrency::to_json(Self) -> @json.Json
 pub fn Concurrency::to_repr(Self) -> @debug.Repr
@@ -56,7 +56,7 @@ pub struct DispatchInput {
   default : @json.Json?
   options : Array[String]
 }
-pub fn DispatchInput::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn DispatchInput::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn DispatchInput::to_json(Self) -> @json.Json
 pub fn DispatchInput::to_repr(Self) -> @debug.Repr
 
@@ -86,7 +86,7 @@ pub struct Job {
   timeout_minutes : Int32
   steps : Array[Step]
 }
-pub fn Job::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Job::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Job::to_json(Self) -> @json.Json
 pub fn Job::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Job
@@ -101,7 +101,7 @@ pub(all) struct RunContext {
   inputs : Map[String, @json.Json]
   variables : Map[String, String]
 }
-pub fn RunContext::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn RunContext::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn RunContext::to_json(Self) -> @json.Json
 pub fn RunContext::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for RunContext
@@ -123,7 +123,7 @@ pub struct Step {
   secret_env : Map[String, String]
   timeout_minutes : Int32?
 }
-pub fn Step::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Step::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Step::to_json(Self) -> @json.Json
 pub fn Step::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Step
@@ -148,7 +148,7 @@ pub struct Workflow {
   concurrency : Concurrency?
   jobs : Array[Job]
 }
-pub fn Workflow::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Workflow::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Workflow::to_json(Self) -> @json.Json
 pub fn Workflow::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Workflow

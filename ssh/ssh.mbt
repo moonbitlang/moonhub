@@ -181,7 +181,17 @@ pub async fn serve_git_ssh(
   pool : @database.Database,
   credential : SshCredential,
   root : String,
+  read_idle_timeout_seconds~ : Int32 = 120,
+  read_max_seconds~ : Int32 = 3600,
 ) -> Int32 {
+  guard read_idle_timeout_seconds >= 1 &&
+    read_idle_timeout_seconds <= 2147483 &&
+    read_max_seconds >= 1 &&
+    read_max_seconds <= 2147483 else {
+    raise @domain.BadRequest(
+      message="SSH read timeouts must be between 1 and 2147483 seconds",
+    )
+  }
   let command = @env.get_env_var("SSH_ORIGINAL_COMMAND").unwrap_or("")
   if command.is_empty() {
     let name = match credential {
@@ -201,18 +211,22 @@ pub async fn serve_git_ssh(
     request.repo,
     request.operation,
   )
-  let write_lock = if request.operation == @repository.Write {
-    Some(@repository.repository_write_lock(root, scope.repo))
+  let lock = if request.operation == @repository.Write {
+    @repository.repository_write_lock(root, scope.repo)
   } else {
-    None
+    @repository.repository_read_lock(root, scope.repo)
   }
-  defer (if write_lock is Some(lock) { lock.close() })
+  defer lock.close()
   ignore(
     authorize_git_operation(pool, credential, request.repo, request.operation),
   )
-  if request.operation == @repository.Write {
-    @repository.require_current_scope(pool, scope)
+  @repository.require_current_scope(pool, scope)
+  let reader = if request.operation == @repository.Read {
+    Some(@repository.repository_reader_lock(root, scope.id))
+  } else {
+    None
   }
+  defer (if reader is Some(reader) { reader.close() })
   let git_dir = @repository.resolve_repository_dir(root, scope.repo)
   if request.operation == @repository.Write {
     @repository.recover_ref_events_locked(pool, scope, git_dir)
@@ -256,9 +270,7 @@ pub async fn serve_git_ssh(
   ignore(
     authorize_git_operation(pool, credential, request.repo, request.operation),
   )
-  if request.operation == @repository.Write {
-    @repository.require_current_scope(pool, scope)
-  }
+  @repository.require_current_scope(pool, scope)
   pool.with_client(client => {
     let (table, key_id) = match credential {
       UserKey(id) => ("ssh_key", id)
@@ -270,12 +282,48 @@ pub async fn serve_git_ssh(
     )
   })
   @signal.set_global_cancellation_signals([SIGINT, SIGTERM, SIGHUP])
+  let git = @env.get_env_var("MOONHUB_GIT").unwrap_or("git")
+  let args = [
+    "-c", "receive.fsckObjects=true", "-c", "receive.maxInputSize=1073741824", ..protected_args,
+    git_command,
+  ]
+  if request.operation == @repository.Read {
+    args.push("--timeout=\{read_idle_timeout_seconds}")
+    args.push(git_dir)
+    // The deadline includes startup. The group reaps Git on every exit path
+    // before the outer defer releases the original repository's reader lock.
+    return @async.with_timeout(
+      read_max_seconds * 1000,
+      () => {
+        @async.with_task_group(group => {
+          group.spawn_bg(no_wait=true, () => {
+            for ;; {
+              @repository.require_current_scope(pool, scope)
+              @async.sleep(1000)
+            }
+          })
+          let process = @process.spawn(
+            group,
+            git,
+            args,
+            inherit_env=false,
+            extra_env=environment,
+            stdin=@stdio.stdin,
+            stdout=@stdio.stdout,
+            stderr=@stdio.stderr,
+            cancel_handler=@process.graceful_cancel(timeout=5000),
+          )
+          lock.close()
+          process.wait()
+        })
+      },
+      error=@domain.BadRequest(message="SSH read exceeded its maximum duration"),
+    )
+  }
+  args.push(git_dir)
   let code = @process.run(
-    @env.get_env_var("MOONHUB_GIT").unwrap_or("git"),
-    [
-      "-c", "receive.fsckObjects=true", "-c", "receive.maxInputSize=1073741824",
-      ..protected_args, git_command, git_dir,
-    ],
+    git,
+    args,
     inherit_env=false,
     extra_env=environment,
     stdin=@stdio.stdin,

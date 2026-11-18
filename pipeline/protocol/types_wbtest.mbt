@@ -217,7 +217,7 @@ test "wire job plan has no language-specific optional field representation" {
     json
     is {
       "steps": Array(
-        [{ "shell": String(""), "timeout_minutes": Number(0.0, ..), .. }]
+        [{ "shell": String(""), "timeout_minutes": Number(0.0, ..), .. }],
       ),
       ..
     },

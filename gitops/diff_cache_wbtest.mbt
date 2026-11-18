@@ -7,9 +7,10 @@ fn assert_diff_cache_budget(executor : DiffExecutor) -> Unit raise {
   assert_eq(executor.cache_bytes, expected)
   assert_true(expected >= 0L && expected <= executor.cache_limit_bytes)
   assert_true(
-    executor.cache.capacity().to_int64() <=
-    (4L * executor.cache.length().to_int64()).max(8L),
+    executor.cache_reserved_entries.to_int64() <=
+    (4L * executor.cache.length().to_int64()).max(4L),
   )
+  assert_true(executor.cache.length() <= executor.cache_reserved_entries)
 }
 
 ///|
@@ -20,7 +21,7 @@ async test "capacity cache retains more than 64 small values and repeated hits d
     ignore(executor.compute_cached(i.to_string(), "file", () => Document("x")))
     assert_diff_cache_budget(executor)
   }
-  let capacity = executor.cache.capacity()
+  let capacity = executor.cache_reserved_entries
   let bytes = executor.cache_bytes
   for _ in 0..<4 {
     for i in 0..<256 {
@@ -32,7 +33,7 @@ async test "capacity cache retains more than 64 small values and repeated hits d
     }
   }
   assert_eq(executor.cache.length(), 256)
-  assert_eq(executor.cache.capacity(), capacity)
+  assert_eq(executor.cache_reserved_entries, capacity)
   assert_eq(executor.cache_bytes, bytes)
   assert_eq(executor.completed, 256)
   assert_eq(executor.cache_hits, 1024)
@@ -41,7 +42,7 @@ async test "capacity cache retains more than 64 small values and repeated hits d
 
 ///|
 async test "exact budget includes key value entry and minimum index overhead" {
-  // One-character key and value: 128 + 34 + 34 + (64 + 8 * 8) = 324.
+  // One-character key and value: 128 + 34 + 34 + (64 + 16 * 4) = 324.
   for limit in [323L, 324L, 325L] {
     let executor = DiffExecutor::new(cache_limit_bytes=limit)
     assert_true(
@@ -116,7 +117,7 @@ async test "zero budget returns successful results on every request without cach
   }
   assert_eq(executor.cache.length(), 0)
   assert_eq(executor.cache_bytes, 0L)
-  assert_eq(executor.cache.capacity(), 8)
+  assert_eq(executor.cache_reserved_entries, 4)
   assert_eq(executor.completed, 6)
   assert_eq(executor.cache_hits, 0)
   assert_eq(executor.cache_skips, 6L)
@@ -161,14 +162,24 @@ async test "UTF16 strings and manifest allocated capacity are counted without JS
 }
 
 ///|
-async test "actual bucket growth is charged and may cause capacity eviction" {
-  // Seven tiny entries fit only if one incorrectly assumes an eight-bucket map.
+async test "reserved index growth is charged and may cause capacity eviction" {
+  // Seven tiny entries fit only if one incorrectly keeps the minimum index cost.
   let executor = DiffExecutor::new(cache_limit_bytes=1486L)
-  for i in 0..<7 {
+  for i in 0..<4 {
     ignore(executor.compute_cached(i.to_string(), "file", () => Document("")))
     assert_diff_cache_budget(executor)
   }
-  assert_eq(executor.cache.capacity(), 16)
+  assert_eq(executor.cache_reserved_entries, 4)
+  assert_eq(executor.cache_bytes, 904L)
+  let replacement = Document("")
+  executor.cache_result("3", replacement, replacement.retained_bytes())
+  assert_eq(executor.cache_reserved_entries, 4)
+  assert_eq(executor.cache_bytes, 904L)
+  for i in 4..<7 {
+    ignore(executor.compute_cached(i.to_string(), "file", () => Document("")))
+    assert_diff_cache_budget(executor)
+  }
+  assert_eq(executor.cache_reserved_entries, 8)
   assert_eq(executor.cache.length(), 6)
   assert_eq(executor.cache_bytes, 1356L)
   assert_eq(executor.cache_evictions, 1L)
@@ -182,14 +193,14 @@ async test "one large insertion evicts multiple entries and compaction preserves
     ignore(executor.compute_cached("k\{i}", "file", () => Document("x")))
     assert_diff_cache_budget(executor)
   }
-  let capacity = executor.cache.capacity()
+  let capacity = executor.cache_reserved_entries
   ignore(executor.cached("k0", "file"))
   let order = executor.cache.keys().collect()
   ignore(
     executor.compute_cached("large", "file", () => Document("x".repeat(49000))),
   )
   assert_true(executor.cache_evictions > 1L)
-  assert_true(executor.cache.capacity() < capacity)
+  assert_true(executor.cache_reserved_entries < capacity)
   assert_true(executor.cache.contains("large"))
   let remaining = executor.cache.length() - 1
   let expected = order[order.length() - remaining:].to_owned()
@@ -199,13 +210,13 @@ async test "one large insertion evicts multiple entries and compaction preserves
   let larger = Document("x".repeat(49800))
   executor.cache_result("large", larger, larger.retained_bytes())
   assert_eq(executor.cache.keys().collect(), ["large"])
-  assert_eq(executor.cache.capacity(), 8)
+  assert_eq(executor.cache_reserved_entries, 4)
   assert_eq(executor.cache_bytes, 99930L)
   assert_diff_cache_budget(executor)
   executor.cache.clear()
   executor.shrink_cache()
   assert_eq(executor.cache_bytes, 0L)
-  assert_eq(executor.cache.capacity(), 8)
+  assert_eq(executor.cache_reserved_entries, 4)
 }
 
 ///|

@@ -1,4 +1,91 @@
 ///|
+async test "busy cleanup beyond a full batch cannot starve later Git and mirror tasks" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let readers : Array[@fs.File] = []
+    defer (for reader in readers {
+      reader.close()
+    })
+    for i in 0..<105 {
+      let id = i.to_int64() + 100L
+      readers.push(repository_reader_lock(root, id))
+      pool.with_client(client => {
+        ignore(
+          client.execute(
+            "INSERT INTO repository_file_garbage(repository_id,owner,name,kind,resource_id,path,next_attempt_at) VALUES(?,'alice',?,'git',?,?,datetime('now','-1 minute'))",
+            params=[id, "busy\{i}", id, "alice/busy\{i}.git"],
+          ),
+        )
+      })
+    }
+    @fs.mkdir("\{root}/.mirrors/999", recursive=true)
+    @fs.mkdir("\{root}/alice/gone.git")
+    @fs.write_file("\{root}/alice/gone.git/HEAD", "deleted repository data")
+    let mirror = mirror_lock(root, 999L)
+    defer mirror.close()
+    pool.with_client(client => {
+      client.batch_execute(
+        "INSERT INTO repository_file_garbage(repository_id,owner,name,kind,resource_id,path,next_attempt_at) VALUES(998,'alice','gone','git',998,'alice/gone.git',datetime('now','-1 minute')),(999,'alice','mirror','mirror',999,'.mirrors/999',datetime('now','-1 minute'));",
+      )
+    })
+    cleanup_deleted_repositories(pool, root)
+    pool.with_client(client => {
+      assert_eq(
+        client.query_all("SELECT id FROM repository_file_garbage").length(),
+        107,
+      )
+      // Make retried work due again, but still newer than unvisited work. Ordering
+      // by ID alone would repeatedly choose the first hundred busy repositories.
+      ignore(
+        client.execute(
+          "UPDATE repository_file_garbage SET next_attempt_at=datetime('now') WHERE next_attempt_at>datetime('now')",
+        ),
+      )
+    })
+    cleanup_deleted_repositories(pool, root)
+    pool.with_client(client => {
+      assert_eq(
+        client.query_all("SELECT id FROM repository_file_garbage").length(),
+        106,
+      )
+      assert_true(
+        client.query_opt(
+          "SELECT id FROM repository_file_garbage WHERE repository_id=998",
+        )
+        is None,
+      )
+      assert_true(
+        client
+        .query_all(
+          "SELECT id FROM repository_file_garbage WHERE attempts<>0 OR last_error<>''",
+        )
+        .is_empty(),
+      )
+    })
+    assert_false(@fs.exists("\{root}/alice/gone.git"))
+    assert_true(@fs.exists("\{root}/.mirrors/999"))
+    mirror.close()
+    for reader in readers {
+      reader.close()
+    }
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE repository_file_garbage SET next_attempt_at=datetime('now')",
+        ),
+      )
+    })
+    cleanup_deleted_repositories(pool, root)
+    cleanup_deleted_repositories(pool, root)
+    assert_false(@fs.exists("\{root}/.mirrors/999"))
+    pool.with_client(client => {
+      assert_true(
+        client.query_all("SELECT id FROM repository_file_garbage").is_empty(),
+      )
+    })
+  })
+}
+
+///|
 async test "deletion cleanup retries safely and blocks creation and import until Git is removed" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")

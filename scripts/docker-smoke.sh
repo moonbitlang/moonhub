@@ -282,6 +282,20 @@ git ls-remote "$url" > "$tmp/refs"
 grep -q refs/heads/main "$tmp/refs"
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > /dev/null
 
+# Verify trusted limits in real SSH sessions, including attempted client overrides.
+for limit in idle maximum; do
+  if [ "$limit" = idle ]; then
+    export MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS=4 MOONHUB_SSH_READ_MAX_SECONDS=30
+  else
+    export MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS=30 MOONHUB_SSH_READ_MAX_SECONDS=4
+  fi
+  "${compose[@]}" up --no-build -d --wait --wait-timeout 180 ssh
+  refresh_endpoints
+  ssh-keyscan -t ed25519 -T 5 -p "$ssh_port" 127.0.0.1 > "$tmp/known_hosts" 2>/dev/null
+  node scripts/docker-ssh-timeouts.cjs "$limit" "$MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS" \
+    "$MOONHUB_SSH_READ_MAX_SECONDS" "$ssh_port" "$tmp/key" "$tmp/known_hosts" "${compose[@]}"
+done
+
 # Revocation must also reject a new channel on an already authenticated connection.
 ssh "${ssh_opts[@]}" -M -S "$tmp/control" -fN git@127.0.0.1
 curl --fail --silent --show-error -b "$tmp/cookies" "$http$revoke_path" > "$tmp/settings"

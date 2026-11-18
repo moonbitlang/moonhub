@@ -62,7 +62,7 @@ pub(all) struct ApiRuntime {
   token : String
 }
 #deprecated
-pub fn ApiRuntime::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ApiRuntime::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 #deprecated
 pub fn ApiRuntime::to_json(Self) -> @json.Json
 
@@ -72,7 +72,7 @@ pub(all) struct ArtifactRuntime {
   results_url : String
   expires_ms : String
 }
-pub fn ArtifactRuntime::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ArtifactRuntime::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ArtifactRuntime::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -81,7 +81,7 @@ pub(all) struct ArtifactRuntimeRequest {
   execution_id : String
   origin : String
 }
-pub fn ArtifactRuntimeRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ArtifactRuntimeRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ArtifactRuntimeRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
@@ -98,7 +98,7 @@ pub(all) struct Assignment {
   state : String
   job : JobPlan
 }
-pub fn Assignment::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Assignment::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Assignment::has_valid_numbers(Self) -> Bool
 pub fn Assignment::to_json(Self) -> @json.Json
 pub fn Assignment::to_repr(Self) -> @debug.Repr
@@ -111,7 +111,7 @@ pub(all) struct ClaimRequest {
   request_id : String
   attempt_token : String
 }
-pub fn ClaimRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ClaimRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ClaimRequest::to_json(Self) -> @json.Json
 
 #derive(@json.ToJson)
@@ -121,7 +121,7 @@ pub(all) struct CompleteRequest {
   last_log_sequence : String
   outputs : Map[String, String]
 }
-pub fn CompleteRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn CompleteRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn CompleteRequest::to_json(Self) -> @json.Json
 pub impl @json.FromJson for CompleteRequest
 
@@ -136,7 +136,7 @@ pub(all) struct ConfigField {
   maximum : Int32
   help : String
 }
-pub fn ConfigField::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ConfigField::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ConfigField::to_json(Self) -> @json.Json
 pub fn ConfigField::to_repr(Self) -> @debug.Repr
 
@@ -159,7 +159,7 @@ pub(all) struct JobPlan {
   timeout_minutes : Int32
   steps : Array[StepPlan]
 }
-pub fn JobPlan::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn JobPlan::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn JobPlan::to_json(Self) -> @json.Json
 pub fn JobPlan::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for JobPlan
@@ -177,7 +177,7 @@ pub(all) struct LeaseState {
   log_sequence : String
   conclusion : String
 }
-pub fn LeaseState::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn LeaseState::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn LeaseState::to_json(Self) -> @json.Json
 pub fn LeaseState::to_repr(Self) -> @debug.Repr
 
@@ -188,7 +188,7 @@ pub(all) struct LogChunk {
   stream : String
   text : String
 }
-pub fn LogChunk::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn LogChunk::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn LogChunk::to_json(Self) -> @json.Json
 pub fn LogChunk::to_repr(Self) -> @debug.Repr
 
@@ -200,7 +200,7 @@ pub(all) struct LogRequest {
   stream : String
   text : String
 }
-pub fn LogRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn LogRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn LogRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -208,7 +208,7 @@ pub(all) struct OidcRuntime {
   token : String
   request_url : String
 }
-pub fn OidcRuntime::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn OidcRuntime::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn OidcRuntime::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -216,7 +216,7 @@ pub(all) struct OidcRuntimeRequest {
   version : Int32
   execution_id : String
 }
-pub fn OidcRuntimeRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn OidcRuntimeRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn OidcRuntimeRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
@@ -232,7 +232,7 @@ pub(all) struct ProviderSnapshot {
   queued_jobs : Int32
   workers : Array[WorkerView]
 }
-pub fn ProviderSnapshot::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ProviderSnapshot::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ProviderSnapshot::to_json(Self) -> @json.Json
 pub fn ProviderSnapshot::to_repr(Self) -> @debug.Repr
 
@@ -247,7 +247,7 @@ pub(all) struct ProviderSyncRequest {
   schema : Array[ConfigField]?
   defaults : Map[String, String]?
 }
-pub fn ProviderSyncRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn ProviderSyncRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn ProviderSyncRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -259,7 +259,7 @@ pub(all) struct RegisterProviderRequest {
   schema : Array[ConfigField]
   defaults : Map[String, String]
 }
-pub fn RegisterProviderRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn RegisterProviderRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn RegisterProviderRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -268,7 +268,7 @@ pub(all) struct SecretRequest {
   execution_id : String
   step_id : String
 }
-pub fn SecretRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn SecretRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn SecretRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -276,7 +276,7 @@ pub(all) struct SecretResponse {
   version : Int32
   env : Map[String, String]
 }
-pub fn SecretResponse::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn SecretResponse::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn SecretResponse::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -284,7 +284,7 @@ pub(all) struct StartRequest {
   version : Int32
   execution_id : String
 }
-pub fn StartRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn StartRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn StartRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.ToJson)
@@ -304,7 +304,7 @@ pub(all) struct StepPlan {
   secret_env : Map[String, String]
   timeout_minutes : Int32
 }
-pub fn StepPlan::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn StepPlan::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn StepPlan::to_json(Self) -> @json.Json
 pub fn StepPlan::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for StepPlan
@@ -316,7 +316,7 @@ pub(all) struct StepRequest {
   state : String
   exit_code : Int32
 }
-pub fn StepRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn StepRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn StepRequest::to_json(Self) -> @json.Json
 pub fn StepRequest::to_repr(Self) -> @debug.Repr
 
@@ -326,7 +326,7 @@ pub(all) struct StepState {
   state : String
   exit_code : Int32
 }
-pub fn StepState::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn StepState::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn StepState::to_json(Self) -> @json.Json
 pub fn StepState::to_repr(Self) -> @debug.Repr
 
@@ -334,7 +334,7 @@ pub fn StepState::to_repr(Self) -> @debug.Repr
 pub(all) struct VersionRequest {
   version : Int32
 }
-pub fn VersionRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn VersionRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn VersionRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
@@ -343,7 +343,7 @@ pub(all) struct WorkerRegistration {
   key : String
   token : String
 }
-pub fn WorkerRegistration::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn WorkerRegistration::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn WorkerRegistration::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
@@ -358,7 +358,7 @@ pub(all) struct WorkerSnapshot {
   config : Map[String, String]
   isolation_revision : String?
 }
-pub fn WorkerSnapshot::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn WorkerSnapshot::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn WorkerSnapshot::to_json(Self) -> @json.Json
 pub fn WorkerSnapshot::to_repr(Self) -> @debug.Repr
 
@@ -369,7 +369,7 @@ pub(all) struct WorkerSyncRequest {
   state : String
   applied_revision : String
 }
-pub fn WorkerSyncRequest::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn WorkerSyncRequest::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn WorkerSyncRequest::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
@@ -383,7 +383,7 @@ pub(all) struct WorkerView {
   idle_since_ms : String
   active_attempts : Int32
 }
-pub fn WorkerView::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn WorkerView::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn WorkerView::to_json(Self) -> @json.Json
 pub fn WorkerView::to_repr(Self) -> @debug.Repr
 

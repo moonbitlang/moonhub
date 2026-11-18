@@ -66,6 +66,13 @@ repository namespaces, so they are fixed for the life of the account.
 Site administrators reach **Site settings** (`/-/admin/settings/ssh`) from the
 **Administration** group in the sidebar of any page, or from the site header
 account menu, and configure the client-facing hostname and port there.
+
+SSH reads use a short admission lock and a separate repository-ID lifetime lock,
+so stalled reads do not block pushes or repository settings. Deletion cancels
+existing reads before cleaning their files; privatization applies to new reads.
+The default idle and total read limits are 120 and 3600 seconds. See
+[SSH limits and coordinated upgrades](deploy/README.md#bind-a-public-key) for deployment
+configuration and the required Web/SSH version switch.
 Repository pages provide a
 **Clone** menu with the public SSH URL and a copy button; container-internal
 transport addresses remain separate.
@@ -96,7 +103,7 @@ EC2. See [CD setup and operations](deploy/github-cd.md).
 
 ## MoonBit toolchain
 
-Use `moonc v0.10.19+8e43a47fb-nightly` (November 3, 2026), the exact
+Use `moonc v0.10.21+06da1ed44` (November 16, 2026), the exact
 version pinned in `deploy/base.Dockerfile`, or a compatible newer compiler.
 The source and generated interfaces use `#derive(...)` attributes, which older
 compilers do not support. Local self-checks install the pinned version into a
@@ -129,6 +136,10 @@ The top-level owner name `assets` is reserved for browser assets, so repositorie
 under `assets/*.git` are intentionally ignored by the repository browser.
 
 ## Manual Testing
+
+Use a Git version that supports `git merge-tree --write-tree` for the full suite.
+Git 2.34.1 lacks this operation; select a newer Git on `PATH` instead of skipping
+merge assertions. The reader-lock acceptance changes were validated with Git 2.48.1.
 
 ### Temporary Compiler Workaround
 

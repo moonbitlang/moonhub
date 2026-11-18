@@ -67,7 +67,7 @@ The base installs dependencies with `npm ci`; the application image builds brows
 assets and compiles the native executable on Linux, without running tests. No
 host MoonBit or Node installation is needed. Set `MOONBIT_VERSION` for `deploy.sh`
 to select an archived MoonBit toolchain release;
-its default is `0.10.19+8e43a47fb-nightly`, matching the formatter syntax in this
+its default is `0.10.21+06da1ed44`, matching the formatter syntax in this
 repository. Upgrade the dependency base and Runner together with the application;
 older toolchains cannot parse the new `#derive(...)` attributes or inclusive
 range patterns. Dependency resolution checks the downloaded packages without
@@ -209,6 +209,38 @@ Revocation and account disabling reject new SSH connections and new Git commands
 on an existing multiplexed connection. They do not forcibly terminate a transfer
 that is already running. Revoked keys remain reserved in the database; register
 a newly generated key rather than reusing a revoked one.
+
+SSH reads have two configurable limits, in integer seconds from 1 to 2147483:
+
+| Environment variable | Default | Behavior |
+| --- | --- | --- |
+| `MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS` | `120` | Passed to Git `upload-pack --timeout` |
+| `MOONHUB_SSH_READ_MAX_SECONDS` | `3600` | Total read deadline, starting before Git startup |
+
+Compose passes these settings to the SSH container. Its entrypoint rejects empty,
+zero, malformed or overflowing values and writes a private runtime sshd config
+at `/run/moonhub-sshd/sshd_config`. Server `SetEnv` supplies the values to every
+session; `AcceptEnv` still allows only `GIT_PROTOCOL`, so clients cannot override
+the limits. For direct `moonhub ssh-serve` invocations, explicit
+`--read-idle-timeout-seconds` and `--read-max-seconds` options override environment
+values. Changing the Compose values requires recreating the SSH service.
+
+An admitted read no longer blocks pushes, secret saves, visibility changes or
+logical deletion. Privatization rejects new unauthorized reads while admitted
+reads may finish. Reads check the original repository identity every second and
+initiate cancellation when it is deleted. Cancellation requests termination, waits up
+to five seconds, then force-kills Git. Cleanup retains the files and name
+reservation until every reader's Git process has exited. A busy repository does
+not delay cleanup of other repositories; its cleanup retries after one second.
+
+Upgrades and rollbacks of this lock protocol must switch Web and SSH together.
+First stop accepting SSH connections and terminate all existing SSH sessions,
+then stop remaining old Web workers and management commands. Switch both
+services to matching versions before reopening SSH. Earlier versions sharing
+only the name lock cannot safely run alongside this reader-lock protocol.
+Preserve `.locks`, including `repository-readers`, through cleanup, backups and
+rollback. This change requires no database or repository-directory migration.
+See [the coordinated deployment procedure](github-cd.md#repository-lock-protocol-upgrade).
 
 ## Create or Import a Repository
 
@@ -751,7 +783,8 @@ temporary bootstrap secret, dynamic loopback ports, and disposable volumes. It
 checks activation, self-service web key binding, team repository creation,
 SSH import with a rejected host key followed by a successful retry, branch/tag
 preservation, push/clone/fetch with binary data, forbidden commands and forwarding,
-unknown keys, restart persistence, and revocation on
+unknown keys, restart persistence, trusted timeout values in actual SSH sessions,
+rejection of client environment overrides, idle and total read deadlines, and revocation on
 both new and existing SSH connections after web revocation. Its cleanup removes only its own test
 containers and volumes. Set `MOONHUB_SMOKE_SKIP_BUILD=1` to test an already built
 `moonhub:local` image.

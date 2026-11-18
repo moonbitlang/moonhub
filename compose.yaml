@@ -39,6 +39,9 @@ services:
     image: ${MOONHUB_IMAGE:-moonhub:local}
     command: ["ssh"]
     restart: unless-stopped
+    environment:
+      MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS: ${MOONHUB_SSH_READ_IDLE_TIMEOUT_SECONDS-120}
+      MOONHUB_SSH_READ_MAX_SECONDS: ${MOONHUB_SSH_READ_MAX_SECONDS-3600}
     depends_on:
       web:
         condition: service_healthy

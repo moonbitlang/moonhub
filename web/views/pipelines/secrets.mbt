@@ -101,7 +101,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
         pool,
         root,
         actor,
-        scope.repo,
+        scope,
         name,
         form.get("value").filter(value => !value.is_empty()),
         branch,

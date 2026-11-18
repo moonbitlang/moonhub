@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/async",
   "hackwaly/moonhub/identity",
   "moonbitlang/core/encoding/base64",
   "hackwaly/moonhub/collaboration",
@@ -16,7 +17,6 @@ import {
 }
 
 import {
-  "moonbitlang/async",
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/test_support",
 } for "wbtest"

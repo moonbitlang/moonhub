@@ -69,7 +69,7 @@ async test "secret policy diagnostics do not suppress other push workflows" {
           pool,
           root,
           actor,
-          repo,
+          @repository.repository_scope(pool, actor, repo),
           "TOKEN",
           Some("private-push-token"),
           if policy == "branch" {

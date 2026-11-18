@@ -15,7 +15,7 @@ unchanged.
 | `releases` | Repository versions, immutable published assets, fs/S3 locations and cleanup journals; no Pipeline or Web dependency |
 | `storage` | Backend-neutral object storage, filesystem and S3 adapters, bounded streams and integrity checks; no business, database or Web dependency |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
-| `gitops` | Git reads, bounded merge operations, revision parsing and filesystem write locks |
+| `gitops` | Git reads, bounded merge operations, revision parsing and shared/exclusive filesystem locks |
 | `diff/protocol` | Versioned worker/data protocol and resource limits; no Git, Web or database dependency |
 | `diff/compute` | Pure MoonDiff calculation and original-file coordinate projection |
 | `cmd/moonhub-diff-worker` | One-request isolated diff executable; protocol IO and pure calculation only |
@@ -182,7 +182,7 @@ section rechecks authorization and immutable revision identity. See
 
 Repository ref-update events are below Pipeline in the dependency graph. SSH
 hooks and the merge worker record them without importing Pipeline. The Pipeline
-worker consumes their immutable commit IDs under the shared repository lock and
+worker consumes their immutable commit IDs under the repository write lock and
 creates deduplicated workflow runs. Recovery of prepared Git updates happens
 before subsequent managed writes, independently of workflow parsing. Web owns
 the push worker lifecycle and the repository-level opt-in form.
@@ -197,28 +197,59 @@ destination before enabling sync. Mirror transport
 settings are independent of SSH import configuration; transfer-only credential
 files are generated and cleaned by the worker. See [push mirrors](mirrors.md).
 
-Repository writes, creation, publication and Git cleanup share a permanent
-control file at `<root>/.locks/repositories/<sha256>.lock`, where the digest is
-SHA256 of the UTF-8 normalized `owner/repository` name. Mirror operations use
-`<root>/.locks/mirrors/<id>.lock`. Control directories are created with mode
+SSH reads, repository writes, creation, publication and Git cleanup share a
+permanent control file at `<root>/.locks/repositories/<sha256>.lock`, where the
+digest is SHA256 of the UTF-8 normalized `owner/repository` name. Mirror
+operations use `<root>/.locks/mirrors/<id>.lock`. Control directories use mode
 `0700` and files with `0600`; symlinks and unexpected file types are rejected.
 Keep these files for the lifetime of the storage root, including after deleting
 or rebuilding a repository. Removing a control file can split queued writers
-between different inodes. Lock acquisition retains the 15-second timeout.
+between different inodes. SSH reads hold the name's shared control lock only
+during admission; pushes, deletion and other mutations hold its exclusive lock.
+Each admitted read also holds a shared lock at
+`<root>/.locks/repository-readers/<repository-id>.lock` until its Git process has
+exited. These positive-ID reader controls follow the same permissions, path
+validation and permanent-inode rules. Reads can overlap without delaying writes.
+Blocking lock acquisition retains the 15-second timeout.
 
 Requests capture the repository ID, team ID and name before asynchronous work.
 After acquiring the control lock they recheck access and that exact identity,
-then resolve the Git path. Existing reads retain their current in-flight
-semantics. Creation and import publication use the same name lock; imports do
-the transfer in private staging, then verify the running job and staging token
+before resolving the Git path. SSH reads additionally acquire the original ID's
+reader lock before path resolution, recheck authorization once more, start the
+managed Git process, and then release the name lock. SSH writes retain the
+exclusive name lock through Git exit and ref-event recovery. A read's task group
+checks the original scope immediately and every
+1000 ms; deletion, identity changes and validation errors cancel the process.
+Visibility and credential permissions are admission checks: an authorized read
+may finish after privatization. It never rebinds to a same-name replacement.
+Cancellation sends a termination signal, waits up to 5000 ms, then force-kills
+Git. The group waits for process exit on success, failure, timeout and external
+cancellation before releasing the reader lock. The application entry point
+supplies an upload-pack idle timeout (120 seconds) and total deadline (3600
+seconds, starting before process startup); both accept 1..2147483 integer seconds.
+Secret form and JSON handlers capture the original scope before reading the
+request body and pass it to `pipeline.save_secret`. The business service
+validates that identity under the write lock, rechecks account, write and
+management permissions, and uses the original ID for secret storage and audit
+records.
+Creation and import publication use the same name lock; imports transfer data
+in private staging, then verify the running job and staging token
 before publishing. Deletion reserves SQLite with `BEGIN IMMEDIATE`, rechecks
 identity, access and busy resources, and atomically journals files with the
-cascading database deletion. Cleanup takes the resource lock before checking
-its journal, live owners and paths, including when the files are already gone.
-An interrupted cleanup can safely finish the remaining journal entry on restart.
+cascading database deletion. Logical deletion does not wait for reader locks;
+its journal reserves the name until physical cleanup finishes. Git cleanup tries
+the exclusive name lock and then the exclusive original-ID reader lock without
+waiting, before checking the journal, live owners and paths, even when files are
+already gone. Mirror cleanup also tries its resource lock without waiting. A
+busy resource releases acquired handles and retries one second later without
+incrementing failures; real errors retain failure history and the existing
+backoff. Batches of 100 are ordered by `next_attempt_at, id` so repeatedly busy
+resources cannot starve later work. An interrupted cleanup safely resumes its
+journal on restart.
 
-When locks nest, acquire the mirror lock, then the repository lock, then a short
-database transaction. Filesystem operations stay outside database transactions.
+When locks nest, acquire the mirror lock, then the repository name lock, then
+the reader lifetime lock if needed, then a short database transaction.
+Filesystem operations stay outside database transactions.
 A mirror worker selects an ID, locks it, claims it with `BEGIN IMMEDIATE`, and
 only then creates its data directory. A failed claim creates no data directory.
 Deletion holds only the repository lock and rejects a syncing mirror through
@@ -240,9 +271,14 @@ initialization, not used as a global service locator inside business code.
 
 The Linux self-check runs `node scripts/repository-deletion-smoke.cjs` after
 the native build. It uses separate Web and SSH processes, pipe/FD barriers and
-a disposable SQLite/Git fixture to verify cross-process exclusion and rejection
-of a stale SSH writer after a same-name rebuild. Python 3 supplies the fixture's
-control-lock holder; no external SSH server or service is required.
+a disposable SQLite/Git fixture to verify parallel SSH reads, writes and secret
+saves during stalled reads, privatization, deletion cancellation, process reaping,
+idle/total timeouts, private replacement ref isolation and rejection of stale SSH
+readers and writers after a same-name rebuild. HTTP tests hold the last request body
+byte, signal when the handler has claimed its stream, and then delete or rebuild
+the repository before completing secret form and JSON submissions. Python 3
+supplies the fixture's control-lock holder; no external SSH server or service is
+required.
 
 Each production package owns its tests. Run the entire suite or a single
 package from the module root:

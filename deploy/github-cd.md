@@ -80,15 +80,22 @@ See the local DinD upgrade and recovery procedure in [production.md](production.
 
 ## Repository lock protocol upgrade
 
-The stable control-lock protocol requires a coordinated version switch. Stop
-both Web and SSH and terminate all old-version writers and background workers,
-including existing SSH sessions and standalone management commands, before
-starting the new version. The deployment scripts already stop Web and SSH
-together before replacement; verify no writer survives outside those services.
-Do not run old `moonhub-write.lock` writers alongside new `.locks` writers, in
-an upgrade or rollback. They do not exclude each other. No database migration
-is needed. Preserve `<repository-root>/.locks` across upgrades, backups, cleanup
-and same-name rebuilds; never delete individual control files to clear a lock.
+The control-lock and reader-lifetime protocols require a coordinated version
+switch for both upgrade and rollback:
+
+1. Stop accepting new SSH connections and terminate all existing SSH sessions.
+2. Stop Web and all old-version workers and standalone management commands.
+   Verify no old reader or writer survives outside those services.
+3. Switch Web and SSH to matching versions, then reopen SSH after health checks.
+
+The deployment scripts stop Web and SSH before replacement; preserve their
+backup, draining, locking and health-verification steps. Never mix the previous
+name-lock-only SSH implementation with Web cleanup that expects ID-based reader
+locks, or the new SSH implementation with old cleanup. Old
+`moonhub-write.lock` writers also cannot coexist with `.locks` writers. No database
+or physical-directory migration is needed. Preserve `<repository-root>/.locks`,
+including permanent `repository-readers/<id>.lock` files, across upgrades,
+backups, cleanup and same-name rebuilds; never delete control files to clear a lock.
 
 ## Logs, retries and recovery
 

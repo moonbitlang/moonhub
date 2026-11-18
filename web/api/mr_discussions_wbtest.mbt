@@ -48,7 +48,7 @@ async test "MR discussion API and browser enforce scopes state versions and CSRF
               "resolved": False,
               ..
             },
-          ]
+          ],
         ),
         "unresolved_count": String("1"),
         ..

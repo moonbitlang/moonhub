@@ -30,7 +30,7 @@ pub(all) struct Definition {
 }
 pub fn Definition::effective_labels(Self) -> Array[String]
 pub fn Definition::equal(Self, Self) -> Bool
-pub fn Definition::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Definition::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Definition::matches_system(Self, String, String) -> Bool
 pub fn Definition::not_equal(Self, Self) -> Bool
 pub fn Definition::to_json(Self) -> @json.Json
@@ -42,7 +42,7 @@ pub(all) struct Probe {
   os_release : String
   architecture : String
 }
-pub fn Probe::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Probe::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Probe::to_json(Self) -> @json.Json
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
@@ -51,7 +51,7 @@ pub(all) struct Profile {
   environment : Definition
   is_default : Bool
 }
-pub fn Profile::from_json(@json.Json, @json.JsonPath) -> Self raise @json.JsonDecodeError
+pub fn Profile::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn Profile::to_json(Self) -> @json.Json
 pub fn Profile::to_repr(Self) -> @debug.Repr
 
