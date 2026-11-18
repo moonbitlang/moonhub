@@ -2,7 +2,7 @@ import {
   "hackwaly/moonhub/pipeline/environment",
   "hackwaly/moonhub/pipeline/actions",
   "moonbitlang/core/debug",
-  "hackwaly/moonhub/vendor/yaml",
+  "moonbit-community/yaml",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",
 }

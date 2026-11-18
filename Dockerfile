@@ -41,7 +41,6 @@ COPY runner/actions/*.mjs /usr/local/lib/moonhub/actions/
 
 COPY LICENSE /usr/share/doc/moonhub/LICENSE
 COPY LICENSE /usr/share/doc/moonhub/rabbita-LICENSE
-COPY vendor/yaml/LICENSE /usr/share/doc/moonhub/yaml-LICENSE
 ENTRYPOINT ["/usr/local/bin/moonhub-runner", "execute"]
 
 FROM runner AS runner-selfhost

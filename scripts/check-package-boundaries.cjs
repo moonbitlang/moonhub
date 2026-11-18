@@ -39,8 +39,7 @@ const allowed = {
   'cmd/moonhub-runner': ['provider', 'runner/cli', 'runner/platform', 'pipeline/protocol'],
   provider: ['pipeline/protocol', 'pipeline/environment', 'runner/platform'],
   'runner/platform': [],
-  'pipeline/workflow': ['vendor/yaml', 'pipeline/actions', 'pipeline/environment'],
-  'vendor/yaml': [],
+  'pipeline/workflow': ['pipeline/actions', 'pipeline/environment'],
   ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
     'gitops', 'storage', 'releases', 'web/views/releases',
