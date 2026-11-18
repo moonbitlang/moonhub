@@ -24,6 +24,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
   let clone_url = access.clone_url
   let manager = access.manager
   let root = ctx.require(@web_context.config_root)
+  let pool = ctx.require(@web_context.config_db_pool)
   let diff_executor = ctx.require(@web_context.diff_executor_key)
   let diff_enabled = ctx.require(@web_context.diff_enabled_key)
   let release_service = ctx.require(@web_context.release_service_key)
@@ -33,6 +34,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let rev = @gitops.resolve_ref(git_dir, @web_context.query_rev(req))
     res.send_html(
       render_tree(
+        pool~,
         release_service~,
         root~,
         asset_path_map~,
@@ -51,6 +53,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let rev = @gitops.resolve_ref(git_dir, None)
     res.send_html(
       render_tree(
+        pool~,
         release_service~,
         root~,
         asset_path_map~,
@@ -69,6 +72,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     let rev = @gitops.resolve_ref(git_dir, Some(@web_context.rev_param(req)))
     res.send_html(
       render_tree(
+        pool~,
         release_service~,
         root~,
         asset_path_map~,
@@ -91,6 +95,7 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     )
     res.send_html(
       render_tree(
+        pool~,
         release_service~,
         root~,
         asset_path_map~,

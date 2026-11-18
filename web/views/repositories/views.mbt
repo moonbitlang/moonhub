@@ -166,6 +166,7 @@ fn render_file_breadcrumbs(
 
 ///|
 async fn render_tree(
+  pool~ : @database.Database,
   root~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
@@ -197,8 +198,19 @@ async fn render_tree(
   }
   let navigation = code_navigation(git_dir, rev)
   let commits = @gitops.list_commits(git_dir, rev) catch { _ => [] }
+  let head = commits.get(0)
+  let actions = if path.is_empty() &&
+    current_user is Some(actor) &&
+    navigation.default_branch is Some((branch, sha)) &&
+    head is Some(commit) &&
+    commit.hash == sha &&
+    (rev == branch || rev == "HEAD" || rev == sha) {
+    @pipeline.commit_workflow_runs(pool, actor, repo, branch~, sha~)
+  } else {
+    []
+  }
   // TODO: Optimize commit counting with caching by SHA and bitmap indexes.
-  let commit_count = match commits.get(0) {
+  let commit_count = match head {
     Some(commit) =>
       @gitops.run_git(git_dir, ["rev-list", "--count", commit.hash, "--"])
       .trim()
@@ -247,9 +259,9 @@ async fn render_tree(
       b <+
         "<div class=\"content-stack repository-files\">\{render_file_breadcrumbs(repo, rev, path)}"
       b <+ "<div class=\"commit-summary\">"
-      if commits.get(0) is Some(commit) {
+      if head is Some(commit) {
         b <+
-          "<strong>\{commit.author}</strong><a class=\"commit-subject\" href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\">\{commit.subject}</a><span class=\"commit-metadata\"><a href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\"><code>\{commit.hash[:12].to_owned()}</code></a><span class=\"muted\">\{@web_ui.timestamp(commit.date, relative=true)}</span></span>"
+          "<strong>\{commit.author}</strong><a class=\"commit-subject\" href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\">\{commit.subject}</a><div class=\"commit-metadata\">\{render_commit_actions(repo, actions)}<a href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\"><code>\{commit.hash[:12].to_owned()}</code></a><span class=\"muted\">\{@web_ui.timestamp(commit.date, relative=true)}</span></div>"
       } else {
         b <+ "<span class=\"muted\">No commits yet.</span>"
       }

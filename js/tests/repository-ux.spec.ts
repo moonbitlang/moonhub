@@ -63,6 +63,35 @@ for (const width of [320, 390, 900, 1440]) {
   });
 }
 
+test('latest commit Actions status opens its workflow list and links to run details', async ({ page }) => {
+  await login(page);
+  await page.goto('/alice/demo');
+  await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+  const trigger = page.locator('.commit-actions > summary');
+  const panel = page.locator('.commit-actions-panel');
+  await expect(trigger).toHaveAccessibleName('Actions · Failed · 1 of 2 passed');
+  for (const width of [320, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole('link', { name: 'Build and package Passed' })).toBeVisible();
+    const bounds = (await panel.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await expect(trigger).toBeFocused();
+  }
+  await trigger.click();
+  await page.locator('h1').click();
+  await expect(panel).toBeHidden();
+  await trigger.click();
+  await panel.getByRole('link', { name: 'Lint Failed' }).click();
+  await expect(page).toHaveURL(/\/alice\/demo\/pipelines\/2$/);
+  await expect(page.getByRole('heading', { name: 'Lint', exact: true })).toBeVisible();
+});
+
 test('file finder follows its trigger through resizing and scrolling with a long file list', async ({ page }) => {
   await login(page);
   await page.goto('/alice/demo?rev=moondiff-paged-base');
@@ -328,7 +357,8 @@ for (const width of [320, 390, 900, 1440]) {
     const summary = page.locator('.commit-summary');
     const history = summary.getByRole('link', { name: '1 commit', exact: true });
     await expect(history).toHaveAttribute('href', '/alice/demo/commits?rev=master');
-    const links = await summary.locator('a').evaluateAll(links => links.map(a => a.getAttribute('href')));
+    const links = await summary.locator('a[href*="/commit/"]').evaluateAll(links => links.map(a => a.getAttribute('href')));
+    expect(links).toHaveLength(2);
     expect(links[0]).toBe(links[1]);
     expect(links[0]).toMatch(/\/commit\/[a-f0-9]{40}$/);
     const summaryBounds = (await summary.boundingBox())!, historyBounds = (await history.boundingBox())!;

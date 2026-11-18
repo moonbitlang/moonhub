@@ -62,7 +62,7 @@ const allowed = {
   'web/views/account': ['domain', 'identity', 'ssh', 'web/context', 'web/ui'],
   'web/views/namespaces': ['domain', 'identity', 'repository', 'web/context', 'web/ui'],
   'web/views/repositories': [
-    'domain', 'database', 'gitops', 'identity', 'repository', 'releases', 'ssh', 'webhooks', 'web/assets', 'web/context', 'web/ui',
+    'domain', 'database', 'gitops', 'identity', 'pipeline', 'repository', 'releases', 'ssh', 'webhooks', 'web/assets', 'web/context', 'web/ui',
   ],
   'web/views/issues': ['domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/context', 'web/ui'],
   'web/views/merge_requests': [
