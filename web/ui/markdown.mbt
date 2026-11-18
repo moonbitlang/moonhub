@@ -248,7 +248,7 @@ fn markdown_html(
   source : String,
   repo~ : @domain.RepoId? = None,
 ) -> String raise {
-  let doc = @cmark.Doc::from_string(source, locs=repo is Some(_))
+  let doc = @cmark.Doc::from_string(source, locs=repo is Some(_), strict=false)
   let in_link_label = Ref(false)
   let renderer = @cmark_renderer.Renderer::new(
     inline=fn(ctx, inline) raise {
