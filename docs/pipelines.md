@@ -352,10 +352,9 @@ merge keys, empty/duplicate keys, decoded NULs and invalid UTF-8 are rejected.
 Dependencies must reference known jobs and form an acyclic graph. Generated step
 IDs (`step_1`, etc.) cannot collide with explicit IDs.
 
-YAML syntax comes from `moonbit-community/yaml@0.0.6`, retained in
-`vendor/yaml` with its tests/license and a documented bounded-event callback
-patch. Selected actrun model/mapping conventions are adapted with attribution in
-`pipeline/workflow/THIRD_PARTY.md`. No actrun executor or dependency graph is used.
+YAML syntax comes from `moonbit-community/yaml@0.0.10`. MoonHub uses its event
+callback to reject unsupported features and enforce limits before loading the
+YAML tree. See `pipeline/workflow/THIRD_PARTY.md` for YAML and actrun attribution.
 
 ## Persistence and Authorization
 
@@ -385,7 +384,6 @@ of retained Git snapshots.
 ## Acceptance
 
 ```sh
-moon test --strip -j 1 vendor/yaml
 moon test --strip -j 1 pipeline/workflow
 moon test --strip -j 1 pipeline
 moon test --strip -j 1 gitops database
@@ -394,7 +392,7 @@ moon test --strip -j 1
 node scripts/check-package-boundaries.cjs
 ```
 
-Tests cover upstream YAML behavior, multiline script preservation, scalar
+Tests cover workflow YAML parsing, multiline script preservation, scalar
 coercion, defaults/env precedence, fail-closed validation, structural limits,
 dependency cycles, current authorization, concurrent run numbering, rollback,
 attempt constraints, baseline initialization, database reopen, and source

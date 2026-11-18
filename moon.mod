@@ -24,6 +24,7 @@ import {
   "moonbit-community/rabbita@0.17.0",
   "moonbit-community/email@0.0.1",
   "moonbit-community/moondiff@0.1.4",
+  "moonbit-community/yaml@0.0.10",
 }
 
 preferred_target = "native"

@@ -16,7 +16,6 @@ unsupported fields, and supports the documented workflow subset. Public runtime
 templates and generic downloaded-action execution are MoonHub additions. The upstream executor,
 lowering IR, action resolvers, and transitive actrun dependencies are not imported.
 
-`moonbit-community/yaml` is MIT-licensed and retained under `vendor/yaml`;
-see that package's README for the event-boundary patch. Its lexer and parser
-own all YAML syntax handling; Moonhub's event receiver only enforces workflow
-input policy before using its standard tree loader.
+MoonHub uses the MIT-licensed `moonbit-community/yaml` dependency to parse YAML.
+Its event receiver enforces workflow input policy before the standard tree
+loader runs. [Mooncakes package](https://mooncakes.io/docs/moonbit-community/yaml@0.0.10)
