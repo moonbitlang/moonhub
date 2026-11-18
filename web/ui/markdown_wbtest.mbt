@@ -135,3 +135,52 @@ async test "Markdown block references share context and fenced code stays litera
   assert_false(html.contains("/issues/78"))
   assert_false(html.contains("/merge-requests/90"))
 }
+
+///|
+test "CommonMark renders setext headings, nested lists and reference links" {
+  let source =
+    #|Overview
+    #|========
+    #|
+    #|- An _item_
+    #|  - See _#23_ and [the guide][guide].
+    #|
+    #|[guide]: https://example.com/guide 'A "quoted" title'
+  let html = markdown_html(source, repo=Some({ owner: "alice", name: "demo", }))
+  assert_true(html.has_prefix("<h2>Overview</h2>\n"))
+  assert_true(html.contains("<ul>\n<li>An <em>item</em>\n<ul>"))
+  assert_true(
+    html.contains(
+      "<em><a href=\"/alice/demo/issues/23\" rel=\"nofollow noreferrer\">#23</a></em>",
+    ),
+  )
+  assert_true(
+    html.contains(
+      "<a href=\"https://example.com/guide\" rel=\"nofollow noreferrer\" title=\"A &quot;quoted&quot; title\">the guide</a>",
+    ),
+  )
+}
+
+///|
+test "CommonMark links and images retain MoonHub destination rules" {
+  let source =
+    #|[blocked][url] <javascript:example> ![remote][image]
+    #|
+    #|[url]: jav&#x61;script:example
+    #|[image]: https://example.com/image.png
+  assert_eq(markdown_html(source), "<p>blocked javascript:example remote</p>\n")
+  let url = "/alice/demo/attachments/" + "".pad_start(64, 'a')
+  assert_eq(
+    markdown_html("[![**diagram**][image]](/alice/demo)\n\n[image]: \{url}"),
+    "<p><a href=\"/alice/demo\" rel=\"nofollow noreferrer\"><img src=\"\{url}\" alt=\"diagram\" loading=\"lazy\" decoding=\"async\"></a></p>\n",
+  )
+}
+
+///|
+test "Repository references use literal source markers in CommonMark text" {
+  let source = "参考😀 #34 &amp; \\!12 &#35;56 and !78"
+  assert_eq(
+    markdown_html(source, repo=Some({ owner: "alice", name: "demo", })),
+    "<p>参考😀 <a href=\"/alice/demo/issues/34\" rel=\"nofollow noreferrer\">#34</a> &amp; !12 #56 and <a href=\"/alice/demo/merge-requests/78\" rel=\"nofollow noreferrer\">!78</a></p>\n",
+  )
+}

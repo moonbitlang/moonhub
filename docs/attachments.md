@@ -6,6 +6,10 @@ The first release keeps the Markdown source textarea and adds Write/Preview,
 Attach files, clipboard file paste, file drop, upload status and retry. Plain forms
 continue to work without JavaScript using existing managed attachment URLs.
 
+MoonHub renders CommonMark in descriptions, comments, repository Markdown files
+and editor previews. It displays raw HTML as text and renders inline images
+from managed attachment URLs.
+
 ## Repository references
 
 Issue and MR descriptions, comments, discussion replies and editor previews link
