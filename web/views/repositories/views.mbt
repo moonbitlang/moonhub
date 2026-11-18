@@ -261,7 +261,7 @@ async fn render_tree(
       b <+ "<div class=\"commit-summary\">"
       if head is Some(commit) {
         b <+
-          "<strong>\{commit.author}</strong><a class=\"commit-subject\" href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\">\{commit.subject}</a><div class=\"commit-metadata\">\{render_commit_actions(repo, actions)}<a href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\"><code>\{commit.hash[:12].to_owned()}</code></a><span class=\"muted\">\{@web_ui.timestamp(commit.date, relative=true)}</span></div>"
+          "<strong>\{commit.author}</strong><div class=\"commit-message\"><a class=\"commit-subject\" href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\">\{commit.subject}</a>\{render_commit_actions(repo, actions)}</div><div class=\"commit-metadata\"><a href=\"\{@web_ui.repo_link(repo)}/commit/\{commit.hash}\"><code>\{commit.hash[:12].to_owned()}</code></a><span class=\"muted\">\{@web_ui.timestamp(commit.date, relative=true)}</span></div>"
       } else {
         b <+ "<span class=\"muted\">No commits yet.</span>"
       }

@@ -67,11 +67,18 @@ test('latest commit Actions status opens its workflow list and links to run deta
   await login(page);
   await page.goto('/alice/demo');
   await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+  const subject = page.locator('.commit-subject');
   const trigger = page.locator('.commit-actions > summary');
   const panel = page.locator('.commit-actions-panel');
   await expect(trigger).toHaveAccessibleName('Actions · Failed · 1 of 2 passed');
-  for (const width of [320, 1280]) {
+  for (const width of [320, 601, 1280]) {
     await page.setViewportSize({ width, height: 900 });
+    const messageBounds = (await subject.boundingBox())!;
+    const triggerBounds = (await trigger.boundingBox())!;
+    const gap = triggerBounds.x - (messageBounds.x + messageBounds.width);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(8);
+    expect(Math.abs(triggerBounds.y + triggerBounds.height / 2 - (messageBounds.y + messageBounds.height / 2))).toBeLessThan(1);
     await trigger.focus();
     await page.keyboard.press('Enter');
     await expect(panel).toBeVisible();
@@ -79,6 +86,9 @@ test('latest commit Actions status opens its workflow list and links to run deta
     const bounds = (await panel.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    const triggerCenter = triggerBounds.x + triggerBounds.width / 2;
+    expect(triggerCenter).toBeGreaterThanOrEqual(bounds.x);
+    expect(triggerCenter).toBeLessThanOrEqual(bounds.x + bounds.width);
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
     await expect(trigger).toBeFocused();
