@@ -96,7 +96,7 @@ fn read_yaml(source : String) -> @yaml.Yaml raise InvalidWorkflow {
   let guard_ : YamlGuard = { frames: [], documents: 0, nodes: 0, }
   // Reject excessive nesting or aliases before the parser descends further or
   // the standard loader constructs a tree.
-  @yaml.Parser::new(source).load(guard_, true) catch {
+  @yaml.Parser(source).load(guard_, true) catch {
     @yaml.YamlError(mark~, info~) =>
       raise InvalidWorkflow(
         "invalid YAML at line \{mark.line}, column \{mark.col + 1}: \{info}",

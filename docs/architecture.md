@@ -34,7 +34,6 @@ unchanged.
 | `runner/cli` | Shared single-assignment CLI for the standalone and legacy executable |
 | `cmd/moonhub-runner` | Independent runner executable; no Web server or database dependencies |
 | `runner` | Single-job process execution, downloaded JavaScript/composite actions, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
-| `vendor/yaml` | Pinned upstream YAML parser and tests, with the documented bounded-event callback patch |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
 | `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
@@ -90,8 +89,8 @@ depend on `domain`. `identity` and `mail` use `database` and `domain`.
 `collaboration` builds on repository authorization. `ssh` uses repository and
 collaboration services. `web` is the outer application adapter.
 
-`pipeline/workflow` depends only on `pipeline/actions`, `vendor/yaml` and core
-packages. `pipeline` uses `storage` for object bytes and retains authorization, quotas and cleanup intent metadata.
+`pipeline/workflow` depends only on `pipeline/actions`, `moonbit-community/yaml`
+and core packages. `pipeline` uses `storage` for object bytes and retains authorization, quotas and cleanup intent metadata.
 `pipeline` uses workflow/protocol definitions, repository/identity
 authorization, bounded Git operations, and the database adapter.
 `web/views/pipelines` owns the machine
