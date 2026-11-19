@@ -205,6 +205,12 @@ test('file breadcrumbs and parent links keep the revision through SPA and keyboa
   await expect(files).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(base);
+  const headerTrail = page.getByRole('navigation', { name: 'Breadcrumb', exact: true });
+  await expect(headerTrail.getByRole('listitem')).toHaveText(['alice', 'demo']);
+  await expect(headerTrail.locator('[aria-current=page]')).toHaveText('demo');
+  await expect(trail.locator('[aria-current=page]')).toHaveText('Files');
+  await page.getByRole('link', { name: 'src', exact: true }).click();
+  await expect(page).toHaveURL(base + '/src');
   expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
   await page.goto(`/alice/demo/blob/feature/breadcrumbs/src/${directory}/main.mbt`);
   await hydrated(page);

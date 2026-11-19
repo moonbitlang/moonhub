@@ -400,7 +400,15 @@ async fn render_tree(
     }),
     head_end=@web_assets.repository_assets_head(asset_path_map),
     current_user~,
-    navigation=@web_ui.RepositoryNavigation(repo, "files", manager),
+    navigation=@web_ui.RepositoryNavigation(
+      repo,
+      if path.is_empty() {
+        "files-root"
+      } else {
+        "files"
+      },
+      manager,
+    ),
   )
 }
 

@@ -17,7 +17,8 @@ pub fn layout(
   let shell = current_user is Some(_) ||
     navigation is RepositoryNavigation(_, _, _)
   let sidebar = shell &&
-    !(navigation is RepositoryNavigation(_, "files" | "commits", _))
+    !(navigation
+    is RepositoryNavigation(_, "files-root" | "files" | "commits", _))
   let header = render_site_header(
     current_user, navigation, shell, sidebar, header_content,
   )
@@ -71,7 +72,11 @@ fn render_site_header(
           "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
       }
       b <+
-        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
+        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span>"
+      if !(navigation is RepositoryNavigation(_, _, _)) {
+        b <+ "<span class=\"brand-label\">moonhub</span>"
+      }
+      b <+ "</a></div>"
       if shell {
         b <+ "\{render_breadcrumbs(navigation)}"
       }
