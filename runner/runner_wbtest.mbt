@@ -70,6 +70,7 @@ priv struct FakeServer {
   available : Bool
   remaining_ms : Int64
   job_ms : Int64
+  dataflow : Bool
 }
 
 ///|
@@ -78,6 +79,7 @@ fn fake_server(
   available~ : Bool = true,
   remaining_ms~ : Int64 = 60000L,
   job_ms~ : Int64 = 60000L,
+  dataflow~ : Bool = false,
 ) -> FakeServer {
   {
     logs: [],
@@ -90,6 +92,7 @@ fn fake_server(
     available,
     remaining_ms,
     job_ms,
+    dataflow,
   }
 }
 
@@ -120,10 +123,8 @@ async fn FakeServer::post(
   } else if operation == "steps" {
     self.events.push(@json.from_json(body))
   } else if operation == "complete" {
-    // This fixture emulates an older strict coordinator; the HTTP dataflow
-    // acceptance test covers completion reports with version-7 outputs.
     guard body is Object(fields) else { fail("invalid completion") }
-    assert_false(fields.contains("outputs"))
+    assert_eq(fields.contains("outputs"), self.dataflow)
     let request : @protocol.CompleteRequest = @json.from_json(body)
     assert_eq(request.last_log_sequence, self.sequence.to_string())
     conclusion = request.conclusion

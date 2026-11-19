@@ -1,4 +1,17 @@
 ///|
+fn run_event_ref(
+  context : @workflow.RunContext?,
+  branch : String,
+  mr_number~ : Int64? = None,
+) -> String {
+  match (mr_number, context) {
+    (Some(number), _) => "refs/pull/" + number.to_string() + "/merge"
+    (_, Some({ release_tag: Some(tag), .. })) => "refs/tags/" + tag
+    _ => "refs/heads/" + branch
+  }
+}
+
+///|
 fn run_event_context(
   context : @workflow.RunContext,
   event_ref~ : String,
@@ -17,6 +30,15 @@ fn run_event_context(
     }
     event["inputs"] = ToJson::to_json(inputs)
   }
+  if context.release_tag is Some(tag) {
+    event["action"] = Json::string("released")
+    event["release"] = {
+      "tag_name": tag,
+      "target_commitish": context.sha,
+      "draft": false,
+      "prerelease": false,
+    }
+  }
   event
 }
 
@@ -25,15 +47,13 @@ fn run_job_github(
   tx : @database.DbTransaction,
   run : Run,
 ) -> Map[String, Json] raise {
-  let number : Int64? = tx
+  let mr_number : Int64? = tx
     .query_one(
       "SELECT m.number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id=?",
       params=[run.id],
     )
     .get_name("number")
-  let event_ref = number
-    .map(n => "refs/pull/" + n.to_string() + "/merge")
-    .unwrap_or("refs/heads/" + run.source_branch)
+  let event_ref = run_event_ref(run.context, run.source_branch, mr_number~)
   let github : Map[String, Json] = {
     "ref": Json::string(event_ref),
     "repository": Json::string(

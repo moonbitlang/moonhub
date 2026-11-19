@@ -4,6 +4,7 @@ async fn api_test_request(
   path : String,
   token : String,
   body : Json?,
+  verb~ : @http.RequestMethod = Post,
 ) -> (Int32, Json) {
   let client = @http.Client("http://127.0.0.1:\{port}")
   defer client.close()
@@ -14,7 +15,10 @@ async fn api_test_request(
   let response = match body {
     None => client.get("/-/api/v1" + path, extra_headers=headers)
     Some(body) =>
-      client.post("/-/api/v1" + path, body.stringify(), extra_headers=headers)
+      client
+      ..request(verb, "/-/api/v1" + path, extra_headers=headers)
+      ..write(body.stringify())
+      .end_request()
   }
   assert_eq(response.headers.get("cache-control"), Some("no-store"))
   (response.code, @json.parse(client.read_all().text()))

@@ -94,7 +94,7 @@ async test "secret policy diagnostics do not suppress other push workflows" {
         "prepared",
         "\{"0".repeat(40)} \{sha} refs/heads/review",
       )
-      assert_true(run_next_push_event(pool, root))
+      assert_true(run_next_ref_event(pool, root))
       let events = list_trigger_events(pool, actor, repo)
       assert_eq(events[0].state, "processed")
       assert_true(events[0].error.contains(".github/workflows/a-publish.yml"))
@@ -104,7 +104,7 @@ async test "secret policy diagnostics do not suppress other push workflows" {
       assert_eq(runs.length(), 1)
       assert_eq(runs[0].workflow_path, ".github/workflows/b-build.yml")
       assert_eq(events[0].runs.length(), 1)
-      assert_false(run_next_push_event(pool, root))
+      assert_false(run_next_ref_event(pool, root))
     })
   }
 }

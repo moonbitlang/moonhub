@@ -161,6 +161,104 @@ async test "native runtime continues status cleanup after failure and reports sk
 }
 
 ///|
+async test "release source exposes only the pinned tag and carries release event metadata" {
+  @test_support.with_runner_workspace((root, launcher, workspace) => {
+    let source = root + "/source"
+    assert_eq(@process.run("git", ["init", "-q", source]), 0)
+    assert_eq(
+      @process.run("git", [
+        "-C", source, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
+        "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "Release",
+      ]),
+      0,
+    )
+    let (code, stdout) = @process.collect_output_merged("git", [
+      "-C", source, "rev-parse", "HEAD",
+    ])
+    assert_eq(code, 0)
+    let sha = stdout.text().trim().to_owned()
+    let bundle = root + "/source.bundle"
+    assert_eq(
+      @process.run("git", ["-C", source, "bundle", "create", bundle, "HEAD"]),
+      0,
+    )
+    let checkout = if @env.get_env_var("MOONHUB_TEST_RELEASE_CHECKOUT") ==
+      Some("1") {
+      {
+        ..test_step("checkout", "", shell=""),
+        remote: true,
+        uses: "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+      }
+    } else {
+      test_step(
+        "checkout",
+        (
+          #|git init -q
+          #|git fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "+$GITHUB_REF:$GITHUB_REF"
+          #|git checkout -q "$GITHUB_REF"
+        ),
+      )
+    }
+    let base = test_assignment([
+      checkout,
+      {
+        ..test_step(
+          "verify",
+          (
+            #|test "$GITHUB_REF" = refs/tags/v1.2.3
+            #|test "$GITHUB_EVENT_NAME" = release
+            #|test "$RELEASE_TAG" = v1.2.3
+            #|test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            #|test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$GITHUB_SHA"
+            #|test "$(git tag -l)" = v1.2.3
+            #|grep -F '"action":"released"' "$GITHUB_EVENT_PATH"
+          ),
+        ),
+        templates: {
+          "if": "github.event_name == 'release'",
+          "env:RELEASE_TAG": "${{ github.event.release.tag_name }}",
+        },
+      },
+    ])
+    let assignment = {
+      ..base,
+      version: @protocol.release_assignment_version,
+      commit_sha: sha,
+      job: {
+        ..base.job,
+        api_permissions: 1,
+        context: { "event_name": "release", "ref": "refs/tags/v1.2.3" },
+        event: { "action": "released", "release": { "tag_name": "v1.2.3" } },
+      },
+    }
+    let (code, node) = @process.collect_output_merged("node", [
+      "-p", "process.execPath",
+    ])
+    assert_eq(code, 0)
+    let server = fake_server(dataflow=true)
+    let report = execute_assignment(
+      assignment,
+      {
+        ..test_options(launcher, workspace),
+        server: "https://moonhub.example",
+      },
+      (operation, body, until) => server.post(operation, body, until),
+      bundle=() => @fs.read_file(bundle).binary(),
+      api=_ => { token: "f".repeat(64), },
+      action_node=node.text().trim().to_owned(),
+      action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
+    )
+    assert_eq(
+      report.conclusion,
+      "success",
+      msg=server.logs.map(log => log.text).join(""),
+    )
+    assert_true(report.reported)
+    assert_eq(report.steps.map(step => step.state), ["success", "success"])
+  })
+}
+
+///|
 async test "native cancellation stops action runtime child process groups" {
   @test_support.with_runner_workspace((_, launcher, workspace) => {
     let assignment = {

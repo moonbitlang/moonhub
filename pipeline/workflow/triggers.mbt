@@ -13,6 +13,7 @@ pub struct Triggers {
   inputs : Array[DispatchInput]
   push : Bool
   pull_request : Bool
+  release : Bool
   pull_request_types : Array[String]
   push_filters : EventFilters
   pull_request_filters : EventFilters
@@ -82,7 +83,7 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     Some(Map(fields)) => fields
     _ =>
       raise InvalidWorkflow(
-        "on requires push, pull_request or workflow_dispatch",
+        "on requires push, pull_request, workflow_dispatch, schedule or release",
       )
   }
   guard !fields.is_empty() else {
@@ -90,7 +91,7 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
   }
   check_fields(
     fields,
-    ["push", "pull_request", "workflow_dispatch", "schedule"],
+    ["push", "pull_request", "workflow_dispatch", "schedule", "release"],
     "on",
   )
   let dispatch_options = match fields.get("workflow_dispatch") {
@@ -99,6 +100,18 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
   }
   check_fields(dispatch_options, ["inputs"], "on.workflow_dispatch")
   let inputs = parse_dispatch_inputs(dispatch_options.get("inputs"))
+  let release_options = match fields.get("release") {
+    None | Some(Null) => Map([])
+    Some(value) => yaml_as_obj(value, "on.release")
+  }
+  check_fields(release_options, ["types"], "on.release")
+  if release_options.get("types") is Some(value) {
+    guard value is Array(items) &&
+      items.length() == 1 &&
+      items[0] is String("released") else {
+      raise InvalidWorkflow("on.release.types supports only [released]")
+    }
+  }
   let filters : Map[String, EventFilters] = Map([])
   let mut pull_request_types : Array[String] = []
   for event in ["push", "pull_request"] {
@@ -139,6 +152,7 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     inputs,
     push: fields.contains("push"),
     pull_request: fields.contains("pull_request"),
+    release: fields.contains("release"),
     pull_request_types,
     push_filters: filters["push"],
     pull_request_filters: filters["pull_request"],

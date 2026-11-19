@@ -7,6 +7,26 @@ let mr_context : RunContext = {
   base_ref: "master",
   inputs: Map([]),
   variables: Map([]),
+  release_tag: None,
+}
+
+///|
+test "release snapshots round trip a tag without changing older context JSON" {
+  let context = {
+    ..mr_context,
+    event_name: "release",
+    head_ref: "",
+    base_ref: "",
+    release_tag: Some("v1.2.3"),
+  }
+  let encoded = ToJson::to_json(context)
+  assert_true(encoded is { "release_tag": String("v1.2.3"), .. })
+  let restored : RunContext = @json.from_json(encoded)
+  assert_eq(restored.release_tag, Some("v1.2.3"))
+  let legacy = ToJson::to_json(mr_context)
+  assert_false(legacy is { "release_tag": _, .. })
+  let restored_legacy : RunContext = @json.from_json(legacy)
+  assert_eq(restored_legacy.release_tag, None)
 }
 
 ///|
@@ -99,6 +119,7 @@ test "metadata interpolation is not recursive and missing MR fields are empty" {
       base_ref: "",
       inputs: Map([]),
       variables: Map([]),
+      release_tag: None,
     })
     assert_eq(resolved.jobs[0].steps[0].env.get("HEAD"), Some(""))
     assert_eq(resolved.jobs[0].steps[0].env.get("BASE"), Some(""))

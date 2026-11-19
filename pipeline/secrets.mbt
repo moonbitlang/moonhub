@@ -175,9 +175,12 @@ fn require_secret_policy(
   context : @workflow.RunContext?,
 ) -> Unit raise {
   guard context is Some(context) &&
-    ["workflow_dispatch", "push", "schedule"].contains(context.event_name) else {
+    (
+      ["workflow_dispatch", "push", "schedule"].contains(context.event_name) ||
+      (context.event_name == "release" && context.release_tag is Some(_))
+    ) else {
     raise @domain.Forbidden(
-      message="Repository secrets are available only to authorized manual and push workflows, never MR checks.",
+      message="Repository secrets are available only to authorized manual, push, schedule and release workflows, never MR checks.",
     )
   }
   guard tx.query_opt(

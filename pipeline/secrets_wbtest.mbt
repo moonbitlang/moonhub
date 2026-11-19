@@ -244,6 +244,7 @@ async test "secret policy rejects different branches workflows and MR contexts b
                 base_ref: "",
                 inputs: Map([]),
                 variables: Map([]),
+                release_tag: None,
               }),
               run.definition,
             )

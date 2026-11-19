@@ -487,6 +487,7 @@ async test "OIDC legacy definition six keeps assignment nine and cannot gain ide
             base_ref: "",
             inputs: Map([]),
             variables: Map([]),
+            release_tag: None,
           }),
         )
       })

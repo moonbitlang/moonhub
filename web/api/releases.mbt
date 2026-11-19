@@ -54,11 +54,24 @@ fn release_access(
     None => None
     Some(_) => Some(authenticate(false))
   }
-  @releases.access(repo, actor, recheck=write => {
-    if token is Some(_) || write {
-      ignore(authenticate(write))
-    }
-  })
+  @releases.access(
+    repo,
+    actor,
+    recheck=write => {
+      if token is Some(_) || write {
+        ignore(authenticate(write))
+      }
+    },
+    can_trigger_workflows=() => {
+      guard token is Some(token) && actor is Some(actor) else { return false }
+      // Job credentials never authorize a second workflow via publication.
+      let current = @identity.authenticate_access_token(pool, token, "execute") catch {
+        @domain.Unauthorized(_) | @domain.Forbidden(_) => return false
+        err => raise err
+      }
+      current.id == actor.id
+    },
+  )
 }
 
 ///|

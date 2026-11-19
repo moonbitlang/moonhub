@@ -8,6 +8,7 @@ pub struct Access {
   repo : @domain.RepoId
   actor : @domain.CurrentUser?
   recheck : (Bool) -> Unit raise
+  can_trigger_workflows : () -> Bool raise
 }
 
 ///|
@@ -15,8 +16,9 @@ pub fn access(
   repo : @domain.RepoId,
   actor : @domain.CurrentUser?,
   recheck~ : (Bool) -> Unit raise = _ => (),
+  can_trigger_workflows~ : () -> Bool raise = () => false,
 ) -> Access {
-  { repo, actor, recheck, }
+  { repo, actor, recheck, can_trigger_workflows, }
 }
 
 ///|
@@ -241,6 +243,35 @@ fn validate_text(value : String, maximum : Int32) -> Unit raise {
 }
 
 ///|
+async fn release_default_branch(dir : String) -> (String, String)? {
+  let configured = @gitops.default_ref(dir)
+  let candidates = if ["HEAD", "main"].contains(configured) {
+    ["main", "master"]
+  } else if configured == "master" {
+    ["master", "main"]
+  } else {
+    [configured, "main", "master"]
+  }
+  for branch in candidates {
+    let (code, _) = @gitops.merge_git_command(
+      dir,
+      ["show-ref", "--verify", "--quiet", "refs/heads/" + branch],
+      limit=4096,
+    )
+    if code == 1 {
+      continue
+    }
+    guard code == 0 else {
+      raise @domain.BadRequest(
+        message="could not verify the default release branch",
+      )
+    }
+    return Some((branch, @gitops.branch_sha(dir, branch)))
+  }
+  None
+}
+
+///|
 async fn release_commit(
   root : String,
   repo : @domain.RepoId,
@@ -269,15 +300,15 @@ async fn release_commit(
   if @gitops.valid_commit_sha(target) {
     ignore(@gitops.commit_comparison(dir, target))
     target
+  } else if target == "HEAD" {
+    guard release_default_branch(dir) is Some((_, sha)) else {
+      raise @domain.BadRequest(
+        message="choose a release target branch or commit",
+      )
+    }
+    sha
   } else {
-    @gitops.branch_sha(
-      dir,
-      if target == "HEAD" {
-        @gitops.default_ref(dir)
-      } else {
-        target
-      },
-    )
+    @gitops.branch_sha(dir, target)
   }
 }
 
@@ -450,12 +481,13 @@ pub async fn Service::publish(
   latest~ : Bool = true,
 ) -> Release {
   ignore(self.authorize(access, true))
+  let actor = access.actor.unwrap()
   @repository.with_repository_write(
     self.pool,
     self.root,
-    access.actor.unwrap(),
-    @repository.repository_scope(self.pool, access.actor.unwrap(), access.repo),
-    (_, dir) => {
+    actor,
+    @repository.repository_scope(self.pool, actor, access.repo),
+    (scope, dir) => {
       let before = self.get(access, id)
       ignore(self.authorize(access, true))
       self.pool.with_client(c => {
@@ -491,7 +523,7 @@ pub async fn Service::publish(
           "\n"
         @repository.record_received_transaction(
           self.pool,
-          access.actor.unwrap(),
+          actor,
           access.repo,
           txid,
           "prepared",
@@ -507,14 +539,30 @@ pub async fn Service::publish(
         )
         @repository.record_received_transaction(
           self.pool,
-          access.actor.unwrap(),
+          actor,
           access.repo,
           txid,
           "committed",
           updates,
         )
       }
+      // Only a manager publishing with execution authority may start CI.
+      let trigger = if before.draft &&
+        !before.prerelease &&
+        @identity.can_manage_team(self.pool, actor, scope.team_id) &&
+        (access.can_trigger_workflows)() {
+        Some(release_workflow_branch(dir, before.commit_sha))
+      } else {
+        None
+      }
       ignore(self.authorize(access, true))
+      let trigger = if trigger is Some(_) &&
+        @identity.can_manage_team(self.pool, actor, scope.team_id) &&
+        (access.can_trigger_workflows)() {
+        trigger
+      } else {
+        None
+      }
       self.pool.with_client(c => {
         c.with_transaction(
           tx => {
@@ -543,6 +591,27 @@ pub async fn Service::publish(
                 ),
               )
             }
+            if trigger is Some((branch, diagnostic)) {
+              ignore(
+                tx.execute(
+                  "INSERT INTO repository_ref_event(repository_id,actor_id,source_key,reference,old_sha,new_sha,state,last_error,release_branch) VALUES(?,?,?,?,'',?,?,?,?)",
+                  params=[
+                    scope.id,
+                    actor.id,
+                    "release:" + id.to_string(),
+                    reference,
+                    before.commit_sha,
+                    if diagnostic.is_empty() {
+                      "ready"
+                    } else {
+                      "processed"
+                    },
+                    diagnostic,
+                    branch,
+                  ],
+                ),
+              )
+            }
           },
           immediate=true,
         )
@@ -550,6 +619,42 @@ pub async fn Service::publish(
     },
   )
   self.get(access, id)
+}
+
+///|
+async fn release_workflow_branch(
+  dir : String,
+  sha : String,
+) -> (String, String) {
+  // A release writer can name any commit. Only a commit on the trusted default
+  // branch can inherit that branch's workflow and secret scope.
+  @async.with_timeout(10000, () => {
+    guard release_default_branch(dir) is Some((branch, tip)) else {
+      return (
+        "HEAD", "Could not verify the release commit on the default branch.",
+      )
+    }
+    let (code, _) = @gitops.merge_git_command(
+      dir,
+      ["merge-base", "--is-ancestor", sha, tip],
+      limit=4096,
+    )
+    (
+      branch,
+      match code {
+        0 => ""
+        1 => "Release commit is not on the default branch."
+        _ => "Could not verify the release commit on the default branch."
+      },
+    )
+  }) catch {
+    @async.TimeoutError
+    | @gitops.Failure(_)
+    | @gitops.GitCommandFailed(..)
+    | @domain.BadRequest(_) =>
+      ("HEAD", "Could not verify the release commit on the default branch.")
+    err => raise err
+  }
 }
 
 ///|

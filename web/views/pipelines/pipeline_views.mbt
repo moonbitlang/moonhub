@@ -148,10 +148,15 @@ fn render_pipeline_list(
           "><span>Run push workflows</span></label><p class=\"muted\">Provider access and matching job labels still apply. Provider administration is managed separately at site level.</p><div><button type=\"submit\">Save settings</button></div></form></section>"
       } else if tab == "events" {
         b <+
-          "<p class=\"page-subtitle\">Why a push did or did not start a workflow. Trigger diagnostics are separate from run results.</p><ul class=\"event-list\">"
+          "<p class=\"page-subtitle\">Automatic workflow triggers and their outcomes.</p><ul class=\"event-list\">"
         for event in events {
           b <+
-            "<li><div class=\"record-title\"><code>\{event.reference}</code><span class=\"muted\">\{event.state}</span></div><p><a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{event.commit_sha}\">\{event.commit_sha[:12].to_owned()}</a> · <a href=\"\{base}?tab=runs&amp;branch=\{@web_context.url_escape_path(event.reference.strip_prefix("refs/heads/").unwrap_or(event.reference).to_owned())}\">View branch runs</a></p>"
+            "<li><div class=\"record-title\"><code>\{event.reference}</code><span class=\"muted\">\{event.state}</span></div><p><a class=\"path\" href=\"\{@web_ui.repo_link(scope.repo)}/commit/\{event.commit_sha}\">\{event.commit_sha[:12].to_owned()}</a>"
+          if event.reference.strip_prefix("refs/heads/") is Some(branch) {
+            b <+
+              " · <a href=\"\{base}?tab=runs&amp;branch=\{@web_context.url_escape_path(branch.to_owned())}\">View branch runs</a>"
+          }
+          b <+ "</p>"
           b <+ "\{@web_ui.timestamp(event.created_at, relative=true)}"
           for run in event.runs {
             let result = pipeline_result(run.state, run.conclusion)
@@ -169,8 +174,7 @@ fn render_pipeline_list(
           b <+ "</li>"
         }
         if events.is_empty() {
-          b <+
-            "<li class=\"empty-state\"><h2>No trigger events yet</h2><p>Push events appear here when automatic workflows are enabled and an authorized member pushes code.</p></li>"
+          b <+ "<li class=\"empty-state\"><h2>No trigger events yet</h2></li>"
         }
         b <+ "</ul>"
       } else {

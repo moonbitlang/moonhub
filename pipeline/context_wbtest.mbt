@@ -98,7 +98,7 @@ async test "push context is taken from durable event and retained on rerun" {
       "\{"0".repeat(40)} \{sha} refs/heads/pushed",
     )
     ignore(@test_support.merge_test_commit(dir, "pushed", sha, "later push\n"))
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     let run = list_runs(pool, actor, repo)[0]
     let context = run.context.unwrap()
     assert_eq(context.sha, sha)

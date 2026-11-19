@@ -1,5 +1,5 @@
 ///|
-pub async fn run_next_push_event(
+pub async fn run_next_ref_event(
   pool : @database.Database,
   root : String,
 ) -> Bool {
@@ -38,8 +38,9 @@ pub async fn run_next_push_event(
     )
   })
   guard (row.get_name("state") : String) == "ready" else { return true }
+  let release_branch : String? = row.get_name("release_branch")
   let mut error = ""
-  if (row.get_name("pipeline_push_enabled") : Bool) {
+  if release_branch is Some(_) || (row.get_name("pipeline_push_enabled") : Bool) {
     try {
       let actor = @identity.active_user_by_name(
         pool,
@@ -48,7 +49,15 @@ pub async fn run_next_push_event(
       ignore(require_run_author(pool, actor, scope.repo))
       let sha : String = row.get_name("new_sha")
       let reference : String = row.get_name("reference")
-      let branch = reference.strip_prefix("refs/heads/").unwrap().to_owned()
+      let (branch, release_tag) = match release_branch {
+        Some(branch) =>
+          (
+            branch,
+            Some(reference.strip_prefix("refs/tags/").unwrap().to_owned()),
+          )
+        None =>
+          (reference.strip_prefix("refs/heads/").unwrap().to_owned(), None)
+      }
       let output = @gitops.merge_git(git_dir, [
         "ls-tree", sha, ".github/workflows/",
       ])
@@ -62,11 +71,11 @@ pub async fn run_next_push_event(
       }
       guard paths.length() <= 64 else {
         raise @domain.BadRequest(
-          message="push contains more than 64 workflow files",
+          message="trigger revision contains more than 64 workflow files",
         )
       }
       let old : String = row.get_name("old_sha")
-      let old = if old.is_empty() {
+      let old = if release_tag is None && old.is_empty() {
         let (code, value) = @gitops.merge_git_command(git_dir, [
           "rev-parse",
           "--verify",
@@ -98,34 +107,46 @@ pub async fn run_next_push_event(
           validate_workflow_path(path)
           let source = read_workflow_source(git_dir, sha, path)
           let trigger = @workflow.triggers(source)
-          if !trigger.matches_push(branch) {
-            continue
-          }
-          if !changes_loaded &&
-            (
-              !trigger.push_filters.paths.is_empty() ||
-              !trigger.push_filters.paths_ignore.is_empty()
-            ) {
-            changes = changed_paths(git_dir, old, sha)
-            changes_loaded = true
-          }
-          if !trigger.matches_push(branch, paths=changes) {
-            continue
+          if release_tag is Some(_) {
+            if !trigger.release {
+              continue
+            }
+          } else {
+            if !trigger.matches_push(branch) {
+              continue
+            }
+            if !changes_loaded &&
+              (
+                !trigger.push_filters.paths.is_empty() ||
+                !trigger.push_filters.paths_ignore.is_empty()
+              ) {
+              changes = changed_paths(git_dir, old, sha)
+              changes_loaded = true
+            }
+            if !trigger.matches_push(branch, paths=changes) {
+              continue
+            }
           }
           let context : @workflow.RunContext = {
             repository: scope.repo.owner + "/" + scope.repo.name,
             sha,
-            event_name: "push",
+            event_name: if release_tag is Some(_) {
+              "release"
+            } else {
+              "push"
+            },
             head_ref: "",
             base_ref: "",
             inputs: Map([]),
             variables: Map([]),
+            release_tag,
           }
           let definition = @workflow.resolve_context(
             @workflow.parse(source),
             context,
           )
-          let pin = "refs/moonhub/pipelines/push-" +
+          let pin = "refs/moonhub/pipelines/" +
+            (if release_tag is Some(_) { "release-" } else { "push-" }) +
             id.to_string() +
             "/" +
             @identity.hash_token(path)
@@ -187,16 +208,16 @@ pub async fn run_next_push_event(
 }
 
 ///|
-pub fn start_push_worker(
+pub fn start_ref_event_worker(
   pool : @database.Database,
   root : String,
   group : @async.TaskGroup[Unit],
 ) -> Unit {
   group.spawn_bg(no_wait=true, () => {
     for ;; {
-      let processed = run_next_push_event(pool, root) catch {
+      let processed = run_next_ref_event(pool, root) catch {
         _ => {
-          println("pipeline push event failed; will retry")
+          println("pipeline ref event failed; will retry")
           false
         }
       }

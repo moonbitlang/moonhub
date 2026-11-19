@@ -218,6 +218,7 @@ async test "version four snapshots and reruns retain the version seven wire cont
             base_ref: "",
             inputs: Map([]),
             variables: Map([]),
+            release_tag: None,
           }),
         )
       })

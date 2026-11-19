@@ -1,5 +1,15 @@
 ///|
 async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
+  let release_ref = if self.assignment.job.context.get("event_name") ==
+    Some("release") {
+    let reference = self.assignment.job.context.get("ref").unwrap_or("")
+    guard reference.has_prefix("refs/tags/") else {
+      raise InvalidConfiguration("release source requires a tag ref")
+    }
+    reference
+  } else {
+    ""
+  }
   let script = scratch + "/prepare-source.sh"
   @fs.write_file(
     script,
@@ -12,6 +22,10 @@ async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
         #|[IO.File]::WriteAllText(($env:MOONHUB_SOURCE_GIT + '/shallow'), ($env:GITHUB_SHA + "`n"), [Text.UTF8Encoding]::new($false))
         #|& git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT update-ref refs/heads/moonhub-source $env:GITHUB_SHA
         #|if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        #|if ($env:MOONHUB_RELEASE_REF) {
+        #|  & git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT update-ref $env:MOONHUB_RELEASE_REF $env:GITHUB_SHA
+        #|  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        #|}
         #|& git -c core.hooksPath=NUL --git-dir $env:MOONHUB_SOURCE_GIT symbolic-ref HEAD refs/heads/moonhub-source
       )
     } else {
@@ -20,6 +34,9 @@ async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
         #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" bundle unbundle "$MOONHUB_SOURCE_BUNDLE" > /dev/null
         #|printf '%s\n' "$GITHUB_SHA" > "$MOONHUB_SOURCE_GIT/shallow"
         #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" update-ref refs/heads/moonhub-source "$GITHUB_SHA"
+        #|if [ -n "$MOONHUB_RELEASE_REF" ]; then
+        #|  git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" update-ref "$MOONHUB_RELEASE_REF" "$GITHUB_SHA" || exit $?
+        #|fi
         #|git -c core.hooksPath=/dev/null --git-dir "$MOONHUB_SOURCE_GIT" symbolic-ref HEAD refs/heads/moonhub-source
       )
     },
@@ -40,6 +57,7 @@ async fn Runtime::prepare_source_git(self : Runtime, scratch : String) -> Unit {
       env: {
         "MOONHUB_SOURCE_BUNDLE": scratch + "/source.bundle",
         "MOONHUB_SOURCE_GIT": scratch + "/source.git",
+        "MOONHUB_RELEASE_REF": release_ref,
       },
     },
     script,

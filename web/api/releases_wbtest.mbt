@@ -126,6 +126,10 @@ async test "release browser pages escape text enforce CSRF and stream authorized
     })
     assert_eq(published.code, 303)
     ignore(client.read_all())
+    let events = @pipeline.list_trigger_events(pool, actor, repo)
+    assert_eq(events.length(), 1)
+    assert_eq(events[0].reference, "refs/tags/v4.0.0")
+    assert_eq(events[0].state, "ready")
     pool.with_client(c => {
       ignore(c.execute("UPDATE repository SET visibility='public' WHERE id=1"))
     })
@@ -159,7 +163,7 @@ async test "release job credential publishes only its repository and is revoked 
     let actor = @identity.active_user_by_name(pool, "alice")
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let source =
-      #|on: workflow_dispatch
+      #|on: [workflow_dispatch, release]
       #|permissions: {contents: write, actions: read}
       #|jobs:
       #|  publish:
@@ -167,6 +171,11 @@ async test "release job credential publishes only its repository and is revoked 
       #|    steps:
       #|      - run: echo publish
     let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    ignore(
+      @gitops.merge_git(repo.git_dir(root), [
+        "update-ref", "refs/heads/master", sha,
+      ]),
+    )
     let run = @pipeline.create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
@@ -201,7 +210,7 @@ async test "release job credential publishes only its repository and is revoked 
       "tag_name": "v5.0.0",
       "target_commitish": sha,
       "name": "Job release",
-      "draft": true,
+      "draft": false,
     }
     assert_eq(
       api_test_request(
@@ -212,6 +221,7 @@ async test "release job credential publishes only its repository and is revoked 
       ).0,
       201,
     )
+    assert_true(@pipeline.list_trigger_events(pool, actor, repo).is_empty())
     assert_eq(
       api_test_request(
         port,

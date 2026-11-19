@@ -84,3 +84,37 @@ test "pull request types default correctly and unsupported filters fail closed" 
     )
   }
 }
+
+///|
+test "stable release triggers can coexist with workflow dispatch" {
+  for trigger in ["release", "[release, push]", "{release: {}}"] {
+    let source = basic_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: " + trigger,
+    )
+    ignore(parse(source))
+    assert_true(triggers(source).release)
+    assert_false(triggers(source).dispatch)
+  }
+  let source = basic_workflow.replace_all(
+    old="on: workflow_dispatch",
+    new="on:\n  release:\n    types:\n      - released\n  workflow_dispatch:",
+  )
+  ignore(parse(source))
+  assert_true(triggers(source).release)
+  assert_true(triggers(source).dispatch)
+  assert_false(triggers(basic_workflow).release)
+  for
+    config in [
+      "{types: []}", "{types: released}", "{types: [published]}", "{types: [released, prereleased]}",
+      "{types: [released, released]}", "{branches: [master]}",
+    ] {
+    expect_invalid(
+      basic_workflow.replace_all(
+        old="on: workflow_dispatch",
+        new="on: {release: " + config + ", workflow_dispatch: null}",
+      ),
+      "on.release",
+    )
+  }
+}

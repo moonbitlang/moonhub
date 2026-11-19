@@ -28,7 +28,7 @@ unchanged.
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/environment` | Shared Linux environment definitions, immutable-image validation and actual userspace checks; core packages only |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push-event consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, workflow OIDC signing/grants, Artifact/Cache v4 metadata, capabilities and storage policy and result persistence |
+| `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push and release trigger consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, workflow OIDC signing/grants, Artifact/Cache v4 metadata, capabilities and storage policy and result persistence |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, local Tart VM workers, config synchronization and execution cleanup; no database or Web dependency |
 | `runner/platform` | OS detection, safe paths, minimal OS environment and private Windows directory ACLs; no database or Web dependency |
@@ -359,3 +359,9 @@ composition boundary reads `MOONHUB_MCP_ALLOWED_ORIGINS`. No Runner credentials
 are converted into MCP credentials. See [MCP](mcp.md).
 
 Release lifecycle and byte storage belong to `releases` and `storage`; Pipeline grants only live repository-scoped job API capabilities. The Web adapter composes these services without business packages importing one another. `web/views/releases` owns browser pages and downloads; `web/api` owns the bounded gh-compatible API. See [releases](releases.md).
+
+For authorized stable publications, `releases` writes the trigger to the same
+durable ref-event queue as pushes, in the release publication transaction.
+Pipeline consumes the captured tag and SHA under the repository lock and
+deduplicates run snapshots by event and workflow path. Neither package imports
+the other.

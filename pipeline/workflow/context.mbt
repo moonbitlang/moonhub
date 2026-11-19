@@ -1,6 +1,6 @@
 ///|
 // Captured once, never rebuilt from current branch/MR state.
-#derive(Debug, ToJson)
+#derive(Debug)
 pub(all) struct RunContext {
   repository : String
   sha : String
@@ -9,12 +9,46 @@ pub(all) struct RunContext {
   base_ref : String
   inputs : Map[String, Json]
   variables : Map[String, String]
+  release_tag : String?
+}
+
+///|
+pub impl ToJson for RunContext with fn to_json(self) {
+  let fields : Map[String, Json] = {
+    "repository": self.repository,
+    "sha": self.sha,
+    "event_name": self.event_name,
+    "head_ref": self.head_ref,
+    "base_ref": self.base_ref,
+    "inputs": ToJson::to_json(self.inputs),
+    "variables": ToJson::to_json(self.variables),
+  }
+  if self.release_tag is Some(tag) {
+    fields["release_tag"] = Json::string(tag)
+  }
+  Json::object(fields)
 }
 
 ///|
 pub impl @json.FromJson for RunContext with fn from_json(json, path) {
   guard json is Object(fields) else {
     raise @json.JsonDecodeError((path, "invalid run context"))
+  }
+  let event_name : String = @json.from_json(
+    fields.get("event_name").unwrap_or(Json::null()),
+    path=path.add_key("event_name"),
+  )
+  let release_tag = match fields.get("release_tag") {
+    None | Some(Null) => None
+    Some(String(tag)) => Some(tag)
+    _ =>
+      raise @json.JsonDecodeError(
+        (path.add_key("release_tag"), "expected a tag string"),
+      )
+  }
+  guard (event_name == "release" && release_tag is Some(tag) && !tag.is_empty()) ||
+    (event_name != "release" && release_tag is None) else {
+    raise @json.JsonDecodeError((path, "invalid release event context"))
   }
   {
     repository: @json.from_json(
@@ -25,10 +59,7 @@ pub impl @json.FromJson for RunContext with fn from_json(json, path) {
       fields.get("sha").unwrap_or(Json::null()),
       path=path.add_key("sha"),
     ),
-    event_name: @json.from_json(
-      fields.get("event_name").unwrap_or(Json::null()),
-      path=path.add_key("event_name"),
-    ),
+    event_name,
     head_ref: @json.from_json(
       fields.get("head_ref").unwrap_or(Json::null()),
       path=path.add_key("head_ref"),
@@ -45,6 +76,7 @@ pub impl @json.FromJson for RunContext with fn from_json(json, path) {
       fields.get("inputs").unwrap_or(({} : Json)),
       path=path.add_key("inputs"),
     ),
+    release_tag,
   }
 }
 
