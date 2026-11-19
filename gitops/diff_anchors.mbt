@@ -71,13 +71,13 @@ pub async fn validate_diff_anchor(
     let status = fields[index]
     let old = fields[index + 1]
     let mut new = old
-    index = index + 2
+    index += 2
     if status.has_prefix("R") || status.has_prefix("C") {
       guard index < fields.length() else {
         raise @domain.BadRequest(message="unsupported diff paths")
       }
       new = fields[index]
-      index = index + 1
+      index += 1
     }
     let old = if status == "A" { "" } else { old }
     let new = if status == "D" { "" } else { new }
@@ -87,7 +87,7 @@ pub async fn validate_diff_anchor(
       found = true
       break
     }
-    file_index = file_index + 1
+    file_index += 1
   }
   guard found else {
     raise @domain.BadRequest(
@@ -150,7 +150,7 @@ fn anchor_context(
       old = diff_hunk_start(parts[1][1:].to_owned())
       new = diff_hunk_start(parts[2][1:].to_owned())
       hunk = true
-      hunk_index = hunk_index + 1
+      hunk_index += 1
     } else if line.has_prefix("diff --git ") {
       hunk = false
     } else if hunk &&
@@ -169,7 +169,7 @@ fn anchor_context(
           )
         }
         selected_hunk = hunk_index
-        expected = expected + 1L
+        expected += 1L
         snippet.write_string("\{number}: ")
         for ch in line[1:].iter().take(120) {
           snippet.write_char(ch)
@@ -180,10 +180,10 @@ fn anchor_context(
         snippet.write_char('\n')
       }
       if !line.has_prefix("+") {
-        old = old + 1L
+        old += 1L
       }
       if !line.has_prefix("-") {
-        new = new + 1L
+        new += 1L
       }
     }
   }

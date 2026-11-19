@@ -324,7 +324,7 @@ async fn revision_commit_metadata(
                 while leading > 0 &&
                       bytes[leading] >= 0x80 &&
                       bytes[leading] < 0xc0 {
-                  leading = leading - 1
+                  leading -= 1
                 }
                 if leading >= 0 {
                   let expected = if bytes[leading] >= 0xf0 {

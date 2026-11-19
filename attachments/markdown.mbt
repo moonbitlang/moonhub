@@ -35,11 +35,11 @@ pub fn attachment_links(markdown : String) -> Array[ImageLink] {
             image: rest.has_prefix("!["),
           })
           let length = label_end + 3 + url_end
-          column = column + length
+          column += length
           rest = rest[length:]
         } else {
           let length = rest.iter().next().unwrap().to_string().length()
-          column = column + length
+          column += length
           rest = rest[length:]
         }
       }

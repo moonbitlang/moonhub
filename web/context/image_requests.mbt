@@ -24,7 +24,7 @@ pub async fn read_bounded_body(req : @moonback.Request, limit : Int32) -> Bytes 
     10000,
     () => {
       while reader.read_some(max_len=65536) is Some(chunk) {
-        size = size + chunk.length()
+        size += chunk.length()
         guard size <= limit else {
           raise @domain.BadRequest(message="request body is too large")
         }
@@ -38,7 +38,7 @@ pub async fn read_bounded_body(req : @moonback.Request, limit : Int32) -> Bytes 
   for chunk in chunks {
     for byte in chunk {
       bytes[offset] = byte
-      offset = offset + 1
+      offset += 1
     }
   }
   Bytes::from_array(bytes)
