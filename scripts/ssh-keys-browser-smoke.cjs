@@ -165,7 +165,8 @@ async function main() {
   await capture(page, 'repository-new');
   await page.getByRole('button', { name: 'Create repository', exact: true }).click();
   await page.waitForURL(`${url}/workshop/example`, { timeout: 15000 });
-  await page.getByText('No files.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'This repository is empty' }).waitFor();
+  await page.getByText('Contact a site administrator to set up SSH access before pushing your first commit.', { exact: true }).waitFor();
   await page.locator('.repo-clone summary').click();
   await page.getByText('SSH clone address is not configured.', { exact: true }).waitFor();
   await capture(page, 'clone-unconfigured');
@@ -182,6 +183,7 @@ async function main() {
   await page.goto(`${url}/workshop/example`);
   await page.locator('.repo-clone summary').click();
   const cloneUrl = 'ssh://git@git.example.com:12222/workshop/example.git';
+  assert.equal(await page.locator('.repository-first-push code').textContent(), `git push -- '${cloneUrl}' 'HEAD:refs/heads/main'`);
   assert.equal(await page.locator('[data-clone-url]').inputValue(), cloneUrl);
   await page.locator('[data-clone-copy]:enabled').click();
   await page.getByText('SSH URL copied.', { exact: true }).waitFor();

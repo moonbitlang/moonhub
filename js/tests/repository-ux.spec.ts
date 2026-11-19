@@ -16,6 +16,129 @@ async function fillMarkdown(page: Page, selector: string, value: string) {
   await textarea.evaluate((element, value) => (element.closest('.markdown-editor')!.querySelector('.CodeMirror') as any).CodeMirror.setValue(value), value);
 }
 
+test('Clone menu stays inside the viewport and copies the full SSH URL', async ({ page }) => {
+  await login(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const trigger = page.locator('.repo-clone > summary');
+  const panel = page.locator('.repo-clone-panel');
+  const url = 'ssh://git@ssh.example.test:2222/alice/demo.git';
+  for (const path of ['/alice/demo/commits', '/alice/demo']) {
+    await page.goto(path);
+    await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+    for (const width of [1280, 1440, 320]) {
+      const height = 900;
+      await page.setViewportSize({ width, height });
+      await trigger.click();
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(20);
+      expect(box.x + box.width).toBeLessThanOrEqual(width - 20);
+      expect(box.width).toBeCloseTo(Math.min(440, width - 40), 0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(panel.getByLabel('Clone with SSH')).toHaveValue(url);
+      await panel.getByRole('button', { name: 'Copy SSH URL' }).click();
+      await expect(panel.getByRole('status')).toHaveText('SSH URL copied.');
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+      await page.keyboard.press('Escape');
+      await expect(panel).toBeHidden();
+      await expect(trigger).toBeFocused();
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const triggerBox = (await trigger.boundingBox())!;
+  await page.setViewportSize({ width: 1280, height: Math.ceil(triggerBox.y + triggerBox.height) + 25 });
+  await trigger.click();
+  const flipped = (await panel.boundingBox())!;
+  expect(flipped.y).toBeGreaterThanOrEqual(0);
+  expect(flipped.y + flipped.height).toBeLessThan((await trigger.boundingBox())!.y);
+});
+
+test('notification settings keep unsaved changes until the form is submitted', async ({ page }) => {
+  await login(page);
+  await page.goto('/-/notifications');
+  await page.getByRole('link', { name: 'Notification settings', exact: true }).click();
+  await expect(page).toHaveURL('/-/notifications?settings=1');
+  const header = page.locator('.page-heading');
+  const settings = header.getByText('Notification settings', { exact: true });
+  await expect(header.getByRole('link', { name: 'Notification settings' })).toHaveCount(0);
+  await expect(settings).toHaveAttribute('aria-current', 'page');
+  const email = page.getByRole('checkbox', { name: 'Email me about collaboration updates' });
+  const checked = !(await email.isChecked());
+  await email.setChecked(checked);
+  await settings.click();
+  await expect(email).toBeChecked({ checked });
+  await page.getByRole('button', { name: 'Save notification settings' }).click();
+  await expect(page.getByText('Notification settings saved.')).toBeVisible();
+  await page.reload();
+  await expect(email).toBeChecked({ checked });
+});
+
+test('branch protection breadcrumb links back to the repository', async ({ page }) => {
+  await login(page);
+  await page.goto('/alice/demo/settings/branches');
+  await expect(page.getByRole('heading', { name: 'Branch protection', exact: true })).toBeVisible();
+  await expect(page.locator('.repository-tabs a[aria-current]')).toHaveText('Settings');
+  const trail = page.getByRole('navigation', { name: 'Breadcrumb', exact: true });
+  await expect(trail.getByRole('listitem')).toHaveText(['demo', 'Settings', 'Branch protection']);
+  await expect(trail.locator('span[aria-current=page]')).toHaveText('Branch protection');
+  await expect(trail.getByRole('link')).toHaveCount(1);
+  await trail.getByRole('link', { name: 'demo', exact: true }).click();
+  await expect(page).toHaveURL('/alice/demo');
+  await expect(page.locator('.file-table')).toBeVisible();
+});
+
+test('issue details show a description card only for nonblank descriptions', async ({ page }) => {
+  await login(page);
+  for (const [title, description] of [
+    ['Title only', ''], ['Whitespace description', ' \n\t '], ['With description', '**Rendered body**'],
+  ]) {
+    await page.goto('/alice/demo/issues/new');
+    await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+    await page.getByLabel('Title', { exact: true }).fill(title);
+    if (description) await fillMarkdown(page, 'textarea[name=description]', description);
+    await page.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(page).toHaveURL(/\/issues\/\d+$/);
+    await expect(page.getByRole('heading', { name: new RegExp(title) })).toBeVisible();
+    await expect(page.getByText('Opened by Alice', { exact: false })).toBeVisible();
+    const activity = page.locator('.mr-timeline .mr-event-heading');
+    await expect(activity).toContainText('opened');
+    await expect(activity.locator('time')).toHaveAttribute('datetime', /T.*Z$/);
+    const card = page.locator('.discussion-description');
+    if (description.trim()) {
+      await expect(card.locator('strong')).toHaveText('Rendered body');
+    } else {
+      await expect(card).toHaveCount(0);
+    }
+  }
+});
+
+test('repository creation forms share the release form width at desktop and narrow sizes', async ({ page }) => {
+  await login(page);
+  for (const section of ['issues', 'merge-requests', 'releases']) {
+    await page.goto('/alice/demo/' + section + '/new');
+    const form = page.locator('main form.repository-form');
+    const fields = section === 'releases'
+      ? ['input[name=title]', 'textarea[name=body]']
+      : ['input[name=title]', '.markdown-editor', '.markdown-editor-toolbar'];
+    for (const [width, max] of [[1440, 720], [1600, 760], [320, 720]]) {
+      await page.setViewportSize({ width, height: 900 });
+      const available = await page.locator('main').evaluate(element => {
+        const style = getComputedStyle(element);
+        return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      });
+      const expected = Math.min(available, max);
+      await expect(form).toBeVisible();
+      expect((await form.boundingBox())!.width).toBeCloseTo(expected, 0);
+      for (const field of fields) {
+        await expect(form.locator(field)).toBeVisible();
+        expect((await form.locator(field).boundingBox())!.width).toBeCloseTo(expected, 0);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  }
+});
+
 for (const width of [320, 390, 900, 1440]) {
   test(`repository navigation, menus and file finder at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -344,6 +467,20 @@ test('repository code controls and native line anchors work without JavaScript',
   await native.locator('[data-file-finder] > summary').click();
   await native.locator('.commit-history').click();
   await expect(native.locator('main')).toContainText('Commits');
+  for (const width of [1280, 1440, 320]) {
+    await native.setViewportSize({ width, height: 900 });
+    const summary = native.locator('.repo-clone > summary');
+    const clone = native.locator('.repo-clone-panel');
+    await summary.click();
+    await expect(clone.getByLabel('Clone with SSH')).toHaveValue('ssh://git@ssh.example.test:2222/alice/demo.git');
+    const panel = (await clone.boundingBox())!;
+    expect(panel.x).toBeGreaterThanOrEqual(20);
+    expect(panel.x + panel.width).toBeLessThanOrEqual(width - 20);
+    expect(panel.y).toBeGreaterThanOrEqual(0);
+    expect(panel.y + panel.height).toBeLessThanOrEqual(900);
+    await summary.click();
+    await expect(clone).toBeHidden();
+  }
   await native.goBack();
   await native.locator('[data-file-finder] > summary').click();
   await native.locator('[data-file-result]').getByRole('link', { name: 'README.md', exact: true }).click();
@@ -411,6 +548,12 @@ for (const width of [320, 390, 900, 1440]) {
     await page.goto('/alice/empty');
     await expect(page.locator('.commit-summary')).toContainText('No commits yet.');
     await expect(page.locator('.commit-history')).toHaveText('0 commits');
+    await expect(page.locator('.repository-releases')).toBeVisible();
+    await expect(page.locator('.repo-clone > summary')).toBeVisible();
+    await expect(page.locator('.branch-picker, .file-finder, .file-table')).toHaveCount(0);
+    const firstPush = page.locator('.repository-first-push');
+    await expect(firstPush.getByRole('link', { name: 'SSH keys' })).toHaveAttribute('href', '/-/settings/ssh-keys');
+    await expect(firstPush.locator('code')).toHaveText("git push -- 'ssh://git@ssh.example.test:2222/alice/empty.git' 'HEAD:refs/heads/master'");
     await expect(page.locator('a[href*="/empty/commit/"]')).toHaveCount(0);
     await page.locator('.commit-history').click();
     await expect(page.locator('main')).toContainText('No commits.');

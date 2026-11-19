@@ -180,7 +180,7 @@ fn render_merge_new(
           "<p class=\"muted\">This repository needs two branches with commits.</p>"
       } else {
         b <+
-          "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{base}\" data-branch-comparison><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"mr-branch-fields\">"
+          "<form class=\"form-stack mr-form repository-form\" method=\"post\" action=\"\{base}\" data-branch-comparison><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><div class=\"mr-branch-fields\">"
         for field in ["target", "source"] {
           let selected = form
             .get(field)
@@ -787,8 +787,7 @@ fn render_branch_rules(
     "Branch protection",
     assets,
     Html(b => {
-      b <+
-        "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests\">\{scope.repo.path()} / Pull requests</a><h1>Branch protection</h1><ul class=\"mr-list\">"
+      b <+ "<h1>Branch protection</h1><ul class=\"mr-list\">"
       for rule in rules {
         let branch = rule.branch
         let approvals = rule.required_approvals

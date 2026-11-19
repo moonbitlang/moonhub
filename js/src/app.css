@@ -286,10 +286,10 @@ textarea { resize: vertical; }
 .repo-context-line > a { color: var(--color-muted); }
 .branch-label { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 4px; background: var(--color-surface-subtle); font-family: var(--font-mono); overflow-wrap: anywhere; }
 .branch-label .ui-icon { width: 14px; height: 14px; flex-basis: 14px; }
-.repo-clone { position: relative; flex-shrink: 0; }
+.repo-clone { flex-shrink: 0; }
 .repo-clone summary { list-style: none; }
 .repo-clone [data-clone-icon] { display: inline-flex; width: 16px; height: 16px; flex: 0 0 16px; }
-.repo-clone-panel { position: absolute; z-index: 25; top: calc(100% + 8px); right: 0; width: min(440px, calc(100vw - 40px)); padding: 18px; border-radius: 6px; background: var(--color-surface); box-shadow: var(--shadow-menu); }
+.repo-clone-panel { position: fixed; z-index: 45; inset: 0; margin: auto; width: min(440px, calc(100vw - 40px)); height: fit-content; max-height: calc(100dvh - 16px); overflow: auto; padding: 18px; border-radius: 6px; background: var(--color-surface); box-shadow: var(--shadow-menu); }
 .repo-clone-label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
 .repo-clone-field { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: center; gap: 8px; }
 .repo-clone-field input { min-width: 0; font-size: 12px; }
@@ -950,7 +950,7 @@ body:has(.repository-shell) .mr-list { border-radius: 6px; }
 body:has(.repository-shell) .compact-records > li { padding: 12px 16px; }
 body:has(.repository-shell) .compact-records p { margin: 4px 0 0; font-size: 12px; }
 body:has(.repository-shell) .page-tabs a, body:has(.repository-shell) .mr-state { text-transform: capitalize; }
-body:has(.repository-shell) .mr-form { max-width: 100%; }
+body:has(.repository-shell) .mr-form:not(.repository-form) { max-width: 100%; }
 body:has(.repository-shell) .mr-main { min-width: 0; }
 body:has(.repository-shell) .mr-sidebar { top: 120px; max-height: calc(100dvh - 140px); }
 body:has(.repository-shell) .mr-main > .mr-merge-panel { border: 1px solid var(--color-border); border-radius: 6px; padding: 20px; margin-top: 24px; }
@@ -969,6 +969,15 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 /* Keep a viewport-contained fallback when anchor positioning is unavailable. */
 .file-finder-panel { position: fixed; z-index: 45; inset: 0; margin: auto; height: fit-content; }
 @supports (position-area: block-end) and (justify-self: anchor-center) {
+  .repo-clone > summary { anchor-name: --repo-clone-trigger; }
+  .repo-clone-panel {
+    position-anchor: --repo-clone-trigger;
+    inset: auto;
+    margin: 8px 20px;
+    position-area: block-end span-all;
+    justify-self: anchor-center;
+    position-try-fallbacks: flip-block;
+  }
   .file-finder > summary { anchor-name: --file-finder-trigger; }
   .file-finder-panel {
     position-anchor: --file-finder-trigger;
@@ -1034,6 +1043,8 @@ body:has(.repository-shell) .mr-comment { padding-top: 12px; }
 }
 .repository-home { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: 32px; }
 .repository-files, .repository-releases { min-width: 0; }
+.repository-first-push { padding: 20px; border: 1px solid var(--color-border); border-radius: 6px; }
+.repository-first-push p { margin: 0; }
 .repository-releases { padding-block: 12px; overflow-wrap: anywhere; font-size: 13px; }
 .repository-releases h2 { font-size: 16px; margin: 0 0 16px; }
 .repository-releases h2 a { color: var(--color-text); }

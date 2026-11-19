@@ -77,7 +77,13 @@ pub fn render_breadcrumb_trail(
           }
           b <+ ">"
         }
-        None => b <+ "<span class=\"breadcrumb-label\">"
+        None => {
+          b <+ "<span class=\"breadcrumb-label\""
+          if current && !file_path {
+            b <+ " aria-current=\"page\""
+          }
+          b <+ ">"
+        }
       }
       if file_path && i == 0 {
         b <+
@@ -122,6 +128,12 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
     }
     PersonalNavigation(team) =>
       [("Workspace", Some("/")), (team.display_name, Some("/\{team.name_key}"))]
+    RepositoryNavigation(repo, "settings", _) =>
+      [
+        (repo.name, Some(repo_link(repo))),
+        ("Settings", None),
+        ("Branch protection", None),
+      ]
     RepositoryNavigation(repo, active, _) => {
       let base = repo_link(repo)
       let (label, suffix) = match active {
@@ -135,7 +147,6 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "mirrors" => ("Mirrors", "/settings/mirrors")
         "releases" => ("Releases", "/releases")
         "webhooks" => ("Webhooks", "/settings/webhooks")
-        "settings" => ("Branch protection", "/settings/branches")
         "deploy-keys" => ("Deploy keys", "/settings/deploy-keys")
         "secrets" => ("Repository secrets", "/settings/secrets")
         "variables" => ("Repository variables", "/settings/variables")

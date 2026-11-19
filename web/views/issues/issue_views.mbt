@@ -109,7 +109,7 @@ fn render_issue_form(
         b <+ "<p class=\"flash-error\" role=\"alert\">\{error}</p>"
       }
       b <+
-        "<form class=\"form-stack mr-form\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\">"
+        "<form class=\"form-stack mr-form\{if issue is None { " repository-form" } else { "" }}\" method=\"post\" action=\"\{action}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\">"
       if issue is Some(issue) {
         // Keep the submitted version on validation errors: never silently replace a stale edit.
         b <+
@@ -167,7 +167,11 @@ fn render_issue_detail(
           "<a href=\"\{@web_ui.repo_link(scope.repo)}/merge-requests/new?issue=\{issue.number.to_string()}\">Create pull request</a>"
       }
       b <+
-        "</div><div class=\"mr-workspace issue-workspace\"><div class=\"mr-main\"><div class=\"markdown-body discussion-description\"><h2>\{issue.author} opened this issue</h2>\{@web_ui.markdown(issue.description, repo=Some(scope.repo))}</div>"
+        "</div><div class=\"mr-workspace issue-workspace\"><div class=\"mr-main\">"
+      if !issue.description.trim().is_empty() {
+        b <+
+          "<div class=\"markdown-body discussion-description\"><h2>\{issue.author} opened this issue</h2>\{@web_ui.markdown(issue.description, repo=Some(scope.repo))}</div>"
+      }
       b <+ "<ol class=\"mr-timeline\">"
       for i, item in activities {
         if i < 50 {

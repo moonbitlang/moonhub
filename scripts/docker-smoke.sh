@@ -48,11 +48,12 @@ refresh_endpoints() {
 settings_value() {
   python3 -c '
 import sys
+import shlex
 from html.parser import HTMLParser
 
 class SettingsParser(HTMLParser):
     value = None
-    in_status = False
+    capturing = False
     def handle_starttag(self, tag, attributes):
         attributes = dict(attributes)
         if sys.argv[1] == "csrf" and tag == "input" and attributes.get("name") == "csrf_token":
@@ -62,20 +63,29 @@ class SettingsParser(HTMLParser):
             if href.startswith("/-/settings/ssh-keys/") and href.endswith("/revoke"):
                 self.value = href
         if sys.argv[1] == "status" and tag == "p" and "repository-job-state" in attributes.get("class", ""):
-            self.in_status = True
+            self.capturing = True
+        if sys.argv[1] == "first-push" and tag == "code":
+            self.capturing = True
     def handle_endtag(self, tag):
-        if tag == "p":
-            self.in_status = False
+        if tag in ("p", "code"):
+            self.capturing = False
     def handle_data(self, data):
-        if self.in_status:
-            self.value = data
+        if self.capturing:
+            if sys.argv[1] == "first-push":
+                if data.startswith("git push -- "):
+                    command = shlex.split(data)
+                    if len(command) != 5 or command[:3] != ["git", "push", "--"] or command[3] != sys.argv[2]:
+                        raise SystemExit("unexpected first push command")
+                    self.value = command[4]
+            else:
+                self.value = data
 
 parser = SettingsParser()
 parser.feed(sys.stdin.read())
 if not parser.value:
     raise SystemExit("missing SSH settings form value")
 print(parser.value)
-' "$1"
+' "$@"
 }
 
 wait_repository_operation() {
@@ -137,7 +147,15 @@ curl --fail --silent --show-error -b "$tmp/cookies" "$http/-/settings/ssh-keys" 
 revoke_path=$(settings_value revoke < "$tmp/settings")
 "${compose[@]}" exec -T --user git web moonhub repo-create root/demo
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
-grep -q 'No files.' "$tmp/response"
+grep -Fq 'This repository is empty' "$tmp/response"
+grep -Fq '<strong>0</strong> commits' "$tmp/response"
+grep -Fq '<a href="/-/settings/ssh-keys">SSH keys</a>' "$tmp/response"
+if grep -Eq 'Go to file|branch-picker|file-table' "$tmp/response"; then
+  printf '%s\n' 'Empty repository exposed file browsing controls' >&2
+  exit 1
+fi
+refspec=$(settings_value first-push "$url" < "$tmp/response")
+test "$refspec" = HEAD:refs/heads/main
 grep -Fq "$url" "$tmp/response"
 if grep -Fq 'ssh://git@ssh:2222' "$tmp/response"; then
   printf '%s\n' 'Clone UI exposed a container-internal endpoint' >&2
@@ -149,7 +167,7 @@ ssh "${ssh_opts[@]}" -T git@127.0.0.1
 GIT_TRACE_PACKET="$tmp/packets" git -c protocol.version=2 ls-remote "$url"
 grep -q 'version 2' "$tmp/packets"
 
-git init --quiet --initial-branch=main "$tmp/source"
+git init --quiet --initial-branch=smoke-source "$tmp/source"
 git -C "$tmp/source" config user.name 'Smoke Test'
 git -C "$tmp/source" config user.email 'smoke@example.com'
 dd if=/dev/urandom of="$tmp/source/binary.dat" bs=1024 count=4096 2>/dev/null
@@ -157,12 +175,19 @@ printf '%s\n' 'SSH deployment smoke test' > "$tmp/source/README.md"
 git -C "$tmp/source" add .
 git -C "$tmp/source" commit --quiet -m 'Initial smoke commit'
 git -C "$tmp/source" remote add origin "$url"
-git -C "$tmp/source" push origin main
+git -C "$tmp/source" push -- "$url" "$refspec"
+curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
+grep -Fq 'README.md' "$tmp/response"
+grep -Fq 'Go to file' "$tmp/response"
+if grep -Fq 'This repository is empty' "$tmp/response"; then
+  printf '%s\n' 'First-push guidance remained visible after the push' >&2
+  exit 1
+fi
 git -c protocol.version=2 clone --quiet "$url" "$tmp/clone"
 cmp "$tmp/source/binary.dat" "$tmp/clone/binary.dat"
 printf '%s\n' 'Updated over SSH' >> "$tmp/source/README.md"
 git -C "$tmp/source" commit --quiet -am 'Second smoke commit'
-git -C "$tmp/source" push origin main
+git -C "$tmp/source" push origin "$refspec"
 git -C "$tmp/clone" fetch --quiet
 test "$(git -C "$tmp/source" rev-parse HEAD)" = "$(git -C "$tmp/clone" rev-parse origin/main)"
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/root/demo" > "$tmp/response"
@@ -180,7 +205,9 @@ status=$(curl --silent --show-error --output "$tmp/response" --write-out '%{http
 test "$status" = 303
 wait_repository_operation empty Ready
 curl --fail --silent --show-error -b "$tmp/cookies" "$http/smoke-team/empty" > "$tmp/response"
-grep -q 'No files.' "$tmp/response"
+grep -Fq 'This repository is empty' "$tmp/response"
+refspec=$(settings_value first-push "ssh://git@127.0.0.1:$ssh_port/smoke-team/empty.git" < "$tmp/response")
+test "$refspec" = HEAD:refs/heads/main
 
 git -C "$tmp/source" branch feature/import
 git -C "$tmp/source" tag import-v1

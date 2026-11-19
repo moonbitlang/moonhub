@@ -38,11 +38,7 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
           "Actions",
           ["/alice", "/alice/demo", "/alice/demo/pipelines"],
         ),
-        (
-          "/alice/demo/settings/branches",
-          "Branch protection",
-          ["/alice/demo", "/alice/demo/settings/branches"],
-        ),
+        ("/alice/demo/settings/branches", "Branch protection", ["/alice/demo"]),
         (
           "/alice/demo/settings/deploy-keys",
           "Deploy keys",
@@ -87,10 +83,18 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
       assert_eq(response.code, 200, msg=path)
       let trail = html.split("aria-label=\"Breadcrumb\"><ol>").collect()[1]
       let trail = trail[:trail.find("</nav>").unwrap()]
-      assert_true(
-        trail.contains("aria-current=\"page\">\{current}</a>"),
-        msg=path,
-      )
+      if path == "/alice/demo/settings/branches" {
+        assert_true(trail.contains("aria-current=\"page\">\{current}</span>"))
+        assert_true(
+          trail.contains("<span class=\"breadcrumb-label\">Settings</span>"),
+        )
+        assert_eq(trail.split("href=").count(), 2)
+      } else {
+        assert_true(
+          trail.contains("aria-current=\"page\">\{current}</a>"),
+          msg=path,
+        )
+      }
       assert_eq(trail.split("aria-current=").count(), 2, msg=path)
       for href in destinations {
         assert_true(
