@@ -50,10 +50,7 @@ fn release_access(
       err => raise err
     }
   }
-  let actor = match token {
-    None => None
-    Some(_) => Some(authenticate(false))
-  }
+  let actor = if token is Some(_) { Some(authenticate(false)) } else { None }
   @releases.access(
     repo,
     actor,
@@ -209,14 +206,13 @@ pub let releases_api_module : @moonback.Module = Module(ctx => {
     "/repos/:owner/:repo/actions/workflows/:workflow/runs",
     release_handler((req, res) => {
       let repo = @web_context.repo_param(req)
-      let actor = match release_token(req) {
-        None => raise @domain.Unauthorized(message="actions: read required")
-        Some(token) =>
-          @identity.authenticate_access_token(pool, token, "read") catch {
-            @domain.Unauthorized(_) =>
-              coordinator.authenticate_job_api(token, repo, "actions:read")
-            err => raise err
-          }
+      guard release_token(req) is Some(token) else {
+        raise @domain.Unauthorized(message="actions: read required")
+      }
+      let actor = @identity.authenticate_access_token(pool, token, "read") catch {
+        @domain.Unauthorized(_) =>
+          coordinator.authenticate_job_api(token, repo, "actions:read")
+        err => raise err
       }
       let path = ".github/workflows/" +
         @web_context.required_param(req, "workflow", "workflow")

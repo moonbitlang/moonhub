@@ -10,10 +10,10 @@ pub fn require_owner_namespace(
   guard @domain.valid_repo_owner(owner) else {
     raise @domain.NotFound(message="namespace not found")
   }
-  match @identity.get_team_by_name_key(pool, owner) {
-    Some(team) => team
-    None => raise @domain.NotFound(message="namespace not found")
+  guard @identity.get_team_by_name_key(pool, owner) is Some(team) else {
+    raise @domain.NotFound(message="namespace not found")
   }
+  team
 }
 
 ///|

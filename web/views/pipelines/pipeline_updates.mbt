@@ -10,9 +10,10 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
     let reasons = coordinator.queue_reasons(actor, repo, number)
     let environments = coordinator.job_environments(actor, repo, number)
     let jobs = @pipeline.list_jobs(pool, actor, repo, number).map(job => {
-      let steps = match job.attempt_id {
-        Some(id) => coordinator.read_steps(actor, repo, number, id)
-        None => []
+      let steps = if job.attempt_id is Some(id) {
+        coordinator.read_steps(actor, repo, number, id)
+      } else {
+        []
       }
       let state = pipeline_job_state(job.state)
       let conclusion = pipeline_conclusion(job.conclusion)

@@ -24,10 +24,10 @@ pub let issues_module : @moonback.Module = Module(ctx => {
     guard status == "open" || status == "closed" else {
       raise @domain.BadRequest(message="invalid issue status")
     }
-    let page = match req.query().get("page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let page = req
+      .query()
+      .get("page")
+      .map_or(1L, @web_context.positive_resource_number)
     guard page <= 100000L else {
       raise @domain.BadRequest(message="invalid page")
     }
@@ -151,10 +151,10 @@ pub let issues_module : @moonback.Module = Module(ctx => {
         @web_context.required_param(req, "number", "issue"),
       ),
     )
-    let page = match req.query().get("page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let page = req
+      .query()
+      .get("page")
+      .map_or(1L, @web_context.positive_resource_number)
     guard page <= 100000L else {
       raise @domain.BadRequest(message="invalid page")
     }

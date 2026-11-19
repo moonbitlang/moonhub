@@ -108,20 +108,20 @@ pub fn current_invitation_from_request(
 pub fn require_current_user(
   req : @moonback.Request,
 ) -> @domain.CurrentUser raise @domain.AppError {
-  match current_user_from_request(req) {
-    Some(user) => user
-    None => raise @domain.Unauthorized(message="login required")
+  guard current_user_from_request(req) is Some(user) else {
+    raise @domain.Unauthorized(message="login required")
   }
+  user
 }
 
 ///|
 pub fn require_invitation_session(
   req : @moonback.Request,
 ) -> @identity.InvitationSession raise @domain.AppError {
-  match current_invitation_from_request(req) {
-    Some(session) => session
-    None => raise @domain.Unauthorized(message="invitation login required")
+  guard current_invitation_from_request(req) is Some(session) else {
+    raise @domain.Unauthorized(message="invitation login required")
   }
+  session
 }
 
 ///|
@@ -158,18 +158,13 @@ let invitation_session_key : @moonback.TypedKey[@identity.InvitationSession] = T
 pub fn auth_middleware(pool : @database.Database) -> @moonback.Middleware {
   Middleware(next => {
     (req, res) => {
-      match req.cookie().get(session_cookie_name) {
-        Some(token) =>
-          match @identity.lookup_session_user(pool, token) {
-            Some(user) => req.ctx.set_userdata(current_user_key, user)
-            None =>
-              match @identity.lookup_invitation_session(pool, token) {
-                Some(session) =>
-                  req.ctx.set_userdata(invitation_session_key, session)
-                None => ()
-              }
-          }
-        None => ()
+      if req.cookie().get(session_cookie_name) is Some(token) {
+        if @identity.lookup_session_user(pool, token) is Some(user) {
+          req.ctx.set_userdata(current_user_key, user)
+        } else if @identity.lookup_invitation_session(pool, token)
+          is Some(session) {
+          req.ctx.set_userdata(invitation_session_key, session)
+        }
       }
       next(req, res)
     }

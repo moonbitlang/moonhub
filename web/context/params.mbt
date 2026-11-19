@@ -4,10 +4,10 @@ pub fn required_param(
   name : String,
   label : String,
 ) -> String raise @domain.AppError {
-  match req.params.get(name) {
-    Some(value) => value.to_owned()
-    None => raise @domain.BadRequest(message="missing \{label}")
+  guard req.params.get(name) is Some(value) else {
+    raise @domain.BadRequest(message="missing \{label}")
   }
+  value.to_owned()
 }
 
 ///|

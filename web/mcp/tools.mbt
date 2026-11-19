@@ -1052,9 +1052,10 @@ async fn invoke_tool(
           repo,
           string_arg(args, "branch"),
           string_arg(args, "workflow"),
-          jobs=match args.get("jobs") {
-            None => []
-            Some(value) => @json.from_json(value)
+          jobs=if args.get("jobs") is Some(value) {
+            @json.from_json(value)
+          } else {
+            []
           },
           inputs=match args.get("inputs") {
             None => Map([])

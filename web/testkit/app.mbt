@@ -172,10 +172,10 @@ pub async fn login_test_user(
   )
   client.skip_response_body()
   assert_eq(response.code, 303)
-  match response.cookies.get(0) {
-    Some(cookie) => cookie
-    None => abort("missing session cookie")
+  guard response.cookies.get(0) is Some(cookie) else {
+    abort("missing session cookie")
   }
+  cookie
 }
 
 ///|
@@ -269,10 +269,9 @@ pub fn invited_admin_password_from_outbox(
   })
   let marker = "One-time password: "
   let start = body.find(marker).unwrap() + marker.length()
-  let end = match body[start:].find("\n") {
-    Some(offset) => start + offset
-    None => body.length()
-  }
+  let end = body[start:]
+    .find("\n")
+    .map_or(body.length(), offset => start + offset)
   body[start:end].to_owned()
 }
 

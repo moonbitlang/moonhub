@@ -9,10 +9,8 @@ fn render_login(
     asset_path_map,
     Html(b => {
       b <+ "<section class=\"auth-card\"><h1>Sign in</h1>"
-      match message {
-        Some(message) =>
-          b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
-        None => ()
+      if message is Some(message) {
+        b <+ "<p class=\"flash-error\" role=\"alert\">\{message}</p>"
       }
       b <+
         #|<form class="form-stack" method="post" action="/-/login">
@@ -45,9 +43,8 @@ fn render_change_password(
       if required {
         b <+ "<p class=\"muted\">You must set a password before continuing.</p>"
       }
-      match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
-        None => ()
+      if message is Some(message) {
+        b <+ "<p class=\"flash-error\">\{message}</p>"
       }
       b <+
         #|<form class="form-stack" method="post" action="/-/change-password">
@@ -76,9 +73,8 @@ fn render_invitation_password(
       b <+
         "<p class=\"muted\">Signed in as \{invitation.display_name} (\{invitation.name_key}).</p>"
       b <+ "<p class=\"muted\">Set a password to activate this account.</p>"
-      match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
-        None => ()
+      if message is Some(message) {
+        b <+ "<p class=\"flash-error\">\{message}</p>"
       }
       b <+
         #|<form class="form-stack" method="post" action="/-/change-password">

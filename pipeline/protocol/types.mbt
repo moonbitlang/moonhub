@@ -340,22 +340,16 @@ pub impl @json.FromJson for StepPlan with fn from_json(json, path) {
     } else {
     raise @json.JsonDecodeError((path, "invalid step plan"))
   }
-  let uses = match json {
-    Object(fields) =>
-      match fields.get("uses") {
-        None => ""
-        Some(value) => @json.from_json(value, path=path.add_key("uses"))
-      }
-    _ => ""
+  let uses = if json is Object(fields) && fields.get("uses") is Some(value) {
+    @json.from_json(value, path=path.add_key("uses"))
+  } else {
+    ""
   }
-  let moonbit_version = match json {
-    Object(fields) =>
-      match fields.get("moonbit_version") {
-        None => ""
-        Some(value) =>
-          @json.from_json(value, path=path.add_key("moonbit_version"))
-      }
-    _ => ""
+  let moonbit_version = if json is Object(fields) &&
+    fields.get("moonbit_version") is Some(value) {
+    @json.from_json(value, path=path.add_key("moonbit_version"))
+  } else {
+    ""
   }
   {
     id: @json.from_json(id, path=path.add_key("id")),

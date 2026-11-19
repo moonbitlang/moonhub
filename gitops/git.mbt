@@ -163,13 +163,10 @@ pub async fn list_repositories(root : String) -> Array[@domain.RepoId] {
       let names = @fs.readdir(owner_dir, sort=true) catch { _ => [] }
       names.sort()
       for dir in names {
-        match @domain.strip_git_suffix(dir) {
-          Some(name) =>
-            if @domain.valid_segment(name) &&
-              @fs.exists("\{owner_dir}/\{dir}/HEAD") {
-              repos.push({ owner, name, })
-            }
-          _ => ()
+        if @domain.strip_git_suffix(dir) is Some(name) &&
+          @domain.valid_segment(name) &&
+          @fs.exists("\{owner_dir}/\{dir}/HEAD") {
+          repos.push({ owner, name, })
         }
       }
     }
@@ -212,9 +209,8 @@ pub async fn list_tree(
   let out = run_git(git_dir, ["ls-tree", "-l", spec])
   let entries : Array[TreeEntry] = []
   for line in @domain.split_lines(out) {
-    match parse_tree_entry(line) {
-      Some(entry) => entries.push(entry)
-      None => ()
+    if parse_tree_entry(line) is Some(entry) {
+      entries.push(entry)
     }
   }
   entries.sort_by((left, right) => {
@@ -257,9 +253,8 @@ pub async fn list_commits(git_dir : String, rev : String) -> Array[CommitInfo] {
   ])
   let commits : Array[CommitInfo] = []
   for line in @domain.split_lines(out) {
-    match parse_commit_line(line) {
-      Some(commit) => commits.push(commit)
-      None => ()
+    if parse_commit_line(line) is Some(commit) {
+      commits.push(commit)
     }
   }
   commits

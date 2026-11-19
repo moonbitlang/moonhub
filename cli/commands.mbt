@@ -1,9 +1,8 @@
 ///|
 fn option(matches : @argparse.Matches, name : String) -> String? {
-  match matches.values.get(name) {
-    Some(values) => values.get(0).filter(value => !value.is_empty())
-    None => None
-  }
+  matches.values
+  .get(name)
+  .bind(values => values.get(0).filter(value => !value.is_empty()))
 }
 
 ///|
@@ -49,9 +48,10 @@ async fn read_text_input(
 
 ///|
 async fn read_body(matches : @argparse.Matches) -> String {
-  match option(matches, "body-file") {
-    None => ""
-    Some(path) => read_text_input(path, 16777216L, "--body-file")
+  if option(matches, "body-file") is Some(path) {
+    read_text_input(path, 16777216L, "--body-file")
+  } else {
+    ""
   }
 }
 
@@ -172,9 +172,10 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
   )
   let allow_http = matches.flags.get("allow-http").unwrap_or(false)
   if group == "auth" && action == "setup" {
-    let server = match option(matches, "server") {
-      Some(value) => validate_server(value, allow_http)
-      None => "https://your-moonhub-server"
+    let server = if option(matches, "server") is Some(value) {
+      validate_server(value, allow_http)
+    } else {
+      "https://your-moonhub-server"
     }
     println(setup_instructions(server))
     return 0

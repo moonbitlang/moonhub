@@ -300,10 +300,9 @@ fn render_merge_detail(
 ) -> @moonback.Html {
   let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
   let version = revision.map(value => value.version).unwrap_or(0L)
-  let selected_commit : @gitops.CommitInfo? = match comparison {
-    Some(value) => value.commit
-    None => None
-  }
+  let selected_commit : @gitops.CommitInfo? = comparison.bind(value => {
+    value.commit
+  })
   let commit_query = selected_commit
     .map(commit => "&commit=" + commit.hash)
     .unwrap_or("")

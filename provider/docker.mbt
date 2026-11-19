@@ -117,17 +117,12 @@ async fn read_bounded(
   limit : Int32,
 ) -> String {
   let bytes : Array[Byte] = []
-  for ;; {
-    let chunk = reader.read_some(max_len=4096)
-    match chunk {
-      None => break
-      Some(chunk) =>
-        // Continue draining a noisy subprocess after reaching the retained limit.
-        for byte in chunk {
-          if bytes.length() < limit {
-            bytes.push(byte)
-          }
-        }
+  while reader.read_some(max_len=4096) is Some(chunk) {
+    // Continue draining a noisy subprocess after reaching the retained limit.
+    for byte in chunk {
+      if bytes.length() < limit {
+        bytes.push(byte)
+      }
     }
   }
   @utf8.decode_lossy(Bytes::from_array(bytes))

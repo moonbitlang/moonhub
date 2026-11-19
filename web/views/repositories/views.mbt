@@ -92,10 +92,9 @@ async fn stream_commit_detail(
       stdout=writer,
       stderr=writer,
     )
-    let summary_text = match reader.read_until("\ndiff --git ") {
-      Some(summary) => summary.trim().to_owned()
-      None => ""
-    }
+    let summary_text = reader
+      .read_until("\ndiff --git ")
+      .map_or("", summary => summary.trim().to_owned())
     b <+ "<pre>"
     let mut header = true
     for i, line in summary_text.split("\n").collect() {
@@ -274,12 +273,12 @@ async fn render_tree(
     []
   }
   // TODO: Optimize commit counting with caching by SHA and bitmap indexes.
-  let commit_count = match head {
-    Some(commit) =>
-      @gitops.run_git(git_dir, ["rev-list", "--count", commit.hash, "--"])
-      .trim()
-      .to_owned()
-    None => "0"
+  let commit_count = if head is Some(commit) {
+    @gitops.run_git(git_dir, ["rev-list", "--count", commit.hash, "--"])
+    .trim()
+    .to_owned()
+  } else {
+    "0"
   }
   let readme = entries
     .iter()

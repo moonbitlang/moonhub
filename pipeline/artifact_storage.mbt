@@ -176,9 +176,10 @@ pub async fn Coordinator::stage_artifact_block(
           "SELECT file_key,size,digest FROM pipeline_artifact_block WHERE artifact_id=? AND block_id=?",
           params=[id, block],
         )
-        let old_size : Int64 = match previous {
-          Some(entry) => entry.get_name("size")
-          None => 0L
+        let old_size : Int64 = if previous is Some(entry) {
+          entry.get_name("size")
+        } else {
+          0L
         }
         if (row.get_name("kind") : String) == "cache" {
           check_cache_bytes(

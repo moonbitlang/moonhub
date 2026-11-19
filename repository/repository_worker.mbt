@@ -316,10 +316,7 @@ pub async fn run_next_repository_job(
         params=[token, job.id],
       )
     })
-    let timeout = match config {
-      Some(config) => config.timeout_ms
-      None => 300000
-    }
+    let timeout = config.map_or(300000, config => config.timeout_ms)
     @async.with_timeout(
       timeout,
       () => {

@@ -5,10 +5,10 @@ pub let notifications_module : @moonback.Module = Module(ctx => {
   ctx.get("/-/notifications", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let filter = req.query().get("filter").unwrap_or("unread")
-    let page = match req.query().get("page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let page = req
+      .query()
+      .get("page")
+      .map_or(1L, @web_context.positive_resource_number)
     let settings = req.query().get("settings") == Some("1")
     let groups = if settings {
       []
