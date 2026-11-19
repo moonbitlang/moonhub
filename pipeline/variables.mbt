@@ -79,20 +79,17 @@ pub fn save_variable(
           "SELECT version FROM repository_variable WHERE repository_id = ? AND name = ?",
           params=[scope.id, name],
         )
-        match existing {
-          Some(existing) => {
-            guard (existing.get_name("version") : Int64) == version else {
-              raise Conflict(
-                "Variable changed. Reload its settings before saving.",
-              )
-            }
+        if existing is Some(existing) {
+          guard (existing.get_name("version") : Int64) == version else {
+            raise Conflict(
+              "Variable changed. Reload its settings before saving.",
+            )
           }
-          None => {
-            guard version == 0L else {
-              raise Conflict(
-                "Variable was deleted. Reload its settings before saving.",
-              )
-            }
+        } else {
+          guard version == 0L else {
+            raise Conflict(
+              "Variable was deleted. Reload its settings before saving.",
+            )
           }
         }
         let values = snapshot_variables(tx, scope.id)

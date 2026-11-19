@@ -281,34 +281,33 @@ pub fn Coordinator::step_secrets(
             "SELECT value FROM pipeline_secret_delivery WHERE attempt_id = ? AND step_id = ? AND env_name = ?",
             params=[id, step.id, variable],
           )
-          let value : String = match existing {
-            Some(delivery) => delivery.get_name("value")
-            None => {
-              let value : String = tx
-                .query_one(
-                  "SELECT value FROM repository_secret WHERE repository_id = ? AND name = ?",
-                  params=[(row.get_name("repository_id") : Int64), name],
-                )
-                .get_name("value")
-              let bytes : Int64 = tx
-                .query_one(
-                  "SELECT COALESCE(SUM(length(CAST(value AS BLOB))), 0) AS total FROM pipeline_secret_delivery WHERE attempt_id = ?",
-                  params=[id],
-                )
-                .get_name("total")
-              guard bytes + @utf8.encode(value).length().to_int64() <= 262144L else {
-                raise @domain.BadRequest(
-                  message="Job secret values exceed 256 KiB.",
-                )
-              }
-              ignore(
-                tx.execute(
-                  "INSERT INTO pipeline_secret_delivery (attempt_id, step_id, env_name, value) VALUES (?, ?, ?, ?)",
-                  params=[id, step.id, variable, value],
-                ),
+          let value : String = if existing is Some(delivery) {
+            delivery.get_name("value")
+          } else {
+            let value : String = tx
+              .query_one(
+                "SELECT value FROM repository_secret WHERE repository_id = ? AND name = ?",
+                params=[(row.get_name("repository_id") : Int64), name],
               )
-              value
+              .get_name("value")
+            let bytes : Int64 = tx
+              .query_one(
+                "SELECT COALESCE(SUM(length(CAST(value AS BLOB))), 0) AS total FROM pipeline_secret_delivery WHERE attempt_id = ?",
+                params=[id],
+              )
+              .get_name("total")
+            guard bytes + @utf8.encode(value).length().to_int64() <= 262144L else {
+              raise @domain.BadRequest(
+                message="Job secret values exceed 256 KiB.",
+              )
             }
+            ignore(
+              tx.execute(
+                "INSERT INTO pipeline_secret_delivery (attempt_id, step_id, env_name, value) VALUES (?, ?, ?, ?)",
+                params=[id, step.id, variable, value],
+              ),
+            )
+            value
           }
           env[variable] = value
         }

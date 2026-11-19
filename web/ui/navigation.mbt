@@ -102,30 +102,28 @@ pub fn render_breadcrumb_trail(
       if current && file_path {
         b <+ "<h2 aria-current=\"page\">"
       }
-      match href {
-        Some(href) => {
-          b <+ "<a href=\"\{href}\" title=\"\{text}\""
-          if current {
-            b <+ " aria-current=\"page\""
-          }
-          b <+ ">"
+      if href is Some(href) {
+        b <+ "<a href=\"\{href}\" title=\"\{text}\""
+        if current {
+          b <+ " aria-current=\"page\""
         }
-        None => {
-          b <+ "<span class=\"breadcrumb-label\""
-          if current && !file_path {
-            b <+ " aria-current=\"page\""
-          }
-          b <+ ">"
+        b <+ ">"
+      } else {
+        b <+ "<span class=\"breadcrumb-label\""
+        if current && !file_path {
+          b <+ " aria-current=\"page\""
         }
+        b <+ ">"
       }
       if file_path && i == 0 {
         b <+
           "<span class=\"ui-icon\" data-icon=\"folders\" aria-hidden=\"true\"></span>"
       }
       b <+ "\{text}"
-      match href {
-        Some(_) => b <+ "</a>"
-        None => b <+ "</span>"
+      if href is Some(_) {
+        b <+ "</a>"
+      } else {
+        b <+ "</span>"
       }
       if current && file_path {
         b <+ "</h2>"

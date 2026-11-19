@@ -618,38 +618,35 @@ async fn invoke_tool(
         }
         "moonhub_list_merge_discussions" => {
           let page = tool_page(args)
-          match args.get("discussion") {
-            Some(_) => {
-              let discussion = @collaboration.merge_discussion(
-                pool,
-                scope,
-                actor,
-                mr,
-                decimal(string_arg(args, "discussion")),
-                page~,
-              )
-              {
-                "discussion": @user_api.discussion_json(discussion),
-                "has_more": page * 50L < discussion.reply_count,
-              }
+          if args.get("discussion") is Some(_) {
+            let discussion = @collaboration.merge_discussion(
+              pool,
+              scope,
+              actor,
+              mr,
+              decimal(string_arg(args, "discussion")),
+              page~,
+            )
+            {
+              "discussion": @user_api.discussion_json(discussion),
+              "has_more": page * 50L < discussion.reply_count,
             }
-            None => {
-              let rows = @collaboration.list_merge_discussions(
-                pool,
-                scope,
-                actor,
-                mr,
-                page,
-                filter=string_arg(args, "filter", fallback="all"),
-              )
-              {
-                "items": rows
-                .iter()
-                .take(50)
-                .map(d => @user_api.discussion_json(d, preview=true))
-                .collect(),
-                "has_more": rows.length() > 50,
-              }
+          } else {
+            let rows = @collaboration.list_merge_discussions(
+              pool,
+              scope,
+              actor,
+              mr,
+              page,
+              filter=string_arg(args, "filter", fallback="all"),
+            )
+            {
+              "items": rows
+              .iter()
+              .take(50)
+              .map(d => @user_api.discussion_json(d, preview=true))
+              .collect(),
+              "has_more": rows.length() > 50,
             }
           }
         }

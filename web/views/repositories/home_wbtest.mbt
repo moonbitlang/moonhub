@@ -102,10 +102,10 @@ async test "repository home summarizes only stable releases using the service la
       assert_true(!body.contains("class=\"repository-releases\""), msg=route)
     }
     for cookie in [None, Some(outsider)] {
-      let (response, body) = match cookie {
-        Some(cookie) =>
-          @web_testkit.http_get_path_with_cookie(port, "/alice/demo", cookie)
-        None => @web_testkit.http_get_path(port, "/alice/demo")
+      let (response, body) = if cookie is Some(cookie) {
+        @web_testkit.http_get_path_with_cookie(port, "/alice/demo", cookie)
+      } else {
+        @web_testkit.http_get_path(port, "/alice/demo")
       }
       assert_eq(response.code, 404)
       assert_true(!body.contains("Stable &lt;one&gt;"))

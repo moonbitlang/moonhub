@@ -220,11 +220,11 @@ fn merge_checks_blocker(
       "SELECT b.workflow_path FROM branch_required_check b WHERE b.repository_id = ? AND b.branch = ? AND NOT EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.merge_request_id = ? AND c.version = m.current_version AND c.generation = m.check_generation AND c.workflow_path = b.workflow_path AND c.state = 'completed' AND c.conclusion = 'success') ORDER BY b.workflow_path LIMIT 1",
       params=[scope.id, mr.target, mr.id],
     )
-    match missing {
-      Some(row) =>
-        "Required check has not passed: " +
-        (row.get_name("workflow_path") : String)
-      None => ""
+    if missing is Some(row) {
+      "Required check has not passed: " +
+      (row.get_name("workflow_path") : String)
+    } else {
+      ""
     }
   })
 }

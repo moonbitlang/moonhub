@@ -36,28 +36,28 @@ pub async fn serve(config : Config) -> Unit {
     )
     @collaboration.start_merge_worker(pool, config.root, group)
     @collaboration.start_review_requests_worker(pool, config.root, group)
-    let oidc = match @config.env_value("MOONHUB_OIDC_CONFIG") {
-      Some(path) =>
-        Some(
-          @pipeline.OidcIssuer::load(
-            path,
-            node=@config.env_value("MOONHUB_OIDC_NODE").unwrap_or("node"),
-          ),
-        )
-      None => None
+    let oidc = if @config.env_value("MOONHUB_OIDC_CONFIG") is Some(path) {
+      Some(
+        @pipeline.OidcIssuer::load(
+          path,
+          node=@config.env_value("MOONHUB_OIDC_NODE").unwrap_or("node"),
+        ),
+      )
+    } else {
+      None
     }
-    let storage = match @config.env_value("MOONHUB_STORAGE_CONFIG") {
-      Some(path) =>
-        Some(
-          @storage.Config::load(
-            path,
-            node=@config.env_value("MOONHUB_STORAGE_NODE").unwrap_or("node"),
-            helper=@config.env_value("MOONHUB_S3_HELPER").unwrap_or(
-              "storage/s3/bridge.mjs",
-            ),
+    let storage = if @config.env_value("MOONHUB_STORAGE_CONFIG") is Some(path) {
+      Some(
+        @storage.Config::load(
+          path,
+          node=@config.env_value("MOONHUB_STORAGE_NODE").unwrap_or("node"),
+          helper=@config.env_value("MOONHUB_S3_HELPER").unwrap_or(
+            "storage/s3/bridge.mjs",
           ),
-        )
-      None => None
+        ),
+      )
+    } else {
+      None
     }
     let releases = @releases.Service::new(pool, config.root, storage?)
     let release_origin = @config.env_value("MOONHUB_RELEASE_ORIGIN").unwrap_or(

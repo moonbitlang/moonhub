@@ -14,12 +14,13 @@ pub let default_mirror_config : MirrorConfig = {
 
 ///|
 pub fn mirror_config_from_env() -> MirrorConfig raise {
-  let seconds = match @config.env_value("MOONHUB_MIRROR_TIMEOUT_SECONDS") {
-    None => 300
-    Some(value) =>
-      @string.parse_int(value) catch {
-        _ => raise @domain.BadRequest(message="invalid mirror timeout")
-      }
+  let seconds = if @config.env_value("MOONHUB_MIRROR_TIMEOUT_SECONDS")
+    is Some(value) {
+    @string.parse_int(value) catch {
+      _ => raise @domain.BadRequest(message="invalid mirror timeout")
+    }
+  } else {
+    300
   }
   guard seconds >= 1 && seconds <= 3600 else {
     raise @domain.BadRequest(message="mirror timeout must be 1 to 3600 seconds")

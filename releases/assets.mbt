@@ -1,9 +1,10 @@
 ///|
 fn Service::store(self : Service, location : String) -> @storage.Store raise {
   let root = self.root + "/.release-assets"
-  match self.storage {
-    Some(config) => config.resolve(location, legacy_root=root)
-    None => @storage.resolve(location, legacy_root=root)
+  if self.storage is Some(config) {
+    config.resolve(location, legacy_root=root)
+  } else {
+    @storage.resolve(location, legacy_root=root)
   }
 }
 

@@ -157,9 +157,10 @@ fn render_ssh_settings(
       }
       b <+
         ">Save settings</button></form><section class=\"ssh-internal-address\"><h2>Deployment connection</h2><dl class=\"ssh-address-details\"><div><dt>Internal SSH endpoint</dt><dd class=\"path\">"
-      match config.internal {
-        Some(endpoint) => b <+ "ssh://git@\{endpoint.authority()}"
-        None => b <+ "Not configured"
+      if config.internal is Some(endpoint) {
+        b <+ "ssh://git@\{endpoint.authority()}"
+      } else {
+        b <+ "Not configured"
       }
       b <+ "</dd></div></dl></section>"
     }),

@@ -32,11 +32,10 @@ fn Coordinator::blob_store(
   root : String,
   location : String,
 ) -> @storage.Store raise {
-  match self.storage {
-    Some(config) =>
-      config.resolve(location, legacy_root=root + "/.pipeline-artifacts")
-    None =>
-      @storage.resolve(location, legacy_root=root + "/.pipeline-artifacts")
+  if self.storage is Some(config) {
+    config.resolve(location, legacy_root=root + "/.pipeline-artifacts")
+  } else {
+    @storage.resolve(location, legacy_root=root + "/.pipeline-artifacts")
   }
 }
 

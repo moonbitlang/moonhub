@@ -158,13 +158,15 @@ fn merge_env(
 ///|
 fn inherit_defaults(base : RunDefaults, overlay : RunDefaults) -> RunDefaults {
   {
-    shell: match overlay.shell {
-      Some(_) => overlay.shell
-      None => base.shell
+    shell: if overlay.shell is Some(_) {
+      overlay.shell
+    } else {
+      base.shell
     },
-    working_directory: match overlay.working_directory {
-      Some(_) => overlay.working_directory
-      None => base.working_directory
+    working_directory: if overlay.working_directory is Some(_) {
+      overlay.working_directory
+    } else {
+      base.working_directory
     },
   }
 }
@@ -364,9 +366,10 @@ fn parse_job(
         ],
         ctx,
       )
-      let values = match fields.get("with") {
-        None => Map([])
-        Some(value) => yaml_as_obj(value, "\{ctx}.with")
+      let values = if fields.get("with") is Some(value) {
+        yaml_as_obj(value, "\{ctx}.with")
+      } else {
+        Map([])
       }
       guard values.length() <= 100 else {
         raise InvalidWorkflow("too many action inputs")
@@ -384,19 +387,16 @@ fn parse_job(
           Real(_, repr~) => repr
           _ => raise InvalidWorkflow("\{ctx}.with.\{key} must be a scalar")
         }
-        match secret_reference(value) {
-          Some(secret) => {
+        if secret_reference(value) is Some(secret) {
+          inputs[key] = ""
+          input_secrets[@actions.input_env(key)] = secret
+        } else {
+          validate_template(value, "\{ctx}.with.\{key}")
+          if runtime_template(value) {
+            templates["with:" + key] = value
             inputs[key] = ""
-            input_secrets[@actions.input_env(key)] = secret
-          }
-          None => {
-            validate_template(value, "\{ctx}.with.\{key}")
-            if runtime_template(value) {
-              templates["with:" + key] = value
-              inputs[key] = ""
-            } else {
-              inputs[key] = value
-            }
+          } else {
+            inputs[key] = value
           }
         }
       }
@@ -407,9 +407,10 @@ fn parse_job(
         ["id", "name", "uses", "with", "timeout-minutes"],
         ctx,
       )
-      let inputs = match fields.get("with") {
-        None => Map([])
-        Some(value) => yaml_as_obj(value, "\{ctx}.with")
+      let inputs = if fields.get("with") is Some(value) {
+        yaml_as_obj(value, "\{ctx}.with")
+      } else {
+        Map([])
       }
       check_fields(inputs, ["version"], "\{ctx}.with")
       let requested = yaml_as_optional_string(
@@ -485,14 +486,12 @@ fn parse_job(
     let literal_env : Map[String, String] = Map([])
     let secret_env : Map[String, String] = input_secrets
     for name, value in step_env {
-      match secret_reference(value) {
-        Some(secret) => secret_env[name] = secret
-        None =>
-          if runtime_template(value) {
-            templates["env:" + name] = value
-          } else {
-            literal_env[name] = value
-          }
+      if secret_reference(value) is Some(secret) {
+        secret_env[name] = secret
+      } else if runtime_template(value) {
+        templates["env:" + name] = value
+      } else {
+        literal_env[name] = value
       }
     }
     for field in ["if", "continue-on-error"] {

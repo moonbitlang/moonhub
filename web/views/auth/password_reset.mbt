@@ -93,45 +93,40 @@ let password_recovery_module : @moonback.Module = Module(ctx => {
     } else {
       @identity.new_password_error(password)
     }
-    let error = match error {
-      Some(_) => error
-      None =>
-        if @identity.reset_password(pool, email, code, password) {
-          None
-        } else {
-          Some(
-            "Invalid or expired reset code. Check your email and code, or request a new one.",
-          )
-        }
+    let error = if error is Some(_) {
+      error
+    } else if @identity.reset_password(pool, email, code, password) {
+      None
+    } else {
+      Some(
+        "Invalid or expired reset code. Check your email and code, or request a new one.",
+      )
     }
-    match error {
-      Some(message) => {
-        let (csrf, headers) = recovery_form_context(req)
-        res.send_html(
-          render_reset_password(assets, csrf, email, code, Some(message), false),
-          status=400,
-          headers~,
-        )
+    if error is Some(message) {
+      let (csrf, headers) = recovery_form_context(req)
+      res.send_html(
+        render_reset_password(assets, csrf, email, code, Some(message), false),
+        status=400,
+        headers~,
+      )
+    } else {
+      let headers = @web_context.private_page_headers().to_mut()
+      for (name, value) in @web_context.logout_headers().iter() {
+        headers.add(name, value)
       }
-      None => {
-        let headers = @web_context.private_page_headers().to_mut()
-        for (name, value) in @web_context.logout_headers().iter() {
-          headers.add(name, value)
-        }
-        headers.remove("location")
-        headers.set("referrer-policy", "no-referrer")
-        headers.add_set_cookie(
-          @http.Cookie(
-            recovery_cookie_name,
-            "",
-            path="/-/",
-            max_age=0,
-            http_only=true,
-            extensions=["SameSite=Strict"],
-          ),
-        )
-        res.send_html(render_password_reset_success(assets), headers~)
-      }
+      headers.remove("location")
+      headers.set("referrer-policy", "no-referrer")
+      headers.add_set_cookie(
+        @http.Cookie(
+          recovery_cookie_name,
+          "",
+          path="/-/",
+          max_age=0,
+          http_only=true,
+          extensions=["SameSite=Strict"],
+        ),
+      )
+      res.send_html(render_password_reset_success(assets), headers~)
     }
   })
 })

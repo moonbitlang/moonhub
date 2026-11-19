@@ -159,9 +159,10 @@ async test "SMTP settings preserve exact passwords, support no authentication, a
     let variables = ["MAIL_TRANSPORT", "SMTP_HOST", "SMTP_PASSWORD"]
     let previous = variables.map(name => (name, @env.get_env_var(name)))
     defer (for (name, value) in previous {
-      match value {
-        Some(value) => @env.set_env_var(name, value)
-        None => @env.unset_env_var(name)
+      if value is Some(value) {
+        @env.set_env_var(name, value)
+      } else {
+        @env.unset_env_var(name)
       }
     })
     @env.set_env_var("MAIL_TRANSPORT", "file")

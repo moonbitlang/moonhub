@@ -171,9 +171,10 @@ async fn claim(
       _ => None
     }
     if result is Some(assignment) {
-      match assignment {
-        Some(assignment) => return Some({ assignment, attempt_token, })
-        None => return None
+      if assignment is Some(assignment) {
+        return Some({ assignment, attempt_token, })
+      } else {
+        return None
       }
     }
     guard @env.now().reinterpret_as_int64() < deadline else {

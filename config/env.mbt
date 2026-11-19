@@ -18,15 +18,14 @@ pub async fn load_dotenv(path : String) -> Unit {
 
 ///|
 pub fn env_value(name : String) -> String? {
-  match @env.get_env_var(name) {
-    Some(value) => {
-      let value = value.trim().to_owned()
-      if value.is_empty() {
-        None
-      } else {
-        Some(value)
-      }
+  if @env.get_env_var(name) is Some(value) {
+    let value = value.trim().to_owned()
+    if value.is_empty() {
+      None
+    } else {
+      Some(value)
     }
-    None => None
+  } else {
+    None
   }
 }

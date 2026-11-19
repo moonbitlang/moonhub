@@ -75,40 +75,38 @@ pub let teams_module : @moonback.Module = Module(ctx => {
       @domain.BadRequest(message~) => Some(message)
       err => raise err
     }
-    match bad_message {
-      Some(message) => {
-        let members = @identity.list_team_members(pool, team)
-        let invitations = @identity.list_invitations(pool, team)
-        let can_manage = @identity.can_manage_team(pool, actor, team.id)
-        res.send_html(
-          render_team_detail(
-            asset_path_map,
-            actor,
-            team,
-            members,
-            invitations,
-            repositories=@repository.team_repositories(pool, team),
-            can_manage~,
-            invitation_credentials_csrf=@web_context.request_form_token(
-              req,
-              "invitation-credentials:\{team.id}",
-            ),
-            Some(message),
-            active_tab="invitations",
-            invite_open=true,
-            invitation_form=form,
+    if bad_message is Some(message) {
+      let members = @identity.list_team_members(pool, team)
+      let invitations = @identity.list_invitations(pool, team)
+      let can_manage = @identity.can_manage_team(pool, actor, team.id)
+      res.send_html(
+        render_team_detail(
+          asset_path_map,
+          actor,
+          team,
+          members,
+          invitations,
+          repositories=@repository.team_repositories(pool, team),
+          can_manage~,
+          invitation_credentials_csrf=@web_context.request_form_token(
+            req,
+            "invitation-credentials:\{team.id}",
           ),
-          status=400,
-          headers=@web_context.private_page_headers(),
-        )
-      }
-      None =>
-        res.send_void(
-          status=303,
-          headers=@web_context.redirect_headers(
-            "/\{team.name_key}?tab=invitations&notice=invited",
-          ),
-        )
+          Some(message),
+          active_tab="invitations",
+          invite_open=true,
+          invitation_form=form,
+        ),
+        status=400,
+        headers=@web_context.private_page_headers(),
+      )
+    } else {
+      res.send_void(
+        status=303,
+        headers=@web_context.redirect_headers(
+          "/\{team.name_key}?tab=invitations&notice=invited",
+        ),
+      )
     }
   })
   ctx.post("/:owner/-/invitations/:invitation/credentials", async fn(req, res) {

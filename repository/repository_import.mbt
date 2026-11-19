@@ -26,12 +26,13 @@ pub fn repo_import_config_from_env() -> RepoImportConfig? raise {
   guard @config.env_value("MOONHUB_SSH_IMPORT_ROOT") is Some(root) else {
     return None
   }
-  let timeout = match @config.env_value("MOONHUB_IMPORT_TIMEOUT_SECONDS") {
-    None => 300
-    Some(value) =>
-      @string.parse_int(value) catch {
-        _ => raise @domain.BadRequest(message="invalid import timeout")
-      }
+  let timeout = if @config.env_value("MOONHUB_IMPORT_TIMEOUT_SECONDS")
+    is Some(value) {
+    @string.parse_int(value) catch {
+      _ => raise @domain.BadRequest(message="invalid import timeout")
+    }
+  } else {
+    300
   }
   guard timeout >= 1 && timeout <= 3600 else {
     raise @domain.BadRequest(message="import timeout must be 1 to 3600 seconds")

@@ -62,46 +62,38 @@ pub fn authenticate_user(
         $|SELECT id, name_key, display_name, is_site_admin, password_hash, status
         $|FROM "user"
         $|WHERE \{column} = ?
-      match tx.query_opt(user_sql, params=[identifier]) {
-        Some(row) => {
-          guard (row.get_name("status") : String) == "active" else {
-            return None
-          }
+      if tx.query_opt(user_sql, params=[identifier]) is Some(row) {
+        guard (row.get_name("status") : String) == "active" else { return None }
+        let password_hash : String = row.get_name("password_hash")
+        guard verify_password(password, password_hash) else { return None }
+        let user : @domain.CurrentUser = {
+          id: row.get_name("id"),
+          name_key: row.get_name("name_key"),
+          display_name: row.get_name("display_name"),
+          is_site_admin: row.get_name("is_site_admin"),
+          time_zone: None,
+        }
+        let token = create_session_token(tx, user.id)
+        let _ = user
+        Some({ token, invitation: None, })
+      } else {
+        let invitation_sql =
+          $|SELECT id, name_key, display_name, password_hash
+          $|FROM invitation
+          $|WHERE \{column} = ?
+          $|  AND status = 'sent'
+          $|  AND expires_at > datetime('now')
+          $|  AND password_hash <> ''
+          $|ORDER BY id DESC
+          $|LIMIT 1
+        if tx.query_opt(invitation_sql, params=[identifier]) is Some(row) {
           let password_hash : String = row.get_name("password_hash")
           guard verify_password(password, password_hash) else { return None }
-          let user : @domain.CurrentUser = {
-            id: row.get_name("id"),
-            name_key: row.get_name("name_key"),
-            display_name: row.get_name("display_name"),
-            is_site_admin: row.get_name("is_site_admin"),
-            time_zone: None,
-          }
-          let token = create_session_token(tx, user.id)
-          let _ = user
-          Some({ token, invitation: None, })
-        }
-        None => {
-          let invitation_sql =
-            $|SELECT id, name_key, display_name, password_hash
-            $|FROM invitation
-            $|WHERE \{column} = ?
-            $|  AND status = 'sent'
-            $|  AND expires_at > datetime('now')
-            $|  AND password_hash <> ''
-            $|ORDER BY id DESC
-            $|LIMIT 1
-          match tx.query_opt(invitation_sql, params=[identifier]) {
-            None => None
-            Some(row) => {
-              let password_hash : String = row.get_name("password_hash")
-              guard verify_password(password, password_hash) else {
-                return None
-              }
-              let invitation : InvitationLogin = { id: row.get_name("id"), }
-              let token = create_invitation_session_token(tx, invitation.id)
-              Some({ token, invitation: Some(invitation), })
-            }
-          }
+          let invitation : InvitationLogin = { id: row.get_name("id"), }
+          let token = create_invitation_session_token(tx, invitation.id)
+          Some({ token, invitation: Some(invitation), })
+        } else {
+          None
         }
       }
     })
@@ -128,21 +120,20 @@ pub fn lookup_session_user(
       #|  AND session.expires_at > datetime('now')
       #|  AND "user".status = 'active'
     let token_hash = hash_token(token)
-    match client.query_opt(sql, params=[token_hash]) {
-      None => None
-      Some(row) => {
-        let _ = client.execute(
-          "UPDATE session SET last_seen_at = datetime('now') WHERE token_hash = ?",
-          params=[token_hash],
-        )
-        Some({
-          id: row.get_name("id"),
-          name_key: row.get_name("name_key"),
-          display_name: row.get_name("display_name"),
-          is_site_admin: row.get_name("is_site_admin"),
-          time_zone: row.get_name("time_zone"),
-        })
-      }
+    if client.query_opt(sql, params=[token_hash]) is Some(row) {
+      let _ = client.execute(
+        "UPDATE session SET last_seen_at = datetime('now') WHERE token_hash = ?",
+        params=[token_hash],
+      )
+      Some({
+        id: row.get_name("id"),
+        name_key: row.get_name("name_key"),
+        display_name: row.get_name("display_name"),
+        is_site_admin: row.get_name("is_site_admin"),
+        time_zone: row.get_name("time_zone"),
+      })
+    } else {
+      None
     }
   })
 }
@@ -167,14 +158,14 @@ pub fn lookup_invitation_session(
       #|  AND invitation.status = 'sent'
       #|  AND invitation.expires_at > datetime('now')
     let token_hash = hash_token(token)
-    match client.query_opt(sql, params=[token_hash]) {
-      None => None
-      Some(row) =>
-        Some({
-          id: row.get_name("invitation_id"),
-          name_key: row.get_name("name_key"),
-          display_name: row.get_name("display_name"),
-        })
+    if client.query_opt(sql, params=[token_hash]) is Some(row) {
+      Some({
+        id: row.get_name("invitation_id"),
+        name_key: row.get_name("name_key"),
+        display_name: row.get_name("display_name"),
+      })
+    } else {
+      None
     }
   })
 }
@@ -263,86 +254,86 @@ pub fn accept_invitation(
         #|WHERE id = ?
         #|  AND status = 'sent'
         #|  AND expires_at > datetime('now')
-      match tx.query_opt(invitation_sql, params=[invitation_session.id]) {
-        None => None
-        Some(row) => {
-          let kind : String = row.get_name("kind")
-          let email : String = row.get_name("email")
-          let name_key : String = row.get_name("name_key")
-          let display_name : String = row.get_name("display_name")
-          let is_site_admin : Bool = row.get_name("is_site_admin")
-          let team_id : Int64? = row.get_name("team_id")
-          let team_role : String? = row.get_name("team_role")
-          let password_hash = hash_password(new_password)
-          let create_user_sql =
-            #|INSERT INTO "user" (
-            #|  name_key,
-            #|  display_name,
-            #|  email,
-            #|  password_hash,
-            #|  is_site_admin,
-            #|  status
-            #|)
-            #|VALUES (?, ?, ?, ?, ?, 'active')
-            #|ON CONFLICT DO NOTHING
-            #|RETURNING id, name_key, display_name, is_site_admin
-          let params : Array[&@database.DbParam] = [
-            name_key as &@database.DbParam,
-            display_name as &@database.DbParam,
-            email as &@database.DbParam,
-            password_hash as &@database.DbParam,
-            is_site_admin as &@database.DbParam,
-          ]
-          let user_row = tx.query_opt(create_user_sql, params~)
-          guard user_row is Some(user_row) else { return None }
-          let user : @domain.CurrentUser = {
-            id: user_row.get_name("id"),
-            name_key: user_row.get_name("name_key"),
-            display_name: user_row.get_name("display_name"),
-            is_site_admin: user_row.get_name("is_site_admin"),
-            time_zone: None,
-          }
-          // Every activated account owns a personal namespace, which is the only
-          // namespace it may create repositories in without an administrator.
-          ensure_personal_namespace(tx, user)
-          if kind != "root" {
-            let member_params : Array[&@database.DbParam] = [
-              team_id.unwrap() as &@database.DbParam,
-              user.id as &@database.DbParam,
-              team_role.unwrap() as &@database.DbParam,
-            ]
-            let _ = tx.execute(
-              (
-                #|INSERT INTO team_member (team_id, user_id, role)
-                #|VALUES (?, ?, ?)
-                #|ON CONFLICT (team_id, user_id) DO UPDATE
-                #|SET role = excluded.role
-              ),
-              params=member_params,
-            )
-          }
-          let _ = tx.execute(
-            (
-              #|UPDATE invitation
-              #|SET status = 'accepted',
-              #|    accepted_at = datetime('now'),
-              #|    accepted_user_id = ?
-              #|WHERE id = ?
-            ),
-            params=[user.id, invitation_session.id],
-          )
-          let _ = tx.execute(
-            (
-              #|UPDATE invitation_session
-              #|SET revoked_at = datetime('now')
-              #|WHERE invitation_id = ?
-            ),
-            params=[invitation_session.id],
-          )
-          let token = create_session_token(tx, user.id)
-          let _ = user
-          Some({ token, invitation: None, })
+      if tx.query_opt(invitation_sql, params=[invitation_session.id])
+        is Some(row) {
+        let kind : String = row.get_name("kind")
+        let email : String = row.get_name("email")
+        let name_key : String = row.get_name("name_key")
+        let display_name : String = row.get_name("display_name")
+        let is_site_admin : Bool = row.get_name("is_site_admin")
+        let team_id : Int64? = row.get_name("team_id")
+        let team_role : String? = row.get_name("team_role")
+        let password_hash = hash_password(new_password)
+        let create_user_sql =
+          #|INSERT INTO "user" (
+          #|  name_key,
+          #|  display_name,
+          #|  email,
+          #|  password_hash,
+          #|  is_site_admin,
+          #|  status
+          #|)
+          #|VALUES (?, ?, ?, ?, ?, 'active')
+          #|ON CONFLICT DO NOTHING
+          #|RETURNING id, name_key, display_name, is_site_admin
+        let params : Array[&@database.DbParam] = [
+          name_key as &@database.DbParam,
+          display_name as &@database.DbParam,
+          email as &@database.DbParam,
+          password_hash as &@database.DbParam,
+          is_site_admin as &@database.DbParam,
+        ]
+        let user_row = tx.query_opt(create_user_sql, params~)
+        guard user_row is Some(user_row) else { return None }
+        let user : @domain.CurrentUser = {
+          id: user_row.get_name("id"),
+          name_key: user_row.get_name("name_key"),
+          display_name: user_row.get_name("display_name"),
+          is_site_admin: user_row.get_name("is_site_admin"),
+          time_zone: None,
         }
+        // Every activated account owns a personal namespace, which is the only
+        // namespace it may create repositories in without an administrator.
+        ensure_personal_namespace(tx, user)
+        if kind != "root" {
+          let member_params : Array[&@database.DbParam] = [
+            team_id.unwrap() as &@database.DbParam,
+            user.id as &@database.DbParam,
+            team_role.unwrap() as &@database.DbParam,
+          ]
+          let _ = tx.execute(
+            (
+              #|INSERT INTO team_member (team_id, user_id, role)
+              #|VALUES (?, ?, ?)
+              #|ON CONFLICT (team_id, user_id) DO UPDATE
+              #|SET role = excluded.role
+            ),
+            params=member_params,
+          )
+        }
+        let _ = tx.execute(
+          (
+            #|UPDATE invitation
+            #|SET status = 'accepted',
+            #|    accepted_at = datetime('now'),
+            #|    accepted_user_id = ?
+            #|WHERE id = ?
+          ),
+          params=[user.id, invitation_session.id],
+        )
+        let _ = tx.execute(
+          (
+            #|UPDATE invitation_session
+            #|SET revoked_at = datetime('now')
+            #|WHERE invitation_id = ?
+          ),
+          params=[invitation_session.id],
+        )
+        let token = create_session_token(tx, user.id)
+        let _ = user
+        Some({ token, invitation: None, })
+      } else {
+        None
       }
     })
   })
@@ -360,24 +351,23 @@ pub fn create_team(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
-      match
-        tx.query_opt(
+      if tx.query_opt(
           "INSERT INTO team (name_key, display_name, kind) VALUES (?, ?, 'org') ON CONFLICT (name_key) DO NOTHING RETURNING id",
           params=[name_key, display_name],
-        ) {
-        None => false
-        Some(team_row) => {
-          let team_id : Int64 = team_row.get_name("id")
-          let sql =
-            #|INSERT INTO team_member (team_id, user_id, role)
-            #|VALUES (?, ?, 'owner')
-          let params : Array[&@database.DbParam] = [
-            team_id as &@database.DbParam,
-            actor.id as &@database.DbParam,
-          ]
-          let _ = tx.execute(sql, params~)
-          true
-        }
+        )
+        is Some(team_row) {
+        let team_id : Int64 = team_row.get_name("id")
+        let sql =
+          #|INSERT INTO team_member (team_id, user_id, role)
+          #|VALUES (?, ?, 'owner')
+        let params : Array[&@database.DbParam] = [
+          team_id as &@database.DbParam,
+          actor.id as &@database.DbParam,
+        ]
+        let _ = tx.execute(sql, params~)
+        true
+      } else {
+        false
       }
     })
   })
@@ -452,24 +442,24 @@ pub fn get_team_by_name_key(
   name_key : String,
 ) -> TeamSummary? raise {
   pool.with_client(client => {
-    match
-      client.query_opt(
+    if client.query_opt(
         (
           #|SELECT id, name_key, display_name, kind AS kind
           #|FROM team
           #|WHERE name_key = ?
         ),
         params=[name_key],
-      ) {
-      None => None
-      Some(row) =>
-        Some({
-          id: row.get_name("id"),
-          name_key: row.get_name("name_key"),
-          display_name: row.get_name("display_name"),
-          kind: row.get_name("kind"),
-          role: None,
-        })
+      )
+      is Some(row) {
+      Some({
+        id: row.get_name("id"),
+        name_key: row.get_name("name_key"),
+        display_name: row.get_name("display_name"),
+        kind: row.get_name("kind"),
+        role: None,
+      })
+    } else {
+      None
     }
   })
 }
@@ -481,8 +471,7 @@ pub fn team_role(
   team_id : Int64,
 ) -> String? raise {
   pool.with_client(client => {
-    match
-      client.query_opt(
+    if client.query_opt(
         (
           #|SELECT role AS role
           #|FROM team_member
@@ -490,9 +479,11 @@ pub fn team_role(
           #|  AND user_id = ?
         ),
         params=[team_id, actor.id],
-      ) {
-      None => None
-      Some(row) => Some(row.get_name("role"))
+      )
+      is Some(row) {
+      Some(row.get_name("role"))
+    } else {
+      None
     }
   })
 }
@@ -736,9 +727,10 @@ pub fn revoke_invitation(
       params=[invitation_id, team_id],
     )
   })
-  let team_id : Int64 = match row {
-    Some(row) => row.get_name("team_id")
-    None => raise @domain.NotFound(message="invitation not found")
+  let team_id : Int64 = if row is Some(row) {
+    row.get_name("team_id")
+  } else {
+    raise @domain.NotFound(message="invitation not found")
   }
   guard can_manage_team(pool, actor, team_id) else {
     raise @domain.Forbidden(message="team admin required")

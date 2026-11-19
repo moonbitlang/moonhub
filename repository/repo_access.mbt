@@ -69,26 +69,26 @@ fn try_readable_repository_scope(
   actor : @domain.CurrentUser?,
   repo : @domain.RepoId,
 ) -> RepositoryScope? raise {
-  match actor {
-    Some(actor) => accessible_repository_scope(pool, actor, repo, Read)
-    None =>
-      pool.with_client(client => {
-        client
-        .query_opt(
-          (
-            #|SELECT repository.id, repository.team_id FROM repository
-            #|JOIN team ON team.id = repository.team_id
-            #|WHERE team.name_key = ? AND repository.name = ?
-            #|  AND repository.ready = 1 AND repository.visibility = 'public'
-          ),
-          params=[repo.owner, repo.name],
-        )
-        .map(row => {
-          id: row.get_name("id"),
-          team_id: row.get_name("team_id"),
-          repo,
-        })
+  if actor is Some(actor) {
+    accessible_repository_scope(pool, actor, repo, Read)
+  } else {
+    pool.with_client(client => {
+      client
+      .query_opt(
+        (
+          #|SELECT repository.id, repository.team_id FROM repository
+          #|JOIN team ON team.id = repository.team_id
+          #|WHERE team.name_key = ? AND repository.name = ?
+          #|  AND repository.ready = 1 AND repository.visibility = 'public'
+        ),
+        params=[repo.owner, repo.name],
+      )
+      .map(row => {
+        id: row.get_name("id"),
+        team_id: row.get_name("team_id"),
+        repo,
       })
+    })
   }
 }
 

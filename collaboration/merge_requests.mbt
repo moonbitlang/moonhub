@@ -587,13 +587,14 @@ pub fn required_merge_approvals(
   branch : String,
 ) -> Int64 raise {
   pool.with_client(client => {
-    match
-      client.query_opt(
+    if client.query_opt(
         "SELECT required_approvals FROM branch_rule WHERE repository_id = ? AND branch = ?",
         params=[scope.id, branch],
-      ) {
-      Some(row) => row.get_name("required_approvals")
-      None => 0L
+      )
+      is Some(row) {
+      row.get_name("required_approvals")
+    } else {
+      0L
     }
   })
 }

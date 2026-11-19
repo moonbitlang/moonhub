@@ -64,10 +64,10 @@ let services_module : @moonback.Module = Module(ctx => {
       )
     },
     personal_owner: req => {
-      match @web_context.current_user_from_request(req) {
-        Some(actor) =>
-          @identity.personal_namespace(pool, actor).map(team => team.name_key)
-        None => None
+      if @web_context.current_user_from_request(req) is Some(actor) {
+        @identity.personal_namespace(pool, actor).map(team => team.name_key)
+      } else {
+        None
       }
     },
     clone_url: repo => {
@@ -76,14 +76,9 @@ let services_module : @moonback.Module = Module(ctx => {
       })
     },
     manager: (req, repo) => {
-      match @web_context.current_user_from_request(req) {
-        Some(actor) =>
-          match @identity.get_team_by_name_key(pool, repo.owner) {
-            Some(team) => @identity.can_manage_team(pool, actor, team.id)
-            None => false
-          }
-        None => false
-      }
+      @web_context.current_user_from_request(req) is Some(actor) &&
+      @identity.get_team_by_name_key(pool, repo.owner) is Some(team) &&
+      @identity.can_manage_team(pool, actor, team.id)
     },
   })
 })

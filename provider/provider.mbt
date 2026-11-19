@@ -279,20 +279,15 @@ fn validate_assignment(
     assignment.job.steps.length() <= 64 else {
     raise InvalidConfiguration("claim returned an invalid assignment")
   }
-  match assignment.environment {
-    Some(environment) => {
-      guard assignment.version == @protocol.profile_assignment_version &&
-        runner_os == "linux" &&
-        @environment.validate_definition(environment) is None else {
-        raise InvalidConfiguration(
-          "claim returned an invalid pinned environment",
-        )
-      }
+  if assignment.environment is Some(environment) {
+    guard assignment.version == @protocol.profile_assignment_version &&
+      runner_os == "linux" &&
+      @environment.validate_definition(environment) is None else {
+      raise InvalidConfiguration("claim returned an invalid pinned environment")
     }
-    None => {
-      guard assignment.version != @protocol.profile_assignment_version else {
-        raise InvalidConfiguration("claim omitted its pinned environment")
-      }
+  } else {
+    guard assignment.version != @protocol.profile_assignment_version else {
+      raise InvalidConfiguration("claim omitted its pinned environment")
     }
   }
 }
@@ -352,21 +347,20 @@ pub async fn run(
         continue
       }
     }
-    match assignment {
-      None => @async.sleep(options.poll_ms)
-      Some(claimed) => {
-        validate_assignment(claimed.assignment)
-        consumed.val = true
-        execute_assignment(
-          options,
-          claimed.assignment,
-          claimed.attempt_token,
-          workspace~,
-        ) catch {
-          CleanupFailure => raise CleanupFailure
-          _ => println("pipeline provider: runner container failed")
-        }
+    if assignment is Some(claimed) {
+      validate_assignment(claimed.assignment)
+      consumed.val = true
+      execute_assignment(
+        options,
+        claimed.assignment,
+        claimed.attempt_token,
+        workspace~,
+      ) catch {
+        CleanupFailure => raise CleanupFailure
+        _ => println("pipeline provider: runner container failed")
       }
+    } else {
+      @async.sleep(options.poll_ms)
     }
   }
 }

@@ -311,9 +311,10 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       let assignment = coordinator.claim(token, request)
       {
         "version": 1,
-        "assignment": match assignment {
-          Some(assignment) => ToJson::to_json(assignment)
-          None => Json::null()
+        "assignment": if assignment is Some(assignment) {
+          ToJson::to_json(assignment)
+        } else {
+          Json::null()
         },
       }
     }),

@@ -157,9 +157,10 @@ pub fn resolve_dispatch_inputs(
   let result : Map[String, Json] = Map([])
   for definition in definitions {
     let name = definition.name
-    let provided = match supplied.get(name) {
-      Some(value) => Some(value)
-      None => definition.default
+    let provided = if supplied.get(name) is Some(value) {
+      Some(value)
+    } else {
+      definition.default
     }
     let value = match provided {
       Some(value) => value

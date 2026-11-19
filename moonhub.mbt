@@ -54,10 +54,13 @@ async fn parse_config() -> @web.Config {
   let host = single_value(matches, "host").unwrap_or("127.0.0.1")
   let port_text = single_value(matches, "port").unwrap_or("8080")
   let root_user_name_key = single_value(matches, "root-user").unwrap_or("root")
-  let root_user_initial_password = match
-    single_value(matches, "root-password-file") {
-    Some(path) => @fs.read_file(path).text().trim().to_owned()
-    None => single_value(matches, "root-password").unwrap_or("")
+  let root_user_initial_password = if single_value(
+      matches, "root-password-file",
+    )
+    is Some(path) {
+    @fs.read_file(path).text().trim().to_owned()
+  } else {
+    single_value(matches, "root-password").unwrap_or("")
   }
   guard @config.parse_port(port_text) is Some(port) else {
     abort("invalid --port: \{port_text}")

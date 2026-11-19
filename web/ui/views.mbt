@@ -92,24 +92,22 @@ fn render_site_header(
         b <+ "\{render_breadcrumbs(navigation)}"
       }
     }
-    match current_user {
-      Some(user) => {
-        if content is None {
-          b <+
-            "<a class=\"header-inbox\" href=\"/-/notifications\" aria-label=\"Inbox\" title=\"Inbox\"><span class=\"ui-icon\" data-icon=\"mail\" aria-hidden=\"true\"></span><span>Inbox</span><span class=\"count-badge\" data-inbox-count hidden></span></a>"
-        }
+    if current_user is Some(user) {
+      if content is None {
         b <+
-          "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/-/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/-/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/-/settings/tokens\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>Access tokens</a><a href=\"/-/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
-        if user.is_site_admin {
-          b <+
-            "<a href=\"/-/admin/settings/ssh\" aria-label=\"Site settings\"><span class=\"ui-icon\" data-icon=\"settings\" aria-hidden=\"true\"></span>Site settings</a>"
-        }
-        b <+
-          "<form class=\"logout-form\" method=\"post\" action=\"/-/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
+          "<a class=\"header-inbox\" href=\"/-/notifications\" aria-label=\"Inbox\" title=\"Inbox\"><span class=\"ui-icon\" data-icon=\"mail\" aria-hidden=\"true\"></span><span>Inbox</span><span class=\"count-badge\" data-inbox-count hidden></span></a>"
       }
-      None =>
+      b <+
+        "<details class=\"account-menu\" data-dismissable><summary aria-label=\"Account menu\" title=\"Account menu\"><span class=\"avatar\" aria-hidden=\"true\">\{user.name_key[:1].to_owned().to_upper()}</span><span class=\"account-name\">\{user.display_name}</span><span class=\"ui-icon\" data-icon=\"chevron-down\" aria-hidden=\"true\"></span></summary><div class=\"account-menu-panel\"><div class=\"account-identity\"><strong>\{user.display_name}</strong><span>\{user.name_key}</span></div><a href=\"/-/settings/profile\"><span class=\"ui-icon\" data-icon=\"user\" aria-hidden=\"true\"></span>Profile</a><a href=\"/-/settings/ssh-keys\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>SSH keys</a><a href=\"/-/settings/tokens\"><span class=\"ui-icon\" data-icon=\"key\" aria-hidden=\"true\"></span>Access tokens</a><a href=\"/-/change-password\"><span class=\"ui-icon\" data-icon=\"lock\" aria-hidden=\"true\"></span>Change password</a>"
+      if user.is_site_admin {
         b <+
-          "<a class=\"header-sign-in button-link secondary-button\" href=\"/-/login\">Sign in</a>"
+          "<a href=\"/-/admin/settings/ssh\" aria-label=\"Site settings\"><span class=\"ui-icon\" data-icon=\"settings\" aria-hidden=\"true\"></span>Site settings</a>"
+      }
+      b <+
+        "<form class=\"logout-form\" method=\"post\" action=\"/-/logout\"><button class=\"logout-button\" type=\"submit\"><span class=\"ui-icon\" data-icon=\"log-out\" aria-hidden=\"true\"></span>Sign out</button></form></div></details>"
+    } else {
+      b <+
+        "<a class=\"header-sign-in button-link secondary-button\" href=\"/-/login\">Sign in</a>"
     }
     b <+ "</div></header>"
   })
@@ -130,11 +128,11 @@ pub fn render_repo_nav(
   let clone_menu : @moonback.Html = Html(b => {
     b <+
       "<details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Code<span class=\"ui-icon\" data-icon=\"chevron-down\" data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
-    match clone_url {
-      Some(url) =>
-        b <+
-          "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span class=\"ui-icon\" data-icon=\"copy\" data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
-      None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
+    if clone_url is Some(url) {
+      b <+
+        "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span class=\"ui-icon\" data-icon=\"copy\" data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
+    } else {
+      b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
     }
     b <+ "</div></details>"
   })
@@ -142,10 +140,10 @@ pub fn render_repo_nav(
     let base = repo_link(repo)
     b <+
       "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div>"
-    match controls {
-      Some(controls) =>
-        b <+ "</div><div class=\"code-toolbar\">\{controls}\{clone_menu}</div>"
-      None => b <+ "\{clone_menu}</div>"
+    if controls is Some(controls) {
+      b <+ "</div><div class=\"code-toolbar\">\{controls}\{clone_menu}</div>"
+    } else {
+      b <+ "\{clone_menu}</div>"
     }
     b <+
       "<div class=\"repo-context-line\"><a href=\"\{base}\">\{repo.path()}</a><span class=\"branch-label\"><span class=\"ui-icon\" data-icon=\"git-branch\" aria-hidden=\"true\"></span>\{rev}</span></div></div>"

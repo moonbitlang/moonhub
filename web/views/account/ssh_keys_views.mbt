@@ -18,17 +18,18 @@ fn render_user_ssh_keys(
         for key in keys {
           b <+
             "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{key.title}</h2>"
-          match key.revoked_at {
-            None =>
-              b <+
-                "<span class=\"ssh-key-state ssh-key-state--active\">Active</span>"
-            Some(_) => b <+ "<span class=\"ssh-key-state muted\">Revoked</span>"
+          if key.revoked_at is Some(_) {
+            b <+ "<span class=\"ssh-key-state muted\">Revoked</span>"
+          } else {
+            b <+
+              "<span class=\"ssh-key-state ssh-key-state--active\">Active</span>"
           }
           b <+
             "</div><code class=\"ssh-key-fingerprint\">\{key.fingerprint}</code><dl class=\"ssh-key-metadata\"><div><dt>Added</dt><dd>\{@web_ui.timestamp(key.created_at)}</dd></div><div><dt>Last used</dt><dd>"
-          match key.last_used_at {
-            Some(time) => b <+ "\{@web_ui.timestamp(time)}"
-            None => b <+ "Never"
+          if key.last_used_at is Some(time) {
+            b <+ "\{@web_ui.timestamp(time)}"
+          } else {
+            b <+ "Never"
           }
           b <+ "</dd></div>"
           if key.revoked_at is Some(time) {

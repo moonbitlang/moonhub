@@ -86,13 +86,14 @@ pub fn Coordinator::append_log(
           job.steps.any(step => step.id == request.step_id) else {
           raise @domain.BadRequest(message="unknown log step")
         }
-        let previous : String = match
-          tx.query_opt(
+        let previous : String = if tx.query_opt(
             "SELECT content FROM pipeline_log_tail WHERE attempt_id = ? AND step_id = ? AND stream = ?",
             params=[id, request.step_id, request.stream],
-          ) {
-          Some(row) => row.get_name("content")
-          None => ""
+          )
+          is Some(row) {
+          row.get_name("content")
+        } else {
+          ""
         }
         let masks = [token]
         for

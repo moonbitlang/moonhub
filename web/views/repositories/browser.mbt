@@ -211,10 +211,11 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
         head,
         page=@web_context.diff_page(req),
       )
-      let selected = match
-        req.query().get("file_id").filter(id => !id.is_empty()) {
-        Some(id) => Some(diff_executor.file(git_dir, manifest, id, options))
-        None => None
+      let selected = if req.query().get("file_id").filter(id => !id.is_empty())
+        is Some(id) {
+        Some(diff_executor.file(git_dir, manifest, id, options))
+      } else {
+        None
       }
       ignore(read_scope(req))
       let url = "\{@web_ui.repo_link(repo)}/commit/\{head}"

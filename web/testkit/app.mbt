@@ -85,14 +85,13 @@ pub async fn rendered_blob_page(port : Int32) -> String {
 
 ///|
 pub fn extract_attr(html : String, marker : String, attr : String) -> String {
-  match html.find(marker) {
-    Some(marker_start) => {
-      let attr_start = marker_start + html[marker_start:].find(attr).unwrap()
-      let value_start = attr_start + attr.length()
-      let value_end = value_start + html[value_start:].find("\"").unwrap()
-      html[value_start:value_end].to_owned()
-    }
-    None => abort("missing marker")
+  if html.find(marker) is Some(marker_start) {
+    let attr_start = marker_start + html[marker_start:].find(attr).unwrap()
+    let value_start = attr_start + attr.length()
+    let value_end = value_start + html[value_start:].find("\"").unwrap()
+    html[value_start:value_end].to_owned()
+  } else {
+    abort("missing marker")
   }
 }
 

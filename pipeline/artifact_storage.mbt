@@ -120,14 +120,14 @@ pub async fn Coordinator::stage_artifact_block(
       "SELECT a.kind,a.state,b.digest,b.size FROM pipeline_artifact a JOIN pipeline_artifact_block b ON b.artifact_id=a.id WHERE a.id=? AND b.block_id=?",
       params=[id, block],
     )
-    match row {
-      Some(row) =>
-        (row.get_name("kind") : String) == "cache" &&
-        ["uploaded", "ready"].contains((row.get_name("state") : String)) &&
-        (row.get_name("size") : Int64) == bytes.length().to_int64() &&
-        (row.get_name("digest") : String) ==
-        @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
-      None => false
+    if row is Some(row) {
+      (row.get_name("kind") : String) == "cache" &&
+      ["uploaded", "ready"].contains((row.get_name("state") : String)) &&
+      (row.get_name("size") : Int64) == bytes.length().to_int64() &&
+      (row.get_name("digest") : String) ==
+      @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
+    } else {
+      false
     }
   })
   if replay {

@@ -379,146 +379,138 @@ pub fn Coordinator::claim(
           "SELECT id, token_hash FROM pipeline_job_attempt WHERE provider_id = ? AND request_id = ? AND COALESCE(worker_id,0) = ?",
           params=[provider_id, request.request_id, worker_id.unwrap_or(0L)],
         )
-        let row = match previous {
-          Some(previous) => {
-            guard (previous.get_name("token_hash") : String) == hash else {
-              raise Conflict(
-                "claim request was reused with different credentials",
-              )
-            }
-            let id : Int64 = previous.get_name("id")
-            let row = load_live_attempt(tx, id, request.attempt_token, now)
-            guard (row.get_name("cancel_at_ms") : Int64?) is None else {
-              raise Conflict("claim has been cancelled")
-            }
-            row
+        let row = if previous is Some(previous) {
+          guard (previous.get_name("token_hash") : String) == hash else {
+            raise Conflict(
+              "claim request was reused with different credentials",
+            )
           }
-          None => {
-            if worker_id is Some(_) {
-              let w = authenticate_worker(tx, token)
-              let linux_ci = @json.parse(
-                  (provider.get_name("config_json") : String),
-                )
-                is { "execution_mode": "linux-ci", .. }
-              guard !(w.get_name("draining") : Bool) &&
+          let id : Int64 = previous.get_name("id")
+          let row = load_live_attempt(tx, id, request.attempt_token, now)
+          guard (row.get_name("cancel_at_ms") : Int64?) is None else {
+            raise Conflict("claim has been cancelled")
+          }
+          row
+        } else {
+          if worker_id is Some(_) {
+            let w = authenticate_worker(tx, token)
+            let linux_ci = @json.parse(
+                (provider.get_name("config_json") : String),
+              )
+              is { "execution_mode": "linux-ci", .. }
+            guard !(w.get_name("draining") : Bool) &&
+              (
+                !linux_ci ||
                 (
-                  !linux_ci ||
-                  (
-                    (provider.get_name("mode") : String) == "asg" &&
-                    (w.get_name("isolation_revision") : Int64) ==
-                    (w.get_name("config_revision") : Int64)
-                  )
-                ) &&
-                (w.get_name("state") : String) == "ready" &&
-                (w.get_name("applied_revision") : Int64) ==
-                (w.get_name("config_revision") : Int64) &&
-                (provider.get_name("applied_revision") : Int64) ==
-                (provider.get_name("config_revision") : Int64) else {
-                return None
-              }
-            }
-            guard tx.query_opt(
-                "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash = ?",
-                params=[hash, hash],
-              )
-              is None &&
-              tx.query_opt(
-                "SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
-                params=[hash],
-              )
-              is None &&
-              tx.query_opt(
-                "SELECT id FROM pipeline_worker WHERE token_hash=?",
-                params=[hash],
-              )
-              is None else {
-              raise Conflict(
-                "attempt credentials must be unique and distinct from provider and worker credentials",
-              )
-            }
-            if (provider.get_name("paused") : Bool) ||
-              tx.query_opt(
-                "SELECT id FROM pipeline_job_attempt WHERE provider_id = ? AND COALESCE(worker_id,0) = ? AND status <> 'completed' LIMIT 1",
-                params=[provider_id, worker_id.unwrap_or(0L)],
-              )
-              is Some(_) {
+                  (provider.get_name("mode") : String) == "asg" &&
+                  (w.get_name("isolation_revision") : Int64) ==
+                  (w.get_name("config_revision") : Int64)
+                )
+              ) &&
+              (w.get_name("state") : String) == "ready" &&
+              (w.get_name("applied_revision") : Int64) ==
+              (w.get_name("config_revision") : Int64) &&
+              (provider.get_name("applied_revision") : Int64) ==
+              (provider.get_name("config_revision") : Int64) else {
               return None
             }
-            let job = tx.query_opt(
-              eligible_provider_jobs +
-              " AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate WHERE candidate.provider_id=provider.id AND candidate.job_id=j.id AND (candidate.environment_id IS NULL OR candidate.environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)))) ORDER BY j.id LIMIT 1",
-              params=[
-                provider_id,
-                @workflow.format_version.to_int64(),
-                provider_id,
-                ToJson::to_json(prepared).stringify(),
-              ],
-            )
-            guard job is Some(job) else { return None }
-            let job_id : Int64 = job.get_name("id")
-            let run_id : Int64 = job.get_name("run_id")
-            let selected = tx.query_one(
-              "SELECT environment_json FROM pipeline_provider_job_environment WHERE provider_id=? AND job_id=? AND (environment_id IS NULL OR environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))) ORDER BY is_default DESC,environment_id LIMIT 1",
-              params=[
-                provider_id,
-                job_id,
-                ToJson::to_json(prepared).stringify(),
-              ],
-            )
-            if (selected.get_name("environment_json") : String?)
-              is Some(environment) {
-              ignore(
-                tx.execute(
-                  "INSERT OR IGNORE INTO pipeline_job_environment(job_id,environment_json) VALUES(?,?)",
-                  params=[job_id, environment],
-                ),
-              )
-            }
-            guard tx.execute(
-                "UPDATE pipeline_job SET status = 'leased' WHERE id = ? AND status = 'queued'",
-                params=[job_id],
-              ) ==
-              1 else {
-              raise Conflict("job was already claimed")
-            }
-            let id : Int64 = tx
-              .query_one(
-                "INSERT INTO pipeline_job_attempt (job_id, number, status, provider_id, request_id, token_hash, lease_until_ms) SELECT ?, COALESCE(MAX(number), 0) + 1, 'leased', ?, ?, ?, ? FROM pipeline_job_attempt WHERE job_id = ? RETURNING id",
-                params=[
-                  job_id,
-                  provider_id,
-                  request.request_id,
-                  hash,
-                  now + @protocol.lease_ms,
-                  job_id,
-                ],
-              )
-              .get_name("id")
-            if worker_id is Some(worker_id) {
-              ignore(
-                tx.execute(
-                  "UPDATE pipeline_job_attempt SET worker_id=? WHERE id=?",
-                  params=[worker_id, id],
-                ),
-              )
-              ignore(
-                tx.execute(
-                  "UPDATE pipeline_worker SET state='busy',draining=CASE WHEN ? THEN 1 ELSE draining END WHERE id=?",
-                  params=[
-                    (provider.get_name("mode") : String) == "asg" &&
-                    @json.parse((provider.get_name("config_json") : String))
-                    is { "execution_mode": "linux-ci", .. },
-                    worker_id,
-                  ],
-                ),
-              )
-            }
-            let _ = tx.execute(
-              "UPDATE pipeline_run SET status = 'running', updated_at = datetime('now') WHERE id = ?",
-              params=[run_id],
-            )
-            attempt_row(tx, id, request.attempt_token)
           }
+          guard tx.query_opt(
+              "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash = ?",
+              params=[hash, hash],
+            )
+            is None &&
+            tx.query_opt(
+              "SELECT id FROM pipeline_job_attempt WHERE token_hash = ?",
+              params=[hash],
+            )
+            is None &&
+            tx.query_opt("SELECT id FROM pipeline_worker WHERE token_hash=?", params=[
+              hash,
+            ])
+            is None else {
+            raise Conflict(
+              "attempt credentials must be unique and distinct from provider and worker credentials",
+            )
+          }
+          if (provider.get_name("paused") : Bool) ||
+            tx.query_opt(
+              "SELECT id FROM pipeline_job_attempt WHERE provider_id = ? AND COALESCE(worker_id,0) = ? AND status <> 'completed' LIMIT 1",
+              params=[provider_id, worker_id.unwrap_or(0L)],
+            )
+            is Some(_) {
+            return None
+          }
+          let job = tx.query_opt(
+            eligible_provider_jobs +
+            " AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate WHERE candidate.provider_id=provider.id AND candidate.job_id=j.id AND (candidate.environment_id IS NULL OR candidate.environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)))) ORDER BY j.id LIMIT 1",
+            params=[
+              provider_id,
+              @workflow.format_version.to_int64(),
+              provider_id,
+              ToJson::to_json(prepared).stringify(),
+            ],
+          )
+          guard job is Some(job) else { return None }
+          let job_id : Int64 = job.get_name("id")
+          let run_id : Int64 = job.get_name("run_id")
+          let selected = tx.query_one(
+            "SELECT environment_json FROM pipeline_provider_job_environment WHERE provider_id=? AND job_id=? AND (environment_id IS NULL OR environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))) ORDER BY is_default DESC,environment_id LIMIT 1",
+            params=[provider_id, job_id, ToJson::to_json(prepared).stringify()],
+          )
+          if (selected.get_name("environment_json") : String?)
+            is Some(environment) {
+            ignore(
+              tx.execute(
+                "INSERT OR IGNORE INTO pipeline_job_environment(job_id,environment_json) VALUES(?,?)",
+                params=[job_id, environment],
+              ),
+            )
+          }
+          guard tx.execute(
+              "UPDATE pipeline_job SET status = 'leased' WHERE id = ? AND status = 'queued'",
+              params=[job_id],
+            ) ==
+            1 else {
+            raise Conflict("job was already claimed")
+          }
+          let id : Int64 = tx
+            .query_one(
+              "INSERT INTO pipeline_job_attempt (job_id, number, status, provider_id, request_id, token_hash, lease_until_ms) SELECT ?, COALESCE(MAX(number), 0) + 1, 'leased', ?, ?, ?, ? FROM pipeline_job_attempt WHERE job_id = ? RETURNING id",
+              params=[
+                job_id,
+                provider_id,
+                request.request_id,
+                hash,
+                now + @protocol.lease_ms,
+                job_id,
+              ],
+            )
+            .get_name("id")
+          if worker_id is Some(worker_id) {
+            ignore(
+              tx.execute(
+                "UPDATE pipeline_job_attempt SET worker_id=? WHERE id=?",
+                params=[worker_id, id],
+              ),
+            )
+            ignore(
+              tx.execute(
+                "UPDATE pipeline_worker SET state='busy',draining=CASE WHEN ? THEN 1 ELSE draining END WHERE id=?",
+                params=[
+                  (provider.get_name("mode") : String) == "asg" &&
+                  @json.parse((provider.get_name("config_json") : String))
+                  is { "execution_mode": "linux-ci", .. },
+                  worker_id,
+                ],
+              ),
+            )
+          }
+          let _ = tx.execute(
+            "UPDATE pipeline_run SET status = 'running', updated_at = datetime('now') WHERE id = ?",
+            params=[run_id],
+          )
+          attempt_row(tx, id, request.attempt_token)
         }
         let owner : String = row.get_name("owner_name")
         let name : String = row.get_name("repo_name")

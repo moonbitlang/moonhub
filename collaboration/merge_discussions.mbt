@@ -90,29 +90,28 @@ fn load_merge_discussions(
     Write,
   )
   pool.with_client(client => {
-    let rows = match selected {
-      Some(id) =>
-        client.query_all(
-          "\{discussion_select} WHERE d.merge_request_id = ? AND d.id = ?",
-          params=[mr.id, id],
-        )
-      None =>
-        client.query_all(
-          "\{discussion_select} WHERE d.merge_request_id = ? AND (? = 'all' OR d.resolved = ?) AND (? = 0 OR (d.version = ? AND json_extract(d.anchor, '$.base_sha') = ? AND json_extract(d.anchor, '$.head_sha') = ? AND json_extract(d.anchor, '$.commit_sha') = ?)) ORDER BY d.id DESC LIMIT 51 OFFSET ?",
-          params=[
-            mr.id,
-            filter,
-            filter == "resolved",
-            anchor_version,
-            anchor_version,
-            comparison.map(c => c.base_sha).unwrap_or(""),
-            comparison.map(c => c.head_sha).unwrap_or(""),
-            comparison
-            .map(c => c.commit.map(commit => commit.hash).unwrap_or(""))
-            .unwrap_or(""),
-            (page - 1L) * 50L,
-          ],
-        )
+    let rows = if selected is Some(id) {
+      client.query_all(
+        "\{discussion_select} WHERE d.merge_request_id = ? AND d.id = ?",
+        params=[mr.id, id],
+      )
+    } else {
+      client.query_all(
+        "\{discussion_select} WHERE d.merge_request_id = ? AND (? = 'all' OR d.resolved = ?) AND (? = 0 OR (d.version = ? AND json_extract(d.anchor, '$.base_sha') = ? AND json_extract(d.anchor, '$.head_sha') = ? AND json_extract(d.anchor, '$.commit_sha') = ?)) ORDER BY d.id DESC LIMIT 51 OFFSET ?",
+        params=[
+          mr.id,
+          filter,
+          filter == "resolved",
+          anchor_version,
+          anchor_version,
+          comparison.map(c => c.base_sha).unwrap_or(""),
+          comparison.map(c => c.head_sha).unwrap_or(""),
+          comparison
+          .map(c => c.commit.map(commit => commit.hash).unwrap_or(""))
+          .unwrap_or(""),
+          (page - 1L) * 50L,
+        ],
+      )
     }
     if rows.is_empty() {
       if selected is Some(_) {
@@ -132,16 +131,15 @@ fn load_merge_discussions(
       root_map[root.id] = root
     }
     // Overview batches three recent replies per thread; detail pages fifty replies.
-    let replies = match selected {
-      Some(id) =>
-        client.query_all(
-          "SELECT a.*, COALESCE(u.display_name, 'Moonhub') AS actor FROM merge_activity a LEFT JOIN \"user\" u ON u.id = a.actor_id WHERE a.discussion_id = ? AND a.id <> ? AND a.kind IN ('comment', 'comment_deleted') ORDER BY a.id LIMIT 50 OFFSET ?",
-          params=[id, id, (page - 1L) * 50L],
-        )
-      None =>
-        client.query_all(
-          "WITH ranked AS (SELECT a.*, ROW_NUMBER() OVER (PARTITION BY a.discussion_id ORDER BY a.id DESC) AS position FROM merge_activity a WHERE a.discussion_id IN (\{ids}) AND a.id <> a.discussion_id AND a.kind IN ('comment', 'comment_deleted')) SELECT a.*, COALESCE(u.display_name, 'Moonhub') AS actor FROM ranked a LEFT JOIN \"user\" u ON u.id = a.actor_id WHERE a.position <= 3 ORDER BY a.id",
-        )
+    let replies = if selected is Some(id) {
+      client.query_all(
+        "SELECT a.*, COALESCE(u.display_name, 'Moonhub') AS actor FROM merge_activity a LEFT JOIN \"user\" u ON u.id = a.actor_id WHERE a.discussion_id = ? AND a.id <> ? AND a.kind IN ('comment', 'comment_deleted') ORDER BY a.id LIMIT 50 OFFSET ?",
+        params=[id, id, (page - 1L) * 50L],
+      )
+    } else {
+      client.query_all(
+        "WITH ranked AS (SELECT a.*, ROW_NUMBER() OVER (PARTITION BY a.discussion_id ORDER BY a.id DESC) AS position FROM merge_activity a WHERE a.discussion_id IN (\{ids}) AND a.id <> a.discussion_id AND a.kind IN ('comment', 'comment_deleted')) SELECT a.*, COALESCE(u.display_name, 'Moonhub') AS actor FROM ranked a LEFT JOIN \"user\" u ON u.id = a.actor_id WHERE a.position <= 3 ORDER BY a.id",
+      )
     }
     let reply_map : Map[Int64, Array[MergeActivity]] = Map([])
     for row in replies {
