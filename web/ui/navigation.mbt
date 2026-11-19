@@ -9,6 +9,34 @@ pub(all) enum PageNavigation {
 }
 
 ///|
+fn is_repository_settings(active : String) -> Bool {
+  active
+  is ("settings"
+  | "action-settings"
+  | "secrets"
+  | "variables"
+  | "mirrors"
+  | "webhooks"
+  | "deploy-keys"
+  | "danger-zone")
+}
+
+///|
+fn repository_section(active : String, manager : Bool) -> String {
+  if manager && is_repository_settings(active) {
+    "settings"
+  } else if active.has_prefix("issues") {
+    "issues"
+  } else if active == "merge-requests" || active.has_prefix("pull-") {
+    "merge-requests"
+  } else if active is ("pipelines" | "pipeline-events" | "variables") {
+    "pipelines"
+  } else {
+    "code"
+  }
+}
+
+///|
 /// A user's own namespace is not a team in the product, so it never uses the
 /// team views, labels, or sections.
 pub fn namespace_navigation(
@@ -196,6 +224,7 @@ fn render_sidebar(
   navigation : PageNavigation,
   current_user : @domain.CurrentUser?,
   extra : @moonback.Html?,
+  collapsible : Bool,
 ) -> @moonback.Html {
   let (name, subtitle, icon) = match navigation {
     TeamNavigation(team, _) => (team.display_name, "Team workspace", "users")
@@ -206,9 +235,14 @@ fn render_sidebar(
     SiteNavigation(_) => ("Administration", "Site settings", "settings")
     _ => ("Workspace", "Your repositories & teams", "grid")
   }
+  let mobile_only_switcher = navigation
+    is RepositoryNavigation(_, active, manager) &&
+    !is_repository_settings(active) &&
+    repository_section(active, manager)
+    is ("issues" | "merge-requests" | "pipelines")
   Html(b => {
     b <+
-      "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"\{if navigation is RepositoryNavigation(_, _, _) { "Repository sections" } else { "Workspace navigation" }}\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/-/teams\">All teams</a>"
+      "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"\{if navigation is RepositoryNavigation(_, _, _) { "Repository sections" } else { "Workspace navigation" }}\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\{if mobile_only_switcher { " context-switcher--mobile-only" } else { "" }}\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/-/teams\">All teams</a>"
     match navigation {
       RepositoryNavigation(repo, _, _) =>
         b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
@@ -243,14 +277,9 @@ fn render_sidebar(
         b <+ "</nav>"
       }
       RepositoryNavigation(repo, active, manager) => {
-        b <+ "<nav class=\"nav-group\" aria-label=\"Repository\">"
         let base = repo_link(repo)
-        let settings = manager &&
-          [
-            "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
-            "deploy-keys", "danger-zone",
-          ].contains(active)
-        let items = if settings {
+        let section = repository_section(active, manager)
+        let items = if section == "settings" {
           [
             (
               "/settings/branches", "settings", "Branch protection", "git-branch",
@@ -264,12 +293,12 @@ fn render_sidebar(
             ("/settings/deploy-keys", "deploy-keys", "Deploy keys", "key"),
             ("/settings/mirrors", "mirrors", "Mirrors", "git-commit"),
           ]
-        } else if active.has_prefix("issues") {
+        } else if section == "issues" {
           [
             ("/issues", "issues", "All issues", "circle-dot"),
             ("/issues?assigned=me", "issues-assigned", "Assigned to me", "user"),
           ]
-        } else if active == "merge-requests" || active.has_prefix("pull-") {
+        } else if section == "merge-requests" {
           [
             (
               "/merge-requests", "merge-requests", "All pull requests", "git-pull-request",
@@ -282,9 +311,7 @@ fn render_sidebar(
               "circle-check",
             ),
           ]
-        } else if active == "pipelines" ||
-          active == "pipeline-events" ||
-          active == "variables" {
+        } else if section == "pipelines" {
           [
             ("/pipelines", "pipelines", "All workflows", "terminal"),
             (
@@ -299,6 +326,7 @@ fn render_sidebar(
             ("/releases", "releases", "Releases", "tag"),
           ]
         }
+        b <+ "<nav class=\"nav-group\" aria-label=\"Repository\">"
         for (suffix, key, label, icon) in items {
           b <+
             "\{render_navigation_item(base + suffix, label, icon, active == key || active == "variables" && key == "secrets")}"
@@ -316,22 +344,17 @@ fn render_sidebar(
           "<nav class=\"nav-group context-navigation\" aria-label=\"Site settings\"><p class=\"nav-group-label\">Administration</p>\{render_navigation_item("/-/admin/settings/ssh", "SSH access", "terminal", active == "ssh")}\{render_navigation_item("/-/admin/settings/mail", "Email delivery", "mail", active == "mail")}\{render_navigation_item("/-/admin/pipelines/providers", "Pipeline providers", "git-commit", active == "pipeline-providers")}</nav>"
       _ => ()
     }
-    b <+ "</div><div class=\"sidebar-footer"
-    let danger = navigation is RepositoryNavigation(_, active, true) &&
-      [
-        "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
-        "deploy-keys", "danger-zone",
-      ].contains(active)
-    if danger {
-      b <+ " sidebar-footer--danger"
-    }
-    b <+ "\">"
-    if danger && navigation is RepositoryNavigation(repo, active, _) {
+    b <+ "</div>"
+    if navigation is RepositoryNavigation(repo, active, true) &&
+      is_repository_settings(active) {
       b <+
-        "<nav class=\"sidebar-danger\" aria-label=\"Dangerous settings\">\{render_navigation_item(repo_link(repo) + "/settings/danger-zone", "Danger Zone", "triangle-alert", active == "danger-zone")}</nav>"
+        "<div class=\"sidebar-footer sidebar-footer--danger\"><nav class=\"sidebar-danger\" aria-label=\"Dangerous settings\">\{render_navigation_item(repo_link(repo) + "/settings/danger-zone", "Danger Zone", "triangle-alert", active == "danger-zone")}</nav></div>"
+    } else if collapsible {
+      b <+
+        "<div class=\"sidebar-footer\"><button class=\"nav-item sidebar-collapse\" type=\"button\" data-sidebar-collapse aria-controls=\"app-sidebar\" aria-expanded=\"true\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\" hidden inert><span class=\"ui-icon\" data-icon=\"panel-left-close\" aria-hidden=\"true\"></span><span class=\"nav-label\">Collapse sidebar</span></button></div>"
     }
     b <+
-      "<button class=\"nav-item sidebar-collapse\" type=\"button\" data-sidebar-collapse aria-controls=\"app-sidebar\" aria-expanded=\"true\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\" hidden inert><span class=\"ui-icon\" data-icon=\"panel-left-close\" aria-hidden=\"true\"></span><span class=\"nav-label\">Collapse sidebar</span></button></div></aside><button class=\"sidebar-scrim\" type=\"button\" data-sidebar-close aria-label=\"Close navigation\" hidden></button>"
+      "</aside><button class=\"sidebar-scrim\" type=\"button\" data-sidebar-close aria-label=\"Close navigation\" hidden></button>"
   })
 }
 
@@ -339,24 +362,7 @@ fn render_sidebar(
 fn render_repository_tabs(navigation : PageNavigation) -> @moonback.Html {
   Html(b => {
     if navigation is RepositoryNavigation(repo, active, manager) {
-      let settings = manager &&
-        [
-          "settings", "action-settings", "secrets", "variables", "mirrors", "webhooks",
-          "deploy-keys", "danger-zone",
-        ].contains(active)
-      let section = if settings {
-        "settings"
-      } else if active.has_prefix("issues") {
-        "issues"
-      } else if active == "merge-requests" || active.has_prefix("pull-") {
-        "merge-requests"
-      } else if active == "pipelines" ||
-        active == "pipeline-events" ||
-        active == "variables" {
-        "pipelines"
-      } else {
-        "code"
-      }
+      let section = repository_section(active, manager)
       b <+
         "<nav class=\"repository-tabs\" aria-label=\"Repository navigation\">"
       for

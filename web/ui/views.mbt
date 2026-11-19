@@ -19,6 +19,9 @@ pub fn layout(
   let sidebar = shell &&
     !(navigation
     is RepositoryNavigation(_, "files-root" | "files" | "commits", _))
+  let collapsible = sidebar &&
+    !(navigation is RepositoryNavigation(_, active, _) &&
+    is_repository_settings(active))
   let header = render_site_header(
     current_user, navigation, shell, sidebar, header_content,
   )
@@ -33,12 +36,13 @@ pub fn layout(
     .unwrap_or("")
   Html(b => {
     b <+
-      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{sidebar.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}\{render_repository_tabs(navigation)}
+      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{collapsible.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}\{render_repository_tabs(navigation)}
     if shell {
       b <+
         "<div class=\"workspace-shell\{if repository_page { " repository-shell" } else { "" }}\{if sidebar { "" } else { " workspace-shell--full-width" }}\">"
       if sidebar {
-        b <+ "\{render_sidebar(navigation, current_user, sidebar_content)}"
+        b <+
+          "\{render_sidebar(navigation, current_user, sidebar_content, collapsible)}"
       }
     }
     b <+
