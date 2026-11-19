@@ -261,7 +261,8 @@ pub async fn prepare_markdown(
       raise @domain.BadRequest(message="unsupported inline image type")
     }
     let bytes = @base64.decode(image.url[separator + 8:]) catch {
-      _ => raise @domain.BadRequest(message="invalid inline image base64")
+      @base64.InvalidChar(_) =>
+        raise @domain.BadRequest(message="invalid inline image base64")
     }
     guard bytes.length() <= maximum_image_bytes && image_type(bytes) == declared else {
       raise @domain.BadRequest(message="inline image type or size is invalid")

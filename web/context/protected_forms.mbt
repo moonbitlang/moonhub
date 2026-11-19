@@ -53,7 +53,8 @@ pub async fn read_form(
     raise @domain.BadRequest(message="form is too large")
   }
   let body = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
-    _ => raise @domain.BadRequest(message="invalid form encoding")
+    @utf8.Malformed(_) =>
+      raise @domain.BadRequest(message="invalid form encoding")
   }
   parse_form(body)
 }

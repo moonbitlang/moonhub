@@ -185,7 +185,7 @@ async fn run_container(
           )
         }
         let report = @json.parse(output.trim()) catch {
-          _ => raise DockerFailure(code)
+          (_ : @json.ParseError) => raise DockerFailure(code)
         }
         guard report is Object(fields) else { raise DockerFailure(code) }
         let reported = fields.get("reported") is Some(True)

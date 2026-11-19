@@ -50,10 +50,12 @@ async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json 
     error=@domain.BadRequest(message="request body timed out"),
   )
   let text = @utf8.decode(Bytes::from_array(bytes)) catch {
-    _ => raise @domain.BadRequest(message="request body must be UTF-8")
+    @utf8.Malformed(_) =>
+      raise @domain.BadRequest(message="request body must be UTF-8")
   }
   let json = @json.parse(text) catch {
-    _ => raise @domain.BadRequest(message="invalid JSON body")
+    (_ : @json.ParseError) =>
+      raise @domain.BadRequest(message="invalid JSON body")
   }
   guard json is Object(fields) else {
     raise @domain.BadRequest(message="JSON object required")
