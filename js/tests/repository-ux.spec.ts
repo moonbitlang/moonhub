@@ -16,18 +16,31 @@ async function fillMarkdown(page: Page, selector: string, value: string) {
   await textarea.evaluate((element, value) => (element.closest('.markdown-editor')!.querySelector('.CodeMirror') as any).CodeMirror.setValue(value), value);
 }
 
-test('Clone menu stays inside the viewport and copies the full SSH URL', async ({ page }) => {
+test('Code aligns with its row and the clone menu stays inside the viewport', async ({ page }) => {
   await login(page);
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   const trigger = page.locator('.repo-clone > summary');
   const panel = page.locator('.repo-clone-panel');
-  const url = 'ssh://git@ssh.example.test:2222/alice/demo.git';
-  for (const path of ['/alice/demo/commits', '/alice/demo']) {
+  for (const { path, repo, hasToolbar } of [
+    { path: '/alice/demo/commits', repo: 'demo', hasToolbar: false },
+    { path: '/alice/empty', repo: 'empty', hasToolbar: false },
+    { path: '/alice/demo', repo: 'demo', hasToolbar: true },
+  ]) {
+    const url = `ssh://git@ssh.example.test:2222/alice/${repo}.git`;
     await page.goto(path);
     await expect(page.locator('html')).toHaveAttribute('data-hydrated', 'true');
+    const row = page.locator(hasToolbar ? '.code-toolbar' : '.repo-heading');
+    await expect(row.locator('.repo-clone > summary')).toBeVisible();
     for (const width of [1280, 1440, 320]) {
       const height = 900;
       await page.setViewportSize({ width, height });
+      if (!hasToolbar) {
+        const heading = (await row.boundingBox())!;
+        const title = (await row.getByRole('heading', { name: repo, exact: true }).boundingBox())!;
+        const button = (await trigger.boundingBox())!;
+        expect(button.x + button.width).toBeCloseTo(heading.x + heading.width, 0);
+        expect(button.y + button.height / 2).toBeCloseTo(title.y + title.height / 2, 0);
+      }
       await trigger.click();
       const box = (await panel.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(20);
