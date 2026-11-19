@@ -216,7 +216,7 @@ async test "repository commit counts follow the selected revision beyond the his
       .trim()
       .to_owned()
     let mut head = base
-    for i = 0; i < 51; i = i + 1 {
+    for i in 0..<51 {
       head = @gitops.merge_git(dir, [
           "commit-tree",
           tree,

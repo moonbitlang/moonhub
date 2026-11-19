@@ -98,7 +98,7 @@ async fn remove_vm(macos : MacOptions, name : String) -> Unit {
   ignore(tart_control(macos, ["stop", name, "--timeout", "0"])) catch {
     _ => ()
   }
-  for retry = 0; retry < 100; retry = retry + 1 {
+  for _ in 0..<100 {
     let info = @json.parse(
       tart_control(macos, ["get", name, "--format", "json"]),
     )

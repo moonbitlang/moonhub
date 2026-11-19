@@ -14,7 +14,7 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
   )
   // Expanded workflows are bounded to 256 jobs. A fixed point keeps
   // deeper branches from remaining waiting after an upstream failure.
-  for pass = 0; pass < 256; pass = pass + 1 {
+  for _ in 0..<256 {
     let mut changed = false
     let waiting = tx.query_all(
       "SELECT id, job_key FROM pipeline_job WHERE run_id = ? AND status = 'waiting' ORDER BY ordinal",
