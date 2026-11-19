@@ -221,6 +221,18 @@ pub async fn transfer_repository(
           retarget_attachment_links(tx, id, repo, target)
           ignore(
             tx.execute(
+              "UPDATE email_outbox SET body=replace(replace(body,'/'||?||'/issues/','/'||?||'/issues/'),'/'||?||'/merge-requests/','/'||?||'/merge-requests/') WHERE template='collaboration_notification' AND status='pending' AND notification_id IN (SELECT n.id FROM collaboration_notification n JOIN collaboration_event e ON e.id=n.event_id JOIN collaboration_thread t ON t.id=e.thread_id WHERE t.repository_id=?)",
+              params=[
+                repo.path(),
+                target.path(),
+                repo.path(),
+                target.path(),
+                id,
+              ],
+            ),
+          )
+          ignore(
+            tx.execute(
               "INSERT INTO repository_audit(repository_id,actor_id,kind,detail) VALUES(?,?,'repository_transferred',?)",
               params=[id, actor.id, "\{repo.path()} -> \{target.path()}"],
             ),

@@ -57,6 +57,27 @@ pub fn require_current_scope(
 }
 
 ///|
+// Validate a captured repository identity inside the caller's database
+// transaction so path reuse cannot redirect an in-flight mutation.
+pub fn require_current_scope_tx(
+  tx : @database.DbTransaction,
+  expected : RepositoryScope,
+) -> Unit raise {
+  guard tx.query_opt(
+      "SELECT r.id,r.team_id,r.name,t.name_key AS owner FROM repository r JOIN team t ON t.id=r.team_id WHERE r.id=? AND r.ready=1",
+      params=[expected.id],
+    )
+    is Some(row) else {
+    raise @domain.NotFound(message="repository not found")
+  }
+  guard (row.get_name("team_id") : Int64) == expected.team_id &&
+    (row.get_name("owner") : String) == expected.repo.owner &&
+    (row.get_name("name") : String) == expected.repo.name else {
+    raise @domain.NotFound(message="repository has changed")
+  }
+}
+
+///|
 /// Admit a Git reader without holding the name lock for the duration of the read.
 /// The caller must close the returned lifetime lock after the last Git operation.
 pub async fn open_repository_read(

@@ -89,6 +89,8 @@ pub async fn repository_write_lock(String, @domain.RepoId) -> @fs.File
 
 pub fn require_current_scope(@database.Database, RepositoryScope) -> Unit raise
 
+pub fn require_current_scope_tx(@database.DbTransaction, RepositoryScope) -> Unit raise
+
 pub fn require_mirror_manager(@database.Database, @domain.CurrentUser, @domain.RepoId) -> RepositoryScope raise
 
 pub fn require_repository_job(@database.Database, @identity.TeamSummary, String) -> RepositoryJob raise

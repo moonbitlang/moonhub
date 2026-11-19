@@ -120,6 +120,15 @@ fn require_repository_idle(
       message="A webhook is being sent. Wait for delivery to finish, then retry.",
     )
   }
+  guard client.query_opt(
+      "SELECT e.id FROM email_outbox e JOIN collaboration_notification n ON n.id=e.notification_id JOIN collaboration_event v ON v.id=n.event_id JOIN collaboration_thread t ON t.id=v.thread_id WHERE t.repository_id=? AND e.template='collaboration_notification' AND e.status='pending' AND e.locked_by IS NOT NULL AND e.locked_at>datetime('now','-5 minutes') LIMIT 1",
+      params=[id],
+    )
+    is None else {
+    raise @domain.BadRequest(
+      message="A collaboration email is being sent. Wait for delivery to finish, then retry.",
+    )
+  }
 }
 
 ///|

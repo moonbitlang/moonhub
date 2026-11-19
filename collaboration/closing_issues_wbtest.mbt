@@ -78,6 +78,60 @@ test "closing directives respect list-contained fences and literal backticks" {
 }
 
 ///|
+async test "issue mutations reject a captured scope after transfer and source-name reuse" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, repo)
+    let number = create_issue(pool, scope, alice, "Preserve issue", "", 0L)
+    let issue = require_issue(pool, scope, number)
+    let target = @repository.transfer_repository(
+      pool,
+      root,
+      alice,
+      repo,
+      scope.id,
+      3L,
+      repo.path(),
+    )
+    @repository.create_managed_repository(pool, root, repo, "private", false)
+    try create_issue(pool, scope, alice, "Wrong repository", "", 0L) catch {
+      @domain.NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("issue creation accepted a stale repository identity")
+    }
+    try
+      mutate_issue(
+        pool,
+        scope,
+        alice,
+        issue,
+        issue.edit_version,
+        "comment",
+        "",
+        "",
+        0L,
+        "Wrong repository",
+      )
+    catch {
+      @domain.NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("issue mutation accepted a stale repository identity")
+    }
+    let moved_scope = @repository.repository_scope(pool, alice, target)
+    let moved_issue = require_issue(pool, moved_scope, number)
+    assert_eq(moved_issue.title, "Preserve issue")
+    assert_true(
+      list_issue_activity(pool, moved_issue, 1L)
+      .iter()
+      .all(activity => activity.body != "Wrong repository"),
+    )
+  })
+}
+
+///|
 async test "issue-closing merge requires the observed metadata version even when code is unchanged" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")

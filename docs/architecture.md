@@ -260,13 +260,17 @@ follow the name to a different repository. Transfer refuses unfinished Actions,
 queued or running merges, active mirror syncs and sending webhooks. A database
 journal reserves the new name and temporarily marks the source unavailable
 while its bare Git directory is renamed without replacing an existing path.
-A final transaction commits
-the new namespace, rewrites referenced attachment links in issues and pull
-requests, restores availability, audits the move and clears the journal.
+A final transaction commits the new namespace, rewrites referenced attachment
+links in issues and pull requests and queued email, restores availability,
+audits the move and clears the journal.
 The cleanup worker rolls back interrupted transfers under the same
 locks; if both or neither directory exists it keeps the journal for operator
-inspection rather than choosing a directory. Pending webhook deliveries wait
-for the journal to clear before evaluating the current namespace permissions.
+inspection rather than choosing a directory. Pending webhook deliveries and
+collaboration email claims wait for the journal to clear before evaluating the
+current namespace permissions. Queued email links are retargeted in the final
+transaction; a transfer waits for an already claimed collaboration email.
+Mutations using captured repository scopes validate that identity inside their
+database transaction, so reusing the old path cannot redirect stale writes.
 
 When locks nest, acquire the mirror lock, then the repository name lock, then
 the reader lifetime lock if needed, then a short database transaction.

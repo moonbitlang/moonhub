@@ -87,11 +87,25 @@ pub async fn upload(
   @repository.authorize_repository(pool, actor, scope.repo, Write)
   // Reserve metadata first so a process crash leaves an expirable upload.
   pool.with_client(client => {
-    ignore(
-      client.execute(
-        "INSERT INTO attachment(id, repository_id, uploader_id, filename, media_type, byte_size, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        params=[id, scope.id, actor.id, filename, media_type, byte_size, digest],
-      ),
+    client.with_transaction(
+      tx => {
+        @repository.require_current_scope_tx(tx, scope)
+        ignore(
+          tx.execute(
+            "INSERT INTO attachment(id, repository_id, uploader_id, filename, media_type, byte_size, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            params=[
+              id,
+              scope.id,
+              actor.id,
+              filename,
+              media_type,
+              byte_size,
+              digest,
+            ],
+          ),
+        )
+      },
+      immediate=true,
     )
   })
   let path = storage_path(root, id)
@@ -122,8 +136,14 @@ pub async fn upload(
   @fs.rename(path + ".tmp", path, replace=false)
   @repository.authorize_repository(pool, actor, scope.repo, Write)
   pool.with_client(client => {
-    ignore(
-      client.execute("UPDATE attachment SET ready = 1 WHERE id = ?", params=[id]),
+    client.with_transaction(
+      tx => {
+        @repository.require_current_scope_tx(tx, scope)
+        ignore(
+          tx.execute("UPDATE attachment SET ready = 1 WHERE id = ?", params=[id]),
+        )
+      },
+      immediate=true,
     )
   })
   { id, url: url(scope.repo, id), filename, media_type, byte_size, }
@@ -161,6 +181,8 @@ pub async fn read(
   let bytes = @fs.read_file(storage_path(root, id)).binary() catch {
     _ => raise @domain.NotFound(message="attachment not found")
   }
+  @repository.require_current_scope(pool, scope)
+  @repository.authorize_repository(pool, actor, scope.repo, Read)
   { filename, media_type, bytes, }
 }
 

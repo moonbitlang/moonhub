@@ -13,6 +13,7 @@ import {
 
 import {
   "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/repository",
   "moonbitlang/async/socket",
   "hackwaly/moonhub/test_support",
 } for "wbtest"

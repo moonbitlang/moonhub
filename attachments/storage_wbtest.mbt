@@ -82,6 +82,42 @@ test "image syntax preserves unicode offsets" {
 }
 
 ///|
+async test "attachment uploads reject a captured scope after transfer and source-name reuse" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let source : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, source)
+    ignore(
+      @repository.transfer_repository(
+        pool,
+        root,
+        alice,
+        source,
+        scope.id,
+        3L,
+        source.path(),
+      ),
+    )
+    @repository.create_managed_repository(pool, root, source, "private", false)
+    try upload(pool, root, scope, alice, "stale.txt", b"not uploaded") catch {
+      @domain.NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("upload accepted a stale repository identity")
+    }
+    pool.with_client(client => {
+      assert_true(
+        client
+        .query_all("SELECT id FROM attachment WHERE repository_id=?", params=[
+          scope.id,
+        ])
+        .is_empty(),
+      )
+    })
+  })
+}
+
+///|
 async test "ordinary attachment links claim files and reject file image embeds" {
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")
