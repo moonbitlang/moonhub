@@ -22,6 +22,61 @@ fn deploy_test_key(byte : Byte) -> SshPublicKey raise {
 }
 
 ///|
+async test "SSH credentials resolve a transferred repository only under its new owner" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let bob = @identity.active_user_by_name(pool, "bob")
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let source = @domain.parse_transport_repo("alice/demo.git")
+    let deploy = DeployKey(
+      add_repository_deploy_key(
+        pool,
+        alice,
+        source,
+        "Deploy",
+        deploy_test_key(b'\x01'),
+      ),
+    )
+    let alice_key = UserKey(
+      add_ssh_key(pool, alice, "Alice", deploy_test_key(b'\x02')),
+    )
+    let bob_key = UserKey(
+      add_ssh_key(pool, bob, "Bob", deploy_test_key(b'\x03')),
+    )
+    let original = authorize_git_operation(
+      pool,
+      deploy,
+      source,
+      @repository.Read,
+    )
+    let target = @repository.transfer_repository(
+      pool,
+      root,
+      admin,
+      source,
+      original.id,
+      2L,
+      source.path(),
+    )
+    for key in [deploy, bob_key] {
+      let scope = authorize_git_operation(pool, key, target, @repository.Read)
+      assert_eq(scope.id, original.id)
+      assert_eq(scope.repo.path(), "bob/demo")
+    }
+    reject_deploy_operation(() => {
+      ignore(authorize_git_operation(pool, alice_key, target, @repository.Read))
+    })
+    reject_deploy_operation(() => {
+      ignore(authorize_git_operation(pool, deploy, target, @repository.Write))
+    })
+    @repository.create_managed_repository(pool, root, source, "private", false)
+    reject_deploy_operation(() => {
+      ignore(authorize_git_operation(pool, deploy, source, @repository.Read))
+    })
+  })
+}
+
+///|
 async test "deploy identity is repository scoped and read-only until explicitly changed" {
   @test_support.with_ssh_test_db(pool => {
     let alice = @identity.active_user_by_name(pool, "alice")

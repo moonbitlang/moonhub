@@ -2,6 +2,76 @@
 let test_png : String = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII="
 
 ///|
+async test "transferred issue and pull request attachments keep their bytes and update only managed links" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let source = @domain.parse_transport_repo("alice/demo.git")
+    let scope = @repository.repository_scope(pool, alice, source)
+    let bytes = @base64.decode(test_png)
+    let image = upload(pool, root, scope, alice, "diagram.png", bytes)
+    let file = upload(pool, root, scope, alice, "report.txt", b"report")
+    let ticks = "\u{0060}".repeat(3)
+    let code = "\u{0060}[example](\{image.url})\u{0060}\n\n\{ticks}\n[example](\{image.url})\n\{ticks}"
+    let other = "[commit](/alice/demo/commits)"
+    let before = "Overview \u{1F4CE}: \{markdown(image)} \{markdown(file)}\n\n\{code}\n\n\{other}"
+    let references : Array[(String, String, ReferenceTarget)] = [
+      ("issue", "description", Issue(1L)),
+      ("merge_request", "description", MergeRequest(1L)),
+      ("issue_activity", "body", IssueComment(1L)),
+      ("merge_activity", "body", MergeComment(1L)),
+    ]
+    pool.with_client(client => {
+      client.batch_execute(
+        (
+          #|INSERT INTO issue(id,repository_id,number,author_id,title) VALUES(1,1,1,1,'Attached issue');
+          #|INSERT INTO merge_request(id,repository_id,number,author_id,title,source_branch,target_branch) VALUES(1,1,1,1,'Attached PR','feature','master');
+          #|INSERT INTO issue_activity(id,issue_id,actor_id,kind) VALUES(1,1,1,'comment');
+          #|INSERT INTO merge_activity(id,merge_request_id,actor_id,kind,version) VALUES(1,1,1,'comment',1);
+        ),
+      )
+      client.with_transaction(tx => {
+        for (table, column, target) in references {
+          ignore(
+            tx.execute("UPDATE \{table} SET \{column}=? WHERE id=1", params=[
+              before,
+            ]),
+          )
+          replace_references(tx, scope.id, alice.id, target, before)
+        }
+      })
+    })
+    let target = @repository.transfer_repository(
+      pool,
+      root,
+      alice,
+      source,
+      scope.id,
+      3L,
+      source.path(),
+    )
+    let moved = @repository.repository_scope(pool, alice, target)
+    let after = "Overview \u{1F4CE}: ![diagram.png](\{url(target, image.id)}) [report.txt](\{url(target, file.id)})\n\n\{code}\n\n\{other}"
+    pool.with_client(client => {
+      client.with_transaction(tx => {
+        for (table, column, target) in references {
+          let content : String = tx
+            .query_one("SELECT \{column} AS markdown FROM \{table} WHERE id=1")
+            .get_name("markdown")
+          assert_eq(content, after)
+          replace_references(tx, moved.id, alice.id, target, content)
+        }
+      })
+      assert_eq(
+        client.query_all("SELECT * FROM attachment_reference").length(),
+        8,
+      )
+    })
+    assert_eq(read(pool, root, moved, alice, image.id).bytes, bytes)
+    assert_eq(read(pool, root, moved, alice, file.id).bytes, b"report")
+  })
+}
+
+///|
 test "image syntax preserves unicode offsets" {
   let value = "😀 ![a](data:image/png;base64,AAAA)"
   let links = image_links(value)
@@ -9,6 +79,42 @@ test "image syntax preserves unicode offsets" {
   assert_eq(value[links[0].start:links[0].end], "data:image/png;base64,AAAA")
   assert_true(valid_id("".pad_start(64, 'a')))
   assert_false(valid_id("../private"))
+}
+
+///|
+async test "attachment uploads reject a captured scope after transfer and source-name reuse" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    let source : @domain.RepoId = { owner: "alice", name: "demo", }
+    let scope = @repository.repository_scope(pool, alice, source)
+    ignore(
+      @repository.transfer_repository(
+        pool,
+        root,
+        alice,
+        source,
+        scope.id,
+        3L,
+        source.path(),
+      ),
+    )
+    @repository.create_managed_repository(pool, root, source, "private", false)
+    try upload(pool, root, scope, alice, "stale.txt", b"not uploaded") catch {
+      @domain.NotFound(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("upload accepted a stale repository identity")
+    }
+    pool.with_client(client => {
+      assert_true(
+        client
+        .query_all("SELECT id FROM attachment WHERE repository_id=?", params=[
+          scope.id,
+        ])
+        .is_empty(),
+      )
+    })
+  })
 }
 
 ///|

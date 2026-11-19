@@ -120,6 +120,15 @@ fn require_repository_idle(
       message="A webhook is being sent. Wait for delivery to finish, then retry.",
     )
   }
+  guard client.query_opt(
+      "SELECT e.id FROM email_outbox e JOIN collaboration_notification n ON n.id=e.notification_id JOIN collaboration_event v ON v.id=n.event_id JOIN collaboration_thread t ON t.id=v.thread_id WHERE t.repository_id=? AND e.template='collaboration_notification' AND e.status='pending' AND e.locked_by IS NOT NULL AND e.locked_at>datetime('now','-5 minutes') LIMIT 1",
+      params=[id],
+    )
+    is None else {
+    raise @domain.BadRequest(
+      message="A collaboration email is being sent. Wait for delivery to finish, then retry.",
+    )
+  }
 }
 
 ///|
@@ -181,6 +190,15 @@ fn require_repository_name_available(
     is None else {
     raise @domain.BadRequest(
       message="repository files are still being deleted; retry later",
+    )
+  }
+  guard client.query_opt(
+      "SELECT x.repository_id FROM repository_transfer x JOIN team t ON t.id=x.target_team_id WHERE t.name_key=? AND x.name=?",
+      params=[repo.owner, repo.name],
+    )
+    is None else {
+    raise @domain.BadRequest(
+      message="repository name is reserved by an unfinished transfer; retry later",
     )
   }
 }

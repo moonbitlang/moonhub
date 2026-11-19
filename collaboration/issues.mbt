@@ -41,6 +41,7 @@ pub fn create_issue(
   validate_issue_content(title, description)
   pool.with_client(client => {
     client.with_transaction(tx => {
+      @repository.require_current_scope_tx(tx, scope)
       validate_issue_assignee(tx, scope, assignee)
       let row = tx.query_one(
         "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM issue WHERE repository_id = ?",
@@ -92,6 +93,7 @@ pub fn mutate_issue(
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
+      @repository.require_current_scope_tx(tx, scope)
       if action == "comment" {
         guard !body.trim().is_empty() && body.length() <= 20000 else {
           raise @domain.BadRequest(

@@ -6,16 +6,16 @@ pub(all) enum RepoOperation {
 }
 
 ///|
-pub fn can_access_repository(
+fn accessible_repository_scope(
   pool : @database.Database,
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
   operation : RepoOperation,
-) -> Bool raise {
+) -> RepositoryScope? raise {
   pool.with_client(client => {
     let row = client.query_opt(
       (
-        #|SELECT repository.visibility, actor.is_site_admin, team_member.role
+        #|SELECT repository.id, repository.team_id, repository.visibility, actor.is_site_admin, team_member.role
         #|FROM repository
         #|JOIN team ON team.id = repository.team_id
         #|JOIN "user" AS actor ON actor.id = ? AND actor.status = 'active'
@@ -25,14 +25,27 @@ pub fn can_access_repository(
       ),
       params=[actor.id, repo.owner, repo.name],
     )
-    guard row is Some(row) else { return false }
+    guard row is Some(row) else { return None }
     let is_admin : Bool = row.get_name("is_site_admin")
     let role : String? = row.get_name("role")
     let visibility : String = row.get_name("visibility")
-    is_admin ||
-    role is Some("owner" | "admin" | "member") ||
-    (operation == Read && visibility == "public")
+    guard is_admin ||
+      role is Some("owner" | "admin" | "member") ||
+      (operation == Read && visibility == "public") else {
+      return None
+    }
+    Some({ id: row.get_name("id"), team_id: row.get_name("team_id"), repo, })
   })
+}
+
+///|
+pub fn can_access_repository(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  operation : RepoOperation,
+) -> Bool raise {
+  accessible_repository_scope(pool, actor, repo, operation) is Some(_)
 }
 
 ///|
@@ -51,27 +64,41 @@ pub fn authorize_repository(
 ///|
 /// Anonymous readers may only see registered, ready, public repositories.
 /// Authenticated readers retain the existing active-account and membership policy.
-pub fn can_read_repository(
+fn try_readable_repository_scope(
   pool : @database.Database,
   actor : @domain.CurrentUser?,
   repo : @domain.RepoId,
-) -> Bool raise {
+) -> RepositoryScope? raise {
   match actor {
-    Some(actor) => can_access_repository(pool, actor, repo, Read)
+    Some(actor) => accessible_repository_scope(pool, actor, repo, Read)
     None =>
       pool.with_client(client => {
-        client.query_opt(
+        client
+        .query_opt(
           (
-            #|SELECT repository.id FROM repository
+            #|SELECT repository.id, repository.team_id FROM repository
             #|JOIN team ON team.id = repository.team_id
             #|WHERE team.name_key = ? AND repository.name = ?
             #|  AND repository.ready = 1 AND repository.visibility = 'public'
           ),
           params=[repo.owner, repo.name],
         )
-        is Some(_)
+        .map(row => {
+          id: row.get_name("id"),
+          team_id: row.get_name("team_id"),
+          repo,
+        })
       })
   }
+}
+
+///|
+pub fn can_read_repository(
+  pool : @database.Database,
+  actor : @domain.CurrentUser?,
+  repo : @domain.RepoId,
+) -> Bool raise {
+  try_readable_repository_scope(pool, actor, repo) is Some(_)
 }
 
 ///|

@@ -70,15 +70,6 @@ let services_module : @moonback.Module = Module(ctx => {
         None => None
       }
     },
-    authorize: (req, repo) => {
-      guard @repository.can_read_repository(
-        pool,
-        @web_context.current_user_from_request(req),
-        repo,
-      ) else {
-        raise @domain.NotFound(message="repository not found or access denied")
-      }
-    },
     clone_url: repo => {
       @repository.effective_ssh_endpoint(pool, addresses).map(endpoint => {
         endpoint.clone_url(repo)

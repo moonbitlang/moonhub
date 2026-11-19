@@ -88,3 +88,54 @@ for (const javaScriptEnabled of [true, false]) {
     });
   }
 }
+
+for (const { width, javaScriptEnabled } of [
+  { width: 1440, javaScriptEnabled: true },
+  { width: 390, javaScriptEnabled: false },
+]) {
+  test(`Transfer repository at ${width}px with JavaScript ${javaScriptEnabled}`, async ({ browser, baseURL }, testInfo) => {
+    test.setTimeout(60000);
+    const context = await browser.newContext({ javaScriptEnabled, viewport: { width, height: 900 } });
+    const page = await context.newPage();
+    const name = `transfer-${width}-${Date.now()}`;
+    const team = `${name}-team`;
+    const source = `/alice/${name}`;
+    try {
+      await page.goto(baseURL + '/-/login');
+      await page.locator('[name=name_key]').fill('alice');
+      await page.locator('[name=password]').fill('browser-test-password');
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await expect(page).toHaveURL(baseURL + '/');
+      await page.goto(baseURL + '/-/teams/new');
+      await page.getByLabel('Team handle').fill(team);
+      await page.getByLabel('Display name').fill('Transfer test team');
+      await page.getByRole('button', { name: 'Create team', exact: true }).click();
+      await expect(page).toHaveURL(`${baseURL}/${team}`);
+      await page.goto(baseURL + '/alice/-/repositories/new');
+      await page.getByLabel('Repository name', { exact: true }).fill(name);
+      await page.getByRole('button', { name: 'Create repository', exact: true }).click();
+      await expect(page).toHaveURL(baseURL + source, { timeout: 15000 });
+      const danger = `${baseURL}${source}/settings/danger-zone`;
+      await page.goto(danger);
+      await page.getByRole('link', { name: 'Transfer repository', exact: true }).click();
+      await expect(page).toHaveURL(danger + '/transfer');
+      const owner = page.getByLabel('New owner');
+      const confirmation = page.getByLabel(`Type alice/${name} to confirm`);
+      await expect(owner).toHaveValue('');
+      const selected = await owner.selectOption({ label: team });
+      await confirmation.fill('alice/wrong');
+      await page.getByRole('button', { name: 'Transfer repository' }).click();
+      await expect(page.getByRole('alert')).toContainText('Enter the full repository name exactly');
+      await expect(owner).toHaveValue(selected[0]);
+      await expect(confirmation).toHaveValue('alice/wrong');
+      await page.screenshot({ path: testInfo.outputPath('repository-transfer.png'), fullPage: true });
+      expect(await page.locator('body').evaluate(body => body.scrollWidth)).toBeLessThanOrEqual(width);
+      await confirmation.fill(`alice/${name}`);
+      await page.getByRole('button', { name: 'Transfer repository' }).click();
+      await expect(page).toHaveURL(`${baseURL}/${team}/${name}`);
+      expect((await context.request.get(baseURL + source)).status()).toBe(404);
+    } finally {
+      await context.close();
+    }
+  });
+}

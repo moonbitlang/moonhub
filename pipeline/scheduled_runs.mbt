@@ -63,58 +63,78 @@ pub async fn run_due_schedules(
     let mut failed = false
     try {
       let actor = @identity.active_user_by_name(pool, row.get_name("actor"))
-      ignore(require_run_author(pool, actor, repo))
-      let branch : String = row.get_name("default_branch")
-      let sha = @gitops.branch_sha(repo.git_dir(root), branch)
-      let output = @gitops.merge_git(repo.git_dir(root), [
-        "ls-tree", sha, ".github/workflows/",
-      ])
-      let paths = @domain.split_lines(output)
-        .iter()
-        .filter_map(line => line.split_once("\t").map(p => p.1.to_owned()))
-        .filter(p => p.has_suffix(".yml") || p.has_suffix(".yaml"))
-        .collect()
-      guard paths.length() <= 64 else {
-        raise @domain.BadRequest(message="too many scheduled workflows")
+      let scope = require_run_author(pool, actor, repo)
+      guard scope.id == id else {
+        raise @domain.NotFound(message="scheduled repository has changed")
       }
-      for path in paths {
-        try {
-          let source = read_workflow_source(repo.git_dir(root), sha, path)
-          let triggers = @workflow.triggers(source)
-          let due = triggers.schedules.any(cron => {
-            @workflow.cron_matches(
-              cron,
-              (utc.get_name("minute") : Int64).to_int(),
-              (utc.get_name("hour") : Int64).to_int(),
-              (utc.get_name("day") : Int64).to_int(),
-              (utc.get_name("month") : Int64).to_int(),
-              (utc.get_name("weekday") : Int64).to_int(),
-            )
-          })
-          if due {
-            ignore(
-              create_run_event(
-                pool,
-                root,
-                actor,
-                repo,
-                branch,
-                path,
-                scheduled_minute=minute,
-              ),
-            )
+      let branch : String = row.get_name("default_branch")
+      let workflows : Array[String] = []
+      {
+        let (reader, dir) = @repository.open_repository_read(
+          pool,
+          root,
+          Some(actor),
+          scope,
+        )
+        defer reader.close()
+        let sha = @gitops.branch_sha(dir, branch)
+        let output = @gitops.merge_git(dir, [
+          "ls-tree", sha, ".github/workflows/",
+        ])
+        let paths = @domain.split_lines(output)
+          .iter()
+          .filter_map(line => line.split_once("\t").map(p => p.1.to_owned()))
+          .filter(p => p.has_suffix(".yml") || p.has_suffix(".yaml"))
+          .collect()
+        guard paths.length() <= 64 else {
+          raise @domain.BadRequest(message="too many scheduled workflows")
+        }
+        for path in paths {
+          try {
+            let source = read_workflow_source(dir, sha, path)
+            let triggers = @workflow.triggers(source)
+            if triggers.schedules.any(cron => {
+                @workflow.cron_matches(
+                  cron,
+                  (utc.get_name("minute") : Int64).to_int(),
+                  (utc.get_name("hour") : Int64).to_int(),
+                  (utc.get_name("day") : Int64).to_int(),
+                  (utc.get_name("month") : Int64).to_int(),
+                  (utc.get_name("weekday") : Int64).to_int(),
+                )
+              }) {
+              workflows.push(path)
+            }
+          } catch {
+            err if @async.is_being_cancelled() => raise err
+            _ => failed = true
           }
-        } catch {
+        }
+      }
+      for path in workflows {
+        ignore(
+          create_run_event(
+            pool,
+            root,
+            actor,
+            scope,
+            branch,
+            path,
+            scheduled_minute=minute,
+          ),
+        ) catch {
+          err if @async.is_being_cancelled() => raise err
           _ => failed = true
         }
       }
     } catch {
+      err if @async.is_being_cancelled() => raise err
       _ => failed = true
     }
     pool.with_client(c => {
       ignore(
         c.execute(
-          "UPDATE pipeline_schedule_config SET polled_minute=?,last_error=? WHERE repository_id=?",
+          "UPDATE pipeline_schedule_config SET polled_minute=?,last_error=? WHERE repository_id=? AND EXISTS (SELECT 1 FROM repository r JOIN team t ON t.id=r.team_id WHERE r.id=pipeline_schedule_config.repository_id AND r.ready=1 AND t.name_key=?)",
           params=[
             minute,
             if failed {
@@ -123,6 +143,7 @@ pub async fn run_due_schedules(
               ""
             },
             id,
+            repo.owner,
           ],
         ),
       )

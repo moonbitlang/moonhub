@@ -27,11 +27,32 @@ fn claim(pool : @database.Database) -> Assignment? raise {
       )
       ignore(
         tx.execute(
-          "UPDATE webhook_delivery SET status='cancelled',last_error='Webhook disabled or owner access revoked',completed_at=datetime('now') WHERE status='pending' AND NOT EXISTS(SELECT 1 FROM repository_webhook h JOIN repository r ON r.id=h.repository_id JOIN team t ON t.id=r.team_id JOIN \"user\" u ON u.id=h.creator_id AND u.status='active' LEFT JOIN team_member m ON m.team_id=t.id AND m.user_id=u.id WHERE h.id=webhook_delivery.webhook_id AND h.active=1 AND r.ready=1 AND (u.is_site_admin=1 OR m.role IN ('owner','admin')))",
+          (
+            #|UPDATE webhook_delivery
+            #|SET status='cancelled',last_error='Webhook disabled or owner access revoked',completed_at=datetime('now')
+            #|WHERE status='pending'
+            #|  AND webhook_id NOT IN (
+            #|    SELECT h.id FROM repository_webhook h JOIN repository_transfer x ON x.repository_id=h.repository_id
+            #|  )
+            #|  AND NOT EXISTS (
+            #|    SELECT 1 FROM repository_webhook h JOIN repository r ON r.id=h.repository_id
+            #|    JOIN team t ON t.id=r.team_id JOIN "user" u ON u.id=h.creator_id AND u.status='active'
+            #|    LEFT JOIN team_member m ON m.team_id=t.id AND m.user_id=u.id
+            #|    WHERE h.id=webhook_delivery.webhook_id AND h.active=1 AND r.ready=1
+            #|      AND (u.is_site_admin=1 OR m.role IN ('owner','admin'))
+            #|  )
+          ),
         ),
       )
       guard tx.query_opt(
-          "SELECT d.id,d.event_id,d.attempts,e.kind,e.payload,h.url,h.secret FROM webhook_delivery d JOIN webhook_event e ON e.id=d.event_id JOIN repository_webhook h ON h.id=d.webhook_id WHERE d.status='pending' AND d.next_attempt_at<=datetime('now') ORDER BY d.next_attempt_at,d.id LIMIT 1",
+          (
+            #|SELECT d.id,d.event_id,d.attempts,e.kind,e.payload,h.url,h.secret
+            #|FROM webhook_delivery d JOIN webhook_event e ON e.id=d.event_id
+            #|JOIN repository_webhook h ON h.id=d.webhook_id
+            #|WHERE d.status='pending' AND d.next_attempt_at<=datetime('now')
+            #|  AND NOT EXISTS (SELECT 1 FROM repository_transfer x WHERE x.repository_id=h.repository_id)
+            #|ORDER BY d.next_attempt_at,d.id LIMIT 1
+          ),
         )
         is Some(row) else {
         return None

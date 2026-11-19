@@ -89,7 +89,7 @@ async test "Danger Zone permissions follow settings for owners admins members an
       (port, pool, alice, bob, admin) => {
         let base = "/alice/demo/settings/danger-zone"
         for cookie in [alice, admin] {
-          for suffix in ["", "/visibility", "/delete"] {
+          for suffix in ["", "/visibility", "/transfer", "/delete"] {
             let (allowed, _) = @web_testkit.http_get_path_with_cookie(
               port,
               base + suffix,
@@ -109,7 +109,7 @@ async test "Danger Zone permissions follow settings for owners admins members an
             ),
           )
         })
-        for suffix in ["", "/visibility", "/delete"] {
+        for suffix in ["", "/visibility", "/transfer", "/delete"] {
           let (ordinary, _) = @web_testkit.http_get_path_with_cookie(
             port,
             base + suffix,
@@ -261,5 +261,106 @@ async test "busy repository deletion retains the confirmation page and name" {
     assert_true(body.contains("A mirror is syncing"))
     assert_true(body.contains("value=\"alice/demo\""))
     assert_true(body.contains("Delete this repository"))
+  })
+}
+
+///|
+async test "repository transfer form restricts destinations and preserves data at the new URL" {
+  @web_testkit.with_repository_test_app((port, pool, root, alice, bob) => {
+    let base = "/alice/demo/settings/danger-zone"
+    let path = base + "/transfer"
+    let (settings, body) = @web_testkit.http_get_path_with_cookie(
+      port, base, alice,
+    )
+    assert_eq(settings.code, 200)
+    assert_true(body.contains("href=\"\{path}\">Transfer repository"))
+    let (page, body) = @web_testkit.http_get_path_with_cookie(port, path, alice)
+    assert_eq(page.code, 200)
+    assert_eq(page.headers.get("cache-control"), Some("no-store"))
+    assert_true(body.contains("<option value=\"3\">workshop</option>"))
+    assert_false(body.contains("<option value=\"2\">bob</option>"))
+    assert_false(body.contains("<option value=\"1\">alice</option>"))
+    let transfer = @web_testkit.extract_attr(
+      body, "name=\"csrf_token\"", "value=\"",
+    )
+    let deletion = danger_form_token(port, alice, "delete")
+    for token in ["", deletion] {
+      let (denied, _) = @web_testkit.http_post_path_with_cookie(
+        port,
+        path,
+        "csrf_token=\{token}&repository_id=1&target_team_id=3&confirmation=alice%2Fdemo",
+        alice,
+      )
+      assert_eq(denied.code, 403)
+    }
+    for (team, status) in [(1, 400), (2, 403), (4, 403)] {
+      let (denied, _) = @web_testkit.http_post_path_with_cookie(
+        port,
+        path,
+        "csrf_token=\{transfer}&repository_id=1&target_team_id=\{team}&confirmation=alice%2Fdemo",
+        alice,
+      )
+      assert_eq(denied.code, status)
+    }
+    let (invalid, body) = @web_testkit.http_post_path_with_cookie(
+      port,
+      path,
+      "csrf_token=\{transfer}&repository_id=1&target_team_id=3&confirmation=alice%2FDemo",
+      alice,
+    )
+    assert_eq(invalid.code, 400)
+    assert_true(body.contains("Enter the full repository name exactly"))
+    assert_true(body.contains("value=\"alice/Demo\""))
+    assert_true(
+      body.contains("<option value=\"3\" selected=\"\">workshop</option>"),
+    )
+    pool.with_client(client => {
+      client.batch_execute(
+        "INSERT INTO team_member(team_id,user_id,role) VALUES(3,2,'member'); INSERT INTO issue(repository_id,number,author_id,title) VALUES(1,1,1,'Transferred issue');",
+      )
+    })
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let form = "csrf_token=\{transfer}&repository_id=1&target_team_id=3&confirmation=alice%2Fdemo"
+    let (moved, _) = @web_testkit.http_post_path_with_cookie(
+      port, path, form, alice,
+    )
+    assert_eq(moved.code, 303)
+    assert_eq(moved.headers.get("location"), Some("/workshop/demo"))
+    for old in ["/alice/demo", "/alice/demo/issues/1", path] {
+      let (missing, _) = @web_testkit.http_get_path_with_cookie(
+        port, old, alice,
+      )
+      assert_eq(missing.code, 404)
+    }
+    let (issue, body) = @web_testkit.http_get_path_with_cookie(
+      port, "/workshop/demo/issues/1", bob,
+    )
+    assert_eq(issue.code, 200)
+    assert_true(body.contains("Transferred issue"))
+    let (anonymous, body) = @http.get("http://127.0.0.1:\{port}/workshop/demo")
+    ignore(body.text())
+    assert_eq(anonymous.code, 404)
+    @repository.create_managed_repository(pool, root, repo, "private", false)
+    let (stale, _) = @web_testkit.http_post_path_with_cookie(
+      port, path, form, alice,
+    )
+    assert_eq(stale.code, 403)
+  })
+}
+
+///|
+async test "repository transfer has no form when the actor cannot manage another namespace" {
+  @web_testkit.with_repository_test_app((port, pool, _, alice, _) => {
+    pool.with_client(client => {
+      client.batch_execute(
+        "UPDATE team_member SET role='member' WHERE team_id=3 AND user_id=1",
+      )
+    })
+    let (page, body) = @web_testkit.http_get_path_with_cookie(
+      port, "/alice/demo/settings/danger-zone/transfer", alice,
+    )
+    assert_eq(page.code, 200)
+    assert_true(body.contains("You do not manage another namespace"))
+    assert_false(body.contains("name=\"target_team_id\""))
   })
 }

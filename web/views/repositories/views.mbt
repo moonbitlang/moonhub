@@ -213,7 +213,7 @@ async fn render_first_push(
 ///|
 async fn render_tree(
   pool~ : @database.Database,
-  root~ : String,
+  git_dir~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   rev~ : String,
@@ -223,7 +223,6 @@ async fn render_tree(
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
 ) -> @moonback.Html {
-  let git_dir = repo.git_dir(root)
   let (entries, unborn) = (@gitops.list_tree(git_dir, rev, path), false) catch {
     @gitops.GitCommandFailed(_) =>
       if path.is_empty() && @gitops.is_unborn_default_ref(git_dir, rev) {
@@ -414,7 +413,7 @@ async fn render_tree(
 
 ///|
 async fn render_blob(
-  root~ : String,
+  git_dir~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   rev~ : String,
@@ -423,16 +422,16 @@ async fn render_blob(
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
 ) -> @moonback.Html {
-  let content = @gitops.read_blob(repo.git_dir(root), rev, path) catch {
+  let content = @gitops.read_blob(git_dir, rev, path) catch {
     @gitops.GitCommandFailed(_) =>
       raise @domain.NotFound(message="file not found")
     err => raise err
   }
-  let navigation = code_navigation(repo.git_dir(root), rev)
+  let navigation = code_navigation(git_dir, rev)
   let markdown = path.to_lower().has_suffix(".md") ||
     path.to_lower().has_suffix(".markdown")
   let directory = path.rev_find("/").map(i => path[:i].to_owned()).unwrap_or("")
-  let siblings = @gitops.list_tree(repo.git_dir(root), rev, directory)
+  let siblings = @gitops.list_tree(git_dir, rev, directory)
   @web_ui.layout(
     "\{repo.path()}:\{path}",
     asset_path_map,
@@ -477,7 +476,7 @@ async fn render_blob(
 
 ///|
 async fn render_commits(
-  root~ : String,
+  git_dir~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   rev~ : String,
@@ -485,9 +484,9 @@ async fn render_commits(
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
 ) -> @moonback.Html {
-  let commits = @gitops.list_commits(repo.git_dir(root), rev) catch {
+  let commits = @gitops.list_commits(git_dir, rev) catch {
     @gitops.GitCommandFailed(_) =>
-      if @gitops.is_unborn_default_ref(repo.git_dir(root), rev) {
+      if @gitops.is_unborn_default_ref(git_dir, rev) {
         []
       } else {
         raise @domain.NotFound(message="commit not found")
@@ -522,14 +521,13 @@ async fn render_commits(
 async fn render_commit(
   diff_view~ : @moonback.Html? = None,
   diff_toolbar~ : @moonback.Html? = None,
-  root~ : String,
+  git_dir~ : String,
   asset_path_map~ : Map[String, String],
   repo~ : @domain.RepoId,
   commit~ : String,
   current_user~ : @domain.CurrentUser? = None,
   manager~ : Bool = false,
 ) -> @moonback.Html {
-  let git_dir = repo.git_dir(root)
   let _ = @gitops.run_git(git_dir, ["cat-file", "-e", "\{commit}^{commit}"]) catch {
     @gitops.GitCommandFailed(_) =>
       raise @domain.NotFound(message="commit not found")

@@ -167,7 +167,19 @@ pub fn start_repository_cleanup_worker(
   group : @async.TaskGroup[Unit],
 ) -> Unit {
   group.spawn_bg(no_wait=true, () => {
+    let mut transfer_cursor = 0L
     for ;; {
+      transfer_cursor = recover_repository_transfers(
+        pool,
+        root,
+        after=transfer_cursor,
+      ) catch {
+        err if @async.is_being_cancelled() => raise err
+        err => {
+          println("repository transfer recovery worker failed: \{err}")
+          0L
+        }
+      }
       cleanup_deleted_repositories(pool, root) catch {
         err => println("repository cleanup worker failed: \{err}")
       }

@@ -27,7 +27,13 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         req.query().get("version").unwrap_or(mr.version.to_string()),
       ),
     )
-    let dir = @repository.resolve_repository_dir(root, scope.repo)
+    let (reader, dir) = @repository.open_repository_read(
+      pool,
+      root,
+      Some(actor),
+      scope,
+    )
+    defer reader.close()
     let comparison = @gitops.revision_comparison(
       dir,
       revision,
@@ -42,6 +48,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       file_id=req.query().get("file_id").unwrap_or(""),
     )
     @repository.authorize_repository(pool, actor, scope.repo, Read)
+    reader.close()
     res.send_json(result, headers={ "Cache-Control": "no-store" })
   })
   ctx.get("/:owner/:repo/merge-requests", async fn(req, res) {
@@ -110,19 +117,28 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       @web_context.repo_param(req),
     )
     @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
-    let git_dir = @repository.resolve_repository_dir(root, scope.repo)
+    let (reader, git_dir) = @repository.open_repository_read(
+      pool,
+      root,
+      Some(actor),
+      scope,
+    )
+    defer reader.close()
     let branches = @domain.split_lines(
       @gitops.merge_git(git_dir, [
         "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
       ]),
     )
+    let default = @gitops.default_ref(git_dir)
+    @repository.authorize_repository(pool, actor, scope.repo, @repository.Write)
+    reader.close()
     res.send_html(
       render_merge_new(
         assets,
         actor,
         scope,
         branches,
-        @gitops.default_ref(git_dir),
+        default,
         @web_context.request_form_token(req, "merge-requests"),
         { "issue": req.query().get("issue").unwrap_or("") },
         None,
@@ -159,20 +175,33 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       )
     }) catch {
       @domain.BadRequest(message~) | @gitops.Failure(message~) => {
-        let scope = @repository.repository_scope(pool, actor, repo)
-        let git_dir = @repository.resolve_repository_dir(root, repo)
+        let (reader, git_dir) = @repository.open_repository_read(
+          pool,
+          root,
+          Some(actor),
+          scope,
+        )
+        defer reader.close()
         let branches = @domain.split_lines(
           @gitops.merge_git(git_dir, [
             "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
           ]),
         )
+        let default = @gitops.default_ref(git_dir)
+        @repository.authorize_repository(
+          pool,
+          actor,
+          scope.repo,
+          @repository.Write,
+        )
+        reader.close()
         res.send_html(
           render_merge_new(
             assets,
             actor,
             scope,
             branches,
-            @gitops.default_ref(git_dir),
+            default,
             @web_context.request_form_token(req, "merge-requests"),
             form,
             Some(message),
@@ -199,7 +228,6 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       actor,
       @web_context.repo_param(req),
     )
-    let git_dir = @repository.resolve_repository_dir(root, scope.repo)
     let number = @web_context.positive_resource_number(
       @web_context.required_param(req, "number", "merge request"),
     )
@@ -230,6 +258,13 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         err => raise err
       }
     }
+    let (reader, git_dir) = @repository.open_repository_read(
+      pool,
+      root,
+      Some(actor),
+      scope,
+    )
+    defer reader.close()
     let code = req
       .query()
       .get("code")
@@ -312,6 +347,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
               comment.map(id => "#comment-\{id}").unwrap_or("#discussion-\{id}"),
             )
           }
+          reader.close()
           res.send_void(
             status=303,
             headers=@web_context.private_page_headers(
@@ -508,6 +544,17 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       endpoint.clone_url(scope.repo)
     })
     let checks = @collaboration.merge_checks(pool, mr, version=selected)
+    let branches = if mr.status == "open" {
+      @domain.split_lines(
+        @gitops.merge_git(git_dir, [
+          "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
+        ]),
+      )
+    } else {
+      []
+    }
+    @repository.authorize_repository(pool, actor, scope.repo, Read)
+    reader.close()
     res.send_html(
       render_merge_detail(
         assets,
@@ -548,15 +595,7 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         @collaboration.thread_subscription(pool, actor, scope, mr.id, false),
         @web_context.request_form_token(req, "notifications"),
         diff_toolbar~,
-        branches=if mr.status == "open" {
-          @domain.split_lines(
-            @gitops.merge_git(git_dir, [
-              "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
-            ]),
-          )
-        } else {
-          []
-        },
+        branches~,
       ),
       headers=@web_context.private_page_headers(
         refresh=mr.job_status == "pending" || mr.job_status == "running",
@@ -580,7 +619,13 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     let mut inline_error : String? = None
     try {
       let prepared = if action == "inline-comment" {
-        let git_dir = @repository.resolve_repository_dir(root, repo)
+        let (reader, git_dir) = @repository.open_repository_read(
+          pool,
+          root,
+          Some(actor),
+          scope,
+        )
+        defer reader.close()
         let mr = @collaboration.require_merge_request(pool, scope, number)
         Some(
           @collaboration.prepare_anchored_merge_discussion(
@@ -792,14 +837,26 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         }
     }
     if inline_error is Some(_) && action == "retarget" {
-      let scope = @repository.repository_scope(pool, actor, repo)
       let mr = @collaboration.require_merge_request(pool, scope, number)
-      let git_dir = @repository.resolve_repository_dir(root, repo)
+      let (reader, git_dir) = @repository.open_repository_read(
+        pool,
+        root,
+        Some(actor),
+        scope,
+      )
+      defer reader.close()
       let branches = @domain.split_lines(
         @gitops.merge_git(git_dir, [
           "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",
         ]),
       )
+      @repository.authorize_repository(
+        pool,
+        actor,
+        scope.repo,
+        @repository.Write,
+      )
+      reader.close()
       let base = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}"
       res.send_html(
         @web_ui.layout(

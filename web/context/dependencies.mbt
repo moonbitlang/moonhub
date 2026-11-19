@@ -2,7 +2,6 @@
 pub(all) struct BrowserAccess {
   repositories : async (@moonback.Request) -> Array[@domain.RepoId]
   personal_owner : async (@moonback.Request) -> String?
-  authorize : (@moonback.Request, @domain.RepoId) -> Unit raise
   clone_url : (@domain.RepoId) -> String? raise
   manager : (@moonback.Request, @domain.RepoId) -> Bool raise
 }

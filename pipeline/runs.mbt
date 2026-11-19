@@ -246,7 +246,7 @@ pub async fn create_run(
     pool,
     root,
     actor,
-    repo,
+    require_run_author(pool, actor, repo),
     branch,
     workflow_path,
     inputs~,
@@ -259,14 +259,14 @@ async fn create_run_event(
   pool : @database.Database,
   root : String,
   actor : @domain.CurrentUser,
-  repo : @domain.RepoId,
+  scope : @repository.RepositoryScope,
   branch : String,
   workflow_path : String,
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
   scheduled_minute~ : Int64 = -1L,
 ) -> Run {
-  let scope = require_run_author(pool, actor, repo)
+  let repo = scope.repo
   validate_workflow_path(workflow_path)
   @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
     ignore(require_run_author(pool, actor, repo))

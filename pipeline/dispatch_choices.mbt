@@ -25,7 +25,13 @@ pub async fn dispatch_choices(
   requested : String,
 ) -> DispatchChoices {
   let scope = require_run_author(pool, actor, repo)
-  let git_dir = @repository.resolve_repository_dir(root, repo)
+  let (reader, git_dir) = @repository.open_repository_read(
+    pool,
+    root,
+    Some(actor),
+    scope,
+  )
+  defer reader.close()
   let branches = @domain.split_lines(
     @gitops.merge_git(git_dir, [
       "for-each-ref", "--format=%(refname:strip=2)", "--count=1000", "refs/heads/",

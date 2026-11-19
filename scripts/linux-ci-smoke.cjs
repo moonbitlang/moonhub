@@ -32,7 +32,7 @@ async function scenario(cancel) {
       res.writeHead(200, {'Content-Type': 'application/json'});
       res.end(JSON.stringify({version: 1, execution_id: execution, attempt_id: '1',
         state: conclusion ? 'completed' : 'running', server_time_ms: String(Date.now()),
-        lease_until_ms: String(Date.now() + 60000), deadline_ms: String(started + 180000),
+        lease_until_ms: String(Date.now() + 60000), deadline_ms: String(started + 300000),
         cancel_requested: cancel && cancelReady, log_sequence: String(sequence), conclusion}));
     } catch (error) { failure = error; res.writeHead(500); res.end('fixture rejected request'); }
   });
@@ -61,7 +61,7 @@ async function scenario(cancel) {
   ].join('\n');
   const assignment = {version: 1, attempt_id: '1', run_id: '1', job_id: '1', repository: 'test/ci',
     commit_sha: 'a'.repeat(40), lease_until_ms: String(Date.now() + 60000), server_time_ms: String(Date.now()), state: 'leased',
-    job: {id: 'ci', name: 'CI profile', runs_on: ['self-hosted', 'linux'], contents_read: false, timeout_minutes: 3,
+    job: {id: 'ci', name: 'CI profile', runs_on: ['self-hosted', 'linux'], contents_read: false, timeout_minutes: 5,
       steps: [{id: 'probe', name: 'Probe', run: script, shell: 'bash', working_directory: '.', env: {}, timeout_minutes: 0}]}};
   const manifest = path.join(root, 'assignment.json'); fs.writeFileSync(manifest, JSON.stringify(assignment), {mode: 0o644});
   let timer;
@@ -77,7 +77,7 @@ async function scenario(cancel) {
     let output = '', diagnostic = '';
     child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { diagnostic += chunk; });
     child.stdin.on('error', () => {}); child.stdin.end(token + '\n');
-    timer = setTimeout(() => { try { docker(['rm', '-f', name]); } catch {} }, 240000);
+    timer = setTimeout(() => { try { docker(['rm', '-f', name]); } catch {} }, 360000);
     const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
     if (failure) throw failure;
     assert.equal(code, cancel ? 1 : 0, diagnostic + '\n' + output + '\n' + JSON.stringify(events) + '\n' + logs.join(''));

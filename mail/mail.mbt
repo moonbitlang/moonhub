@@ -280,7 +280,13 @@ pub fn claim_next_email(
           (
             #|UPDATE email_outbox SET status = 'failed', body = 'Collaboration notification is no longer deliverable.',
             #|  locked_at = NULL, locked_by = NULL
-            #|WHERE template = 'collaboration_notification' AND status = 'pending' AND NOT EXISTS (
+            #|WHERE template = 'collaboration_notification' AND status = 'pending'
+            #|  AND NOT EXISTS (
+            #|    SELECT 1 FROM collaboration_notification n JOIN collaboration_event e ON e.id=n.event_id
+            #|    JOIN collaboration_thread t ON t.id=e.thread_id JOIN repository_transfer x ON x.repository_id=t.repository_id
+            #|    WHERE n.id=email_outbox.notification_id
+            #|  )
+            #|  AND NOT EXISTS (
             #|  SELECT 1 FROM collaboration_notification_visible v JOIN "user" u ON u.id = v.user_id
             #|  JOIN notification_preferences p ON p.user_id = u.id AND p.email_enabled = 1
             #|  JOIN collaboration_notification n ON n.id = v.id JOIN collaboration_event e ON e.id = n.event_id
@@ -298,6 +304,11 @@ pub fn claim_next_email(
           #|WHERE status = 'pending'
           #|  AND next_attempt_at <= datetime('now')
           #|  AND (locked_at IS NULL OR locked_at <= datetime('now', '-5 minutes'))
+          #|  AND NOT EXISTS (
+          #|    SELECT 1 FROM collaboration_notification n JOIN collaboration_event e ON e.id=n.event_id
+          #|    JOIN collaboration_thread t ON t.id=e.thread_id JOIN repository_transfer x ON x.repository_id=t.repository_id
+          #|    WHERE n.id=email_outbox.notification_id
+          #|  )
           #|  AND ((invitation_id IS NULL AND template <> 'team_invitation') OR EXISTS (
           #|    SELECT 1 FROM invitation WHERE invitation.id = email_outbox.invitation_id
           #|      AND invitation.status = 'sent' AND invitation.expires_at > datetime('now')
