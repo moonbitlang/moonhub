@@ -17,7 +17,11 @@ pub fn layout(
   let shell = current_user is Some(_) ||
     navigation is RepositoryNavigation(_, _, _)
   let sidebar = shell &&
-    !(navigation is RepositoryNavigation(_, "files" | "commits", _))
+    !(navigation
+    is RepositoryNavigation(_, "files-root" | "files" | "commits", _))
+  let collapsible = sidebar &&
+    !(navigation is RepositoryNavigation(_, active, _) &&
+    is_repository_settings(active))
   let header = render_site_header(
     current_user, navigation, shell, sidebar, header_content,
   )
@@ -32,12 +36,13 @@ pub fn layout(
     .unwrap_or("")
   Html(b => {
     b <+
-      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{sidebar.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}\{render_repository_tabs(navigation)}
+      $|<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\{stylesheet_head}<title>\{title} · moonhub</title><script id="sidebar-preference">if(\{shell.to_string()})document.documentElement.dataset.uiEnhanced='true';try{if(\{collapsible.to_string()}&&localStorage.getItem('moonhub.sidebar')==='collapsed')document.documentElement.dataset.sidebarCollapsed='true'}catch{}</script><script type="module" src="\{shell_script}" onerror="document.documentElement.removeAttribute('data-ui-enhanced');document.documentElement.removeAttribute('data-sidebar-collapsed')"></script>\{head_end}</head><body><a class="skip-link" href="#main-content">Skip to content</a>\{header}\{render_repository_tabs(navigation)}
     if shell {
       b <+
         "<div class=\"workspace-shell\{if repository_page { " repository-shell" } else { "" }}\{if sidebar { "" } else { " workspace-shell--full-width" }}\">"
       if sidebar {
-        b <+ "\{render_sidebar(navigation, current_user, sidebar_content)}"
+        b <+
+          "\{render_sidebar(navigation, current_user, sidebar_content, collapsible)}"
       }
     }
     b <+
@@ -71,7 +76,11 @@ fn render_site_header(
           "<button class=\"icon-button mobile-menu-button\" type=\"button\" data-sidebar-open aria-label=\"Open navigation\" title=\"Open navigation\" aria-controls=\"app-sidebar\" aria-expanded=\"false\" hidden inert><span class=\"ui-icon\" data-icon=\"menu\" aria-hidden=\"true\"></span></button>"
       }
       b <+
-        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span><span class=\"brand-label\">moonhub</span></a></div>"
+        "<a class=\"brand\" href=\"/\" aria-label=\"moonhub home\"><span class=\"brand-mark\"><span class=\"ui-icon\" data-icon=\"moon\" aria-hidden=\"true\"></span></span>"
+      if !(navigation is RepositoryNavigation(_, _, _)) {
+        b <+ "<span class=\"brand-label\">moonhub</span>"
+      }
+      b <+ "</a></div>"
       if shell {
         b <+ "\{render_breadcrumbs(navigation)}"
       }

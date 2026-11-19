@@ -188,10 +188,10 @@ async function main() {
   await capture(page, 'access');
   await page.getByRole('button', { name: 'Save access', exact: true }).click();
   await page.waitForURL(base + route);
-  await page.goto(base + '/root/demo/pipelines');
+  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Actions configuration', exact: true }).click();
   await page.getByLabel('Run push workflows').check();
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await page.waitForURL(base + '/root/demo/pipelines');
+  await page.waitForURL(base + '/root/demo/pipelines?tab=settings&saved=1');
   // Older Git includes an implicit HEAD update in the trusted transaction.
   // HEAD is still forbidden as a client ref submitted to pre-receive.
   const headUpdate = `${'0'.repeat(40)} ${'a'.repeat(40)} HEAD\n`;

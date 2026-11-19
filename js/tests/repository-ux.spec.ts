@@ -236,6 +236,28 @@ test('latest commit Actions status opens its workflow list and links to run deta
   await panel.getByRole('link', { name: 'Lint Failed' }).click();
   await expect(page).toHaveURL(/\/alice\/demo\/pipelines\/2$/);
   await expect(page.getByRole('heading', { name: 'Lint', exact: true })).toBeVisible();
+  await page.locator('.repository-tabs').getByRole('link', { name: 'Actions', exact: true }).click();
+  const status = page.getByRole('combobox', { name: 'Status', exact: true });
+  await page.getByLabel('Branch', { exact: true }).fill('master');
+  await status.selectOption('success');
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  const sidebar = page.locator('#app-sidebar');
+  const views = page.getByRole('navigation', { name: 'Actions views', exact: true });
+  const workflows = sidebar.getByRole('navigation', { name: 'Workflows in this view', exact: true });
+  await expect(workflows.getByRole('link')).toHaveText(['Build and package']);
+  await expect(views.getByRole('link')).toHaveText(['Runs', 'Trigger events']);
+  await expect(sidebar.getByRole('link')).toHaveText(['Build and package']);
+  await workflows.getByRole('link', { name: 'Build and package', exact: true }).click();
+  await expect(page.getByLabel('Workflow file', { exact: true })).toHaveValue('.github/workflows/build.yml');
+  await expect(page.getByLabel('Branch', { exact: true })).toHaveValue('master');
+  await expect(status).toHaveValue('success');
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    tab: 'runs', workflow: '.github/workflows/build.yml', status: 'success', branch: 'master',
+  });
+  await views.getByRole('link', { name: 'Trigger events', exact: true }).click();
+  await expect(views.getByRole('link', { name: 'Trigger events', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.getByRole('link')).toHaveCount(0);
 });
 
 test('file finder follows its trigger through resizing and scrolling with a long file list', async ({ page }) => {
@@ -581,15 +603,19 @@ for (const width of [320, 390, 900, 1440]) {
   });
 }
 
-test('Code and feature sidebars preserve SPA history, collapse preference and drawer focus', async ({ page }) => {
+test('Code and feature sidebars preserve SPA history, collapse preference and drawer focus across Settings', async ({ page }) => {
   await login(page);
+  const root = page.locator('html');
+  const tabs = page.locator('.repository-tabs');
+  const sidebar = page.locator('#app-sidebar');
+  const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true });
   await page.goto('/alice/demo/issues');
   await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
   await page.evaluate(() => { (window as any).uxDocument = document; });
-  await page.locator('.repository-tabs').getByRole('link', { name: 'Code', exact: true }).click();
-  await expect(page.locator('#app-sidebar')).toHaveCount(0);
-  await expect(page.locator('html')).toHaveAttribute('data-ui-ready', 'true');
-  await expect(page.locator('html')).not.toHaveAttribute('data-sidebar-collapsed');
+  await tabs.getByRole('link', { name: 'Code', exact: true }).click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(root).toHaveAttribute('data-ui-ready', 'true');
+  await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
   expect(await page.evaluate(() => localStorage.getItem('moonhub.sidebar'))).toBe('collapsed');
   await expect(page.locator('main')).toBeFocused();
   await page.locator('.global-navigation > summary').click();
@@ -607,10 +633,50 @@ test('Code and feature sidebars preserve SPA history, collapse preference and dr
   await expect(page.locator('[data-file-query]')).toBeFocused();
   await page.keyboard.press('Escape');
   await page.goBack();
-  await expect(page.getByRole('button', { name: 'Expand sidebar', exact: true })).toBeVisible();
+  await expect(expand).toBeVisible();
   await page.goForward();
-  await expect(page.locator('#app-sidebar')).toHaveCount(0);
-  await page.locator('.repository-tabs').getByRole('link', { name: 'Issues', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Expand sidebar', exact: true })).toBeVisible();
+  await expect(sidebar).toHaveCount(0);
+  await tabs.getByRole('link', { name: 'Issues', exact: true }).click();
+  await expect(expand).toBeVisible();
+  await tabs.getByRole('link', { name: 'Settings', exact: true }).click();
+  const configuration = sidebar.getByRole('link', { name: 'Actions configuration', exact: true });
+  await expect(configuration.locator('.nav-label')).toBeVisible();
+  await expect(sidebar.locator('[data-sidebar-collapse]')).toHaveCount(0);
+  await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
+  await configuration.click();
+  await expect(page).toHaveURL('/alice/demo/pipelines?tab=settings');
+  await expect(page.getByLabel('Run push workflows', { exact: true })).toBeVisible();
+  await expect(sidebar.locator('[data-sidebar-collapse]')).toHaveCount(0);
+  await sidebar.getByRole('link', { name: 'Secrets and variables', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Secrets and variables', exact: true }).getByRole('link', { name: 'Variables', exact: true }).click();
+  await expect(page).toHaveURL('/alice/demo/settings/variables');
+  await expect(page.getByRole('heading', { name: 'Repository variables', exact: true })).toBeVisible();
+  await expect(sidebar.locator('[data-sidebar-collapse]')).toHaveCount(0);
+  await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
+  await tabs.getByRole('link', { name: 'Issues', exact: true }).click();
+  await expect(expand).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Repository variables', exact: true })).toBeVisible();
+  await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
+  await page.goForward();
+  await expect(expand).toBeVisible();
   expect(await page.evaluate(() => (window as any).uxDocument === document)).toBe(true);
+
+  // Pause the module to observe the inline preference script's first paint.
+  let loadShell!: () => void;
+  const shellReady = new Promise<void>(resolve => { loadShell = resolve; });
+  const shellAsset = '**/assets/app-shell-*.mjs';
+  await page.route(shellAsset, async route => { await shellReady; await route.continue(); });
+  try {
+    await page.goto('/alice/demo/pipelines?tab=settings', { waitUntil: 'commit' });
+    await expect(page.getByLabel('Run push workflows', { exact: true })).toBeVisible();
+    await expect(root).not.toHaveAttribute('data-ui-ready');
+    await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
+    await expect(configuration.locator('.nav-label')).toBeVisible();
+  } finally {
+    loadShell();
+  }
+  await expect(root).toHaveAttribute('data-ui-ready', 'true');
+  await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
+  expect(await page.evaluate(() => localStorage.getItem('moonhub.sidebar'))).toBe('collapsed');
 });

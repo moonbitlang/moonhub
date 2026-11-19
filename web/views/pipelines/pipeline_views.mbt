@@ -116,28 +116,22 @@ fn render_pipeline_list(
     "Actions",
     assets,
     Html(b => {
-      b <+
-        "<div class=\"page-heading page-heading--actions\"><div><h1>Actions</h1><p class=\"page-subtitle\">\{scope.repo.path()} · Workflow execution and triggers</p></div>"
+      b <+ "<div class=\"page-heading page-heading--actions\"><h1>Actions</h1>"
       if manager && tab == "runs" {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">Run workflow</a>"
       }
-      b <+ "</div><nav class=\"page-tabs\" aria-label=\"Actions views\">"
-      for
-        (key, label) in [
-          ("runs", "Runs"),
-          ("events", "Trigger events"),
-          ("settings", "Settings"),
-        ] {
-        if key == "settings" && !manager {
-          continue
+      b <+ "</div>"
+      if tab != "settings" {
+        b <+ "<nav class=\"page-tabs\" aria-label=\"Actions views\">"
+        for (key, label) in [("runs", "Runs"), ("events", "Trigger events")] {
+          b <+ "<a href=\"\{base}?tab=\{key}\""
+          if tab == key {
+            b <+ " aria-current=\"page\""
+          }
+          b <+ ">\{label}</a>"
         }
-        b <+ "<a href=\"\{base}?tab=\{key}\""
-        if tab == key {
-          b <+ " aria-current=\"page\""
-        }
-        b <+ ">\{label}</a>"
+        b <+ "</nav>"
       }
-      b <+ "</nav>"
       if tab == "settings" {
         b <+
           "<section class=\"bounded-section\"><h2>Automatic workflows</h2><p class=\"muted\">Choose whether repository owners and administrators can trigger workflows by pushing code.</p>"
@@ -239,7 +233,7 @@ fn render_pipeline_list(
         Html(b => {
           let seen : Map[String, Bool] = Map([])
           b <+
-            "<nav class=\"nav-group context-navigation workflow-navigation\" aria-label=\"Workflows in this view\"><p class=\"nav-group-label\">Workflows in this view</p>"
+            "<nav class=\"nav-group workflow-navigation\" aria-label=\"Workflows in this view\"><p class=\"nav-group-label\">Workflows in this view</p>"
           for run in runs {
             if !seen.contains(run.workflow_path) {
               seen[run.workflow_path] = true
@@ -263,7 +257,7 @@ fn render_pipeline_list(
       } else if tab == "events" {
         "pipeline-events"
       } else {
-        "pipelines"
+        "pipeline-runs"
       },
       manager,
     ),

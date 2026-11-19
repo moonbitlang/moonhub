@@ -131,21 +131,32 @@ test('responsive headers keep one navigation trigger and preserve both navigatio
   const header = page.locator('.site-header');
   for (const width of [320, 390, 739, 900, 901, 1440]) {
     await page.setViewportSize({ width, height: 844 });
-    for (const path of ['/alice/demo/pipelines', '/-/settings/profile']) {
+    const paths = ['/alice/demo/pipelines', '/-/settings/profile'];
+    if (width === 900 || width === 901) {
+      paths.push('/alice/demo/issues', '/alice/demo/merge-requests', '/alice/demo/pipelines?tab=events');
+    }
+    for (const path of paths) {
       await page.goto(path);
       await hydrated(page);
       await expect(header.locator('.global-navigation > summary:visible, [data-sidebar-open]:visible')).toHaveCount(1);
+      const sidebar = page.locator('#app-sidebar');
+      const switcher = sidebar.getByLabel('Switch workspace', { exact: true });
       if (width <= 900) {
         const opener = header.getByRole('button', { name: 'Open navigation', exact: true });
         await opener.click();
-        const sidebar = page.locator('#app-sidebar');
         await expect(sidebar).toHaveAttribute('aria-modal', 'true');
-        await sidebar.locator('.context-switcher > summary').click();
+        await switcher.click();
         await expect(sidebar.getByRole('link', { name: 'All repositories', exact: true })).toBeVisible();
-        await expect(sidebar.getByRole('link', { name: 'All teams', exact: true })).toBeVisible();
+        const teams = sidebar.getByRole('link', { name: 'All teams', exact: true });
+        await expect(teams).toBeVisible();
+        await expect(teams).toHaveAttribute('href', '/-/teams');
         await page.keyboard.press('Escape');
         await page.keyboard.press('Escape');
         await expect(opener).toBeFocused();
+      } else if (path.startsWith('/alice/demo/')) {
+        await expect(switcher).toBeHidden();
+      } else {
+        await expect(switcher).toBeVisible();
       }
     }
     await page.goto('/alice/demo');
@@ -205,6 +216,12 @@ test('file breadcrumbs and parent links keep the revision through SPA and keyboa
   await expect(files).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(base);
+  const headerTrail = page.getByRole('navigation', { name: 'Breadcrumb', exact: true });
+  await expect(headerTrail.getByRole('listitem')).toHaveText(['alice', 'demo']);
+  await expect(headerTrail.locator('[aria-current=page]')).toHaveText('demo');
+  await expect(trail.locator('[aria-current=page]')).toHaveText('Files');
+  await page.getByRole('link', { name: 'src', exact: true }).click();
+  await expect(page).toHaveURL(base + '/src');
   expect(await page.evaluate(() => (window as any).documentIdentity === document)).toBe(true);
   await page.goto(`/alice/demo/blob/feature/breadcrumbs/src/${directory}/main.mbt`);
   await hydrated(page);
