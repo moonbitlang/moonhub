@@ -29,7 +29,8 @@ fn repository_section(active : String, manager : Bool) -> String {
     "issues"
   } else if active == "merge-requests" || active.has_prefix("pull-") {
     "merge-requests"
-  } else if active is ("pipelines" | "pipeline-events" | "variables") {
+  } else if active
+    is ("pipelines" | "pipeline-runs" | "pipeline-events" | "variables") {
     "pipelines"
   } else {
     "code"
@@ -171,7 +172,8 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "issues" | "issues-assigned" => ("Issues", "/issues")
         "merge-requests" | "pull-author" | "pull-reviews" =>
           ("Pull requests", "/merge-requests")
-        "pipelines" | "pipeline-events" => ("Actions", "/pipelines")
+        "pipelines" | "pipeline-runs" | "pipeline-events" =>
+          ("Actions", "/pipelines")
         "action-settings" =>
           ("Actions configuration", "/pipelines?tab=settings")
         "mirrors" => ("Mirrors", "/settings/mirrors")
@@ -311,6 +313,8 @@ fn render_sidebar(
               "circle-check",
             ),
           ]
+        } else if active is ("pipeline-runs" | "pipeline-events") {
+          []
         } else if section == "pipelines" {
           [
             ("/pipelines", "pipelines", "All workflows", "terminal"),
@@ -326,12 +330,14 @@ fn render_sidebar(
             ("/releases", "releases", "Releases", "tag"),
           ]
         }
-        b <+ "<nav class=\"nav-group\" aria-label=\"Repository\">"
-        for (suffix, key, label, icon) in items {
-          b <+
-            "\{render_navigation_item(base + suffix, label, icon, active == key || active == "variables" && key == "secrets")}"
+        if !items.is_empty() {
+          b <+ "<nav class=\"nav-group\" aria-label=\"Repository\">"
+          for (suffix, key, label, icon) in items {
+            b <+
+              "\{render_navigation_item(base + suffix, label, icon, active == key || active == "variables" && key == "secrets")}"
+          }
+          b <+ "</nav>"
         }
-        b <+ "</nav>"
         if extra is Some(content) {
           b <+ "\{content}"
         }

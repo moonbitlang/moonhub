@@ -64,9 +64,11 @@ async function main() {
   browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH });
   const rootContext = await context(rootCookie), page = await rootContext.newPage();
   await page.goto(base + '/root/demo/pipelines');
-  assert.equal(await page.getByRole('navigation', { name: 'Actions views' }).getByRole('link').count(), 3);
+  assert.deepEqual(await page.getByRole('navigation', { name: 'Actions views' }).getByRole('link').allTextContents(), ['Runs', 'Trigger events']);
   assert.equal(await page.getByText('Automatic workflows', { exact: true }).count(), 0);
-  await page.getByRole('navigation', { name: 'Actions views' }).getByRole('link', { name: 'Settings', exact: true }).click(); await page.getByLabel('Run push workflows').check(); await page.getByRole('button', { name: 'Save settings' }).click(); await page.getByRole('status').filter({ hasText: 'Actions settings saved' }).waitFor();
+  await page.getByRole('navigation', { name: 'Repository navigation' }).getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Repository', exact: true }).getByRole('link', { name: 'Actions configuration', exact: true }).click();
+  await page.getByLabel('Run push workflows').check(); await page.getByRole('button', { name: 'Save settings' }).click(); await page.getByRole('status').filter({ hasText: 'Actions settings saved' }).waitFor();
   await shot(page, 'pipeline-settings-desktop');
   await page.goto(base + '/root/demo/pipelines/new');
   fs.writeFileSync(path.join(output, 'dispatch.html'), await page.content());

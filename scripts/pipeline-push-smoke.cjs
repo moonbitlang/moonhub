@@ -95,11 +95,12 @@ async function main() {
   const split = cookie.indexOf('=');
   await ctx.addCookies([{ name: cookie.slice(0, split), value: cookie.slice(split + 1), url: base }]);
   const page = await ctx.newPage();
-  await page.goto(base + '/root/demo/pipelines');
+  const settings = base + '/root/demo/pipelines?tab=settings';
+  await page.goto(settings);
   assert.equal(await page.getByLabel('Run push workflows', { exact: true }).isChecked(), false);
   await page.getByLabel('Run push workflows', { exact: true }).check();
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await page.waitForURL(base + '/root/demo/pipelines');
+  await page.waitForURL(settings + '&saved=1');
   assert.equal(await page.getByLabel('Run push workflows', { exact: true }).isChecked(), true);
   await stop();
   fs.writeFileSync(path.join(source, 'README.md'), 'first\n');
@@ -132,10 +133,10 @@ async function main() {
   await waitRuns(6);
   assert.ok((await request('/root/demo/pipelines/5')).body.includes(first), 'force push did not preserve its pinned SHA');
   assert.ok((await request('/root/demo/pipelines/6')).body.includes(first));
-  await page.goto(base + '/root/demo/pipelines');
+  await page.goto(settings);
   await page.getByLabel('Run push workflows', { exact: true }).uncheck();
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-  await page.waitForURL(base + '/root/demo/pipelines');
+  await page.waitForURL(settings + '&saved=1');
   fs.writeFileSync(path.join(source, 'README.md'), 'disabled again\n');
   commit('disabled again');
   push();
