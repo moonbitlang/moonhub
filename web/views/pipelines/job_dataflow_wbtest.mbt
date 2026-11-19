@@ -194,7 +194,7 @@ async test "real runner terminates a job after the shared output budget rejects 
     (port, c, pool, _, first, lease) => {
       let mut assignment = first
       let mut token = lease
-      for index = 0; index < 8; index = index + 1 {
+      for _ in 0..<8 {
         let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
         ignore(c.start(id, token, 1, execution_id="e".repeat(32)))
         ignore(

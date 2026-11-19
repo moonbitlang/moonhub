@@ -332,7 +332,7 @@ async test "OIDC fences cancellation while signing is queued" {
       execution_id: "e".repeat(32),
     })
     let issuer = c.oidc.unwrap()
-    for i = 0; i < 4; i = i + 1 {
+    for _ in 0..<4 {
       issuer.signing.acquire()
     }
     @async.with_task_group(group => {
@@ -353,7 +353,7 @@ async test "OIDC fences cancellation while signing is queued" {
           ),
         )
       })
-      for i = 0; i < 4; i = i + 1 {
+      for _ in 0..<4 {
         issuer.signing.release()
       }
       waiting.wait()

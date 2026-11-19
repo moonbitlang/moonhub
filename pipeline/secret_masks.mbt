@@ -46,7 +46,7 @@ fn mask_log(text : String, masks : Array[String]) -> (String, String) {
   ]
   for mask in masks {
     let mut state = 0
-    for index = 0; index < mask.length(); index = index + 1 {
+    for index in 0..<mask.length() {
       let unit = mask[index].to_int()
       state = match nodes[state].edges.get(unit) {
         Some(next) => next
@@ -68,6 +68,7 @@ fn mask_log(text : String, masks : Array[String]) -> (String, String) {
     }
   }
   let queue : Array[Int32] = nodes[0].edges.values().collect()
+  // Recheck the length so this traversal visits children added to the queue.
   for index = 0; index < queue.length(); index = index + 1 {
     let state = queue[index]
     for unit, child in nodes[state].edges {

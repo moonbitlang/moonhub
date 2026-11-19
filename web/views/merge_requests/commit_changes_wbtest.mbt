@@ -222,7 +222,7 @@ async test "large commit subjects do not block all changes or selected small dif
       .to_owned()
     let mut head = first
     let subject = "中".repeat(8000)
-    for i = 0; i < 90; i = i + 1 {
+    for i in 0..<90 {
       head = @gitops.merge_git(
           git_dir,
           ["commit-tree", tree, "-p", head],

@@ -813,7 +813,7 @@ async fn Runtime::cleanup_processes(self : Runtime) -> Unit {
     if self.options.linux_ci {
       return
     }
-    for retry = 0; retry < 100; retry = retry + 1 {
+    for _ in 0..<100 {
       if reap_namespace() == 0 {
         return
       }

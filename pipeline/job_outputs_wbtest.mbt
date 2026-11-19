@@ -536,7 +536,7 @@ async test "legacy definition 3 assignments keep their wire version empty datafl
       })
     })
     let c = merge_check_provider(pool)
-    for index = 0; index < 3; index = index + 1 {
+    for _ in 0..<3 {
       let token = @identity.random_hex(32)
       let a = c
         .claim(provider_secret, {
