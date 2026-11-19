@@ -31,7 +31,8 @@ async fn read_ref_updates() -> String {
     raise @domain.BadRequest(message="too many ref updates")
   }
   let updates = @utf8.decode(Bytes::from_array(bytes)[:length]) catch {
-    _ => raise @domain.BadRequest(message="invalid ref update encoding")
+    @utf8.Malformed(_) =>
+      raise @domain.BadRequest(message="invalid ref update encoding")
   }
   updates
 }

@@ -85,7 +85,8 @@ pub async fn merge_git_command(
         let bytes = Bytes::from_array(bytes)
         let text = if strict_utf8 {
           @utf8.decode(bytes) catch {
-            _ => raise Failure(message="Git output is not valid UTF-8")
+            @utf8.Malformed(_) =>
+              raise Failure(message="Git output is not valid UTF-8")
           }
         } else {
           @utf8.decode_lossy(bytes)

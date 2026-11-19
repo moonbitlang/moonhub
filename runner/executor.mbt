@@ -190,7 +190,8 @@ async fn validate_options(
       }
       ignore(
         @actions.parse_reference(step.uses) catch {
-          _ => raise InvalidConfiguration("invalid remote action reference")
+          @actions.InvalidAction(_) =>
+            raise InvalidConfiguration("invalid remote action reference")
         },
       )
     }

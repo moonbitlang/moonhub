@@ -142,7 +142,7 @@ async fn post_claim(
     Some(Null) | None => None
     Some(value) => {
       let assignment : @protocol.Assignment = @json.from_json(value) catch {
-        _ =>
+        @json.JsonDecodeError(_) =>
           raise InvalidConfiguration("claim response has an invalid assignment")
       }
       Some(assignment)

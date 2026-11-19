@@ -42,7 +42,7 @@ async fn read_text_input(
       )
   }
   @utf8.decode(bytes) catch {
-    _ => raise Invalid("\{label} must contain valid UTF-8")
+    @utf8.Malformed(_) => raise Invalid("\{label} must contain valid UTF-8")
   }
 }
 
@@ -59,7 +59,8 @@ async fn read_body(matches : @argparse.Matches) -> String {
 async fn read_dispatch_inputs(path : String) -> Map[String, Json] {
   let text = read_text_input(path, 65535L, "--inputs-file")
   let value = @json.parse(text) catch {
-    _ => raise Invalid("inputs file must contain valid UTF-8 JSON")
+    (_ : @json.ParseError) =>
+      raise Invalid("inputs file must contain valid UTF-8 JSON")
   }
   guard value is Object(inputs) &&
     inputs.length() <= 25 &&
@@ -366,7 +367,7 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       let file = required(matches, "body-file")
       let text = read_text_input(file, 65536L, "webhook --body-file")
       let body = @json.parse(text) catch {
-        _ => raise Invalid("invalid webhook JSON file")
+        (_ : @json.ParseError) => raise Invalid("invalid webhook JSON file")
       }
       guard body is Object(_) else {
         raise Invalid("webhook JSON object required")

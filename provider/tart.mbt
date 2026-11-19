@@ -390,7 +390,7 @@ async fn run_tart_worker(
             let diagnostic_text = errors.wait()
             ignore(diagnostic_text)
             let report = @json.parse(text) catch {
-              _ =>
+              (_ : @json.ParseError) =>
                 raise InvalidConfiguration(
                   "Mac guest returned no valid completion report (exit " +
                   code.to_string() +
