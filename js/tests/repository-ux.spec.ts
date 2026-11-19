@@ -536,7 +536,11 @@ for (const width of [320, 390, 900, 1440]) {
     await history.click();
     await expect(page).toHaveURL(/commits\?rev=master$/);
     await expect(page.locator('.repository-releases, #app-sidebar')).toHaveCount(0);
+    // The URL can change before the SPA finishes mounting the new page.
+    await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
     await page.goBack();
+    await expect(page).toHaveURL('/alice/demo');
+    await expect(release).toBeVisible();
     // The branch has a slash and a same-named tag pointing at a different commit.
     for (const label of ['Branch: feature/context', 'Tag: feature/context']) {
       await page.locator('.branch-picker > summary').click();
@@ -549,7 +553,10 @@ for (const width of [320, 390, 900, 1440]) {
       await expect(release).toHaveCount(1);
       await page.locator('.commit-history').click();
       await expect(page).toHaveURL(new RegExp('commits\\?rev=' + chosen + '$'));
+      await expect(page.locator('html')).not.toHaveAttribute('aria-busy');
       await page.goBack();
+      await expect(page).toHaveURL('/alice/demo?rev=' + chosen);
+      await expect(release).toBeVisible();
     }
     await page.goto('/alice/demo/tree/master/src');
     await expect(release).toHaveCount(0);

@@ -259,8 +259,8 @@ shared lifetime lock on the authorized repository ID so a paused read cannot
 follow the name to a different repository. Transfer refuses unfinished Actions,
 queued or running merges, active mirror syncs and sending webhooks. A database
 journal reserves the new name and temporarily marks the source unavailable
-while its bare Git directory
-is renamed without replacing an existing path. A final transaction commits
+while its bare Git directory is renamed without replacing an existing path.
+A final transaction commits
 the new namespace, rewrites referenced attachment links in issues and pull
 requests, restores availability, audits the move and clears the journal.
 The cleanup worker rolls back interrupted transfers under the same
