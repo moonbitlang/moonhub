@@ -47,7 +47,7 @@ pub async fn read_form(
     if count == 0 {
       break
     }
-    length = length + count
+    length += count
   }
   guard length <= limit else {
     raise @domain.BadRequest(message="form is too large")

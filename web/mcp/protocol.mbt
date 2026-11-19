@@ -102,7 +102,7 @@ fn skip_json_string(bytes : Bytes, start : Int32) -> Int32 {
     } else if byte == b'"' {
       return i + 1
     }
-    i = i + 1
+    i += 1
   }
   bytes.length()
 }
@@ -133,14 +133,14 @@ fn skip_json_value(bytes : Bytes, start : Int32) -> Int32 {
       } else if byte == b'"' {
         in_string = true
       } else if byte == b'{' || byte == b'[' {
-        depth = depth + 1
+        depth += 1
       } else if byte == b'}' || byte == b']' {
-        depth = depth - 1
+        depth -= 1
         if depth == 0 {
           return i + 1
         }
       }
-      i = i + 1
+      i += 1
     }
     return bytes.length()
   }
@@ -155,7 +155,7 @@ fn skip_json_value(bytes : Bytes, start : Int32) -> Int32 {
       byte == b'\t' {
       return i
     }
-    i = i + 1
+    i += 1
   }
   i
 }
@@ -173,12 +173,12 @@ fn raw_request_id_token(body : String) -> String? {
           bytes[i] == b'\r' ||
           bytes[i] == b'\t'
         ) {
-    i = i + 1
+    i += 1
   }
   if i >= bytes.length() || bytes[i] != b'{' {
     return None
   }
-  i = i + 1
+  i += 1
   let mut id : String? = None
   for ;; {
     while i < bytes.length() &&
@@ -188,7 +188,7 @@ fn raw_request_id_token(body : String) -> String? {
             bytes[i] == b'\r' ||
             bytes[i] == b'\t'
           ) {
-      i = i + 1
+      i += 1
     }
     if i >= bytes.length() || bytes[i] == b'}' {
       return id
@@ -208,12 +208,12 @@ fn raw_request_id_token(body : String) -> String? {
             bytes[i] == b'\r' ||
             bytes[i] == b'\t'
           ) {
-      i = i + 1
+      i += 1
     }
     if i >= bytes.length() || bytes[i] != b':' {
       return None
     }
-    i = i + 1
+    i += 1
     while i < bytes.length() &&
           (
             bytes[i] == b' ' ||
@@ -221,7 +221,7 @@ fn raw_request_id_token(body : String) -> String? {
             bytes[i] == b'\r' ||
             bytes[i] == b'\t'
           ) {
-      i = i + 1
+      i += 1
     }
     let value_start = i
     let value_end = skip_json_value(bytes, value_start)
@@ -239,10 +239,10 @@ fn raw_request_id_token(body : String) -> String? {
             bytes[i] == b'\r' ||
             bytes[i] == b'\t'
           ) {
-      i = i + 1
+      i += 1
     }
     if i < bytes.length() && bytes[i] == b',' {
-      i = i + 1
+      i += 1
     } else if i >= bytes.length() || bytes[i] == b'}' {
       return id
     } else {
@@ -300,7 +300,7 @@ fn is_supported_numeric_request_id(token : String) -> Bool {
   let mut first_nonzero = 0
   while first_nonzero < integer_digits.length() &&
         integer_digits[first_nonzero] == '0' {
-    first_nonzero = first_nonzero + 1
+    first_nonzero += 1
   }
   let significant = integer_digits[first_nonzero:].to_owned()
   if significant.is_empty() {

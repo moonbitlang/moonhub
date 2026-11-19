@@ -266,7 +266,7 @@ pub async fn prepare_markdown(
     guard bytes.length() <= maximum_image_bytes && image_type(bytes) == declared else {
       raise @domain.BadRequest(message="inline image type or size is invalid")
     }
-    total_bytes = total_bytes + bytes.length()
+    total_bytes += bytes.length()
     guard total_bytes <= 10485760 else {
       raise @domain.BadRequest(
         message="inline images must total at most 10 MiB",
