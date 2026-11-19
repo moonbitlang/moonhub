@@ -393,11 +393,11 @@ impl @json.FromJson for DockerPlatform with fn from_json(json, path) {
       fields.get("KernelVersion").unwrap_or(Json::null()),
       path=path.add_key("KernelVersion"),
     ),
-    operating_system: match fields.get("OperatingSystem") {
-      Some(value) =>
-        @json.from_json(value, path=path.add_key("OperatingSystem"))
-      None => ""
-    },
+    operating_system: fields
+    .get("OperatingSystem")
+    .map_or("", value => {
+      @json.from_json(value, path=path.add_key("OperatingSystem"))
+    }),
     architecture: @json.from_json(
       fields.get("Architecture").unwrap_or(Json::null()),
       path=path.add_key("Architecture"),

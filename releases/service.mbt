@@ -413,10 +413,10 @@ pub async fn Service::edit(
       let next_body = body.unwrap_or(before.body)
       validate_text(next_title, 1024)
       validate_text(next_body, 65536)
-      let sha = match target {
-        Some(target) =>
-          release_commit(self.root, access.repo, before.tag, target)
-        None => before.commit_sha
+      let sha = if target is Some(target) {
+        release_commit(self.root, access.repo, before.tag, target)
+      } else {
+        before.commit_sha
       }
       guard before.draft ||
         (

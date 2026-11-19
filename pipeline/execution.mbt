@@ -36,10 +36,10 @@ fn check_version(version : Int32) -> Unit raise {
 
 ///|
 fn parse_protocol_int64(value : String, message : String) -> Int64 raise {
-  match @protocol.parse_decimal(value) {
-    Some(value) => value
-    None => raise @domain.BadRequest(message~)
+  guard @protocol.parse_decimal(value) is Some(value) else {
+    raise @domain.BadRequest(message~)
   }
+  value
 }
 
 ///|

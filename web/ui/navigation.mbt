@@ -251,10 +251,8 @@ fn render_sidebar(
   Html(b => {
     b <+
       "<aside id=\"app-sidebar\" class=\"sidebar\" aria-label=\"\{if navigation is RepositoryNavigation(_, _, _) { "Repository sections" } else { "Workspace navigation" }}\"><div class=\"sidebar-mobile-heading\"><strong>Navigation</strong><button type=\"button\" class=\"icon-button\" data-sidebar-close aria-label=\"Close navigation\" title=\"Close navigation\"><span class=\"ui-icon\" data-icon=\"x\" aria-hidden=\"true\"></span></button></div><details class=\"context-switcher\{if mobile_only_switcher { " context-switcher--mobile-only" } else { "" }}\" data-dismissable><summary aria-label=\"Switch workspace\" title=\"Switch workspace\"><span class=\"context-icon\"><span class=\"ui-icon\" data-icon=\"\{icon}\" aria-hidden=\"true\"></span></span><span class=\"context-text\"><strong>\{name}</strong><span>\{subtitle}</span></span><span class=\"ui-icon context-chevron\" data-icon=\"chevrons-up-down\" aria-hidden=\"true\"></span></summary><div class=\"context-menu\"><a href=\"/\">All repositories</a><a href=\"/-/teams\">All teams</a>"
-    match navigation {
-      RepositoryNavigation(repo, _, _) =>
-        b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
-      _ => ()
+    if navigation is RepositoryNavigation(repo, _, _) {
+      b <+ "<a href=\"/\{repo.owner}\">\{repo.owner} workspace</a>"
     }
     b <+ "</div></details><div class=\"sidebar-scroll\">"
     if !(navigation is RepositoryNavigation(_, _, _) ||

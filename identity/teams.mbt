@@ -8,9 +8,8 @@ pub fn require_team_member_access(
   if actor.is_site_admin {
     ()
   } else {
-    match team_role(pool, actor, team.id) {
-      Some(_) => ()
-      None => raise @domain.Forbidden(message="team access required")
+    guard team_role(pool, actor, team.id) is Some(_) else {
+      raise @domain.Forbidden(message="team access required")
     }
   }
 }

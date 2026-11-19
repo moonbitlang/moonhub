@@ -10,9 +10,10 @@ pub let namespaces_module : @moonback.Module = Module(ctx => {
   ctx.get("/:owner", async fn(req, res) {
     let actor = @web_context.current_user_from_request(req)
     let team = @web_context.require_owner_namespace(pool, req)
-    let can_manage = match actor {
-      Some(actor) => @identity.can_manage_team(pool, actor, team.id)
-      None => false
+    let can_manage = if actor is Some(actor) {
+      @identity.can_manage_team(pool, actor, team.id)
+    } else {
+      false
     }
     if team.kind == "personal" || actor is None {
       res.send_html(

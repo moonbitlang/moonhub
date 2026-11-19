@@ -139,8 +139,5 @@ pub fn display_time_zones() -> Array[String] {
 
 ///|
 pub fn valid_display_time_zone(time_zone : String?) -> Bool {
-  match time_zone {
-    None => true
-    Some(zone) => display_time_zones().contains(zone)
-  }
+  time_zone.map_or(true, zone => display_time_zones().contains(zone))
 }

@@ -1,9 +1,6 @@
 ///|
 fn single_value(matches : @argparse.Matches, name : String) -> String? {
-  match matches.values.get(name) {
-    Some(values) => values.get(0)
-    None => None
-  }
+  matches.values.get(name).bind(values => values.get(0))
 }
 
 ///|
@@ -62,9 +59,8 @@ async fn parse_config() -> @web.Config {
     Some(path) => @fs.read_file(path).text().trim().to_owned()
     None => single_value(matches, "root-password").unwrap_or("")
   }
-  let port = match @config.parse_port(port_text) {
-    Some(port) => port
-    None => abort("invalid --port: \{port_text}")
+  guard @config.parse_port(port_text) is Some(port) else {
+    abort("invalid --port: \{port_text}")
   }
   if !@domain.valid_name_key(root_user_name_key) {
     abort("invalid --root-user: \{root_user_name_key}")

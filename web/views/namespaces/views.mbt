@@ -17,9 +17,8 @@ fn render_teams(
           "<a class=\"button-link\" href=\"/-/teams/new\"><span class=\"ui-icon\" data-icon=\"plus\" aria-hidden=\"true\"></span>New team</a>"
       }
       b <+ "</section>"
-      match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
-        None => ()
+      if message is Some(message) {
+        b <+ "<p class=\"flash-error\">\{message}</p>"
       }
       if teams.is_empty() {
         b <+
@@ -61,9 +60,8 @@ fn render_new_team(
         #|<h1>New team</h1>
         #|</section>
         #|<section class="panel"><form class="form-stack" method="post" action="/-/teams">
-      match message {
-        Some(message) => b <+ "<p class=\"flash-error\">\{message}</p>"
-        None => ()
+      if message is Some(message) {
+        b <+ "<p class=\"flash-error\">\{message}</p>"
       }
       b <+
         #|<label class="field"><span>Team handle</span><input name="name_key" autocomplete="off" required></label>
@@ -180,16 +178,12 @@ fn render_team_detail(
           }
           b <+
             "<tr><td>\{invitation.email}</td><td><span class=\"repo-name\">\{invitation.display_name}</span><div class=\"cell-secondary\">\{invitation.name_key}</div></td><td><span class=\"role-label\">\{role}</span></td><td><span class=\"status-badge\" data-status=\"\{invitation.status}\">\{status_label}</span></td><td><span class=\"delivery-state\" data-delivery=\"\{delivery_status}\">\{delivery_label}</span>"
-          match invitation.email_sent_at {
-            Some(sent_at) =>
-              b <+ "<div class=\"muted\">\{@web_ui.timestamp(sent_at)}</div>"
-            None => ()
+          if invitation.email_sent_at is Some(sent_at) {
+            b <+ "<div class=\"muted\">\{@web_ui.timestamp(sent_at)}</div>"
           }
-          match invitation.email_last_error {
-            Some(_) =>
-              b <+
-                "<details class=\"delivery-detail\"><summary>Details</summary><p class=\"flash-error\">\{@domain.email_delivery_error_message}</p></details>"
-            None => ()
+          if invitation.email_last_error is Some(_) {
+            b <+
+              "<details class=\"delivery-detail\"><summary>Details</summary><p class=\"flash-error\">\{@domain.email_delivery_error_message}</p></details>"
           }
           b <+ "</td><td><div class=\"row-action-group\">"
           if can_manage &&

@@ -88,10 +88,10 @@ pub fn[T : DbFromValue] DbRow::get_name(
   self : DbRow,
   name : String,
 ) -> T raise @moondb.DbError {
-  match self.row.by_name(name) {
-    Some(value) => DbFromValue::from_db_value(value)
-    None => raise @moondb.QueryError("no such column: " + name)
+  guard self.row.by_name(name) is Some(value) else {
+    raise @moondb.QueryError("no such column: " + name)
   }
+  DbFromValue::from_db_value(value)
 }
 
 ///|

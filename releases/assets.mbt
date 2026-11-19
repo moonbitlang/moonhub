@@ -9,10 +9,7 @@ fn Service::store(self : Service, location : String) -> @storage.Store raise {
 
 ///|
 fn Service::destination(self : Service) -> String {
-  match self.storage {
-    Some(config) => config.releases
-    None => "legacy-fs"
-  }
+  self.storage.map_or("legacy-fs", config => config.releases)
 }
 
 ///|

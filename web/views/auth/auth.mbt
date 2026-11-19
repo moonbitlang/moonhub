@@ -107,9 +107,8 @@ pub let auth_module : @moonback.Module = Module(ctx => {
     }
   })
   ctx.post("/-/logout", async fn(req, res) {
-    match req.cookie().get(@web_context.session_cookie_name) {
-      Some(token) => @identity.revoke_session(pool, token)
-      None => ()
+    if req.cookie().get(@web_context.session_cookie_name) is Some(token) {
+      @identity.revoke_session(pool, token)
     }
     res.send_void(status=303, headers=@web_context.logout_headers())
   })

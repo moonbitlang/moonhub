@@ -358,10 +358,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         }
       }
     }
-    let selected = match req.query().get("version") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => mr.version
-    }
+    let selected = req
+      .query()
+      .get("version")
+      .map_or(mr.version, @web_context.positive_resource_number)
     let revision = if selected > 0L {
       Some(@collaboration.merge_revision(pool, mr, version=selected))
     } else {
@@ -380,10 +380,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
         message="commit selection requires the Changes view",
       )
     }
-    let commit_page = match req.query().get("commit_page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let commit_page = req
+      .query()
+      .get("commit_page")
+      .map_or(1L, @web_context.positive_resource_number)
     let selected_discussion = req
       .query()
       .get("discussion")
@@ -497,17 +497,15 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     }
     let blocker = if !stale.is_empty() {
       stale
+    } else if current is Some(revision) {
+      @collaboration.merge_blocker(pool, scope, mr, revision)
     } else {
-      match current {
-        Some(revision) =>
-          @collaboration.merge_blocker(pool, scope, mr, revision)
-        None => "Comparison is not available; refresh to retry."
-      }
+      "Comparison is not available; refresh to retry."
     }
-    let activity_page = match req.query().get("page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let activity_page = req
+      .query()
+      .get("page")
+      .map_or(1L, @web_context.positive_resource_number)
     guard activity_page <= 100000L else {
       raise @domain.BadRequest(message="invalid page")
     }

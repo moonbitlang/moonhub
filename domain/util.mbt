@@ -9,10 +9,7 @@ pub fn trim_trailing_slash(path : String) -> String {
 
 ///|
 pub fn strip_git_suffix(name : String) -> String? {
-  match name.strip_suffix(".git") {
-    Some(v) => Some(v.to_owned())
-    None => None
-  }
+  name.strip_suffix(".git").map(v => v.to_owned())
 }
 
 ///|
@@ -79,10 +76,7 @@ pub fn valid_team_invite_role(role : String) -> Bool {
 pub fn split_lines(s : String) -> Array[String] {
   let lines : Array[String] = []
   for line in s.split("\n") {
-    let line = match line.strip_suffix("\r") {
-      Some(v) => v.to_owned()
-      None => line.to_owned()
-    }
+    let line = line.strip_suffix("\r").unwrap_or(line).to_owned()
     if !line.is_empty() {
       lines.push(line)
     }

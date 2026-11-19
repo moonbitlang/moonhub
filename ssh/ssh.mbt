@@ -260,10 +260,9 @@ pub async fn serve_git_ssh(
       "/usr/local/bin/moonhub",
     )
   }
-  match @env.get_env_var("GIT_PROTOCOL") {
-    Some("version=0" | "version=1" | "version=2" as version) =>
-      environment["GIT_PROTOCOL"] = version
-    _ => ()
+  if @env.get_env_var("GIT_PROTOCOL")
+    is Some("version=0" | "version=1" | "version=2" as version) {
+    environment["GIT_PROTOCOL"] = version
   }
   // Filesystem checks and event recovery may yield; do not start a transfer
   // using authorization from before a revocation or access-mode change.

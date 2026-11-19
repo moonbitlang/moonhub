@@ -446,10 +446,9 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
           preserve_existing=options.flags
             .get("preserve-existing")
             .unwrap_or(false),
-          scope=match single_value(options, "scope") {
-            Some(value) => Some(@pipeline.ProviderScope::parse(value))
-            None => None
-          },
+          scope=single_value(options, "scope").map(
+            @pipeline.ProviderScope::parse,
+          ),
         )
         println("Ensured pipeline provider \{provider.id}:\{provider.name}")
       }

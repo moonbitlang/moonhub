@@ -38,10 +38,10 @@ pub fn vite_manifest_entry_path(
   entry_to_asset_path_map : Map[String, String],
   entry : String,
 ) -> String {
-  match entry_to_asset_path_map.get(entry) {
-    Some(path) => path
-    None => abort("missing Vite manifest entry \{entry}")
+  guard entry_to_asset_path_map.get(entry) is Some(path) else {
+    abort("missing Vite manifest entry \{entry}")
   }
+  path
 }
 
 ///|
