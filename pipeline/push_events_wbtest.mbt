@@ -48,8 +48,8 @@ async test "push intents recover after ref commit and run exact snapshots once d
       "\{first} \{second} refs/heads/one",
     )
     @repository.recover_ref_events_locked(pool, scope, git_dir)
-    assert_true(run_next_push_event(pool, root))
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     let runs = list_runs(pool, actor, repo)
     assert_eq(runs.length(), 2)
     assert_eq(runs[0].commit_sha, second)
@@ -65,9 +65,9 @@ async test "push intents recover after ref commit and run exact snapshots once d
     pool.with_client(client => {
       ignore(client.execute("UPDATE repository_ref_event SET state = 'ready'"))
     })
-    assert_true(run_next_push_event(pool, root))
-    assert_true(run_next_push_event(pool, root))
-    assert_false(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
+    assert_false(run_next_ref_event(pool, root))
     assert_eq(list_runs(pool, actor, repo).length(), 2)
     for run in runs {
       assert_eq(
@@ -127,7 +127,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
     ignore(
       @gitops.merge_git(git_dir, ["update-ref", "refs/heads/feature", sha]),
     )
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     assert_true(list_runs(pool, actor, repo).is_empty())
     let invalid = @test_support.workflow_commit(
       git_dir,
@@ -146,7 +146,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
     ignore(
       @gitops.merge_git(git_dir, ["update-ref", "refs/heads/feature", invalid]),
     )
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     assert_false(@test_support.ref_events(pool, scope)[0].error.is_empty())
     @repository.record_received_transaction(
       pool,
@@ -165,7 +165,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
         ),
       )
     })
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     let admin = @identity.active_user_by_name(pool, "admin")
     assert_true(list_runs(pool, admin, repo).is_empty())
     assert_false(@test_support.ref_events(pool, scope)[0].error.is_empty())

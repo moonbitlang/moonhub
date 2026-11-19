@@ -126,6 +126,48 @@ the runtime uses the host-specific profile instead of exporting a credential tha
 gh might send to a different enterprise host. Explicit external-service secrets
 remain distinct and do not become MoonHub job credentials.
 
+## Release-triggered workflows
+
+MoonHub supports `on.release.types: [released]`. The bare `release` trigger
+also means `released` here; other activity types are not supported. Use it
+alongside `workflow_dispatch` to retain the manual entry:
+
+```yaml
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+```
+
+Only the first publication of a stable Release starts this trigger. Drafts,
+prereleases, publishing retries, changing which Release is latest, and pushing
+a Git tag alone do not trigger workflows. The publisher must be a repository
+owner or admin using a browser session or an execute-scoped user token.
+Write-only tokens and job credentials can still publish when otherwise
+authorized, but cannot start another workflow. The push-workflow setting is
+independent of Release publication.
+
+Workflows and checkout are pinned to the Release commit. That commit must be
+on the history of the default branch at publication. If Git HEAD names no
+existing branch, only `main` and then `master` are considered as fallbacks.
+An off-branch Release can still be published, but its trigger is skipped and
+shown under Actions > Trigger events. Repository Secrets remain scoped to that
+captured default branch and the exact workflow path. The worker rechecks the
+publisher's repository execution authority before creating the run.
+
+Runs and reruns expose `github.event_name` as `release`, `github.ref` as
+`refs/tags/<tag>`, and `github.event.action` as `released`. The event payload
+includes `release.tag_name`, `release.target_commitish` (the pinned SHA),
+`release.draft` and `release.prerelease` and is available through `GITHUB_EVENT_PATH`.
+The runner provides a lightweight tag for this commit to checkout without
+exporting other tags or history. Upgrade Web, SSH and the runner images together
+before using this trigger; it uses database schema 045.
+
+The native runner regression normally uses an offline tag fetch. Set
+`MOONHUB_TEST_RELEASE_CHECKOUT=1` when running the `release source exposes`
+test to exercise MoonBack's pinned `actions/checkout` version from GitHub.
+The test uses local fixture source and does not publish a package.
+
 ## Schedules and run history
 
 `on.schedule` supports five-field numeric UTC cron expressions with ranges,

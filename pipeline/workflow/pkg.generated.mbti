@@ -91,7 +91,7 @@ pub fn Job::to_json(Self) -> @json.Json
 pub fn Job::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Job
 
-#derive(@debug.Debug, @json.ToJson)
+#derive(@debug.Debug)
 pub(all) struct RunContext {
   repository : String
   sha : String
@@ -100,11 +100,13 @@ pub(all) struct RunContext {
   base_ref : String
   inputs : Map[String, @json.Json]
   variables : Map[String, String]
+  release_tag : String?
 }
 pub fn RunContext::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn RunContext::to_json(Self) -> @json.Json
 pub fn RunContext::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for RunContext
+pub impl @json.ToJson for RunContext
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct Step {
@@ -134,6 +136,7 @@ pub struct Triggers {
   inputs : Array[DispatchInput]
   push : Bool
   pull_request : Bool
+  release : Bool
   pull_request_types : Array[String]
   push_filters : EventFilters
   pull_request_filters : EventFilters

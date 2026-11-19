@@ -123,7 +123,14 @@ pub let releases_module : @moonback.Module = Module(ctx => {
       @web_context.required_param(req, "id", "release"),
     )
     ignore(@web_context.protected_form(req, "release:" + id.to_string()))
-    ignore(service.publish(@release_store.access(repo, Some(actor)), id))
+    ignore(
+      service.publish(
+        @release_store.access(repo, Some(actor), can_trigger_workflows=() => {
+          true
+        }),
+        id,
+      ),
+    )
     res.send_void(
       status=303,
       headers=@web_context.redirect_headers(

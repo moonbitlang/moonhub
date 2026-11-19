@@ -105,8 +105,9 @@ If source preparation is rejected because the source is unsupported or unavailab
 the runner logs the HTTP status and reports a failed job. Expired or invalid attempt
 credentials still fence execution as a lost runner.
 
-This transport currently supplies a shallow single-commit checkout only. It does
-not supply tags, full history, submodule repository objects or credentials, LFS,
+This transport supplies a shallow single-commit checkout. For a Release run the
+runner exposes its captured tag at that commit, but not other tags. It does not
+supply full history, submodule repository objects or credentials, LFS,
 alternate source repositories, arbitrary refs, push authentication, or a GitHub
 API token. `github.token` is a noncredential local source placeholder required
 by upstream checkout's input contract; it cannot

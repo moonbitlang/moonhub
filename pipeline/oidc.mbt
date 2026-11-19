@@ -135,13 +135,16 @@ fn Coordinator::oidc_claims(
         )
         let repository_id : Int64 = row.get_name("repository_id")
         let repo = context.repository
-        let event_ref = if context.event_name == "pull_request" {
-          "refs/pull/" +
-          (run.get_name("mr_number") : Int64).to_string() +
-          "/merge"
+        let mr_number = if context.event_name == "pull_request" {
+          Some((run.get_name("mr_number") : Int64))
         } else {
-          "refs/heads/" + (run.get_name("source_branch") : String)
+          None
         }
+        let event_ref = run_event_ref(
+          Some(context),
+          run.get_name("source_branch"),
+          mr_number~,
+        )
         let subject = "repo_id:" +
           repository_id.to_string() +
           (if context.event_name == "pull_request" {

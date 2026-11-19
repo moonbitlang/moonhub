@@ -148,9 +148,11 @@ below.
 Repository owners and administrators manage secrets under **Secrets** in the
 repository navigation (`/:owner/:repo/settings/secrets`), or with the collaboration
 CLI. Each secret permits exactly one existing branch and one workflow path.
-Only authorized `workflow_dispatch` and `push` runs may use it. MR checks, other
-branches/workflows, and historical runs without captured context cannot receive
-secrets. Adding a secret does not authorize code execution or enable push runs.
+Only authorized `workflow_dispatch`, `push`, opt-in schedule and
+[stable Release](releases.md#release-triggered-workflows) runs may use it.
+MR checks, other branches/workflows, and historical runs without captured
+context cannot receive secrets. Adding a secret does not authorize code
+execution or enable push runs.
 
 ```yaml
 on: workflow_dispatch

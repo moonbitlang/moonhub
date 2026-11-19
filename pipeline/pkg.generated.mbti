@@ -51,7 +51,7 @@ pub async fn run_due_schedules(@database.Database, String, now_ms? : Int64) -> U
 
 pub async fn run_next_merge_check(@database.Database, String) -> Bool
 
-pub async fn run_next_push_event(@database.Database, String) -> Bool
+pub async fn run_next_ref_event(@database.Database, String) -> Bool
 
 pub async fn save_secret(@database.Database, String, @domain.CurrentUser, @repository.RepositoryScope, String, String?, String, String, Int64) -> Unit
 
@@ -63,7 +63,7 @@ pub fn set_scheduled_runs(@database.Database, @domain.CurrentUser, @domain.RepoI
 
 pub fn start_merge_checks_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
-pub fn start_push_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
+pub fn start_ref_event_worker(@database.Database, String, @async.TaskGroup[Unit]) -> Unit
 
 pub fn workflow_run_history(@database.Database, @domain.CurrentUser, @domain.RepoId, String, page? : Int64, per_page? : Int64, status? : String, branch? : String) -> (Int64, Array[Run]) raise
 

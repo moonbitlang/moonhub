@@ -8,7 +8,7 @@ import {
 }
 
 // Values
-pub fn access(@domain.RepoId, @domain.CurrentUser?, recheck? : (Bool) -> Unit raise) -> Access
+pub fn access(@domain.RepoId, @domain.CurrentUser?, recheck? : (Bool) -> Unit raise, can_trigger_workflows? : () -> Bool raise) -> Access
 
 // Errors
 pub suberror Conflict {
@@ -20,6 +20,7 @@ pub struct Access {
   repo : @domain.RepoId
   actor : @domain.CurrentUser?
   recheck : (Bool) -> Unit raise
+  can_trigger_workflows : () -> Bool raise
 }
 
 pub(all) struct Asset {

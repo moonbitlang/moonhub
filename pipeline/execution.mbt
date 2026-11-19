@@ -527,12 +527,16 @@ pub fn Coordinator::claim(
           "SELECT r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
           params=[(row.get_name("run_id") : Int64)],
         )
+        let saved : @workflow.RunContext? = (
+          captured.get_name("context_json") : String?).map(text => {
+          @json.from_json(@json.parse(text))
+        })
         let context : Map[String, String] = {
-          "ref": if (captured.get_name("mr_number") : Int64?) is Some(number) {
-            "refs/pull/" + number.to_string() + "/merge"
-          } else {
-            "refs/heads/" + (captured.get_name("source_branch") : String)
-          },
+          "ref": run_event_ref(
+            saved,
+            captured.get_name("source_branch"),
+            mr_number=captured.get_name("mr_number"),
+          ),
           "workflow": captured.get_name("workflow_name"),
         }
         if (row.get_name("definition_version") : Int64) >= 7L {
@@ -541,8 +545,7 @@ pub fn Coordinator::claim(
         let mut variables : Map[String, String] = Map([])
         let mut dispatch_inputs : Map[String, Json] = Map([])
         let mut event : Map[String, Json] = Map([])
-        if (captured.get_name("context_json") : String?) is Some(text) {
-          let saved : @workflow.RunContext = @json.from_json(@json.parse(text))
+        if saved is Some(saved) {
           context["event_name"] = saved.event_name
           context["head_ref"] = saved.head_ref
           context["base_ref"] = saved.base_ref

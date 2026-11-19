@@ -101,7 +101,7 @@ pub async fn serve(config : Config) -> Unit {
         @async.sleep(15000)
       }
     })
-    @pipeline.start_push_worker(pool, config.root, group)
+    @pipeline.start_ref_event_worker(pool, config.root, group)
     @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [
       @moonback.Config::custom(@web_context.release_service_key, releases),

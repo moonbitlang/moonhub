@@ -91,8 +91,8 @@ async test "push path filtering uses immutable before and after snapshots includ
       )
     }
     // Both events are consumed after main already points at the renamed tree.
-    assert_true(run_next_push_event(pool, root))
-    assert_true(run_next_push_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
+    assert_true(run_next_ref_event(pool, root))
     let runs = list_runs(pool, actor, repo)
     assert_eq(runs.length(), 1)
     assert_eq(runs[0].commit_sha, renamed)

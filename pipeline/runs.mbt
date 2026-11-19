@@ -126,18 +126,22 @@ fn insert_run_snapshot(
   let display_title = if definition.run_name.is_empty() {
     workflow_name
   } else {
+    let event_ref = run_event_ref(context, branch)
     let github : Map[String, Json] = {
       "repository": context.map(c => c.repository).unwrap_or(""),
       "sha": sha,
       "event_name": context
       .map(c => c.event_name)
       .unwrap_or("workflow_dispatch"),
-      "ref": "refs/heads/" + branch,
+      "ref": event_ref,
       "actor": (
         tx
         .query_one("SELECT name_key FROM user WHERE id=?", params=[actor_id])
         .get_name("name_key") : String),
       "workflow": workflow_name,
+    }
+    if context is Some(saved) && saved.release_tag is Some(_) {
+      github["event"] = ToJson::to_json(run_event_context(saved, event_ref~))
     }
     let title = @workflow.scheduling_template(definition.run_name, {
       "github": ToJson::to_json(github),
@@ -368,6 +372,7 @@ async fn create_run_event(
       base_ref: "",
       inputs,
       variables: Map([]),
+      release_tag: None,
     }
     let definition = @workflow.resolve_context(definition, context) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
