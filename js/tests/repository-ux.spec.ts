@@ -236,6 +236,28 @@ test('latest commit Actions status opens its workflow list and links to run deta
   await panel.getByRole('link', { name: 'Lint Failed' }).click();
   await expect(page).toHaveURL(/\/alice\/demo\/pipelines\/2$/);
   await expect(page.getByRole('heading', { name: 'Lint', exact: true })).toBeVisible();
+  await page.locator('.repository-tabs').getByRole('link', { name: 'Actions', exact: true }).click();
+  const status = page.getByRole('combobox', { name: 'Status', exact: true });
+  await page.getByLabel('Branch', { exact: true }).fill('master');
+  await status.selectOption('success');
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  const sidebar = page.locator('#app-sidebar');
+  const views = page.getByRole('navigation', { name: 'Actions views', exact: true });
+  const workflows = sidebar.getByRole('navigation', { name: 'Workflows in this view', exact: true });
+  await expect(workflows.getByRole('link')).toHaveText(['Build and package']);
+  await expect(views.getByRole('link')).toHaveText(['Runs', 'Trigger events']);
+  await expect(sidebar.getByRole('link')).toHaveText(['Build and package']);
+  await workflows.getByRole('link', { name: 'Build and package', exact: true }).click();
+  await expect(page.getByLabel('Workflow file', { exact: true })).toHaveValue('.github/workflows/build.yml');
+  await expect(page.getByLabel('Branch', { exact: true })).toHaveValue('master');
+  await expect(status).toHaveValue('success');
+  expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
+    tab: 'runs', workflow: '.github/workflows/build.yml', status: 'success', branch: 'master',
+  });
+  await views.getByRole('link', { name: 'Trigger events', exact: true }).click();
+  await expect(views.getByRole('link', { name: 'Trigger events', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.getByRole('link')).toHaveCount(0);
 });
 
 test('file finder follows its trigger through resizing and scrolling with a long file list', async ({ page }) => {
