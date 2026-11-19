@@ -47,8 +47,8 @@ async function capture(page, state) {
     const overflow = await page.evaluate(() => {
       const width = document.documentElement.clientWidth;
       const panel = document.querySelector('.repo-clone[open] .repo-clone-panel');
-      const controls = [...(panel || document).querySelectorAll('a, button, summary, textarea, input:not([type=hidden])')]
-        .filter(element => element.checkVisibility());
+      const controls = [...(panel || document.querySelector('main')).querySelectorAll('a, button, summary, textarea, input:not([type=hidden])')]
+        .filter(element => element.checkVisibility({ visibilityProperty: true }));
       const overlaps = [];
       for (let i = 0; i < controls.length; i++) {
         for (let j = i + 1; j < controls.length; j++) {
@@ -98,7 +98,7 @@ async function main() {
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
     if (server.exitCode !== null) throw new Error(fs.readFileSync(path.join(output, 'server.log'), 'utf8'));
-    try { ready = (await fetch(`${url}/login`)).ok; } catch {}
+    try { ready = (await fetch(`${url}/-/login`)).ok; } catch {}
     if (ready) break;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -108,14 +108,14 @@ async function main() {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${url}/login`);
+  await page.goto(`${url}/-/login`);
   await page.locator('[name=name_key]').fill(username);
   await page.locator('[name=password]').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForURL('**/change-password');
   await page.locator('[name=new_password]').fill(password);
   await page.locator('[name=confirm_password]').fill(password);
-  await page.locator('form[action="/change-password"] button[type=submit]').click();
+  await page.locator('form[action="/-/change-password"] button[type=submit]').click();
   await page.waitForURL(url + '/');
   await page.locator('.account-menu > summary').click();
   await page.locator('.account-menu-panel').getByRole('link', { name: 'SSH keys', exact: true }).click();
@@ -131,13 +131,13 @@ async function main() {
   await capture(page, 'validation');
   await page.getByLabel('Public key (Ed25519)', { exact: true }).fill(key);
   await page.getByRole('button', { name: 'Add SSH key', exact: true }).click();
-  await page.waitForURL(`${url}/settings/ssh-keys`);
+  await page.waitForURL(`${url}/-/settings/ssh-keys`);
   await page.getByText('1 active', { exact: true }).waitFor();
   await page.getByRole('link', { name: 'Add SSH key', exact: true }).click();
   await page.getByLabel('Name', { exact: true }).fill('ReleaseWorkstation'.repeat(11));
   await page.getByLabel('Public key (Ed25519)', { exact: true }).fill(secondKey);
   await page.getByRole('button', { name: 'Add SSH key', exact: true }).click();
-  await page.waitForURL(`${url}/settings/ssh-keys`);
+  await page.waitForURL(`${url}/-/settings/ssh-keys`);
   await page.getByText('2 active', { exact: true }).waitFor();
   await capture(page, 'keys');
 
@@ -148,12 +148,13 @@ async function main() {
   await page.getByText('2 active', { exact: true }).waitFor();
   await page.getByRole('link', { name: 'Revoke Work laptop', exact: true }).click();
   await page.getByRole('button', { name: 'Revoke SSH key', exact: true }).click();
-  await page.waitForURL(`${url}/settings/ssh-keys`);
+  await page.waitForURL(`${url}/-/settings/ssh-keys`);
   await page.getByText('1 active', { exact: true }).waitFor();
   await page.getByText('Revoked', { exact: true }).first().waitFor();
   assert.equal(await page.getByRole('link', { name: 'Revoke Work laptop', exact: true }).count(), 0);
 
-  await page.getByRole('link', { name: 'Teams', exact: true }).click();
+  await page.locator('.global-navigation > summary').click();
+  await page.locator('.global-navigation-panel').getByRole('link', { name: 'Teams', exact: true }).click();
   await page.getByRole('link', { name: 'New team', exact: true }).click();
   await page.locator('[name=name_key]').fill('workshop');
   await page.locator('[name=display_name]').fill('Workshop');
@@ -205,8 +206,9 @@ async function main() {
   await page.goto(`${url}/workshop`);
   await page.getByRole('link', { name: 'example', exact: true }).waitFor();
   await capture(page, 'team-repositories');
-  await page.getByRole('link', { name: 'Import via SSH', exact: true }).click();
-  await page.getByText('SSH imports are not configured for this team.', { exact: true }).waitFor();
+  await page.getByRole('link', { name: 'New repository', exact: true }).click();
+  await page.getByRole('link', { name: 'SSH import', exact: true }).click();
+  await page.getByText('SSH imports are not configured for this namespace.', { exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Import repository', exact: true }).isDisabled());
   await capture(page, 'repository-import');
   await page.goto(`${url}/workshop`);
