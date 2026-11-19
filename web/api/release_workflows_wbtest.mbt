@@ -29,9 +29,10 @@ async test "release and manual workflow choices coexist and the release run snap
     // unborn main, while the live release branch is master.
     ignore(@gitops.merge_git(dir, ["symbolic-ref", "HEAD", "refs/heads/main"]))
     let (page, html) = @web_testkit.http_get_path_with_cookie(
-      port, "/alice/demo/pipelines/new?branch=master", cookie,
+      port, "/alice/demo/pipelines/new", cookie,
     )
     assert_eq(page.code, 200)
+    assert_true(html.contains("name=\"branch\" value=\"master\""))
     assert_true(
       html.contains("<option value=\"" + workflow + "\" selected=\"\">Publish"),
     )

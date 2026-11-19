@@ -26,19 +26,20 @@ See [MR Pipeline checks](merge-checks.md) for execution approval and merge gates
 
 Workflow files are regular UTF-8 Git blobs directly under `.github/workflows/`,
 with `.yml` or `.yaml` extensions and a nonempty ASCII filename starting with a
-letter, digit or underscore. A run is requested from an existing local branch;
-tags, arbitrary revision expressions and hidden refs are not accepted. Creating
-a run resolves the branch once, then reads the workflow from that exact commit.
+letter, digit or underscore. Manual dispatch takes an existing local branch,
+not a tag, arbitrary revision expression or hidden ref. It resolves the branch
+once, then reads the workflow from that exact commit. Automatic Release runs
+instead use the published tag's pinned commit.
 
 Supported configuration:
 
-- `name`; `on: workflow_dispatch`, `on: push`, `on: pull_request`, lists of
-  these triggers, or a mapping containing them. Dispatch inputs are not yet
-  supported. Pull request triggers default to `opened`, `reopened` and
-  `synchronize`. An optional nonempty `types` list selects a subset of those
-  three events. Push and PR triggers support bounded branch/path pattern filters,
+- `name`; `on` accepts `workflow_dispatch`, `push`, `pull_request`, `schedule`
+  and `release` with their supported options. Pull request triggers default to
+  `opened`, `reopened` and `synchronize`; a nonempty `types` list can select a
+  subset. Push and PR triggers support bounded branch/path pattern filters,
   ordered exclusions and ignore lists. PR branch filters match the target branch.
-  Tag events remain unsupported; see [workflow entry compatibility](workflow-entry.md)
+  Tag pushes do not trigger runs; see [Release triggers](releases.md#release-triggered-workflows)
+  for stable publication and [workflow entry compatibility](workflow-entry.md)
   for diff semantics, conservative fallback and repository-required checks.
 - `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
@@ -93,9 +94,9 @@ Workflow, job and step `env` values can read five server-resolved captured field
 | --- | --- |
 | `github.repository` | Repository `owner/name` when the run was created |
 | `github.sha` | Exact pinned commit tested by this run; MR runs use the two-parent merged candidate, not the source head or final merge commit |
-| `github.event_name` | `workflow_dispatch`, `push`, or `pull_request`; required MR checks use `pull_request` regardless of the workflow's original triggers |
-| `github.head_ref` | MR source branch; empty for manual/push runs |
-| `github.base_ref` | MR target branch; empty for manual/push runs |
+| `github.event_name` | `workflow_dispatch`, `push`, `pull_request`, `schedule` or `release`; required MR checks always use `pull_request` |
+| `github.head_ref` | MR source branch; empty outside MR runs |
+| `github.base_ref` | MR target branch; empty outside MR runs |
 
 Simple field references such as `${{ github.sha }}` are resolved on the server. Whitespace
 around the field is optional; literal prefixes/suffixes and multiple references
@@ -130,8 +131,8 @@ Scripts should quote normal shell variable expansions. For new `run` templates,
 prefer passing untrusted context through `env` rather than inserting it into shell code. Resolved env values reject NUL and values over 64 KiB;
 the resolved plan retains the 1 MiB cap.
 
-The collaboration API's run objects expose `context` as an object with
-`repository`, `sha`, `event_name`, `head_ref`, `base_ref`. For historical runs
+The collaboration API's run objects expose captured fields as `context`,
+including `release_tag` for Release runs. For historical runs
 created before context snapshots were introduced, `context` is `null`; their
 existing definitions and reruns continue to work unchanged. No context is
 fabricated from live state. The baseline schema protects context against
