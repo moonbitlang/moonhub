@@ -64,14 +64,12 @@ fn render_merge_list(
     "Pull requests",
     assets,
     Html(b => {
-      b <+
-        "<div class=\"mr-page-heading\"><div><h1>Pull requests</h1><p class=\"page-subtitle\">\{scope.repo.path()}</p></div><div class=\"mr-actions\">"
+      b <+ "<div class=\"mr-page-heading\"><h1>Pull requests</h1>"
       if contributor {
         b <+
           "<a class=\"button-link\" href=\"\{base}/new\">New pull request</a>"
       }
-      b <+
-        "</div></div><nav class=\"page-tabs\" aria-label=\"Pull request status\">"
+      b <+ "</div><nav class=\"page-tabs\" aria-label=\"Pull request status\">"
       for value in ["open", "merged", "closed"] {
         b <+
           "<a href=\"\{base}?status=\{value}&amp;q=\{@web_context.url_escape_path(query)}&amp;mine=\{mine}\""

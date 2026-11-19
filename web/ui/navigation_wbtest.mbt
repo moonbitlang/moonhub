@@ -17,7 +17,8 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
           "Invitations",
           ["/-/teams", "/workshop", "/workshop?tab=invitations"],
         ),
-        ("/alice/demo", "Files", ["/alice", "/alice/demo"]),
+        ("/alice/demo", "demo", ["/alice"]),
+        ("/alice/demo/tree/master", "demo", ["/alice"]),
         (
           "/alice/demo/issues",
           "Issues",
@@ -89,6 +90,11 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
           trail.contains("<span class=\"breadcrumb-label\">Settings</span>"),
         )
         assert_eq(trail.split("href=").count(), 2)
+      } else if path == "/alice/demo" || path == "/alice/demo/tree/master" {
+        assert_true(trail.contains("aria-current=\"page\">demo</span>"))
+        assert_eq(trail.split("<li>").count(), 3)
+        assert_false(html.contains("class=\"brand-label\""))
+        assert_true(html.contains("href=\"/\" aria-label=\"moonhub home\""))
       } else {
         assert_true(
           trail.contains("aria-current=\"page\">\{current}</a>"),
@@ -167,6 +173,27 @@ async test "repository sidebar matches the current page and hides management for
       assert_true(body.contains("title=\"\{label}\" aria-current=\"page\""))
       assert_true(body.contains("href=\"/alice/demo/settings/branches\""))
       assert_true(!body.contains("class=\"tabs\""))
+      assert_true(body.contains("aria-label=\"Repository\""))
+      assert_false(body.contains("class=\"nav-group-label\">Repository</p>"))
+      assert_false(body.contains("class=\"brand-label\""))
+    }
+    for
+      (suffix, title, action) in [
+        ("/issues", "Issues", "New issue"),
+        ("/merge-requests", "Pull requests", "New pull request"),
+        ("/pipelines", "Actions", "Run workflow"),
+      ] {
+      let (response, body) = @web_testkit.http_get_path_with_cookie(
+        port,
+        "/alice/demo" + suffix,
+        alice,
+      )
+      assert_eq(response.code, 200)
+      assert_true(body.contains("<h1>\{title}</h1>"))
+      assert_true(body.contains(">\{action}</a>"))
+      assert_false(body.contains("class=\"page-subtitle\">alice/demo"))
+      assert_true(body.contains("aria-label=\"Repository sections\""))
+      assert_false(body.contains("class=\"nav-group-label\">Repository</p>"))
     }
     for
       suffix in [

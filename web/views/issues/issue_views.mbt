@@ -18,8 +18,7 @@ fn render_issue_list(
     "Issues",
     assets,
     Html(b => {
-      b <+
-        "<div class=\"mr-page-heading\"><div><h1>Issues</h1><p class=\"page-subtitle\">\{scope.repo.path()}</p></div>"
+      b <+ "<div class=\"mr-page-heading\"><h1>Issues</h1>"
       if contributor {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">New issue</a>"
       }

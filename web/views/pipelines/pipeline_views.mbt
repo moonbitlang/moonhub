@@ -116,8 +116,7 @@ fn render_pipeline_list(
     "Actions",
     assets,
     Html(b => {
-      b <+
-        "<div class=\"page-heading page-heading--actions\"><div><h1>Actions</h1><p class=\"page-subtitle\">\{scope.repo.path()} · Workflow execution and triggers</p></div>"
+      b <+ "<div class=\"page-heading page-heading--actions\"><h1>Actions</h1>"
       if manager && tab == "runs" {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">Run workflow</a>"
       }

@@ -128,6 +128,8 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
     }
     PersonalNavigation(team) =>
       [("Workspace", Some("/")), (team.display_name, Some("/\{team.name_key}"))]
+    RepositoryNavigation(repo, "files-root", _) =>
+      [(repo.owner, Some("/\{repo.owner}")), (repo.name, None)]
     RepositoryNavigation(repo, "settings", _) =>
       [
         (repo.name, Some(repo_link(repo))),
@@ -241,8 +243,7 @@ fn render_sidebar(
         b <+ "</nav>"
       }
       RepositoryNavigation(repo, active, manager) => {
-        b <+
-          "<nav class=\"nav-group\" aria-label=\"Repository\"><p class=\"nav-group-label\">Repository</p>"
+        b <+ "<nav class=\"nav-group\" aria-label=\"Repository\">"
         let base = repo_link(repo)
         let settings = manager &&
           [
