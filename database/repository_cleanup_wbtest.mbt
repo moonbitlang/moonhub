@@ -1,12 +1,15 @@
 ///|
-async test "schemas 38 through 42 upgrade without replaying completed migrations" {
+async test "schemas 38 through 43 upgrade without replaying completed migrations" {
   let baseline = @fs.read_file("db/base.sql").text()
   let storage = @fs.read_file("db/migrations/039_blob_storage.sql").text()
   let releases = @fs.read_file("db/migrations/040_releases.sql").text()
   let cleanup = @fs.read_file("db/migrations/041_repository_cleanup.sql").text()
   let isolation = @fs.read_file("db/migrations/042_worker_isolation.sql").text()
+  let environments = @fs.read_file(
+    "db/migrations/043_provider_environments.sql",
+  ).text()
   @async.with_task_group(group => {
-    for version in [38, 39, 40, 41, 42] {
+    for version in [38, 39, 40, 41, 42, 43] {
       let pool = new_db_pool({ path: ":memory:", }, group)
       defer pool.close()
       pool.with_client(client => {
@@ -22,6 +25,9 @@ async test "schemas 38 through 42 upgrade without replaying completed migrations
         }
         if version >= 42 {
           client.batch_execute(isolation)
+        }
+        if version >= 43 {
+          client.batch_execute(environments)
         }
         client.batch_execute(
           "PRAGMA user_version=\{version}; INSERT INTO team(name_key,display_name,kind) VALUES('retained','Retained','org');",
@@ -50,6 +56,9 @@ async test "schemas 38 through 42 upgrade without replaying completed migrations
           client.query_all("SELECT * FROM attachment_file_garbage").is_empty(),
         )
         assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
+        assert_true(
+          client.query_all("SELECT * FROM repository_transfer").is_empty(),
+        )
         assert_true(
           client
           .query_all("SELECT * FROM pipeline_provider_environment")

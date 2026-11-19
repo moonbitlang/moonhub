@@ -56,6 +56,54 @@ async test "scheduled snapshots are opt in use UTC default branch and deduplicat
 }
 
 ///|
+async test "a scheduled tick cannot dispatch to a replacement repository after transfer" {
+  @test_support.with_repository_test_data((pool, root) => {
+    let alice = @identity.active_user_by_name(pool, "alice")
+    set_scheduled_runs(pool, alice, protocol_repo, true)
+    let stale = require_run_author(pool, alice, protocol_repo)
+    let target = @repository.transfer_repository(
+      pool,
+      root,
+      alice,
+      protocol_repo,
+      stale.id,
+      3L,
+      protocol_repo.path(),
+    )
+    @repository.create_managed_repository(
+      pool, root, protocol_repo, "private", false,
+    )
+    set_scheduled_runs(pool, alice, protocol_repo, true)
+    let workflow = ".github/workflows/build.yml"
+    ignore(
+      @test_support.workflow_commit(
+        protocol_repo.git_dir(root),
+        sample_workflow,
+      ),
+    )
+    try
+      create_run_event(
+        pool,
+        root,
+        alice,
+        stale,
+        "pipeline",
+        workflow,
+        scheduled_minute=123L,
+      )
+    catch {
+      @domain.BadRequest(message~) =>
+        assert_true(message.contains("repository has changed"))
+      err => raise err
+    } noraise {
+      _ => fail("dispatched a stale schedule against a replacement repository")
+    }
+    assert_true(list_runs(pool, alice, protocol_repo).is_empty())
+    assert_true(list_runs(pool, alice, target).is_empty())
+  })
+}
+
+///|
 async test "job API grants are repository permission event and live attempt bound" {
   @test_support.with_repository_test_data((pool, root) => {
     let actor = @identity.active_user_by_name(pool, "alice")

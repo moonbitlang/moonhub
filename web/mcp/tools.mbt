@@ -556,7 +556,13 @@ async fn invoke_tool(
             string_arg(args, "version", fallback=mr.version.to_string()),
           )
           let revision = @collaboration.merge_revision(pool, mr, version~)
-          let dir = @repository.resolve_repository_dir(root, repo)
+          let (reader, dir) = @repository.open_repository_read(
+            pool,
+            root,
+            Some(actor),
+            scope,
+          )
+          defer reader.close()
           let comparison = @gitops.revision_comparison(
             dir,
             revision,
@@ -813,13 +819,20 @@ async fn invoke_tool(
             fields.set(key, string_arg(args, key))
           }
         }
+        let (reader, dir) = @repository.open_repository_read(
+          pool,
+          root,
+          Some(actor),
+          scope,
+        )
+        defer reader.close()
         Some(
           @collaboration.prepare_anchored_merge_discussion(
             pool,
             scope,
             actor,
             mr,
-            @repository.resolve_repository_dir(root, repo),
+            dir,
             decimal(string_arg(args, "version")),
             args
             .get("commit")

@@ -15,6 +15,7 @@ import {
   "moonbitlang/async/socket",
   "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
+  "moonbit-community/cmark/cmark",
 }
 
 import {

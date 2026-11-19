@@ -51,7 +51,6 @@ pub let browser_app_module : @moonback.Module = Module(ctx => {
         ctx.provide(@web_context.browser_access_key, {
           repositories: _ => @gitops.list_repositories(root),
           personal_owner: _ => None,
-          authorize: (_, _) => (),
           clone_url: _ => None,
           manager: (_, _) => false,
         })

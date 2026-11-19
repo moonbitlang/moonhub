@@ -8,6 +8,7 @@ target
 .moonagent/
 .repos/
 .attachments/
+/testdata/repos/.locks/
 
 node_modules/
 *.tsbuildinfo

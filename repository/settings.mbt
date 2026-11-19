@@ -183,4 +183,13 @@ fn require_repository_name_available(
       message="repository files are still being deleted; retry later",
     )
   }
+  guard client.query_opt(
+      "SELECT x.repository_id FROM repository_transfer x JOIN team t ON t.id=x.target_team_id WHERE t.name_key=? AND x.name=?",
+      params=[repo.owner, repo.name],
+    )
+    is None else {
+    raise @domain.BadRequest(
+      message="repository name is reserved by an unfinished transfer; retry later",
+    )
+  }
 }

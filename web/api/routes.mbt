@@ -337,7 +337,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
         req.query().get("version").unwrap_or(mr.version.to_string()),
       )
       let revision = @collaboration.merge_revision(pool, mr, version=selected)
-      let git_dir = @repository.resolve_repository_dir(root, scope.repo)
+      let (reader, git_dir) = @repository.open_repository_read(
+        pool,
+        root,
+        Some(actor),
+        scope,
+      )
+      defer reader.close()
       let comparison = @gitops.revision_comparison(
         git_dir,
         revision,
@@ -459,7 +465,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let id = number(@web_context.required_param(req, "number", "MR"))
       let prepared = if action == "inline-comment" {
         let mr = @collaboration.require_merge_request(pool, scope, id)
-        let git_dir = @repository.resolve_repository_dir(root, scope.repo)
+        let (reader, git_dir) = @repository.open_repository_read(
+          pool,
+          root,
+          Some(actor),
+          scope,
+        )
+        defer reader.close()
         let selection_fields : Map[String, String] = Map([])
         for
           key in [

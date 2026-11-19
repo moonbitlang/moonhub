@@ -20,7 +20,6 @@ pub let index_module : @moonback.Module = Module(ctx => {
 pub let repo_browser_module : @moonback.Module = Module(ctx => {
   let asset_path_map = ctx.require(@web_context.asset_paths_key)
   let access = ctx.require(@web_context.browser_access_key)
-  let authorize = access.authorize
   let clone_url = access.clone_url
   let manager = access.manager
   let root = ctx.require(@web_context.config_root)
@@ -28,15 +27,44 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
   let diff_executor = ctx.require(@web_context.diff_executor_key)
   let diff_enabled = ctx.require(@web_context.diff_enabled_key)
   let release_service = ctx.require(@web_context.release_service_key)
+  let read_scope = req => {
+    @repository.readable_repository_scope(
+      pool,
+      @web_context.current_user_from_request(req),
+      @web_context.repo_param(req),
+    )
+  }
+  let open_repo = async fn(req : @moonback.Request) {
+    let scope = read_scope(req)
+    let (reader, git_dir) = @repository.open_repository_read(
+      pool,
+      root,
+      @web_context.current_user_from_request(req),
+      scope,
+    )
+    (scope.repo, reader, git_dir)
+  }
+  let respond_page = async fn(
+    req : @moonback.Request,
+    res : @moonback.Responder,
+    render : async (@domain.RepoId, String) -> @moonback.Html,
+  ) {
+    let page = {
+      let (repo, reader, git_dir) = open_repo(req)
+      defer reader.close()
+      let page = render(repo, git_dir)
+      ignore(read_scope(req))
+      page
+    }
+    res.send_html(page)
+  }
   ctx.get("/:owner/:repo", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let git_dir = repo.git_dir(root)
-    let rev = @gitops.resolve_ref(git_dir, @web_context.query_rev(req))
-    res.send_html(
+    respond_page(req, res, (repo, git_dir) => {
+      let rev = @gitops.resolve_ref(git_dir, @web_context.query_rev(req))
       render_tree(
         pool~,
         release_service~,
-        root~,
+        git_dir~,
         asset_path_map~,
         repo~,
         rev~,
@@ -44,18 +72,16 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
         clone_url=clone_url(repo),
         current_user=@web_context.current_user_from_request(req),
         manager=manager(req, repo),
-      ),
-    )
+      )
+    })
   })
   ctx.get("/:owner/:repo/tree", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let git_dir = repo.git_dir(root)
-    let rev = @gitops.resolve_ref(git_dir, None)
-    res.send_html(
+    respond_page(req, res, (repo, git_dir) => {
+      let rev = @gitops.resolve_ref(git_dir, None)
       render_tree(
         pool~,
         release_service~,
-        root~,
+        git_dir~,
         asset_path_map~,
         repo~,
         rev~,
@@ -63,18 +89,16 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
         clone_url=clone_url(repo),
         current_user=@web_context.current_user_from_request(req),
         manager=manager(req, repo),
-      ),
-    )
+      )
+    })
   })
   ctx.get("/:owner/:repo/tree/:rev", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let git_dir = repo.git_dir(root)
-    let rev = @gitops.resolve_ref(git_dir, Some(@web_context.rev_param(req)))
-    res.send_html(
+    respond_page(req, res, (repo, git_dir) => {
+      let rev = @gitops.resolve_ref(git_dir, Some(@web_context.rev_param(req)))
       render_tree(
         pool~,
         release_service~,
-        root~,
+        git_dir~,
         asset_path_map~,
         repo~,
         rev~,
@@ -82,22 +106,20 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
         clone_url=clone_url(repo),
         current_user=@web_context.current_user_from_request(req),
         manager=manager(req, repo),
-      ),
-    )
+      )
+    })
   })
   ctx.get("/:owner/:repo/tree/:rev/*path", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let git_dir = repo.git_dir(root)
-    let (rev, path) = @gitops.resolve_ref_path(
-      git_dir,
-      @web_context.rev_param(req),
-      @web_context.path_param(req),
-    )
-    res.send_html(
+    respond_page(req, res, (repo, git_dir) => {
+      let (rev, path) = @gitops.resolve_ref_path(
+        git_dir,
+        @web_context.rev_param(req),
+        @web_context.path_param(req),
+      )
       render_tree(
         pool~,
         release_service~,
-        root~,
+        git_dir~,
         asset_path_map~,
         repo~,
         rev~,
@@ -105,67 +127,61 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
         clone_url=clone_url(repo),
         current_user=@web_context.current_user_from_request(req),
         manager=manager(req, repo),
-      ),
-    )
+      )
+    })
   })
-  ctx.get("/:owner/:repo/blob", async fn(req, _res) {
-    let _ = resolve_repo(root, req, authorize)
+  ctx.get("/:owner/:repo/blob", (req, _res) => {
+    ignore(read_scope(req))
     raise @domain.NotFound(message="file not found")
   })
-  ctx.get("/:owner/:repo/blob/:rev", async fn(req, _res) {
-    let _ = resolve_repo(root, req, authorize)
+  ctx.get("/:owner/:repo/blob/:rev", (req, _res) => {
+    ignore(read_scope(req))
     let _ = @web_context.rev_param(req)
     raise @domain.NotFound(message="file not found")
   })
   ctx.get("/:owner/:repo/blob/:rev/*path", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let (rev, path) = @gitops.resolve_ref_path(
-      repo.git_dir(root),
-      @web_context.rev_param(req),
-      @web_context.path_param(req),
-    )
-    if path.is_empty() {
-      raise @domain.NotFound(message="file not found")
-    } else {
-      res.send_html(
-        render_blob(
-          root~,
-          asset_path_map~,
-          repo~,
-          rev~,
-          path~,
-          clone_url=clone_url(repo),
-          current_user=@web_context.current_user_from_request(req),
-          manager=manager(req, repo),
-        ),
+    respond_page(req, res, (repo, git_dir) => {
+      let (rev, path) = @gitops.resolve_ref_path(
+        git_dir,
+        @web_context.rev_param(req),
+        @web_context.path_param(req),
       )
-    }
+      guard !path.is_empty() else {
+        raise @domain.NotFound(message="file not found")
+      }
+      render_blob(
+        git_dir~,
+        asset_path_map~,
+        repo~,
+        rev~,
+        path~,
+        clone_url=clone_url(repo),
+        current_user=@web_context.current_user_from_request(req),
+        manager=manager(req, repo),
+      )
+    })
   })
   ctx.get("/:owner/:repo/commits", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let rev = @gitops.resolve_ref(
-      repo.git_dir(root),
-      @web_context.query_rev(req),
-    )
-    res.send_html(
+    respond_page(req, res, (repo, git_dir) => {
+      let rev = @gitops.resolve_ref(git_dir, @web_context.query_rev(req))
       render_commits(
-        root~,
+        git_dir~,
         asset_path_map~,
         repo~,
         rev~,
         current_user=@web_context.current_user_from_request(req),
         clone_url=clone_url(repo),
         manager=manager(req, repo),
-      ),
-    )
+      )
+    })
   })
-  ctx.get("/:owner/:repo/commit", async fn(req, _res) {
-    let _ = resolve_repo(root, req, authorize)
+  ctx.get("/:owner/:repo/commit", (req, _res) => {
+    ignore(read_scope(req))
     raise @domain.NotFound(message="commit not found")
   })
   ctx.get("/:owner/:repo/commit/:commit/diff", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
-    let dir = repo.git_dir(root)
+    let (_, reader, dir) = open_repo(req)
+    defer reader.close()
     let (base, head) = @gitops.commit_comparison(
       dir,
       @web_context.commit_param(req),
@@ -178,28 +194,29 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
       page=@web_context.diff_page(req),
       file_id=req.query().get("file_id").unwrap_or(""),
     )
-    authorize(req, repo)
+    ignore(read_scope(req))
+    reader.close()
     res.send_json(result, headers={ "Cache-Control": "no-store" })
   })
   ctx.get("/:owner/:repo/commit/:commit", async fn(req, res) {
-    let repo = resolve_repo(root, req, authorize)
+    let (repo, reader, git_dir) = open_repo(req)
+    defer reader.close()
     let commit = @web_context.commit_param(req)
     let (diff_view, diff_toolbar) = if diff_enabled {
-      let dir = repo.git_dir(root)
-      let (base, head) = @gitops.commit_comparison(dir, commit)
+      let (base, head) = @gitops.commit_comparison(git_dir, commit)
       let options = @web_context.structured_diff_options(req)
       let manifest = diff_executor.manifest(
-        dir,
+        git_dir,
         base,
         head,
         page=@web_context.diff_page(req),
       )
       let selected = match
         req.query().get("file_id").filter(id => !id.is_empty()) {
-        Some(id) => Some(diff_executor.file(dir, manifest, id, options))
+        Some(id) => Some(diff_executor.file(git_dir, manifest, id, options))
         None => None
       }
-      authorize(req, repo)
+      ignore(read_scope(req))
       let url = "\{@web_ui.repo_link(repo)}/commit/\{head}"
       let view_url = url +
         "?fixed=1&page=\{manifest.page}" +
@@ -226,33 +243,23 @@ pub let repo_browser_module : @moonback.Module = Module(ctx => {
     } else {
       (None, None)
     }
-    res.send_html(
-      render_commit(
-        root~,
-        asset_path_map~,
-        repo~,
-        commit~,
-        diff_view~,
-        diff_toolbar~,
-        current_user=@web_context.current_user_from_request(req),
-        manager=manager(req, repo),
-      ),
+    let page = render_commit(
+      git_dir~,
+      asset_path_map~,
+      repo~,
+      commit~,
+      diff_view~,
+      diff_toolbar~,
+      current_user=@web_context.current_user_from_request(req),
+      manager=manager(req, repo),
     )
+    ignore(read_scope(req))
+    // The commit body streams Git output directly; bound the reader's lifetime
+    // even if the client stops consuming the response.
+    @async.with_timeout(30000, () => res.send_html(page))
   })
-  ctx.get("/:owner/:repo/*path", async fn(req, _res) {
-    let _ = resolve_repo(root, req, authorize)
+  ctx.get("/:owner/:repo/*path", (req, _res) => {
+    ignore(read_scope(req))
     raise @domain.NotFound(message="not found")
   })
 })
-
-///|
-async fn resolve_repo(
-  root : String,
-  req : @moonback.Request,
-  authorize : (@moonback.Request, @domain.RepoId) -> Unit raise,
-) -> @domain.RepoId {
-  let repo = @web_context.repo_param(req)
-  authorize(req, repo)
-  let _ = @repository.resolve_repository_dir(root, repo)
-  repo
-}
