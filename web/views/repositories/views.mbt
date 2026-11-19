@@ -243,10 +243,13 @@ async fn render_tree(
     None
   }
   let (controls, default_branch) = if unborn {
-    (@moonback.Html::raw(""), None)
+    (None, None)
   } else {
     let navigation = code_navigation(git_dir, rev)
-    (render_code_controls(repo, rev, navigation), navigation.default_branch)
+    (
+      Some(render_code_controls(repo, rev, navigation)),
+      navigation.default_branch,
+    )
   }
   let first_push = if unborn {
     Some(render_first_push(pool, repo, git_dir, current_user, clone_url))
@@ -313,7 +316,7 @@ async fn render_tree(
     repo.path(),
     asset_path_map,
     Html(b => {
-      b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls~)}"
+      b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls?)}"
       if path.is_empty() {
         b <+ "<div class=\"repository-home\">"
       }

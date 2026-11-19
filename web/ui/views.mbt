@@ -109,20 +109,30 @@ pub fn render_repo_nav(
   repo : @domain.RepoId,
   rev : String,
   clone_url : String?,
-  controls~ : @moonback.Html = @moonback.Html::raw(""),
+  controls? : @moonback.Html,
 ) -> @moonback.Html {
-  Html(b => {
-    let base = repo_link(repo)
+  let clone_menu : @moonback.Html = Html(b => {
     b <+
-      "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div></div><div class=\"code-toolbar\">\{controls}<details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Code<span class=\"ui-icon\" data-icon=\"chevron-down\" data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
+      "<details class=\"repo-clone\" data-dismissable><summary><span class=\"ui-icon\" data-icon=\"code\" aria-hidden=\"true\"></span>Code<span class=\"ui-icon\" data-icon=\"chevron-down\" data-clone-icon=\"chevron\" aria-hidden=\"true\"></span></summary><div class=\"repo-clone-panel\">"
     match clone_url {
       Some(url) =>
         b <+
           "<label class=\"repo-clone-label\" for=\"repo-clone-url\">Clone with SSH</label><div class=\"repo-clone-field\"><input id=\"repo-clone-url\" class=\"path\" data-clone-url value=\"\{url}\" readonly spellcheck=\"false\"><button type=\"button\" class=\"repo-copy-button\" data-clone-copy title=\"Copy SSH URL\" aria-label=\"Copy SSH URL\" disabled><span class=\"ui-icon\" data-icon=\"copy\" data-clone-icon=\"copy\" aria-hidden=\"true\"></span></button></div><p class=\"repo-clone-status\" data-clone-status role=\"status\" aria-live=\"polite\"></p>"
       None => b <+ "<p class=\"muted\">SSH clone address is not configured.</p>"
     }
+    b <+ "</div></details>"
+  })
+  Html(b => {
+    let base = repo_link(repo)
     b <+
-      "</div></details></div><div class=\"repo-context-line\"><a href=\"\{base}\">\{repo.path()}</a><span class=\"branch-label\"><span class=\"ui-icon\" data-icon=\"git-branch\" aria-hidden=\"true\"></span>\{rev}</span></div></div>"
+      "<div class=\"repo-header\"><div class=\"repo-heading\"><div class=\"repo-title-group\"><span class=\"repository-icon\"><span class=\"ui-icon\" data-icon=\"book-open\" aria-hidden=\"true\"></span></span><h1 class=\"repo-title\">\{repo.name}</h1></div>"
+    match controls {
+      Some(controls) =>
+        b <+ "</div><div class=\"code-toolbar\">\{controls}\{clone_menu}</div>"
+      None => b <+ "\{clone_menu}</div>"
+    }
+    b <+
+      "<div class=\"repo-context-line\"><a href=\"\{base}\">\{repo.path()}</a><span class=\"branch-label\"><span class=\"ui-icon\" data-icon=\"git-branch\" aria-hidden=\"true\"></span>\{rev}</span></div></div>"
   })
 }
 
