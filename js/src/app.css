@@ -129,7 +129,6 @@ summary::-webkit-details-marker { display: none; }
 .sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--color-border); }
 .sidebar-danger .nav-item { color: var(--color-danger); }
 .sidebar-danger .nav-item:hover, .sidebar-danger .nav-item[aria-current] { color: var(--color-danger); background: var(--color-danger-soft); }
-.sidebar-danger + .sidebar-collapse { margin-top: 8px; }
 .danger-zone-panel { border: 1px solid var(--color-danger); border-radius: 8px; margin-top: 24px; overflow: hidden; }
 .danger-zone-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; }
 .danger-zone-row + .danger-zone-row { border-top: 1px solid var(--color-border); }
@@ -145,6 +144,7 @@ summary::-webkit-details-marker { display: none; }
 .sidebar-scrim { position: fixed; inset: var(--header-height) 0 0; z-index: 45; width: 100%; height: calc(100dvh - var(--header-height)); border: 0; border-radius: 0; padding: 0; background: rgb(23 30 40 / 28%); }
 .sidebar-scrim:hover { background: rgb(23 30 40 / 28%); }
 @media (min-width: 901px) {
+  .context-switcher--mobile-only { display: none; }
   html[data-sidebar-collapsed="true"] { --sidebar-width: 64px; }
   html[data-sidebar-collapsed="true"] .brand-area { padding-inline: 18px; }
   html[data-sidebar-collapsed="true"] :is(.brand-label, .nav-label, .context-text, .context-chevron, .nav-group-label) { display: none; }
@@ -459,7 +459,6 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
   .sidebar { position: static; width: 100%; height: auto; border-right: 0; border-bottom: 1px solid var(--color-border); }
   .sidebar-footer { display: none; }
   .sidebar-footer--danger { display: block; }
-  html[data-ui-enhanced] .sidebar-footer--danger [data-sidebar-collapse] { display: none !important; }
   html[data-ui-enhanced] .sidebar { position: fixed; z-index: 50; top: var(--header-height); left: 0; width: min(280px, calc(100vw - 40px)); height: calc(100dvh - var(--header-height)); border-right: 1px solid var(--color-border); transform: translateX(-100%); visibility: hidden; }
   html[data-ui-ready] .sidebar { transition: transform 180ms ease-out, visibility 180ms; }
   html[data-navigation-open] .sidebar { transform: none; visibility: visible; }

@@ -35,16 +35,13 @@ for (const javaScriptEnabled of [true, false]) {
         const danger = page.locator('#app-sidebar').getByRole('link', { name: 'Danger Zone', exact: true });
         await expect(danger).toBeVisible();
         await expect(page.locator('.sidebar-footer .sidebar-danger')).toContainText('Danger Zone');
-        if (width === 1440 && javaScriptEnabled) {
-          const link = await danger.boundingBox();
-          const collapse = await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).boundingBox();
-          expect(link!.y + link!.height).toBeLessThanOrEqual(collapse!.y);
-        }
+        await expect(page.locator('[data-sidebar-collapse]')).toHaveCount(0);
         await danger.click();
         await expect(page).toHaveURL(baseURL + base);
         await expect(page.locator('.breadcrumbs')).toContainText('Danger Zone');
         await expect(page.locator('.repository-tabs [aria-current]')).toHaveText('Settings');
         await expect(page.locator('.sidebar-danger a')).toHaveAttribute('aria-current', 'page');
+        await expect(page.locator('[data-sidebar-collapse]')).toHaveCount(0);
         if (javaScriptEnabled) expect(await page.evaluate(() => (window as any).dangerDocument === document)).toBe(true);
         await expect(page.locator('.danger-zone')).toContainText('currently private');
         if (javaScriptEnabled) {

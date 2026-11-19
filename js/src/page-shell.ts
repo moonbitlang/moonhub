@@ -45,10 +45,11 @@ export function mountShell(signal: AbortSignal) {
 
   root.setAttribute("data-ui-enhanced", "");
   root.dataset.uiReady = "true";
+  if (!collapseButton) root.removeAttribute("data-sidebar-collapsed");
   if (sidebar) {
-    try { root.dataset.sidebarCollapsed = String(localStorage.getItem("moonhub.sidebar") === "collapsed"); } catch { /* Storage can be disabled. */ }
     if (openButton) { openButton.hidden = false; openButton.inert = false; }
     if (collapseButton) {
+      try { root.dataset.sidebarCollapsed = String(localStorage.getItem("moonhub.sidebar") === "collapsed"); } catch { /* Storage can be disabled. */ }
       collapseButton.hidden = false;
       collapseButton.inert = false;
       collapseButton.addEventListener("click", () => {
@@ -80,8 +81,6 @@ export function mountShell(signal: AbortSignal) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }, { signal });
   }
-
-  if (!sidebar) root.removeAttribute("data-sidebar-collapsed");
 
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
