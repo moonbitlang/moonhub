@@ -337,10 +337,10 @@ async fn render_tree(
         b <+
           "<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
         if !path.is_empty() {
-          let parent = match path.rev_find("/") {
-            Some(index) =>
-              "\{base}/\{@web_context.url_escape_path(path[:index].to_owned())}"
-            None => base
+          let parent = if path.rev_find("/") is Some(index) {
+            "\{base}/\{@web_context.url_escape_path(path[:index].to_owned())}"
+          } else {
+            base
           }
           b <+
             "<tr><td><a href=\"\{parent}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
@@ -386,11 +386,11 @@ async fn render_tree(
       if path.is_empty() {
         b <+
           "<aside class=\"repository-releases\" aria-label=\"Releases\"><h2><a href=\"\{@web_ui.repo_link(repo)}/releases\">Releases</a></h2>"
-        match latest_release {
-          Some(release) =>
-            b <+
-              "<span class=\"status-badge latest-release\">Latest</span><h3><a href=\"\{@web_ui.repo_link(repo)}/releases/\{release.id.to_string()}\">\{release.title}</a></h3><p class=\"path\">\{release.tag}</p><p class=\"muted\">\{@web_ui.timestamp(release.published_at.unwrap_or(release.created_at), relative=true)}</p>"
-          None => b <+ "<p class=\"muted\">No stable releases published.</p>"
+        if latest_release is Some(release) {
+          b <+
+            "<span class=\"status-badge latest-release\">Latest</span><h3><a href=\"\{@web_ui.repo_link(repo)}/releases/\{release.id.to_string()}\">\{release.title}</a></h3><p class=\"path\">\{release.tag}</p><p class=\"muted\">\{@web_ui.timestamp(release.published_at.unwrap_or(release.created_at), relative=true)}</p>"
+        } else {
+          b <+ "<p class=\"muted\">No stable releases published.</p>"
         }
         b <+
           "<a href=\"\{@web_ui.repo_link(repo)}/releases\">View all releases</a></aside></div>"

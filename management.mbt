@@ -276,9 +276,10 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
           pool,
           cli_value(options, "user"),
         )
-        let text = match single_value(options, "file") {
-          Some(path) => @fs.read_file(path).text()
-          None => @stdio.stdin.read_all().text()
+        let text = if single_value(options, "file") is Some(path) {
+          @fs.read_file(path).text()
+        } else {
+          @stdio.stdin.read_all().text()
         }
         let key = @ssh.parse_ssh_public_key(text)
         let id = @ssh.add_ssh_key(pool, user, cli_value(options, "title"), key)

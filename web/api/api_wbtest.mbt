@@ -12,13 +12,13 @@ async fn api_test_request(
     "Authorization": "Bearer " + token,
     "Content-Type": "application/json",
   }
-  let response = match body {
-    None => client.get("/-/api/v1" + path, extra_headers=headers)
-    Some(body) =>
-      client
-      ..request(verb, "/-/api/v1" + path, extra_headers=headers)
-      ..write(body.stringify())
-      .end_request()
+  let response = if body is Some(body) {
+    client
+    ..request(verb, "/-/api/v1" + path, extra_headers=headers)
+    ..write(body.stringify())
+    .end_request()
+  } else {
+    client.get("/-/api/v1" + path, extra_headers=headers)
   }
   assert_eq(response.headers.get("cache-control"), Some("no-store"))
   (response.code, @json.parse(client.read_all().text()))

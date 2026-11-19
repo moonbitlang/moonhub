@@ -552,23 +552,22 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let reasons = coordinator.queue_reasons(actor, scope.repo, number)
     let pages : Array[PipelineJobPage] = []
     for job in jobs {
-      match job.attempt_id {
-        None =>
-          pages.push({
-            job,
-            steps: [],
-            logs: None,
-            reason: reasons.get(job.job_key),
-          })
-        Some(attempt_id) =>
-          pages.push({
-            job,
-            steps: coordinator.read_steps(actor, scope.repo, number, attempt_id),
-            logs: Some(
-              coordinator.read_log_page(actor, scope.repo, number, attempt_id),
-            ),
-            reason: reasons.get(job.job_key),
-          })
+      if job.attempt_id is Some(attempt_id) {
+        pages.push({
+          job,
+          steps: coordinator.read_steps(actor, scope.repo, number, attempt_id),
+          logs: Some(
+            coordinator.read_log_page(actor, scope.repo, number, attempt_id),
+          ),
+          reason: reasons.get(job.job_key),
+        })
+      } else {
+        pages.push({
+          job,
+          steps: [],
+          logs: None,
+          reason: reasons.get(job.job_key),
+        })
       }
     }
     let manager = @identity.can_manage_team(pool, actor, scope.team_id)

@@ -276,9 +276,12 @@ fn is_supported_numeric_request_id(token : String) -> Bool {
   if digits.iter().all(ch => ch == '0') {
     return true
   }
-  let exponent = match exponent_text {
-    Some(text) => @string.parse_int64(text) catch { _ => return false }
-    None => 0L
+  let exponent = if exponent_text is Some(text) {
+    @string.parse_int64(text) catch {
+      _ => return false
+    }
+  } else {
+    0L
   }
   if exponent > 100000L || exponent < -100000L {
     return false

@@ -79,27 +79,27 @@ fn default_smtp_settings() -> SmtpSettings {
 ///|
 pub fn load_mail_settings(pool : @database.Database) -> MailSettings raise {
   pool.with_client(client => {
-    match
-      client.query_opt(
+    if client.query_opt(
         "SELECT transport, smtp_host, smtp_port, smtp_security, smtp_auth, smtp_username, smtp_password, smtp_tls_trust, smtp_tls_root_cert_file, smtp_helo_name, smtp_from FROM mail_settings WHERE id = 1",
-      ) {
-      None => { transport: "file", smtp: default_smtp_settings(), }
-      Some(row) =>
-        {
-          transport: row.get_name("transport"),
-          smtp: {
-            host: row.get_name("smtp_host"),
-            port: (row.get_name("smtp_port") : Int64).to_int(),
-            security: row.get_name("smtp_security"),
-            auth: row.get_name("smtp_auth"),
-            username: row.get_name("smtp_username"),
-            password: row.get_name("smtp_password"),
-            tls_trust: row.get_name("smtp_tls_trust"),
-            tls_root_cert_file: row.get_name("smtp_tls_root_cert_file"),
-            helo_name: row.get_name("smtp_helo_name"),
-            from: row.get_name("smtp_from"),
-          },
-        }
+      )
+      is Some(row) {
+      {
+        transport: row.get_name("transport"),
+        smtp: {
+          host: row.get_name("smtp_host"),
+          port: (row.get_name("smtp_port") : Int64).to_int(),
+          security: row.get_name("smtp_security"),
+          auth: row.get_name("smtp_auth"),
+          username: row.get_name("smtp_username"),
+          password: row.get_name("smtp_password"),
+          tls_trust: row.get_name("smtp_tls_trust"),
+          tls_root_cert_file: row.get_name("smtp_tls_root_cert_file"),
+          helo_name: row.get_name("smtp_helo_name"),
+          from: row.get_name("smtp_from"),
+        },
+      }
+    } else {
+      { transport: "file", smtp: default_smtp_settings(), }
     }
   })
 }
@@ -220,23 +220,22 @@ pub async fn deliver_next_email(
   worker_id : String,
   transport : MailTransportConfig,
 ) -> Bool {
-  match claim_next_email(pool, worker_id) {
-    None => false
-    Some(message) => {
-      let delivered = try {
-        let provider_message_id = deliver_email(transport, message)
-        mark_email_delivered(pool, message.id, provider_message_id)
-        true
-      } catch {
-        err => {
-          println("email delivery \{message.id} failed: \{err}")
-          mark_email_failed(pool, message.id, "\{err}")
-          false
-        }
-      }
-      let _ = delivered
+  if claim_next_email(pool, worker_id) is Some(message) {
+    let delivered = try {
+      let provider_message_id = deliver_email(transport, message)
+      mark_email_delivered(pool, message.id, provider_message_id)
       true
+    } catch {
+      err => {
+        println("email delivery \{message.id} failed: \{err}")
+        mark_email_failed(pool, message.id, "\{err}")
+        false
+      }
     }
+    let _ = delivered
+    true
+  } else {
+    false
   }
 }
 
@@ -317,32 +316,31 @@ pub fn claim_next_email(
           #|LIMIT 1
         ),
       )
-      match picked {
-        None => None
-        Some(row) => {
-          let id : Int64 = row.get_name("id")
-          let changed = tx.execute(
-            (
-              #|UPDATE email_outbox
-              #|SET locked_at = datetime('now'),
-              #|    locked_by = ?,
-              #|    attempt_count = attempt_count + 1
-              #|WHERE id = ? AND status = 'pending'
-              #|  AND (locked_at IS NULL OR locked_at <= datetime('now', '-5 minutes'))
-            ),
-            params=[worker_id, id],
-          )
-          if changed == 1 {
-            Some({
-              id,
-              to_email: row.get_name("to_email"),
-              subject: row.get_name("subject"),
-              body: row.get_name("body"),
-            })
-          } else {
-            None
-          }
+      if picked is Some(row) {
+        let id : Int64 = row.get_name("id")
+        let changed = tx.execute(
+          (
+            #|UPDATE email_outbox
+            #|SET locked_at = datetime('now'),
+            #|    locked_by = ?,
+            #|    attempt_count = attempt_count + 1
+            #|WHERE id = ? AND status = 'pending'
+            #|  AND (locked_at IS NULL OR locked_at <= datetime('now', '-5 minutes'))
+          ),
+          params=[worker_id, id],
+        )
+        if changed == 1 {
+          Some({
+            id,
+            to_email: row.get_name("to_email"),
+            subject: row.get_name("subject"),
+            body: row.get_name("body"),
+          })
+        } else {
+          None
         }
+      } else {
+        None
       }
     })
   })

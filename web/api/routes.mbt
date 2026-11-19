@@ -282,39 +282,36 @@ pub let api_module : @moonback.Module = Module(ctx => {
         number(@web_context.required_param(req, "number", "MR")),
       )
       let current_page = page(req)
-      match req.query().get("discussion") {
-        Some(id) => {
-          let discussion = @collaboration.merge_discussion(
-            pool,
-            scope,
-            actor,
-            mr,
-            number(id),
-            page=current_page,
-          )
-          {
-            "discussion": discussion_json(discussion),
-            "has_more": current_page * 50L < discussion.reply_count,
-          }
+      if req.query().get("discussion") is Some(id) {
+        let discussion = @collaboration.merge_discussion(
+          pool,
+          scope,
+          actor,
+          mr,
+          number(id),
+          page=current_page,
+        )
+        {
+          "discussion": discussion_json(discussion),
+          "has_more": current_page * 50L < discussion.reply_count,
         }
-        None => {
-          let rows = @collaboration.list_merge_discussions(
-            pool,
-            scope,
-            actor,
-            mr,
-            current_page,
-            filter=req.query().get("filter").unwrap_or("all"),
-          )
-          {
-            "items": rows[:Int32::min(50, rows.length())]
-            .to_owned()
-            .map(d => discussion_json(d, preview=true)),
-            "has_more": rows.length() > 50,
-            "unresolved_count": @collaboration.unresolved_merge_discussions(
-              pool, scope, actor, mr,
-            ).to_string(),
-          }
+      } else {
+        let rows = @collaboration.list_merge_discussions(
+          pool,
+          scope,
+          actor,
+          mr,
+          current_page,
+          filter=req.query().get("filter").unwrap_or("all"),
+        )
+        {
+          "items": rows[:Int32::min(50, rows.length())]
+          .to_owned()
+          .map(d => discussion_json(d, preview=true)),
+          "has_more": rows.length() > 50,
+          "unresolved_count": @collaboration.unresolved_merge_discussions(
+            pool, scope, actor, mr,
+          ).to_string(),
         }
       }
     }),
@@ -871,15 +868,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
         Some(Object(values)) => values
         _ => raise @domain.BadRequest(message="inputs must be a JSON object")
       }
-      let jobs : Array[String] = match body.get("jobs") {
-        None => []
-        Some(value) =>
-          @json.from_json(value) catch {
-            _ =>
-              raise @domain.BadRequest(
-                message="jobs must be an array of job IDs",
-              )
-          }
+      let jobs : Array[String] = if body.get("jobs") is Some(value) {
+        @json.from_json(value) catch {
+          _ =>
+            raise @domain.BadRequest(message="jobs must be an array of job IDs")
+        }
+      } else {
+        []
       }
       run_json(
         @pipeline.create_run(

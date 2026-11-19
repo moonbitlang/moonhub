@@ -508,195 +508,181 @@ async fn reconcile_group(
       )
     }
     let worker = snapshot.workers.iter().find_first(w => w.key == instance.id)
-    match worker {
-      None =>
-        if instance.template_version !=
-          snapshot.config.get("template_version").unwrap_or("") ||
-          instance.instance_type !=
-          snapshot.config.get("instance_type").unwrap_or("") {
-          // A snapshot may lag a newly registered/busy worker. Recover its
-          // identity and drain it before ordinary cleanup/lease-based retirement.
-          let (worker, _) = register_instance_worker(
-            options,
+    if worker is Some(worker) {
+      let seen = @protocol.parse_decimal(worker.last_seen_ms).unwrap_or(0L)
+      let idle = @protocol.parse_decimal(worker.idle_since_ms).unwrap_or(now)
+      let obsolete = instance.instance_type !=
+        snapshot.config.get("instance_type").unwrap_or("") ||
+        instance.template_version !=
+        snapshot.config.get("template_version").unwrap_or("")
+      let expired = now - seen > 180000L
+      if options.base.linux_ci &&
+        !worker.draining &&
+        !expired &&
+        !obsolete &&
+        !snapshot.paused &&
+        !["drained", "failed"].contains(worker.state) &&
+        !@fs.exists(
+          options.state_dir +
+          "/" +
+          instance.id +
+          ".armed-" +
+          snapshot.config_revision,
+        ) {
+        provision_worker(
+          options,
+          token,
+          instance,
+          runner_os,
+          snapshot.config,
+          snapshot.config_revision,
+          controller_id,
+        )
+        continue
+      }
+      if worker.state == "starting" &&
+        !expired &&
+        !obsolete &&
+        !worker.draining &&
+        !snapshot.paused {
+        provision_worker(
+          options,
+          token,
+          instance,
+          runner_os,
+          snapshot.config,
+          snapshot.config_revision,
+          controller_id,
+        )
+        continue
+      }
+      let retire = obsolete ||
+        snapshot.paused ||
+        (
+          group.name == options.spot_asg &&
+          snapshot.config.get("purchase_policy") !=
+          Some("spot-with-on-demand-fallback")
+        ) ||
+        (
+          excess.val > 0 &&
+          worker.active_attempts == 0 &&
+          worker.state == "ready" &&
+          now - idle >= timeout_ms
+        ) ||
+        worker.state == "failed" ||
+        expired
+      if retire && !worker.draining {
+        excess.val -= 1
+        ignore(
+          control_request(
+            options.base.server,
+            "/workers/" + worker.id + "/drain",
             token,
-            instance.id,
-          )
-          ignore(
-            control_request(
-              options.base.server,
-              "/workers/" + worker.id + "/drain",
-              token,
-              { "version": 1 },
-              allow_http=options.base.allow_http,
-            ),
-          )
-        } else {
-          let startup = instance_startup(options, instance.id, now)
-          if startup is Booting && !snapshot.paused {
-            // Windows Sysprep can take more than the worker heartbeat lease.
-            // EC2 capacity is counted, but no worker or bootstrap credential
-            // exists until its management channel can deliver the runtime.
-            continue
-          }
-          if startup is Online && !snapshot.paused {
-            provision_worker(
-              options,
-              token,
-              instance,
-              runner_os,
-              snapshot.config,
-              snapshot.config_revision,
-              controller_id,
-            )
-          } else {
-            // No work was issued to an unreachable/paused instance. Recover
-            // its identity and use ordinary active-attempt/drain safeguards.
-            let (worker, _) = register_instance_worker(
-              options,
-              token,
-              instance.id,
-            )
-            ignore(
-              control_request(
-                options.base.server,
-                "/workers/" + worker.id + "/drain",
-                token,
-                { "version": 1 },
-                allow_http=options.base.allow_http,
-              ),
-            )
-          }
-        }
-      Some(worker) => {
-        let seen = @protocol.parse_decimal(worker.last_seen_ms).unwrap_or(0L)
-        let idle = @protocol.parse_decimal(worker.idle_since_ms).unwrap_or(now)
-        let obsolete = instance.instance_type !=
-          snapshot.config.get("instance_type").unwrap_or("") ||
-          instance.template_version !=
-          snapshot.config.get("template_version").unwrap_or("")
-        let expired = now - seen > 180000L
-        if options.base.linux_ci &&
-          !worker.draining &&
-          !expired &&
-          !obsolete &&
-          !snapshot.paused &&
-          !["drained", "failed"].contains(worker.state) &&
-          !@fs.exists(
-            options.state_dir +
-            "/" +
-            instance.id +
-            ".armed-" +
-            snapshot.config_revision,
-          ) {
-          provision_worker(
-            options,
-            token,
-            instance,
-            runner_os,
-            snapshot.config,
-            snapshot.config_revision,
-            controller_id,
-          )
-          continue
-        }
-        if worker.state == "starting" &&
-          !expired &&
-          !obsolete &&
-          !worker.draining &&
-          !snapshot.paused {
-          provision_worker(
-            options,
-            token,
-            instance,
-            runner_os,
-            snapshot.config,
-            snapshot.config_revision,
-            controller_id,
-          )
-          continue
-        }
-        let retire = obsolete ||
-          snapshot.paused ||
-          (
-            group.name == options.spot_asg &&
-            snapshot.config.get("purchase_policy") !=
-            Some("spot-with-on-demand-fallback")
-          ) ||
-          (
-            excess.val > 0 &&
-            worker.active_attempts == 0 &&
-            worker.state == "ready" &&
-            now - idle >= timeout_ms
-          ) ||
+            { "version": 1 },
+            allow_http=options.base.allow_http,
+          ),
+        )
+        continue
+      }
+      // Healthy workers must acknowledge cleanup. A lost worker is retired
+      // only after its task lease has been reconciled to a terminal state.
+      if worker.draining &&
+        worker.active_attempts == 0 &&
+        (
+          options.base.linux_ci ||
+          worker.state == "drained" ||
           worker.state == "failed" ||
           expired
-        if retire && !worker.draining {
-          excess.val -= 1
-          ignore(
-            control_request(
-              options.base.server,
-              "/workers/" + worker.id + "/drain",
-              token,
-              { "version": 1 },
-              allow_http=options.base.allow_http,
-            ),
-          )
-          continue
-        }
-        // Healthy workers must acknowledge cleanup. A lost worker is retired
-        // only after its task lease has been reconciled to a terminal state.
-        if worker.draining &&
-          worker.active_attempts == 0 &&
-          (
-            options.base.linux_ci ||
-            worker.state == "drained" ||
-            worker.state == "failed" ||
-            expired
-          ) {
-          if options.base.linux_ci {
-            // Persist before requesting termination. A controller interruption
-            // or ambiguous AWS response must not lose parameter cleanup.
-            @fs.write_file(
-              options.state_dir + "/" + instance.id + ".ci-retire",
-              "retire",
-              permission=0o600,
-            )
-          }
-          ignore(
-            aws_request(options, [
-              "autoscaling",
-              "terminate-instance-in-auto-scaling-group",
-              "--instance-id",
-              instance.id,
-              "--should-decrement-desired-capacity",
-            ]),
-          )
-          @fs.remove(options.state_dir + "/" + instance.id + ".token") catch {
-            _ => ()
-          }
-          @fs.remove(
-            options.state_dir + "/" + instance.id + ".bootstrap-command",
-          ) catch {
-            _ => ()
-          }
-          @fs.remove(
-            options.state_dir +
-            "/" +
-            instance.id +
-            ".armed-" +
-            snapshot.config_revision,
-          ) catch {
-            _ => ()
-          }
-          ignore(
-            aws_request(options, [
-              "ssm",
-              "delete-parameter",
-              "--name",
-              options.parameter_prefix + "/" + instance.id,
-            ]),
+        ) {
+        if options.base.linux_ci {
+          // Persist before requesting termination. A controller interruption
+          // or ambiguous AWS response must not lose parameter cleanup.
+          @fs.write_file(
+            options.state_dir + "/" + instance.id + ".ci-retire",
+            "retire",
+            permission=0o600,
           )
         }
+        ignore(
+          aws_request(options, [
+            "autoscaling",
+            "terminate-instance-in-auto-scaling-group",
+            "--instance-id",
+            instance.id,
+            "--should-decrement-desired-capacity",
+          ]),
+        )
+        @fs.remove(options.state_dir + "/" + instance.id + ".token") catch {
+          _ => ()
+        }
+        @fs.remove(options.state_dir + "/" + instance.id + ".bootstrap-command") catch {
+          _ => ()
+        }
+        @fs.remove(
+          options.state_dir +
+          "/" +
+          instance.id +
+          ".armed-" +
+          snapshot.config_revision,
+        ) catch {
+          _ => ()
+        }
+        ignore(
+          aws_request(options, [
+            "ssm",
+            "delete-parameter",
+            "--name",
+            options.parameter_prefix + "/" + instance.id,
+          ]),
+        )
+      }
+    } else if instance.template_version !=
+      snapshot.config.get("template_version").unwrap_or("") ||
+      instance.instance_type !=
+      snapshot.config.get("instance_type").unwrap_or("") {
+      // A snapshot may lag a newly registered/busy worker. Recover its
+      // identity and drain it before ordinary cleanup/lease-based retirement.
+      let (worker, _) = register_instance_worker(options, token, instance.id)
+      ignore(
+        control_request(
+          options.base.server,
+          "/workers/" + worker.id + "/drain",
+          token,
+          { "version": 1 },
+          allow_http=options.base.allow_http,
+        ),
+      )
+    } else {
+      let startup = instance_startup(options, instance.id, now)
+      if startup is Booting && !snapshot.paused {
+        // Windows Sysprep can take more than the worker heartbeat lease.
+        // EC2 capacity is counted, but no worker or bootstrap credential
+        // exists until its management channel can deliver the runtime.
+        continue
+      }
+      if startup is Online && !snapshot.paused {
+        provision_worker(
+          options,
+          token,
+          instance,
+          runner_os,
+          snapshot.config,
+          snapshot.config_revision,
+          controller_id,
+        )
+      } else {
+        // No work was issued to an unreachable/paused instance. Recover
+        // its identity and use ordinary active-attempt/drain safeguards.
+        let (worker, _) = register_instance_worker(options, token, instance.id)
+        ignore(
+          control_request(
+            options.base.server,
+            "/workers/" + worker.id + "/drain",
+            token,
+            { "version": 1 },
+            allow_http=options.base.allow_http,
+          ),
+        )
       }
     }
   }

@@ -62,10 +62,10 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
     guard status == "open" || status == "closed" || status == "merged" else {
       raise @domain.BadRequest(message="invalid merge request status")
     }
-    let page = match req.query().get("page") {
-      Some(value) => @web_context.positive_resource_number(value)
-      None => 1L
-    }
+    let page = req
+      .query()
+      .get("page")
+      .map_or(1L, @web_context.positive_resource_number)
     guard page <= 100000L else {
       raise @domain.BadRequest(message="invalid page")
     }
@@ -392,21 +392,17 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       .query()
       .get("comment")
       .map(@web_context.positive_resource_number)
-    let discussion_page = match selected_comment {
-      Some(comment) => {
-        guard selected_discussion is Some(discussion) else {
-          raise @domain.BadRequest(
-            message="comment target requires a discussion",
-          )
-        }
-        @collaboration.merge_discussion_comment_page(
-          pool, scope, actor, mr, discussion, comment,
-        )
+    let discussion_page = if selected_comment is Some(comment) {
+      guard selected_discussion is Some(discussion) else {
+        raise @domain.BadRequest(message="comment target requires a discussion")
       }
-      None =>
-        @web_context.positive_resource_number(
-          req.query().get("discussion_page").unwrap_or("1"),
-        )
+      @collaboration.merge_discussion_comment_page(
+        pool, scope, actor, mr, discussion, comment,
+      )
+    } else {
+      @web_context.positive_resource_number(
+        req.query().get("discussion_page").unwrap_or("1"),
+      )
     }
     let mut comparison : @gitops.RevisionComparison? = None
     let mut patch = ""
@@ -433,11 +429,14 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
                 selected.head_sha,
                 page=@web_context.diff_page(req),
               )
-              let file = match
-                req.query().get("file_id").filter(id => !id.is_empty()) {
-                Some(id) =>
-                  Some(diff_executor.file(git_dir, manifest, id, options))
-                None => None
+              let file = if req
+                .query()
+                .get("file_id")
+                .filter(id => !id.is_empty())
+                is Some(id) {
+                Some(diff_executor.file(git_dir, manifest, id, options))
+              } else {
+                None
               }
               let base = "\{@web_ui.repo_link(scope.repo)}/merge-requests/\{mr.number}"
               let query = "?version=\{revision.version}&commit=\{selected_commit.unwrap_or("")}"
@@ -510,29 +509,28 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       raise @domain.BadRequest(message="invalid page")
     }
     let activities = @collaboration.list_merge_activity(pool, mr, activity_page)
-    let discussions = match selected_discussion {
-      Some(id) =>
-        [
-          @collaboration.merge_discussion(
-            pool,
-            scope,
-            actor,
-            mr,
-            id,
-            page=discussion_page,
-          ),
-        ]
-      None =>
-        @collaboration.list_merge_discussions(
+    let discussions = if selected_discussion is Some(id) {
+      [
+        @collaboration.merge_discussion(
           pool,
           scope,
           actor,
           mr,
-          discussion_page,
-          filter=discussion_filter,
-          anchor_version=if tab == "changes" { selected } else { 0L },
-          comparison~,
-        )
+          id,
+          page=discussion_page,
+        ),
+      ]
+    } else {
+      @collaboration.list_merge_discussions(
+        pool,
+        scope,
+        actor,
+        mr,
+        discussion_page,
+        filter=discussion_filter,
+        anchor_version=if tab == "changes" { selected } else { 0L },
+        comparison~,
+      )
     }
     let unresolved = @collaboration.unresolved_merge_discussions(
       pool, scope, actor, mr,
@@ -906,14 +904,14 @@ pub let merge_requests_module : @moonback.Module = Module(ctx => {
       return
     }
     let location = "\{@web_ui.repo_link(repo)}/merge-requests/\{number}" +
-      (match discussion {
-        Some(id) =>
-          match reply_id {
-            Some(reply) =>
-              "?discussion=\{id}&discussion_page=\{reply_page}&comment=\{reply}#comment-\{reply}"
-            None => "?discussion=\{id}#discussion-\{id}"
-          }
-        None => ""
+      (if discussion is Some(id) {
+        if reply_id is Some(reply) {
+          "?discussion=\{id}&discussion_page=\{reply_page}&comment=\{reply}#comment-\{reply}"
+        } else {
+          "?discussion=\{id}#discussion-\{id}"
+        }
+      } else {
+        ""
       })
     res.send_void(
       status=303,

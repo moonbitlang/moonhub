@@ -87,19 +87,16 @@ pub fn pin_legacy_repository_source(
     addresses,
   )
   pool.with_client(client => {
-    match source.local_id {
-      Some(id) => {
-        let _ = client.execute(
-          "UPDATE repository_job SET source_kind = 'local', source_repository_id = ? WHERE repository_id = ?",
-          params=[id, job.id],
-        )
-      }
-      None => {
-        let _ = client.execute(
-          "UPDATE repository_job SET source_kind = 'external' WHERE repository_id = ?",
-          params=[job.id],
-        )
-      }
+    if source.local_id is Some(id) {
+      let _ = client.execute(
+        "UPDATE repository_job SET source_kind = 'local', source_repository_id = ? WHERE repository_id = ?",
+        params=[id, job.id],
+      )
+    } else {
+      let _ = client.execute(
+        "UPDATE repository_job SET source_kind = 'external' WHERE repository_id = ?",
+        params=[job.id],
+      )
     }
   })
   {

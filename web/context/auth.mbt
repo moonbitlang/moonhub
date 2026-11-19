@@ -188,16 +188,11 @@ pub fn require_login_middleware() -> @moonback.Middleware {
             headers=redirect_headers("/-/change-password"),
           )
         }
+      } else if current_user_from_request(req) is Some(_) ||
+        anonymous_browser_read(req) {
+        next(req, res)
       } else {
-        match current_user_from_request(req) {
-          Some(_) => next(req, res)
-          None =>
-            if anonymous_browser_read(req) {
-              next(req, res)
-            } else {
-              res.send_void(status=303, headers=redirect_headers("/-/login"))
-            }
-        }
+        res.send_void(status=303, headers=redirect_headers("/-/login"))
       }
     }
   })

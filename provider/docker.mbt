@@ -208,9 +208,10 @@ async fn execute_assignment(
   workspace~ : PreparedWorkspace? = None,
 ) -> Unit {
   let attempt_id = assignment.attempt_id
-  let workspace_volume = match workspace {
-    Some(workspace) => workspace.volume
-    None => "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
+  let workspace_volume = if workspace is Some(workspace) {
+    workspace.volume
+  } else {
+    "moonhub-workspace-\{attempt_id}-\{random_hex(16)}"
   }
   let root = options.workspace_root + "/" + attempt_id
   // A Windows workspace is prepared before claiming. Cleanup owns it as soon

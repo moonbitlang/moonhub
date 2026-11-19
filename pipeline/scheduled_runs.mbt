@@ -24,13 +24,14 @@ pub fn scheduled_runs_status(
 ) -> (Bool, String) raise {
   let scope = require_run_author(pool, actor, repo)
   pool.with_client(c => {
-    match
-      c.query_opt(
+    if c.query_opt(
         "SELECT enabled,last_error FROM pipeline_schedule_config WHERE repository_id=?",
         params=[scope.id],
-      ) {
-      None => (false, "")
-      Some(row) => (row.get_name("enabled"), row.get_name("last_error"))
+      )
+      is Some(row) {
+      (row.get_name("enabled"), row.get_name("last_error"))
+    } else {
+      (false, "")
     }
   })
 }

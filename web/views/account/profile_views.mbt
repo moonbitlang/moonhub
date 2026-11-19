@@ -47,9 +47,10 @@ fn render_profile_settings(
       b <+
         "</select><p id=\"profile-time-zone-help\" class=\"muted\">Follow each device’s time zone, or choose one to use across devices. Times use UTC when local display is unavailable.</p><p id=\"profile-time-zone-preview\" class=\"muted\" role=\"status\" aria-live=\"polite\" data-time-zone-preview></p></div>"
       b <+ "<div class=\"field\"><span>Email</span>"
-      match profile.email {
-        Some(email) => b <+ "<p class=\"path\">\{email}</p>"
-        None => b <+ "<p class=\"muted\">No email on file.</p>"
+      if profile.email is Some(email) {
+        b <+ "<p class=\"path\">\{email}</p>"
+      } else {
+        b <+ "<p class=\"muted\">No email on file.</p>"
       }
       b <+
         "</div><div class=\"form-actions\"><button type=\"submit\">Save profile</button></div></form></section>"

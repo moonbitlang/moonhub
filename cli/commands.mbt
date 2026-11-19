@@ -425,17 +425,17 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       )
     ("mr", "checks") => ("\{base}/mrs/\{id}/checks", None)
     ("mr", "discussions") => {
-      let selection = match option(matches, "discussion") {
-        Some(id) => "discussion=" + decimal(id)
-        None =>
-          "filter=" +
-          escape(
-            if required(matches, "filter") == "unread" {
-              "all"
-            } else {
-              required(matches, "filter")
-            },
-          )
+      let selection = if option(matches, "discussion") is Some(id) {
+        "discussion=" + decimal(id)
+      } else {
+        "filter=" +
+        escape(
+          if required(matches, "filter") == "unread" {
+            "all"
+          } else {
+            required(matches, "filter")
+          },
+        )
       }
       (
         "\{base}/mrs/\{id}/discussions?\{selection}&page=\{decimal(required(matches, "page"))}",

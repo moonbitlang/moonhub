@@ -8,9 +8,10 @@ async test "diff cache environment accepts Int64 budgets and rejects invalid val
     ]
     let previous = names.map(name => (name, @env.get_env_var(name)))
     defer (for (name, value) in previous {
-      match value {
-        Some(value) => @env.set_env_var(name, value)
-        None => @env.unset_env_var(name)
+      if value is Some(value) {
+        @env.set_env_var(name, value)
+      } else {
+        @env.unset_env_var(name)
       }
     })
     for name in names {

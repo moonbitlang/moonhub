@@ -326,21 +326,20 @@ pub fn Coordinator::ensure_provider(
         let repository_ids = repositories.map(repo => {
           @repository.repository_scope(self.pool, actor, repo).id
         })
-        let row = match existing {
-          Some(row) => row
-          None => {
-            guard tx.query_opt(
-                "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash=? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ? UNION SELECT id FROM pipeline_worker WHERE token_hash=?",
-                params=[hash, hash, hash, hash],
-              )
-              is None else {
-              raise Conflict("provider credential is already in use")
-            }
-            tx.query_one(
-              "INSERT INTO pipeline_provider (name, token_hash) VALUES (?, ?) RETURNING *",
-              params=[name, hash],
+        let row = if existing is Some(row) {
+          row
+        } else {
+          guard tx.query_opt(
+              "SELECT id FROM pipeline_provider WHERE token_hash = ? OR registration_hash=? UNION SELECT id FROM pipeline_job_attempt WHERE token_hash = ? UNION SELECT id FROM pipeline_worker WHERE token_hash=?",
+              params=[hash, hash, hash, hash],
             )
+            is None else {
+            raise Conflict("provider credential is already in use")
           }
+          tx.query_one(
+            "INSERT INTO pipeline_provider (name, token_hash) VALUES (?, ?) RETURNING *",
+            params=[name, hash],
+          )
         }
         let id : Int64 = row.get_name("id")
         validate_environment_provider_labels(tx, id, labels)

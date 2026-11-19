@@ -48,19 +48,18 @@ fn mask_log(text : String, masks : Array[String]) -> (String, String) {
     let mut state = 0
     for index in 0..<mask.length() {
       let unit = mask[index].to_int()
-      state = match nodes[state].edges.get(unit) {
-        Some(next) => next
-        None => {
-          let next = nodes.length()
-          nodes[state].edges[unit] = next
-          nodes.push({
-            edges: Map([]),
-            depth: nodes[state].depth + 1,
-            failure: 0,
-            longest: 0,
-          })
-          next
-        }
+      state = if nodes[state].edges.get(unit) is Some(next) {
+        next
+      } else {
+        let next = nodes.length()
+        nodes[state].edges[unit] = next
+        nodes.push({
+          edges: Map([]),
+          depth: nodes[state].depth + 1,
+          failure: 0,
+          longest: 0,
+        })
+        next
       }
     }
     if !mask.is_empty() {

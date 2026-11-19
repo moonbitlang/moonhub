@@ -266,63 +266,62 @@ async fn run_backend_worker(
         }
       }
       claiming.val = false
-      match assignment {
-        None => @async.sleep(base.poll_ms)
-        Some(claimed) => {
-          validate_assignment(claimed.assignment, runner_os=backend.os)
-          let task_options = if claimed.assignment.environment
-            is Some(environment) {
-            guard environments.val.any(profile => {
-              profile.environment.image == environment.image &&
-              profile.environment.selector == environment.selector &&
-              profile.environment.architecture == environment.architecture
-            }) else {
-              raise InvalidConfiguration(
-                "Assigned environment was not prepared by this worker.",
-              )
-            }
-            { ..current.val, runner_image: environment.image, }
-          } else {
-            guard environments.val.is_empty() else {
-              raise InvalidConfiguration(
-                "A multi-environment provider requires a pinned assignment.",
-              )
-            }
-            current.val
-          }
-          state.val = "busy"
-          if current.val.linux_ci {
-            @fs.write_file(
-              base.workspace_root + "/ci-consumed",
-              claimed.assignment.attempt_id,
-              create_mode=@fs.CreateNew,
-              permission=0o600,
+      if assignment is Some(claimed) {
+        validate_assignment(claimed.assignment, runner_os=backend.os)
+        let task_options = if claimed.assignment.environment
+          is Some(environment) {
+          guard environments.val.any(profile => {
+            profile.environment.image == environment.image &&
+            profile.environment.selector == environment.selector &&
+            profile.environment.architecture == environment.architecture
+          }) else {
+            raise InvalidConfiguration(
+              "Assigned environment was not prepared by this worker.",
             )
           }
-          (backend.execute)(
-            task_options,
-            claimed.assignment,
-            claimed.attempt_token,
-          ) catch {
-            InvalidConfiguration(message) => {
-              state.val = "failed"
-              raise InvalidConfiguration(message)
-            }
-            _ => {
-              state.val = "failed"
-              raise CleanupFailure
-            }
+          { ..current.val, runner_image: environment.image, }
+        } else {
+          guard environments.val.is_empty() else {
+            raise InvalidConfiguration(
+              "A multi-environment provider requires a pinned assignment.",
+            )
           }
-          if current.val.linux_ci {
-            break
+          current.val
+        }
+        state.val = "busy"
+        if current.val.linux_ci {
+          @fs.write_file(
+            base.workspace_root + "/ci-consumed",
+            claimed.assignment.attempt_id,
+            create_mode=@fs.CreateNew,
+            permission=0o600,
+          )
+        }
+        (backend.execute)(
+          task_options,
+          claimed.assignment,
+          claimed.attempt_token,
+        ) catch {
+          InvalidConfiguration(message) => {
+            state.val = "failed"
+            raise InvalidConfiguration(message)
           }
-          // A completed job has consumed the prepared workspace. Replenish
-          // resources before advertising standby or accepting another claim.
-          state.val = "starting"
-          if backend.fresh_each_job {
-            prepared.val = false
+          _ => {
+            state.val = "failed"
+            raise CleanupFailure
           }
         }
+        if current.val.linux_ci {
+          break
+        }
+        // A completed job has consumed the prepared workspace. Replenish
+        // resources before advertising standby or accepting another claim.
+        state.val = "starting"
+        if backend.fresh_each_job {
+          prepared.val = false
+        }
+      } else {
+        @async.sleep(base.poll_ms)
       }
     }
     (backend.cleanup)()

@@ -44,31 +44,29 @@ pub let profile_module : @moonback.Module = Module(ctx => {
     } else {
       None
     }
-    match invalid {
-      Some(message) =>
-        res.send_html(
-          render_profile_settings(
-            asset_path_map,
-            user,
-            profile,
-            @web_context.request_form_token(req, "profile-settings"),
-            display_name,
-            time_zone,
-            Some(message),
-            false,
-          ),
-          status=400,
-          headers=@web_context.private_page_headers(),
-        )
-      None => {
-        @identity.update_profile(pool, user, display_name, preference)
-        res.send_void(
-          status=303,
-          headers=@web_context.private_page_headers(
-            location="/-/settings/profile?saved=1",
-          ),
-        )
-      }
+    if invalid is Some(message) {
+      res.send_html(
+        render_profile_settings(
+          asset_path_map,
+          user,
+          profile,
+          @web_context.request_form_token(req, "profile-settings"),
+          display_name,
+          time_zone,
+          Some(message),
+          false,
+        ),
+        status=400,
+        headers=@web_context.private_page_headers(),
+      )
+    } else {
+      @identity.update_profile(pool, user, display_name, preference)
+      res.send_void(
+        status=303,
+        headers=@web_context.private_page_headers(
+          location="/-/settings/profile?saved=1",
+        ),
+      )
     }
   })
 })

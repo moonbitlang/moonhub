@@ -413,17 +413,19 @@ fn render_merge_detail(
           }
         }
         b <+ "<nav class=\"mr-actions\" aria-label=\"Thread pagination\">"
-        let selection = match selected_discussion {
-          Some(id) => "discussion=\{id}"
-          None => "filter=\{discussion_filter}"
+        let selection = if selected_discussion is Some(id) {
+          "discussion=\{id}"
+        } else {
+          "filter=\{discussion_filter}"
         }
         if discussion_page > 1L {
           b <+
             "<a href=\"\{base}?version=\{version.to_string()}&amp;\{selection}&amp;discussion_page=\{(discussion_page - 1L).to_string()}\">Previous page</a>"
         }
-        let has_more = match selected_discussion {
-          Some(_) => discussions[0].reply_count > discussion_page * 50L
-          None => discussions.length() > 50
+        let has_more = if selected_discussion is Some(_) {
+          discussions[0].reply_count > discussion_page * 50L
+        } else {
+          discussions.length() > 50
         }
         if has_more {
           b <+
