@@ -154,7 +154,7 @@ try {
   server = spawn(join(root, '_build/native/debug/build/moonhub.exe'), [repos,
     '--assets', join(root, 'assets'), '--host', '127.0.0.1', '--port', port,
     '--root-user', 'browser-root', '--root-password', 'browser-test-password'], {
-    cwd: directory, env: { ...process.env, MOONHUB_DIFF_WORKER: join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'), DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail') },
+    cwd: directory, env: { ...process.env, MOONHUB_DIFF_WORKER: join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'), DB_PATH: database, MAIL_OUTBOX_DIR: join(directory, 'mail'), MOONHUB_SSH_PUBLIC_URL: 'ssh://git@ssh.example.test:2222' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.pipe(process.stderr);

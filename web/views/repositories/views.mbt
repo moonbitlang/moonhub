@@ -165,6 +165,52 @@ fn render_file_breadcrumbs(
 }
 
 ///|
+fn quote_shell_argument(value : String) -> String {
+  "'" + value.replace_all(old="'", new="'\\''") + "'"
+}
+
+///|
+async fn render_first_push(
+  pool : @database.Database,
+  repo : @domain.RepoId,
+  git_dir : String,
+  current_user : @domain.CurrentUser?,
+  clone_url : String?,
+) -> @moonback.Html {
+  let can_push = current_user is Some(actor) &&
+    @repository.can_access_repository(pool, actor, repo, @repository.Write)
+  let branch = if can_push && clone_url is Some(_) {
+    @gitops.default_ref(git_dir)
+  } else {
+    "HEAD"
+  }
+  Html(b => {
+    b <+
+      "<section class=\"repository-first-push content-stack\"><h2>This repository is empty</h2>"
+    if !can_push {
+      b <+ "<p>Waiting for the first commit.</p>"
+    } else if clone_url is Some(url) {
+      let refspec = if branch == "HEAD" {
+        "HEAD"
+      } else {
+        "HEAD:refs/heads/" + branch
+      }
+      let command = "git push -- \{quote_shell_argument(url)} \{quote_shell_argument(refspec)}"
+      b <+
+        "<p>Add a key in <a href=\"/-/settings/ssh-keys\">SSH keys</a>, then run this command from your local repository with a commit ready to push.</p>"
+      if branch == "HEAD" {
+        b <+ "<p>This command pushes your current local branch.</p>"
+      }
+      b <+ "<pre><code>\{command}</code></pre>"
+    } else {
+      b <+
+        "<p>Contact a site administrator to set up SSH access before pushing your first commit.</p>"
+    }
+    b <+ "</section>"
+  })
+}
+
+///|
 async fn render_tree(
   pool~ : @database.Database,
   root~ : String,
@@ -178,10 +224,10 @@ async fn render_tree(
   manager~ : Bool = false,
 ) -> @moonback.Html {
   let git_dir = repo.git_dir(root)
-  let entries = @gitops.list_tree(git_dir, rev, path) catch {
+  let (entries, unborn) = (@gitops.list_tree(git_dir, rev, path), false) catch {
     @gitops.GitCommandFailed(_) =>
       if path.is_empty() && @gitops.is_unborn_default_ref(git_dir, rev) {
-        []
+        ([], true)
       } else {
         raise @domain.NotFound(message="tree not found")
       }
@@ -196,12 +242,28 @@ async fn render_tree(
   } else {
     None
   }
-  let navigation = code_navigation(git_dir, rev)
-  let commits = @gitops.list_commits(git_dir, rev) catch { _ => [] }
+  let (controls, default_branch) = if unborn {
+    (@moonback.Html::raw(""), None)
+  } else {
+    let navigation = code_navigation(git_dir, rev)
+    (render_code_controls(repo, rev, navigation), navigation.default_branch)
+  }
+  let first_push = if unborn {
+    Some(render_first_push(pool, repo, git_dir, current_user, clone_url))
+  } else {
+    None
+  }
+  let commits = if unborn {
+    []
+  } else {
+    @gitops.list_commits(git_dir, rev) catch {
+      _ => []
+    }
+  }
   let head = commits.get(0)
   let actions = if path.is_empty() &&
     current_user is Some(actor) &&
-    navigation.default_branch is Some((branch, sha)) &&
+    default_branch is Some((branch, sha)) &&
     head is Some(commit) &&
     commit.hash == sha &&
     (rev == branch || rev == "HEAD" || rev == sha) {
@@ -251,13 +313,14 @@ async fn render_tree(
     repo.path(),
     asset_path_map,
     Html(b => {
-      b <+
-        "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls=render_code_controls(repo, rev, navigation))}"
+      b <+ "\{@web_ui.render_repo_nav(repo, rev, clone_url, controls~)}"
       if path.is_empty() {
         b <+ "<div class=\"repository-home\">"
       }
-      b <+
-        "<div class=\"content-stack repository-files\">\{render_file_breadcrumbs(repo, rev, path)}"
+      b <+ "<div class=\"content-stack repository-files\">"
+      if !unborn {
+        b <+ "\{render_file_breadcrumbs(repo, rev, path)}"
+      }
       b <+ "<div class=\"commit-summary\">"
       if head is Some(commit) {
         b <+
@@ -267,37 +330,41 @@ async fn render_tree(
       }
       b <+
         "<a class=\"commit-history\" href=\"\{@web_ui.repo_link(repo)}/commits?rev=\{@web_context.url_escape_path(rev)}\"><span class=\"ui-icon\" data-icon=\"history\" aria-hidden=\"true\"></span><span><strong>\{commit_count}</strong> \{if commit_count == "1" { "commit" } else { "commits" }}</span></a></div>"
-      b <+
-        "<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
-      if !path.is_empty() {
-        let parent = match path.rev_find("/") {
-          Some(index) =>
-            "\{base}/\{@web_context.url_escape_path(path[:index].to_owned())}"
-          None => base
-        }
+      if first_push is Some(first_push) {
+        b <+ "\{first_push}"
+      } else {
         b <+
-          "<tr><td><a href=\"\{parent}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
-      }
-      for entry in entries {
-        let child = if path.is_empty() {
-          entry.name
-        } else {
-          "\{path}/\{entry.name}"
+          "<div class=\"table-frame file-table\"><div class=\"table-scroll\"><table><thead><tr><th>Name</th><th class=\"numeric\" title=\"Bytes\">Size</th></tr></thead><tbody>"
+        if !path.is_empty() {
+          let parent = match path.rev_find("/") {
+            Some(index) =>
+              "\{base}/\{@web_context.url_escape_path(path[:index].to_owned())}"
+            None => base
+          }
+          b <+
+            "<tr><td><a href=\"\{parent}\" aria-label=\"Parent directory\">..</a></td><td></td></tr>"
         }
-        let child_url = @web_context.url_escape_path(child)
-        let href = if entry.kind == "tree" {
-          "\{base}/\{child_url}"
-        } else {
-          "\{@web_ui.repo_link(repo)}/blob/\{@web_context.url_escape_path(rev)}/\{child_url}"
+        for entry in entries {
+          let child = if path.is_empty() {
+            entry.name
+          } else {
+            "\{path}/\{entry.name}"
+          }
+          let child_url = @web_context.url_escape_path(child)
+          let href = if entry.kind == "tree" {
+            "\{base}/\{child_url}"
+          } else {
+            "\{@web_ui.repo_link(repo)}/blob/\{@web_context.url_escape_path(rev)}/\{child_url}"
+          }
+          let entry_size = entry.size.unwrap_or("-")
+          b <+
+            "<tr><td><a class=\"file-link\" href=\"\{href}\"><span class=\"ui-icon\" data-icon=\"\{if entry.kind == "tree" { "folder" } else { "file" }}\" aria-hidden=\"true\"></span>\{entry.name}</a></td><td class=\"muted numeric\">\{entry_size}</td></tr>"
         }
-        let entry_size = entry.size.unwrap_or("-")
-        b <+
-          "<tr><td><a class=\"file-link\" href=\"\{href}\"><span class=\"ui-icon\" data-icon=\"\{if entry.kind == "tree" { "folder" } else { "file" }}\" aria-hidden=\"true\"></span>\{entry.name}</a></td><td class=\"muted numeric\">\{entry_size}</td></tr>"
+        if entries.is_empty() {
+          b <+ "<tr><td colspan=\"2\" class=\"muted\">No files.</td></tr>"
+        }
+        b <+ "</tbody></table></div></div>"
       }
-      if entries.is_empty() {
-        b <+ "<tr><td colspan=\"2\" class=\"muted\">No files.</td></tr>"
-      }
-      b <+ "</tbody></table></div></div>"
       if readme is Some(entry) {
         b <+ "<section class=\"readme-preview\"><h2>\{entry.name}</h2>"
         if readme_body is Some(text) {

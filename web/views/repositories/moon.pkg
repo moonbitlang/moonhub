@@ -18,7 +18,6 @@ import {
 
 import {
   "hackwaly/moonhub/test_support",
-  "hackwaly/moonhub/web",
   "hackwaly/moonhub/web/testkit" @web_testkit,
   "moonbitlang/async/fs",
   "moonbitlang/async/http",

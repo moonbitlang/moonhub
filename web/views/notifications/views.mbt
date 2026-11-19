@@ -29,8 +29,14 @@ fn render_inbox(
         b <+
           "<form method=\"post\" action=\"/-/notifications/read-all\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"through\" value=\"\{through.to_string()}\"><button class=\"secondary-button\" type=\"submit\">Mark all read</button></form>"
       }
-      b <+
-        "<a class=\"secondary-link\" href=\"/-/notifications?settings=1\">Notification settings</a></div>"
+      if settings {
+        b <+
+          "<span class=\"secondary-link\" aria-current=\"page\">Notification settings</span>"
+      } else {
+        b <+
+          "<a class=\"secondary-link\" href=\"/-/notifications?settings=1\">Notification settings</a>"
+      }
+      b <+ "</div>"
       if !settings {
         b <+ "<nav class=\"page-tabs inbox-tabs\" aria-label=\"Inbox filter\">"
         for

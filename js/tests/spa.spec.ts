@@ -263,8 +263,9 @@ test('authenticated navigation creates and edits one issue, remounts editors and
   await page.locator('[name=title]').fill('Edited hydrated issue');
   await page.locator('.CodeMirror').evaluate((node: any) => node.CodeMirror.setValue('**Edited SPA description**'));
   await page.getByRole('combobox', { name: 'Assignee', exact: true }).selectOption('1');
+  const editPath = new URL(page.url()).pathname;
   let edits = 0;
-  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/alice/demo/issues/1/edit') edits++; });
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === editPath) edits++; });
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page).toHaveURL(/\/issues\/\d+$/);
   await expect(page.getByRole('heading', { name: /Edited hydrated issue/ })).toBeVisible();
@@ -331,7 +332,7 @@ test('repository creation refreshes pending status and replaces it with the read
   await expect(page).toHaveURL(statusPath);
   await expect(page.getByRole('status')).toHaveText('Preparing repository');
   await expect(page).toHaveURL(`/alice/${name}`, { timeout: 10000 });
-  await expect(page.getByText('No files.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'This repository is empty' })).toBeVisible();
   expect(statusReads).toBeGreaterThanOrEqual(3);
   expect(creations).toBe(1);
   expect(await page.evaluate(() => history.state.moonhub)).toBe(historyBefore + 1);
