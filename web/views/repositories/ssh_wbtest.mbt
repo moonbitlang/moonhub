@@ -107,7 +107,7 @@ async test "unborn repositories show first-push guidance according to SSH access
       assert_true(
         body.contains("This command pushes your current local branch."),
       )
-      assert_true(body.contains("git push -- &#39;\{url}&#39; &#39;HEAD&#39;"))
+      assert_true(body.contains("<code>git push -- '\{url}' 'HEAD'</code>"))
 
       let branch = "topic/it's-ready"
       let branch_ref = "refs/heads/\{branch}"
@@ -128,7 +128,7 @@ async test "unborn repositories show first-push guidance according to SSH access
       )
       assert_true(
         body.contains(
-          "git push -- &#39;\{url}&#39; &#39;HEAD:refs/heads/topic/it&#39;\\&#39;&#39;s-ready&#39;",
+          "<code>git push -- '\{url}' 'HEAD:refs/heads/topic/it'\\''s-ready'</code>",
         ),
       )
       ignore(
