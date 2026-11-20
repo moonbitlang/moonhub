@@ -5,34 +5,34 @@ fn cache_test_request(key : String, version~ : String = "v1") -> Json {
 
 ///|
 async fn cache_test_save(
-  c : Coordinator,
+  c : PipelineFixture,
   root : String,
   token : String,
   key : String,
   bytes : Bytes,
   version~ : String = "v1",
 ) -> Int64 {
-  let result = c.cache_rpc(
+  let result = c.results.cache_rpc(
     token,
     "CreateCacheEntry",
     cache_test_request(key, version~),
   )
   let (id, sig) = artifact_test_url(result, "signed_upload_url")
-  c.stage_artifact_block(root, id, sig, "YQ==", bytes)
-  c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+  c.results.stage_artifact_block(root, id, sig, "YQ==", bytes)
+  c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
   // The SDK can retry a completed single-PUT after its response was lost.
-  c.stage_artifact_block(root, id, sig, "YQ==", bytes)
-  c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+  c.results.stage_artifact_block(root, id, sig, "YQ==", bytes)
+  c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
   let finalized : Json = {
     "key": key,
     "version": version,
     "size_bytes": bytes.length().to_string(),
   }
-  assert_eq(c.cache_rpc(token, "FinalizeCacheEntryUpload", finalized), {
+  assert_eq(c.results.cache_rpc(token, "FinalizeCacheEntryUpload", finalized), {
     "ok": true,
     "entry_id": id.to_string(),
   })
-  assert_eq(c.cache_rpc(token, "FinalizeCacheEntryUpload", finalized), {
+  assert_eq(c.results.cache_rpc(token, "FinalizeCacheEntryUpload", finalized), {
     "ok": true,
     "entry_id": id.to_string(),
   })
@@ -44,7 +44,7 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
   with_protocol_fixture((c, pool, root, _, _, clock) => {
     let (a, grant) = artifact_test_start(c)
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("deps"),
@@ -65,10 +65,14 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
       ),
     )
     assert_true(
-      c.cache_rpc(grant.token, "CreateCacheEntry", cache_test_request("deps-a"))
+      c.results.cache_rpc(
+        grant.token,
+        "CreateCacheEntry",
+        cache_test_request("deps-a"),
+      )
       is { "ok": false, .. },
     )
-    let exact = c.cache_rpc(
+    let exact = c.results.cache_rpc(
       grant.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("deps-a"),
@@ -76,15 +80,18 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
     assert_eq(artifact_test_string(exact, "matched_key"), "deps-a")
     let (id, sig) = artifact_test_url(exact, "signed_download_url")
     assert_eq(id, first)
-    assert_eq(artifact_test_text(c.artifact_blob(root, id, sig)), "first")
-    let prefix = c.cache_rpc(grant.token, "GetCacheEntryDownloadURL", {
+    assert_eq(
+      artifact_test_text(c.results.artifact_blob(root, id, sig)),
+      "first",
+    )
+    let prefix = c.results.cache_rpc(grant.token, "GetCacheEntryDownloadURL", {
       "key": "miss",
       "version": "v1",
       "restore_keys": ["missing-", "deps-"],
     })
     assert_eq(artifact_test_string(prefix, "matched_key"), "deps-b")
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("deps", version="wrong"),
@@ -92,14 +99,18 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
       { "ok": false },
     )
     assert_eq(
-      c.artifact_rpc(grant.token, "ListArtifacts", artifact_test_request(a, {})),
+      c.results.artifact_rpc(
+        grant.token,
+        "ListArtifacts",
+        artifact_test_request(a, {}),
+      ),
       { "artifacts": [] },
     )
     pool.with_client(client => {
       assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
     })
     clock.val += 600001L
-    try c.authorize_artifact_blob(id, sig, "read") catch {
+    try c.results.authorize_artifact_blob(id, sig, "read") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -112,15 +123,15 @@ async test "cache RPC reserves immutable keys and selects exact version and orde
 async test "cache pending entries stay hidden and cancellation revokes upload and download grants" {
   with_protocol_fixture((c, pool, root, run, _, _) => {
     let (_, grant) = artifact_test_start(c)
-    let create = c.cache_rpc(
+    let create = c.results.cache_rpc(
       grant.token,
       "CreateCacheEntry",
       cache_test_request("pending"),
     )
     let (id, sig) = artifact_test_url(create, "signed_upload_url")
-    c.stage_artifact_block(root, id, sig, "YQ==", b"partial")
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"partial")
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("pending"),
@@ -129,7 +140,7 @@ async test "cache pending entries stay hidden and cancellation revokes upload an
     )
     try
       ignore(
-        c.cache_rpc(grant.token, "FinalizeCacheEntryUpload", {
+        c.results.cache_rpc(grant.token, "FinalizeCacheEntryUpload", {
           "key": "pending",
           "version": "v1",
           "size_bytes": "7",
@@ -141,12 +152,12 @@ async test "cache pending entries stay hidden and cancellation revokes upload an
     } noraise {
       _ => fail("published partial cache")
     }
-    c.cancel_run(
+    c.runtime.cancel_run(
       @identity.active_user_by_name(pool, "alice"),
       protocol_repo,
       run.number,
     )
-    try c.authorize_artifact_blob(id, sig, "write") catch {
+    try c.results.authorize_artifact_blob(id, sig, "write") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -167,7 +178,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
     )
     let second_provider = "d".repeat(64)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "second",
         second_provider,
@@ -176,7 +187,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       ),
     )
     let lease = "c".repeat(64)
-    let assignment = c
+    let assignment = c.runtime
       .claim(second_provider, {
         environments: None,
         version: 1,
@@ -186,15 +197,15 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       })
       .unwrap()
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(c.start(id, lease, 1, execution_id="f".repeat(32)))
-    let other = c.artifact_runtime(id, lease, {
+    ignore(c.runtime.start(id, lease, 1, execution_id="f".repeat(32)))
+    let other = c.results.artifact_runtime(id, lease, {
       version: 1,
       execution_id: "f".repeat(32),
       origin: "https://moonhub.example",
     })
     // Concurrent attempts in one trusted scope cannot reserve the same key.
     assert_true(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "CreateCacheEntry",
         cache_test_request("concurrent"),
@@ -202,20 +213,23 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       is { "ok": true, .. },
     )
     assert_true(
-      c.cache_rpc(
+      c.results.cache_rpc(
         other.token,
         "CreateCacheEntry",
         cache_test_request("concurrent"),
       )
       is { "ok": false, .. },
     )
-    let restored = c.cache_rpc(
+    let restored = c.results.cache_rpc(
       other.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("trusted"),
     )
     let (entry, sig) = artifact_test_url(restored, "signed_download_url")
-    assert_eq(artifact_test_text(c.artifact_blob(root, entry, sig)), "trusted")
+    assert_eq(
+      artifact_test_text(c.results.artifact_blob(root, entry, sig)),
+      "trusted",
+    )
     // Model a server-created MR snapshot. Test-only replacement deliberately
     // drops no immutability guard and does not alter trusted run context.
     pool.with_client(client => {
@@ -236,7 +250,7 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
     ignore(cache_test_save(c, root, other.token, "trusted", b"untrusted"))
     assert_eq(
       artifact_test_string(
-        c.cache_rpc(
+        c.results.cache_rpc(
           grant.token,
           "GetCacheEntryDownloadURL",
           cache_test_request("trusted"),
@@ -245,20 +259,23 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       ),
       "trusted",
     )
-    let trusted = c.cache_rpc(
+    let trusted = c.results.cache_rpc(
       grant.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("trusted"),
     )
     let (entry, sig) = artifact_test_url(trusted, "signed_download_url")
-    assert_eq(artifact_test_text(c.artifact_blob(root, entry, sig)), "trusted")
+    assert_eq(
+      artifact_test_text(c.results.artifact_blob(root, entry, sig)),
+      "trusted",
+    )
     let malicious : Json = {
       "key": "trusted",
       "version": "v1",
       "metadata": { "scope": "refs/heads/pipeline" },
     }
     assert_true(
-      c.cache_rpc(other.token, "CreateCacheEntry", malicious)
+      c.results.cache_rpc(other.token, "CreateCacheEntry", malicious)
       is { "ok": false, .. },
     )
     // Another MR can read the trusted fallback, but never this MR's cache.
@@ -279,14 +296,14 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
       )
     })
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         other.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("pr-only"),
       ),
       { "ok": false },
     )
-    let trusted_fallback = c.cache_rpc(
+    let trusted_fallback = c.results.cache_rpc(
       other.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("trusted"),
@@ -310,26 +327,32 @@ async test "cache scope is snapshotted and PR caches cannot poison trusted branc
 async test "cache capabilities cannot overwrite committed bytes and completed producer data stays readable" {
   with_protocol_fixture((c, pool, root, _, _, _) => {
     let (a, grant) = artifact_test_start(c)
-    let create = c.cache_rpc(
+    let create = c.results.cache_rpc(
       grant.token,
       "CreateCacheEntry",
       cache_test_request("shared"),
     )
     let (id, sig) = artifact_test_url(create, "signed_upload_url")
     assert_true(
-      c.cache_rpc(grant.token, "CreateCacheEntry", cache_test_request("shared"))
+      c.results.cache_rpc(
+        grant.token,
+        "CreateCacheEntry",
+        cache_test_request("shared"),
+      )
       is { "ok": true, .. },
     )
-    c.stage_artifact_block(root, id, sig, "YQ==", b"original")
-    c.commit_artifact_blocks(root, id, sig, ["YQ=="])
-    try c.stage_artifact_block(root, id, sig, "YQ==", b"changed") catch {
-      Conflict(_) => ()
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"original")
+    c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
+    try
+      c.results.stage_artifact_block(root, id, sig, "YQ==", b"changed")
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("replaced immutable cache bytes")
     }
     ignore(
-      c.cache_rpc(grant.token, "FinalizeCacheEntryUpload", {
+      c.results.cache_rpc(grant.token, "FinalizeCacheEntryUpload", {
         "key": "shared",
         "version": "v1",
         "size_bytes": "8",
@@ -348,45 +371,52 @@ async test "cache capabilities cannot overwrite committed bytes and completed pr
       exit_code: 0,
     }
     let producer = @protocol.parse_decimal(a.attempt_id).unwrap()
-    ignore(c.update_step(producer, attempt_secret, step))
+    ignore(c.runtime.update_step(producer, attempt_secret, step))
     ignore(
-      c.update_step(producer, attempt_secret, { ..step, state: "success", }),
+      c.runtime.update_step(producer, attempt_secret, {
+        ..step,
+        state: "success",
+      }),
     )
     ignore(
-      c.complete(
+      c.runtime.complete(
         @protocol.parse_decimal(a.attempt_id).unwrap(),
         attempt_secret,
         completion(),
       ),
     )
     let lease = "c".repeat(64)
-    let next = c
+    let next = c.runtime
       .claim(provider_secret, claim_request(id="2", secret=lease))
       .unwrap()
     let attempt = @protocol.parse_decimal(next.attempt_id).unwrap()
-    ignore(c.start(attempt, lease, 1, execution_id="f".repeat(32)))
-    let fresh = c.artifact_runtime(attempt, lease, {
+    ignore(c.runtime.start(attempt, lease, 1, execution_id="f".repeat(32)))
+    let fresh = c.results.artifact_runtime(attempt, lease, {
       version: 1,
       execution_id: "f".repeat(32),
       origin: "https://moonhub.example",
     })
-    let restored = c.cache_rpc(
+    let restored = c.results.cache_rpc(
       fresh.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("shared"),
     )
     let (_, read_sig) = artifact_test_url(restored, "signed_download_url")
     assert_eq(
-      artifact_test_text(c.artifact_blob(root, id, read_sig)),
+      artifact_test_text(c.results.artifact_blob(root, id, read_sig)),
       "original",
     )
     assert_true(
-      c.cache_rpc(fresh.token, "CreateCacheEntry", cache_test_request("shared"))
+      c.results.cache_rpc(
+        fresh.token,
+        "CreateCacheEntry",
+        cache_test_request("shared"),
+      )
       is { "ok": false, .. },
     )
     try
       ignore(
-        c.cache_rpc(
+        c.results.cache_rpc(
           grant.token,
           "GetCacheEntryDownloadURL",
           cache_test_request("shared"),
@@ -419,7 +449,7 @@ async test "cache eviction reclaims least recently used data and expiration free
     })
     ignore(cache_test_save(c, root, grant.token, "new", b"new"))
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("old"),
@@ -427,7 +457,7 @@ async test "cache eviction reclaims least recently used data and expiration free
       { "ok": false },
     )
     assert_true(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("recent"),
@@ -449,7 +479,7 @@ async test "cache eviction reclaims least recently used data and expiration free
       )
     })
     assert_eq(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("recent"),
@@ -457,7 +487,7 @@ async test "cache eviction reclaims least recently used data and expiration free
       { "ok": false },
     )
     ignore(cache_test_save(c, root, grant.token, "recent", b"replacement"))
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     pool.with_client(client => {
       assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
     })
@@ -487,7 +517,11 @@ async test "cache entry pressure evicts LRU and pending quota failure rolls evic
       )
     })
     assert_true(
-      c.cache_rpc(grant.token, "CreateCacheEntry", cache_test_request("next"))
+      c.results.cache_rpc(
+        grant.token,
+        "CreateCacheEntry",
+        cache_test_request("next"),
+      )
       is { "ok": true, .. },
     )
     pool.with_client(client => {
@@ -517,7 +551,7 @@ async test "cache entry pressure evicts LRU and pending quota failure rolls evic
     })
     try
       ignore(
-        c.cache_rpc(
+        c.results.cache_rpc(
           grant.token,
           "CreateCacheEntry",
           cache_test_request("rejected"),

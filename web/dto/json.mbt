@@ -1,5 +1,5 @@
 ///|
-pub fn secret_json(secret : @pipeline.RepositorySecret) -> Json {
+pub fn secret_json(secret : @runtime.RepositorySecret) -> Json {
   {
     "name": secret.name,
     "branch": secret.branch,
@@ -11,7 +11,7 @@ pub fn secret_json(secret : @pipeline.RepositorySecret) -> Json {
 }
 
 ///|
-pub fn variable_json(variable : @pipeline.RepositoryVariable) -> Json {
+pub fn variable_json(variable : @runtime.RepositoryVariable) -> Json {
   {
     "name": variable.name,
     "value": variable.value,
@@ -59,7 +59,7 @@ pub fn issue_json(issue : @collaboration.Issue) -> Json {
 }
 
 ///|
-pub fn run_json(run : @pipeline.Run) -> Json {
+pub fn run_json(run : @runtime.Run) -> Json {
   let status = match run.state {
     Queued => "queued"
     Running => "running"
@@ -82,7 +82,7 @@ pub fn run_json(run : @pipeline.Run) -> Json {
 }
 
 ///|
-pub fn conclusion_json(conclusion : @pipeline.Conclusion?) -> String {
+pub fn conclusion_json(conclusion : @runtime.Conclusion?) -> String {
   match conclusion {
     None => ""
     Some(Success) => "success"

@@ -13,7 +13,7 @@ async test "storage cutover preserves old artifacts and independent cache destin
         "two": { "type": "fs", "root": two },
       },
     })
-    let c = Coordinator::new(pool, storage=config, clock=original.clock)
+    let c = test_services(pool, storage=config, clock=original.clock)
     let (assignment, grant) = artifact_test_start(c)
     let cache = cache_test_save(
       c,
@@ -22,18 +22,18 @@ async test "storage cutover preserves old artifacts and independent cache destin
       "independent-cache",
       b"cache",
     )
-    let create = c.artifact_rpc(
+    let create = c.results.artifact_rpc(
       grant.token,
       "CreateArtifact",
       artifact_test_request(assignment, { "name": "cutover", "version": 4 }),
     )
     let (id, sig) = artifact_test_url(create, "signed_upload_url")
-    c.stage_artifact_block(root, id, sig, "YQ==", b"original")
-    c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"original")
+    c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
     let digest = "sha256:" +
       @crypto.bytes_to_hex_string(@crypto.sha256(b"original"))
     ignore(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "FinalizeArtifact",
         artifact_test_request(assignment, {
@@ -43,7 +43,7 @@ async test "storage cutover preserves old artifacts and independent cache destin
         }),
       ),
     )
-    let read = c.artifact_rpc(
+    let read = c.results.artifact_rpc(
       grant.token,
       "GetSignedArtifactURL",
       artifact_test_request(assignment, { "name": "cutover" }),
@@ -54,16 +54,12 @@ async test "storage cutover preserves old artifacts and independent cache destin
       "caches": "two",
       "backends": { "two": { "type": "fs", "root": two } },
     })
-    let restarted = Coordinator::new(
-      pool,
-      storage=changed,
-      clock=original.clock,
-    )
+    let restarted = test_services(pool, storage=changed, clock=original.clock)
     assert_eq(
-      artifact_test_text(restarted.artifact_blob(root, id, read_sig)),
+      artifact_test_text(restarted.results.artifact_blob(root, id, read_sig)),
       "original",
     )
-    let cached = restarted.cache_rpc(
+    let cached = restarted.results.cache_rpc(
       grant.token,
       "GetCacheEntryDownloadURL",
       cache_test_request("independent-cache"),
@@ -71,7 +67,9 @@ async test "storage cutover preserves old artifacts and independent cache destin
     let (cache_id, cache_sig) = artifact_test_url(cached, "signed_download_url")
     assert_eq(cache_id, cache)
     assert_eq(
-      artifact_test_text(restarted.artifact_blob(root, cache_id, cache_sig)),
+      artifact_test_text(
+        restarted.results.artifact_blob(root, cache_id, cache_sig),
+      ),
       "cache",
     )
     assert_false(@fs.readdir(two).is_empty())
@@ -93,7 +91,7 @@ async test "storage cutover preserves old artifacts and independent cache destin
         ),
       )
     })
-    restarted.cleanup_artifacts(root)
+    restarted.results.cleanup_artifacts(root)
     assert_true(@fs.readdir(one).is_empty())
     assert_eq(
       pool.with_client(client => {
@@ -111,13 +109,13 @@ async test "storage cutover preserves old artifacts and independent cache destin
 async test "cascade deletion retains storage cleanup intent and retries failed deletion" {
   with_protocol_fixture((c, pool, root, _, _, clock) => {
     let (a, grant) = artifact_test_start(c)
-    let create = c.artifact_rpc(
+    let create = c.results.artifact_rpc(
       grant.token,
       "CreateArtifact",
       artifact_test_request(a, { "name": "cascade", "version": 4 }),
     )
     let (id, sig) = artifact_test_url(create, "signed_upload_url")
-    c.stage_artifact_block(root, id, sig, "YQ==", b"partial")
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"partial")
     let key = pool.with_client(client => {
       (
         client
@@ -148,7 +146,7 @@ async test "cascade deletion retains storage cleanup intent and retries failed d
     // A namespace temporarily inaccessible to cleanup must retain its intent.
     @fs.rename(root + "/.pipeline-artifacts", root + "/blobs-offline")
     @fs.symlink(target=root + "/blobs-offline", root + "/.pipeline-artifacts")
-    try c.cleanup_artifacts(root) catch {
+    try c.results.cleanup_artifacts(root) catch {
       _ => ()
     } noraise {
       _ => fail("cleanup followed a replaced storage root")
@@ -164,7 +162,7 @@ async test "cascade deletion retains storage cleanup intent and retries failed d
     @fs.remove(root + "/.pipeline-artifacts")
     @fs.rename(root + "/blobs-offline", root + "/.pipeline-artifacts")
     clock.val += 60000L
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     assert_false(@fs.exists(artifact_directory(root, key)))
     assert_true(
       pool.with_client(client => {
@@ -181,22 +179,22 @@ async test "S3 live artifacts and caches remain readable after switching default
   }
   with_protocol_fixture((original, pool, root, _, _, clock) => {
     let config = @storage.Config::parse(@json.parse(value))
-    let c = Coordinator::new(pool, storage=config, clock=original.clock)
+    let c = test_services(pool, storage=config, clock=original.clock)
     let (a, grant) = artifact_test_start(c)
     let (id, sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "CreateArtifact",
         artifact_test_request(a, { "name": "remote", "version": 4 }),
       ),
       "signed_upload_url",
     )
-    c.stage_artifact_block(root, id, sig, "YQ==", b"remote-bytes")
-    c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"remote-bytes")
+    c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
     let hash = "sha256:" +
       @crypto.bytes_to_hex_string(@crypto.sha256(b"remote-bytes"))
     ignore(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "FinalizeArtifact",
         artifact_test_request(a, {
@@ -207,7 +205,7 @@ async test "S3 live artifacts and caches remain readable after switching default
       ),
     )
     let (_, read_sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "GetSignedArtifactURL",
         artifact_test_request(a, { "name": "remote" }),
@@ -222,11 +220,11 @@ async test "S3 live artifacts and caches remain readable after switching default
       b"cached-bytes",
     )
     assert_eq(
-      artifact_test_text(original.artifact_blob(root, id, read_sig)),
+      artifact_test_text(original.results.artifact_blob(root, id, read_sig)),
       "remote-bytes",
     )
     let (_, cache_sig) = artifact_test_url(
-      original.cache_rpc(
+      original.results.cache_rpc(
         grant.token,
         "GetCacheEntryDownloadURL",
         cache_test_request("remote-cache"),
@@ -234,7 +232,7 @@ async test "S3 live artifacts and caches remain readable after switching default
       "signed_download_url",
     )
     assert_eq(
-      artifact_test_text(original.artifact_blob(root, cache, cache_sig)),
+      artifact_test_text(original.results.artifact_blob(root, cache, cache_sig)),
       "cached-bytes",
     )
     assert_false(@fs.exists(root + "/.pipeline-artifacts"))
@@ -250,7 +248,7 @@ async test "S3 live artifacts and caches remain readable after switching default
         ]),
       )
     })
-    original.cleanup_artifacts(root)
+    original.results.cleanup_artifacts(root)
     assert_true(
       pool.with_client(client => {
         client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
@@ -285,7 +283,7 @@ async test "one unavailable backend does not block reclaiming another backend" {
         ),
       )
     })
-    try c.cleanup_artifacts(root) catch {
+    try c.results.cleanup_artifacts(root) catch {
       _ => ()
     } noraise {
       _ => fail("failed backend was reported as clean")
@@ -302,7 +300,7 @@ async test "one unavailable backend does not block reclaiming another backend" {
     })
     @fs.remove(root + "/bad-root/bad")
     clock.val += 60000L
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     assert_true(
       pool.with_client(client => {
         client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
@@ -340,7 +338,7 @@ async test "failed garbage batch yields to later healthy destinations and retrie
         ),
       )
     })
-    try c.cleanup_artifacts(root) catch {
+    try c.results.cleanup_artifacts(root) catch {
       _ => ()
     } noraise {
       _ => fail("failed batch was reported as clean")
@@ -348,7 +346,7 @@ async test "failed garbage batch yields to later healthy destinations and retrie
     assert_true(@fs.exists(root + "/healthy-root/healthy"))
     // Even when failed work is due again, older untried work must get a turn.
     clock.val += 60000L
-    ignore(c.cleanup_artifacts(root)) catch {
+    ignore(c.results.cleanup_artifacts(root)) catch {
       _ => ()
     }
     assert_false(@fs.exists(root + "/healthy-root/healthy"))
@@ -364,7 +362,7 @@ async test "failed garbage batch yields to later healthy destinations and retrie
     @fs.remove(root + "/offline-root")
     @fs.rename(root + "/offline-data", root + "/offline-root")
     clock.val += 60000L
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     assert_true(
       pool.with_client(client => {
         client.query_all("SELECT * FROM pipeline_blob_garbage").is_empty()
@@ -385,7 +383,7 @@ async test "failed artifact tombstone batch yields to later healthy storage" {
     let mut healthy_key = ""
     for i in 0..<101 {
       let (id, _) = artifact_test_url(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           grant.token,
           "CreateArtifact",
           artifact_test_request(a, {
@@ -425,14 +423,14 @@ async test "failed artifact tombstone batch yields to later healthy storage" {
         )
       })
     }
-    try c.cleanup_artifacts(root) catch {
+    try c.results.cleanup_artifacts(root) catch {
       _ => ()
     } noraise {
       _ => fail("failed batch was reported as clean")
     }
     assert_true(@fs.exists(root + "/healthy-root/" + healthy_key))
     clock.val += 60000L
-    ignore(c.cleanup_artifacts(root)) catch {
+    ignore(c.results.cleanup_artifacts(root)) catch {
       _ => ()
     }
     assert_false(@fs.exists(root + "/healthy-root/" + healthy_key))
@@ -448,7 +446,7 @@ async test "failed artifact tombstone batch yields to later healthy storage" {
     @fs.remove(root + "/offline-root")
     @fs.rename(root + "/offline-data", root + "/offline-root")
     clock.val += 60000L
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     assert_true(
       pool.with_client(client => {
         client.query_all("SELECT * FROM pipeline_artifact").is_empty()

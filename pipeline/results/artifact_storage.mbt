@@ -61,8 +61,8 @@ fn artifact_blob_access(
 }
 
 ///|
-pub fn Coordinator::authorize_artifact_blob(
-  self : Coordinator,
+pub fn Service::authorize_artifact_blob(
+  self : Service,
   id : Int64,
   sig : String,
   operation : String,
@@ -75,8 +75,8 @@ pub fn Coordinator::authorize_artifact_blob(
 }
 
 ///|
-pub async fn Coordinator::stage_artifact_block(
-  self : Coordinator,
+pub async fn Service::stage_artifact_block(
+  self : Service,
   root : String,
   id : Int64,
   sig : String,
@@ -110,7 +110,7 @@ pub async fn Coordinator::stage_artifact_block(
       }
       guard (row.get_name("state") : String) == "pending" ||
         (row.get_name("kind") : String) == "cache" else {
-        raise Conflict("artifact already committed")
+        raise @runtime.Conflict("artifact already committed")
       }
       ((row.get_name("storage_key") : String), blob_location(tx, id))
     })
@@ -157,7 +157,7 @@ pub async fn Coordinator::stage_artifact_block(
       tx => {
         let row = artifact_blob_access(tx, id, sig, "write", (self.clock)())
         guard (row.get_name("state") : String) == "pending" else {
-          raise Conflict("artifact already committed")
+          raise @runtime.Conflict("artifact already committed")
         }
         let run : Int64 = row.get_name("run_id")
         let total : Int64 = tx
@@ -250,8 +250,8 @@ pub async fn Coordinator::stage_artifact_block(
 }
 
 ///|
-pub async fn Coordinator::commit_artifact_blocks(
-  self : Coordinator,
+pub async fn Service::commit_artifact_blocks(
+  self : Service,
   root : String,
   id : Int64,
   sig : String,
@@ -288,7 +288,7 @@ pub async fn Coordinator::commit_artifact_blocks(
             return None
           }
           guard state == "pending" else {
-            raise Conflict("artifact commit already started")
+            raise @runtime.Conflict("artifact commit already started")
           }
           let files = blocks.map(block => {
             let entry = tx.query_opt(
@@ -367,7 +367,7 @@ pub async fn Coordinator::commit_artifact_blocks(
             params=[total, digest, id, generation],
           ) ==
           1 else {
-          raise Conflict("artifact commit superseded")
+          raise @runtime.Conflict("artifact commit superseded")
         }
         release_blob(tx, location, output_path)
       },
@@ -378,8 +378,8 @@ pub async fn Coordinator::commit_artifact_blocks(
 }
 
 ///|
-pub fn Coordinator::artifact_blob(
-  self : Coordinator,
+pub fn Service::artifact_blob(
+  self : Service,
   root : String,
   id : Int64,
   sig : String,
@@ -405,10 +405,7 @@ pub fn Coordinator::artifact_blob(
 }
 
 ///|
-pub async fn Coordinator::cleanup_artifacts(
-  self : Coordinator,
-  root : String,
-) -> Unit {
+pub async fn Service::cleanup_artifacts(self : Service, root : String) -> Unit {
   let now = (self.clock)()
   let mut complete = true
   let rows = self.pool.with_client(client => {
@@ -500,8 +497,8 @@ pub async fn Coordinator::cleanup_artifacts(
 }
 
 ///|
-pub fn Coordinator::user_artifact(
-  self : Coordinator,
+pub fn Service::user_artifact(
+  self : Service,
   root : String,
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
@@ -535,8 +532,8 @@ pub fn Coordinator::user_artifact(
 }
 
 ///|
-pub fn Coordinator::artifact_block_limit(
-  self : Coordinator,
+pub fn Service::artifact_block_limit(
+  self : Service,
   id : Int64,
   sig : String,
 ) -> Int32 raise {

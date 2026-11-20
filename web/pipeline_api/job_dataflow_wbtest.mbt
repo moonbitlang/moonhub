@@ -119,7 +119,7 @@ async test "real runner carries version outputs through conditional matrix build
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c.read_log_page(
+            let logs = c.runtime.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
@@ -132,7 +132,7 @@ async test "real runner carries version outputs through conditional matrix build
           assert_true(report.reported)
           if index < 3 {
             token = @identity.random_hex(32)
-            assignment = c
+            assignment = c.runtime
               .claim("a".repeat(64), {
                 environments: None,
                 version: 1,
@@ -146,18 +146,18 @@ async test "real runner carries version outputs through conditional matrix build
             }
           }
         }
-        let runs = @pipeline.list_runs(pool, actor, repo)
+        let runs = @runtime.list_runs(pool, actor, repo)
         assert_eq(runs.length(), 1)
-        assert_true(runs[0].conclusion is Some(@pipeline.Success))
+        assert_true(runs[0].conclusion is Some(@runtime.Success))
         assert_true(
-          @pipeline.list_jobs(pool, actor, repo, runs[0].number)
+          @runtime.list_jobs(pool, actor, repo, runs[0].number)
           .iter()
           .find_first(job => job.job_key == "skipped")
           .unwrap().conclusion
-          is Some(@pipeline.Skipped),
+          is Some(@runtime.Skipped),
         )
         assert_true(
-          c.claim("a".repeat(64), {
+          c.runtime.claim("a".repeat(64), {
             environments: None,
             version: 1,
             runner_os: None,
@@ -196,9 +196,9 @@ async test "real runner terminates a job after the shared output budget rejects 
       let mut token = lease
       for _ in 0..<8 {
         let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-        ignore(c.start(id, token, 1, execution_id="e".repeat(32)))
+        ignore(c.runtime.start(id, token, 1, execution_id="e".repeat(32)))
         ignore(
-          c.update_step(id, token, {
+          c.runtime.update_step(id, token, {
             version: 1,
             step_id: "produce",
             state: "running",
@@ -206,7 +206,7 @@ async test "real runner terminates a job after the shared output budget rejects 
           }),
         )
         ignore(
-          c.update_step(id, token, {
+          c.runtime.update_step(id, token, {
             version: 1,
             step_id: "produce",
             state: "success",
@@ -219,9 +219,9 @@ async test "real runner terminates a job after the shared output budget rejects 
           last_log_sequence: "0",
           outputs: { "first": "x".repeat(16300), "second": "y".repeat(16300) },
         }
-        assert_eq(c.complete(id, token, request).conclusion, "success")
+        assert_eq(c.runtime.complete(id, token, request).conclusion, "success")
         token = @identity.random_hex(32)
-        assignment = c
+        assignment = c.runtime
           .claim("a".repeat(64), {
             environments: None,
             version: 1,
@@ -257,10 +257,10 @@ async test "real runner terminates a job after the shared output budget rejects 
       })
       let repo : @domain.RepoId = { owner: "alice", name: "demo", }
       let actor = @identity.active_user_by_name(pool, "alice")
-      let runs = @pipeline.list_runs(pool, actor, repo)
-      assert_true(runs[0].state is @pipeline.Completed)
-      assert_true(runs[0].conclusion is Some(@pipeline.Failure))
-      let logs = c.read_log_page(
+      let runs = @runtime.list_runs(pool, actor, repo)
+      assert_true(runs[0].state is @runtime.Completed)
+      assert_true(runs[0].conclusion is Some(@runtime.Failure))
+      let logs = c.runtime.read_log_page(
           actor,
           repo,
           runs[0].number,

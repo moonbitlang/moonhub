@@ -1,0 +1,50 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline/results"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/pipeline/protocol",
+  "hackwaly/moonhub/pipeline/runtime",
+  "hackwaly/moonhub/storage",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub let maximum_artifact_block_bytes : Int32
+
+pub let maximum_artifact_blocks : Int32
+
+pub let maximum_artifact_bytes : Int64
+
+pub fn snapshot_cache_scope(@database.DbTransaction, @runtime.Run, Int64, source? : Int64) -> Unit raise
+
+// Errors
+
+// Types and methods
+pub struct ArtifactBlob {
+  id : Int64
+  size : Int64
+  digest : String
+  // private fields
+}
+pub async fn ArtifactBlob::with_reader(Self, async (@storage.Reader) -> Unit) -> Unit
+
+pub struct Service {
+  // private fields
+}
+pub fn Service::artifact_blob(Self, String, Int64, String) -> ArtifactBlob raise
+pub fn Service::artifact_block_limit(Self, Int64, String) -> Int32 raise
+pub fn Service::artifact_rpc(Self, String, String, @json.Json) -> @json.Json raise
+pub fn Service::artifact_runtime(Self, Int64, String, @protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime raise
+pub fn Service::authorize_artifact_blob(Self, Int64, String, String) -> Unit raise
+pub fn Service::cache_rpc(Self, String, String, @json.Json) -> @json.Json raise
+pub async fn Service::cleanup_artifacts(Self, String) -> Unit
+pub async fn Service::commit_artifact_blocks(Self, String, Int64, String, Array[String]) -> Unit
+pub fn Service::new(@database.Database, storage? : @storage.Config, clock? : () -> Int64) -> Self
+pub async fn Service::stage_artifact_block(Self, String, Int64, String, String, Bytes) -> Unit
+pub fn Service::user_artifact(Self, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> ArtifactBlob raise
+
+// Type aliases
+
+// Traits

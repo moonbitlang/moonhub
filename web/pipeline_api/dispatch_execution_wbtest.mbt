@@ -92,7 +92,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c.read_log_page(
+            let logs = c.runtime.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
@@ -105,7 +105,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
           assert_true(report.reported)
           if i == 0 {
             token = @identity.random_hex(32)
-            assignment = c
+            assignment = c.runtime
               .claim("a".repeat(64), {
                 environments: None,
                 version: 1,
@@ -117,9 +117,9 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
             assert_eq(assignment.job.id, "consume")
           }
         }
-        let runs = @pipeline.list_runs(pool, actor, repo)
+        let runs = @runtime.list_runs(pool, actor, repo)
         assert_eq(runs.length(), 1)
-        assert_true(runs[0].conclusion is Some(@pipeline.Success))
+        assert_true(runs[0].conclusion is Some(@runtime.Success))
       })
     },
     workflow~,

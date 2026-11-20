@@ -1,19 +1,19 @@
 ///|
 fn commit_workflow_status(
-  run : @pipeline.CommitWorkflowRun,
+  run : @runtime.CommitWorkflowRun,
 ) -> (String, String, String) {
   match run.conclusion {
-    Some(@pipeline.Success) => ("success", "check", "Passed")
-    Some(@pipeline.Failure) => ("failure", "x", "Failed")
-    Some(@pipeline.TimedOut) => ("failure", "x", "Timed out")
-    Some(@pipeline.Lost) => ("failure", "x", "Runner lost")
-    Some(@pipeline.Cancelled) => ("neutral", "ellipsis", "Cancelled")
-    Some(@pipeline.Skipped) => ("neutral", "ellipsis", "Skipped")
+    Some(@runtime.Success) => ("success", "check", "Passed")
+    Some(@runtime.Failure) => ("failure", "x", "Failed")
+    Some(@runtime.TimedOut) => ("failure", "x", "Timed out")
+    Some(@runtime.Lost) => ("failure", "x", "Runner lost")
+    Some(@runtime.Cancelled) => ("neutral", "ellipsis", "Cancelled")
+    Some(@runtime.Skipped) => ("neutral", "ellipsis", "Skipped")
     None =>
       match run.state {
-        @pipeline.Queued => ("pending", "circle-dot", "Queued")
-        @pipeline.Running => ("pending", "circle-dot", "Running")
-        @pipeline.Completed => ("neutral", "ellipsis", "Completed")
+        @runtime.Queued => ("pending", "circle-dot", "Queued")
+        @runtime.Running => ("pending", "circle-dot", "Running")
+        @runtime.Completed => ("neutral", "ellipsis", "Completed")
       }
   }
 }
@@ -21,7 +21,7 @@ fn commit_workflow_status(
 ///|
 fn render_commit_actions(
   repo : @domain.RepoId,
-  runs : Array[@pipeline.CommitWorkflowRun],
+  runs : Array[@runtime.CommitWorkflowRun],
 ) -> @moonback.Html {
   if runs.is_empty() {
     return Html(_ => ())
@@ -35,7 +35,7 @@ fn render_commit_actions(
     ("failure", "x", "Failed")
   } else if checks.iter().any(check => check.1.0 == "pending") {
     ("pending", "circle-dot", "In progress")
-  } else if runs.iter().any(run => run.conclusion is Some(@pipeline.Cancelled)) {
+  } else if runs.iter().any(run => run.conclusion is Some(@runtime.Cancelled)) {
     ("neutral", "ellipsis", "Cancelled")
   } else if passed > 0 {
     ("success", "check", "Passed")

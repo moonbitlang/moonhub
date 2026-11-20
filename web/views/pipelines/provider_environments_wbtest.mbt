@@ -1,7 +1,7 @@
 ///|
 async test "environment forms preserve authorization revisions defaults and invalid input" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, cookie) => {
-    let c = @pipeline.Coordinator::new(pool)
+    let c = @runtime.Coordinator::new(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     let provider = c.create_provider(
       admin,

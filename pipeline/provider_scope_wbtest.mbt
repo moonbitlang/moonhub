@@ -2,27 +2,57 @@
 async test "all-repository scope unblocks queued work and narrowing cancels unauthorized running work" {
   with_protocol_fixture((coordinator, pool, _, run, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
-    let current = coordinator.list_providers(admin)[0]
-    assert_eq(current.scope, AllRepositories)
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("selected"),
+      [],
+    )
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("all"),
+      [],
+    )
+    let current = coordinator.runtime.list_providers(admin)[0]
+    assert_eq(current.scope, @runtime.ProviderScope::parse("all"))
     assert_true(current.repositories.is_empty())
     assert_eq(current.name, provider.name)
     assert_eq(current.labels, ["linux", "self-hosted"])
-    let attempt = coordinator.claim(provider_secret, claim_request()).unwrap()
+    let attempt = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
     assert_eq(attempt.run_id, run.id.to_string())
     let id = @protocol.parse_decimal(attempt.attempt_id).unwrap()
-    assert_false(coordinator.start(id, attempt_secret, 1).cancel_requested)
-    assert_false(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [
-      protocol_repo,
-    ])
-    assert_false(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
-    assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
+    assert_false(
+      coordinator.runtime.start(id, attempt_secret, 1).cancel_requested,
+    )
+    assert_false(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("selected"),
+      [protocol_repo],
+    )
+    assert_false(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("selected"),
+      [],
+    )
     assert_true(
-      coordinator.claim(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    assert_true(
+      coordinator.runtime.claim(
         provider_secret,
         claim_request(id="2", secret="c".repeat(64)),
       )
@@ -37,7 +67,12 @@ async test "scope edits enforce administrator privileges and preserve old state 
     let admin = @identity.active_user_by_name(pool, "admin")
     let alice = @identity.active_user_by_name(pool, "alice")
     try
-      coordinator.set_provider_scope(alice, provider.id, AllRepositories, [])
+      coordinator.runtime.set_provider_scope(
+        alice,
+        provider.id,
+        @runtime.ProviderScope::parse("all"),
+        [],
+      )
     catch {
       @domain.Forbidden(_) => ()
       err => raise err
@@ -45,25 +80,45 @@ async test "scope edits enforce administrator privileges and preserve old state 
       _ => fail("non-admin expanded scope")
     }
     try
-      coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [
-        { owner: "alice", name: "missing", },
-      ])
+      coordinator.runtime.set_provider_scope(
+        admin,
+        provider.id,
+        @runtime.ProviderScope::parse("selected"),
+        [{ owner: "alice", name: "missing", }],
+      )
     catch {
       @domain.NotFound(_) => ()
       err => raise err
     } noraise {
       _ => fail("granted nonexistent repository")
     }
-    assert_eq(coordinator.list_providers(admin)[0].scope, SelectedRepositories)
-    assert_eq(coordinator.list_providers(admin)[0].repositories, ["alice/demo"])
-    coordinator.set_provider_paused(admin, provider.id, true)
-    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
-    assert_true(coordinator.list_providers(admin)[0].paused)
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.revoke_provider(admin, provider.id)
+    assert_eq(
+      coordinator.runtime.list_providers(admin)[0].scope,
+      @runtime.ProviderScope::parse("selected"),
+    )
+    assert_eq(coordinator.runtime.list_providers(admin)[0].repositories, [
+      "alice/demo",
+    ])
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("all"),
+      [],
+    )
+    assert_true(coordinator.runtime.list_providers(admin)[0].paused)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    coordinator.runtime.revoke_provider(admin, provider.id)
     for id in [provider.id, provider.id + 99L] {
       try
-        coordinator.set_provider_scope(admin, id, SelectedRepositories, [])
+        coordinator.runtime.set_provider_scope(
+          admin,
+          id,
+          @runtime.ProviderScope::parse("selected"),
+          [],
+        )
       catch {
         @domain.NotFound(_) => ()
         err => raise err
@@ -79,50 +134,58 @@ async test "scope is preserved by ordinary ensure and changed only with an expli
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let labels = ["self-hosted", "linux"]
-    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("all"),
+      [],
+    )
     assert_eq(
-      coordinator.ensure_provider(
+      coordinator.runtime.ensure_provider(
         admin,
         provider.name,
         provider_secret,
         labels,
         [],
       ).scope,
-      AllRepositories,
+      @runtime.ProviderScope::parse("all"),
     )
     assert_eq(
-      coordinator.ensure_provider(
+      coordinator.runtime.ensure_provider(
         admin,
         provider.name,
         provider_secret,
         labels,
         [protocol_repo],
-        scope=Some(SelectedRepositories),
+        scope=Some(@runtime.ProviderScope::parse("selected")),
       ).scope,
-      SelectedRepositories,
+      @runtime.ProviderScope::parse("selected"),
     )
-    let created = coordinator.create_provider(
+    let created = coordinator.runtime.create_provider(
       admin,
       "shared",
       "c".repeat(64),
       labels,
       [],
-      scope=AllRepositories,
+      scope=@runtime.ProviderScope::parse("all"),
     )
-    assert_eq(created.scope, AllRepositories)
-    let ensured = coordinator.ensure_provider(
+    assert_eq(created.scope, @runtime.ProviderScope::parse("all"))
+    let ensured = coordinator.runtime.ensure_provider(
       admin,
       "shared-ensure",
       "d".repeat(64),
       labels,
       [],
-      scope=Some(AllRepositories),
+      scope=Some(@runtime.ProviderScope::parse("all")),
     )
-    assert_eq(ensured.scope, AllRepositories)
+    assert_eq(ensured.scope, @runtime.ProviderScope::parse("all"))
     try
-      coordinator.set_provider_scope(admin, created.id, AllRepositories, [
-        protocol_repo,
-      ])
+      coordinator.runtime.set_provider_scope(
+        admin,
+        created.id,
+        @runtime.ProviderScope::parse("all"),
+        [protocol_repo],
+      )
     catch {
       @domain.BadRequest(_) => ()
       err => raise err
@@ -137,10 +200,15 @@ async test "queue diagnostics explain missing grants labels paused busy and rece
   with_protocol_fixture((coordinator, pool, root, run, provider, clock) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let key = "build"
-    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, run.number)[key],
-      NoAuthorizedProvider,
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("selected"),
+      [],
+    )
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, run.number)[key]
+      is NoAuthorizedProvider,
     )
     pool.with_client(client => {
       ignore(
@@ -150,35 +218,44 @@ async test "queue diagnostics explain missing grants labels paused busy and rece
         ),
       )
     })
-    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, run.number)[key],
-      NoMatchingLabels,
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("all"),
+      [],
     )
-    coordinator.set_provider_labels(admin, provider.id, [
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, run.number)[key]
+      is NoMatchingLabels,
+    )
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "moonhub-build",
     ])
-    coordinator.set_provider_paused(admin, provider.id, true)
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, run.number)[key],
-      ProvidersPaused,
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, run.number)[key]
+      is ProvidersPaused,
     )
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.set_provider_paused(admin, provider.id, false)
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, run.number)[key],
-      AwaitingClaim,
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
     )
-    assert_true(coordinator.list_providers(admin)[0].online)
-    clock.val += provider_contact_window_ms
-    assert_false(coordinator.list_providers(admin)[0].online)
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, run.number)[key],
-      NoRecentProviderContact,
+    coordinator.runtime.set_provider_paused(admin, provider.id, false)
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, run.number)[key]
+      is AwaitingClaim,
     )
-    let attempt = coordinator.claim(provider_secret, claim_request()).unwrap()
+    assert_true(coordinator.runtime.list_providers(admin)[0].online)
+    clock.val += 60000L
+    assert_false(coordinator.runtime.list_providers(admin)[0].online)
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, run.number)[key]
+      is NoRecentProviderContact,
+    )
+    let attempt = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(attempt.attempt_id).unwrap(),
         attempt_secret,
         1,
@@ -187,12 +264,14 @@ async test "queue diagnostics explain missing grants labels paused busy and rece
     let queued = create_run(
       pool, root, admin, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    assert_eq(
-      coordinator.queue_reasons(admin, protocol_repo, queued.number)[key],
-      ProvidersBusy,
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, protocol_repo, queued.number)[key]
+      is ProvidersBusy,
     )
     assert_true(
-      coordinator.queue_reasons(admin, protocol_repo, run.number).is_empty(),
+      coordinator.runtime
+      .queue_reasons(admin, protocol_repo, run.number)
+      .is_empty(),
     )
     pool.with_client(client => {
       ignore(
@@ -202,7 +281,7 @@ async test "queue diagnostics explain missing grants labels paused busy and rece
       )
     })
     assert_true(
-      coordinator.heartbeat(
+      coordinator.runtime.heartbeat(
         @protocol.parse_decimal(attempt.attempt_id).unwrap(),
         attempt_secret,
         1,
@@ -215,13 +294,13 @@ async test "queue diagnostics explain missing grants labels paused busy and rece
 async test "queue diagnostics remain authorized and distinguish dependency waiting" {
   with_dag_fixture((coordinator, pool, repo, run, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    let reasons = coordinator.queue_reasons(admin, repo, run.number)
-    assert_eq(reasons["test"], WaitingDependencies)
-    assert_eq(reasons["deploy"], WaitingDependencies)
-    assert_eq(reasons["build"], NoRecentProviderContact)
+    let reasons = coordinator.runtime.queue_reasons(admin, repo, run.number)
+    assert_true(reasons["test"] is WaitingDependencies)
+    assert_true(reasons["deploy"] is WaitingDependencies)
+    assert_true(reasons["build"] is NoRecentProviderContact)
     try
       ignore(
-        coordinator.queue_reasons(
+        coordinator.runtime.queue_reasons(
           @identity.active_user_by_name(pool, "bob"),
           repo,
           run.number,
@@ -240,9 +319,9 @@ async test "queue diagnostics remain authorized and distinguish dependency waiti
         ),
       )
     })
-    assert_eq(
-      coordinator.queue_reasons(admin, repo, run.number)["build"],
-      RequesterUnavailable,
+    assert_true(
+      coordinator.runtime.queue_reasons(admin, repo, run.number)["build"]
+      is RequesterUnavailable,
     )
   })
 }
@@ -251,52 +330,62 @@ async test "queue diagnostics remain authorized and distinguish dependency waiti
 async test "deployment ensure preserves administrator settings despite stale bootstrap configuration" {
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    coordinator.set_provider_scope(admin, provider.id, AllRepositories, [])
-    coordinator.set_provider_labels(admin, provider.id, [
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("all"),
+      [],
+    )
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "moonhub-build",
     ])
-    coordinator.set_provider_paused(admin, provider.id, true)
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
     for _ in 0..<2 {
-      let existing = coordinator.ensure_provider(
+      let existing = coordinator.runtime.ensure_provider(
         admin,
         provider.name,
         provider_secret,
         ["self-hosted", "linux", "old-label"],
         [{ owner: "missing", name: "old-repository", }],
-        scope=Some(SelectedRepositories),
+        scope=Some(@runtime.ProviderScope::parse("selected")),
         preserve_existing=true,
       )
       assert_eq(existing.id, provider.id)
-      assert_eq(existing.scope, AllRepositories)
+      assert_eq(existing.scope, @runtime.ProviderScope::parse("all"))
       assert_eq(existing.labels, ["linux", "moonhub-build", "self-hosted"])
       assert_true(existing.paused)
       assert_true(existing.repositories.is_empty())
     }
-    coordinator.set_provider_scope(admin, provider.id, SelectedRepositories, [])
-    let existing = coordinator.ensure_provider(
+    coordinator.runtime.set_provider_scope(
+      admin,
+      provider.id,
+      @runtime.ProviderScope::parse("selected"),
+      [],
+    )
+    let existing = coordinator.runtime.ensure_provider(
       admin,
       provider.name,
       provider_secret,
       ["self-hosted", "linux"],
       [protocol_repo],
-      scope=Some(AllRepositories),
+      scope=Some(@runtime.ProviderScope::parse("all")),
       preserve_existing=true,
     )
-    assert_eq(existing.scope, SelectedRepositories)
+    assert_eq(existing.scope, @runtime.ProviderScope::parse("selected"))
     assert_true(existing.repositories.is_empty())
-    let created = coordinator.ensure_provider(
+    let created = coordinator.runtime.ensure_provider(
       admin,
       "bootstrap",
       "c".repeat(64),
       ["self-hosted", "linux"],
       [protocol_repo],
-      scope=Some(SelectedRepositories),
+      scope=Some(@runtime.ProviderScope::parse("selected")),
       preserve_existing=true,
     )
     assert_eq(created.repositories, ["alice/demo"])
     assert_eq(created.labels, ["linux", "self-hosted"])
     try
-      coordinator.ensure_provider(
+      coordinator.runtime.ensure_provider(
         admin,
         provider.name,
         "d".repeat(64),
@@ -305,14 +394,14 @@ async test "deployment ensure preserves administrator settings despite stale boo
         preserve_existing=true,
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("preserve replaced credential")
     }
-    coordinator.revoke_provider(admin, provider.id)
+    coordinator.runtime.revoke_provider(admin, provider.id)
     try
-      coordinator.ensure_provider(
+      coordinator.runtime.ensure_provider(
         admin,
         provider.name,
         provider_secret,
@@ -321,7 +410,7 @@ async test "deployment ensure preserves administrator settings despite stale boo
         preserve_existing=true,
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("preserve resurrected revoked provider")

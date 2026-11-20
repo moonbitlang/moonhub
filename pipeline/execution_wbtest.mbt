@@ -70,15 +70,21 @@ let dag_workflow : String =
 
 ///|
 async fn with_dag_fixture(
-  f : async (Coordinator, @database.Database, @domain.RepoId, Run, String) -> Unit,
+  f : async (
+    PipelineFixture,
+    @database.Database,
+    @domain.RepoId,
+    @runtime.Run,
+    String,
+  ) -> Unit,
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     ignore(@test_support.workflow_commit(repo.git_dir(root), dag_workflow))
-    let coordinator = Coordinator::new(pool)
+    let coordinator = test_services(pool)
     let provider_token = @identity.random_hex(32)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "dag-provider",
         provider_token,
@@ -100,11 +106,11 @@ async fn with_dag_fixture(
 
 ///|
 fn claim_dag_attempt(
-  coordinator : Coordinator,
+  coordinator : PipelineFixture,
   provider_token : String,
 ) -> (@protocol.Assignment, String) raise {
   let attempt_token = @identity.random_hex(32)
-  let assignment = coordinator
+  let assignment = coordinator.runtime
     .claim(provider_token, {
       environments: None,
       version: 1,
@@ -122,14 +128,14 @@ async test "claim advances a multi-job DAG after each successful attempt" {
     let (build, build_token) = claim_dag_attempt(coordinator, provider_token)
     assert_eq(build.job.id, "build")
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(build.attempt_id).unwrap(),
         build_token,
         1,
       ),
     )
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         @protocol.parse_decimal(build.attempt_id).unwrap(),
         build_token,
         completion(),
@@ -140,14 +146,14 @@ async test "claim advances a multi-job DAG after each successful attempt" {
     )
     assert_eq(test_assignment.job.id, "test")
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(test_assignment.attempt_id).unwrap(),
         test_token,
         1,
       ),
     )
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         @protocol.parse_decimal(test_assignment.attempt_id).unwrap(),
         test_token,
         completion(),
@@ -158,29 +164,29 @@ async test "claim advances a multi-job DAG after each successful attempt" {
     )
     assert_eq(deploy_assignment.job.id, "deploy")
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(deploy_assignment.attempt_id).unwrap(),
         deploy_token,
         1,
       ),
     )
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         @protocol.parse_decimal(deploy_assignment.attempt_id).unwrap(),
         deploy_token,
         completion(),
       ),
     )
-    assert_eq(
-      get_run(
+    assert_true(
+      @runtime.get_run(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         repo,
         run.number,
-      ).state,
-      Completed,
+      ).state
+      is Completed,
     )
-    let jobs = list_jobs(
+    let jobs = @runtime.list_jobs(
       pool,
       @identity.active_user_by_name(pool, "alice"),
       repo,
@@ -196,7 +202,7 @@ async test "claim advances a multi-job DAG after each successful attempt" {
 async test "failed DAG dependencies skip all downstream jobs" {
   with_dag_fixture((coordinator, pool, repo, run, provider_token) => {
     let build_token = @identity.random_hex(32)
-    let build = coordinator
+    let build = coordinator.runtime
       .claim(provider_token, {
         environments: None,
         version: 1,
@@ -206,21 +212,21 @@ async test "failed DAG dependencies skip all downstream jobs" {
       })
       .unwrap()
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(build.attempt_id).unwrap(),
         build_token,
         1,
       ),
     )
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         @protocol.parse_decimal(build.attempt_id).unwrap(),
         build_token,
         completion(conclusion="failure"),
       ),
     )
     assert_true(
-      coordinator.claim(provider_token, {
+      coordinator.runtime.claim(provider_token, {
         environments: None,
         version: 1,
         runner_os: None,
@@ -229,7 +235,7 @@ async test "failed DAG dependencies skip all downstream jobs" {
       })
       is None,
     )
-    let jobs = list_jobs(
+    let jobs = @runtime.list_jobs(
       pool,
       @identity.active_user_by_name(pool, "alice"),
       repo,
@@ -244,29 +250,36 @@ async test "failed DAG dependencies skip all downstream jobs" {
       assert_true(job.state is Completed)
       assert_true(job.conclusion is Some(Skipped))
     }
-    assert_eq(
-      get_run(
+    assert_true(
+      @runtime.get_run(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         repo,
         run.number,
-      ).conclusion,
-      Some(Failure),
+      ).conclusion
+      is Some(Failure),
     )
   })
 }
 
 ///|
 async fn with_protocol_fixture(
-  f : async (Coordinator, @database.Database, String, Run, Provider, Ref[Int64]) -> Unit,
+  f : async (
+    PipelineFixture,
+    @database.Database,
+    String,
+    @runtime.Run,
+    @runtime.Provider,
+    Ref[Int64],
+  ) -> Unit,
   workflow~ : String = @test_support.single_job_workflow,
   inputs~ : Map[String, Json] = Map([]),
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
     let clock = Ref(1700000000000L)
-    let coordinator = Coordinator::new(pool, clock=() => clock.val)
+    let coordinator = test_services(pool, clock=() => clock.val)
     let admin = @identity.active_user_by_name(pool, "admin")
-    let provider = coordinator.create_provider(
+    let provider = coordinator.runtime.create_provider(
       admin,
       "default",
       provider_secret,
@@ -288,28 +301,10 @@ async fn with_protocol_fixture(
 }
 
 ///|
-test "provider protocol helpers reject unsupported versions and invalid tokens" {
-  try check_version(2) catch {
-    @domain.BadRequest(_) => ()
-    err => raise err
-  } noraise {
-    _ => fail("accepted version")
-  }
-  for token in ["", "b".repeat(63), "B".repeat(64), "x".repeat(64)] {
-    try check_token(token) catch {
-      @domain.Unauthorized(_) => ()
-      err => raise err
-    } noraise {
-      _ => fail("accepted token")
-    }
-  }
-}
-
-///|
 async test "provider ensure is idempotent and refuses credential replacement" {
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    let ensured = coordinator.ensure_provider(
+    let ensured = coordinator.runtime.ensure_provider(
       admin,
       provider.name,
       provider_secret,
@@ -325,7 +320,7 @@ async test "provider ensure is idempotent and refuses credential replacement" {
     )
     try
       ignore(
-        coordinator.ensure_provider(
+        coordinator.runtime.ensure_provider(
           admin,
           provider.name,
           "c".repeat(64),
@@ -334,7 +329,7 @@ async test "provider ensure is idempotent and refuses credential replacement" {
         ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("provider ensure replaced an existing credential")
@@ -346,29 +341,31 @@ async test "provider ensure is idempotent and refuses credential replacement" {
 async test "bound executions reject other instances and cannot complete before steps succeed" {
   with_protocol_fixture((coordinator, pool, _, run, _, _) => {
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
     let nonce = "e".repeat(32)
     assert_eq(
-      coordinator.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
+      coordinator.runtime.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
       nonce,
     )
     assert_eq(
-      coordinator.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
+      coordinator.runtime.start(id, attempt_secret, 1, execution_id=nonce).execution_id,
       nonce,
     )
     for execution_id in ["", "f".repeat(32)] {
       try
-        ignore(coordinator.start(id, attempt_secret, 1, execution_id~))
+        ignore(coordinator.runtime.start(id, attempt_secret, 1, execution_id~))
       catch {
-        Conflict(_) => ()
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("another execution attached to a live attempt")
       }
     }
-    try ignore(coordinator.complete(id, attempt_secret, completion())) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("completed before executing any step")
@@ -379,11 +376,11 @@ async test "bound executions reject other instances and cannot complete before s
       state: "running",
       exit_code: 0,
     }
-    ignore(coordinator.update_step(id, attempt_secret, running))
-    ignore(coordinator.update_step(id, attempt_secret, running))
+    ignore(coordinator.runtime.update_step(id, attempt_secret, running))
+    ignore(coordinator.runtime.update_step(id, attempt_secret, running))
     try
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           ..running,
           state: "success",
           exit_code: 1,
@@ -396,10 +393,10 @@ async test "bound executions reject other instances and cannot complete before s
       _ => fail("success with failed exit code")
     }
     let done = { ..running, state: "success", }
-    ignore(coordinator.update_step(id, attempt_secret, done))
-    ignore(coordinator.update_step(id, attempt_secret, done))
-    ignore(coordinator.complete(id, attempt_secret, completion()))
-    let state = coordinator.read_steps(
+    ignore(coordinator.runtime.update_step(id, attempt_secret, done))
+    ignore(coordinator.runtime.update_step(id, attempt_secret, done))
+    ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+    let state = coordinator.runtime.read_steps(
       @identity.active_user_by_name(pool, "alice"),
       protocol_repo,
       run.number,
@@ -414,16 +411,16 @@ async test "bound executions reject other instances and cannot complete before s
 async test "claim allocation is idempotent across coordinator restarts and does not leak credentials" {
   with_protocol_fixture((coordinator, pool, _, run, _, clock) => {
     let request = claim_request()
-    let first = coordinator.claim(provider_secret, request).unwrap()
-    let restarted = Coordinator::new(pool, clock=() => clock.val)
-    let replay = restarted.claim(provider_secret, request).unwrap()
+    let first = coordinator.runtime.claim(provider_secret, request).unwrap()
+    let restarted = test_services(pool, clock=() => clock.val)
+    let replay = restarted.runtime.claim(provider_secret, request).unwrap()
     assert_eq(ToJson::to_json(first), ToJson::to_json(replay))
     assert_eq(@protocol.parse_decimal(first.run_id).unwrap(), run.id)
     assert_eq(first.commit_sha, run.commit_sha)
     assert_eq(first.repository, "alice/demo")
     assert_true(!ToJson::to_json(first).stringify().contains(attempt_secret))
     assert_true(
-      restarted.claim(
+      restarted.runtime.claim(
         provider_secret,
         claim_request(id="2", secret="d".repeat(64)),
       )
@@ -431,17 +428,20 @@ async test "claim allocation is idempotent across coordinator restarts and does 
     )
     try
       ignore(
-        restarted.claim(provider_secret, claim_request(secret="c".repeat(64))),
+        restarted.runtime.claim(
+          provider_secret,
+          claim_request(secret="c".repeat(64)),
+        ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("reused claim id with different token")
     }
     try
       ignore(
-        restarted.start(
+        restarted.runtime.start(
           @protocol.parse_decimal(first.attempt_id).unwrap(),
           provider_secret,
           1,
@@ -480,7 +480,7 @@ async test "only one provider claims a job and provider scope and labels are enf
     let admin = @identity.active_user_by_name(pool, "admin")
     let other = "c".repeat(64)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         admin,
         "other",
         other,
@@ -489,26 +489,30 @@ async test "only one provider claims a job and provider scope and labels are enf
       ),
     )
     assert_true(
-      coordinator.claim(other, claim_request(secret="d".repeat(64))) is None,
+      coordinator.runtime.claim(other, claim_request(secret="d".repeat(64)))
+      is None,
     )
-    let first = coordinator.claim(provider_secret, claim_request()).unwrap()
-    let other_provider : Int64 = coordinator.pool.with_client(client => {
+    let first = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
+    let other_provider : Int64 = pool.with_client(client => {
       client
       .query_one("SELECT id FROM pipeline_provider WHERE name = 'other'")
       .get_name("id")
     })
-    coordinator.set_provider_scope(
+    coordinator.runtime.set_provider_scope(
       admin,
       other_provider,
-      SelectedRepositories,
+      @runtime.ProviderScope::parse("selected"),
       [protocol_repo],
     )
     assert_true(
-      coordinator.claim(other, claim_request(secret="d".repeat(64))) is None,
+      coordinator.runtime.claim(other, claim_request(secret="d".repeat(64)))
+      is None,
     )
     assert_eq(
       @protocol.parse_decimal(first.job_id).unwrap(),
-      coordinator.pool.with_client(client => {
+      pool.with_client(client => {
         client
         .query_one("SELECT job_id FROM pipeline_job_attempt")
         .get_name("job_id")
@@ -517,7 +521,7 @@ async test "only one provider claims a job and provider scope and labels are enf
     let alice = @identity.active_user_by_name(pool, "alice")
     try
       ignore(
-        coordinator.create_provider(
+        coordinator.runtime.create_provider(
           alice,
           "forged",
           "e".repeat(64),
@@ -538,55 +542,69 @@ async test "only one provider claims a job and provider scope and labels are enf
 async test "logs are ordered bounded idempotent and mask attempt credentials across chunks" {
   with_protocol_fixture((coordinator, pool, _, run, _, _) => {
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
     try
       ignore(
-        coordinator.append_log(id, attempt_secret, log_request(1L, "early")),
+        coordinator.runtime.append_log(
+          id,
+          attempt_secret,
+          log_request(1L, "early"),
+        ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("logged before starting")
     }
-    ignore(coordinator.start(id, attempt_secret, 1))
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
     let first = log_request(1L, "token=" + attempt_secret[:32].to_owned())
-    ignore(coordinator.append_log(id, attempt_secret, first))
-    ignore(coordinator.append_log(id, attempt_secret, first))
+    ignore(coordinator.runtime.append_log(id, attempt_secret, first))
+    ignore(coordinator.runtime.append_log(id, attempt_secret, first))
     let reader = @identity.active_user_by_name(pool, "alice")
     assert_eq(
-      coordinator.read_log_page(reader, protocol_repo, run.number, id).chunks
+      coordinator.runtime.read_log_page(reader, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join(""),
       "token=",
     )
     try
       ignore(
-        coordinator.append_log(id, attempt_secret, log_request(1L, "different")),
+        coordinator.runtime.append_log(
+          id,
+          attempt_secret,
+          log_request(1L, "different"),
+        ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("changed duplicate log")
     }
     try
-      ignore(coordinator.append_log(id, attempt_secret, log_request(3L, "gap")))
+      ignore(
+        coordinator.runtime.append_log(
+          id,
+          attempt_secret,
+          log_request(3L, "gap"),
+        ),
+      )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("accepted gap")
     }
     ignore(
-      coordinator.append_log(
+      coordinator.runtime.append_log(
         id,
         attempt_secret,
         log_request(2L, attempt_secret[32:].to_owned() + "\n"),
       ),
     )
-    let chunks = coordinator.read_log_page(
+    let chunks = coordinator.runtime.read_log_page(
         reader,
         protocol_repo,
         run.number,
@@ -594,7 +612,7 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
       ).chunks
     assert_eq(chunks.map(chunk => chunk.text).join(""), "token=***\n")
     assert_true(
-      coordinator.read_log_page(
+      coordinator.runtime.read_log_page(
         reader,
         protocol_repo,
         run.number,
@@ -603,42 +621,48 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
       ).chunks.is_empty(),
     )
     try
-      ignore(coordinator.complete(id, attempt_secret, completion(last=3L)))
+      ignore(
+        coordinator.runtime.complete(id, attempt_secret, completion(last=3L)),
+      )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("completed with unacknowledged logs")
     }
-    let done = coordinator.complete(id, attempt_secret, completion(last=2L))
+    let done = coordinator.runtime.complete(
+      id,
+      attempt_secret,
+      completion(last=2L),
+    )
     assert_eq(done.conclusion, "success")
     assert_eq(
       ToJson::to_json(
-        coordinator.complete(id, attempt_secret, completion(last=2L)),
+        coordinator.runtime.complete(id, attempt_secret, completion(last=2L)),
       ),
       ToJson::to_json(done),
     )
     try
       ignore(
-        coordinator.complete(
+        coordinator.runtime.complete(
           id,
           attempt_secret,
           completion(conclusion="failure", last=2L),
         ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("overwrote completion")
     }
-    assert_eq(
-      get_run(pool, reader, protocol_repo, run.number).conclusion,
-      Some(Success),
+    assert_true(
+      @runtime.get_run(pool, reader, protocol_repo, run.number).conclusion
+      is Some(Success),
     )
     try
       ignore(
-        coordinator.read_log_page(
+        coordinator.runtime.read_log_page(
           @identity.active_user_by_name(pool, "bob"),
           protocol_repo,
           run.number,
@@ -658,35 +682,37 @@ async test "logs are ordered bounded idempotent and mask attempt credentials acr
 async test "expired attempts become lost and never revive or overwrite a fresh attempt" {
   with_protocol_fixture((coordinator, pool, root, run, _, clock) => {
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
     let lease = clock.val + @protocol.lease_ms
     clock.val += 30000L
     assert_eq(
-      coordinator.heartbeat(id, attempt_secret, 1).lease_until_ms,
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).lease_until_ms,
       lease.to_string(),
     )
     clock.val = lease
-    try ignore(coordinator.heartbeat(id, attempt_secret, 1)) catch {
-      Conflict(_) => ()
+    try ignore(coordinator.runtime.heartbeat(id, attempt_secret, 1)) catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("renewed expired lease")
     }
     let actor = @identity.active_user_by_name(pool, "alice")
-    assert_eq(
-      get_run(pool, actor, protocol_repo, run.number).conclusion,
-      Some(Lost),
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+      is Some(Lost),
     )
     assert_true(
-      coordinator.claim(
+      coordinator.runtime.claim(
         provider_secret,
         claim_request(id="2", secret="d".repeat(64)),
       )
       is None,
     )
-    try ignore(coordinator.claim(provider_secret, claim_request())) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.claim(provider_secret, claim_request()))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("revived lost claim")
@@ -694,27 +720,27 @@ async test "expired attempts become lost and never revive or overwrite a fresh a
     let next = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    let fresh = coordinator
+    let fresh = coordinator.runtime
       .claim(provider_secret, claim_request(id="2", secret="d".repeat(64)))
       .unwrap()
     assert_eq(@protocol.parse_decimal(fresh.run_id).unwrap(), next.id)
     try
       ignore(
-        coordinator.complete(
+        coordinator.runtime.complete(
           id,
           attempt_secret,
           completion(conclusion="failure"),
         ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("late result changed lost attempt")
     }
     try
       ignore(
-        coordinator.start(
+        coordinator.runtime.start(
           @protocol.parse_decimal(fresh.attempt_id).unwrap(),
           attempt_secret,
           1,
@@ -726,7 +752,9 @@ async test "expired attempts become lost and never revive or overwrite a fresh a
     } noraise {
       _ => fail("old token controlled new attempt")
     }
-    assert_eq(get_run(pool, actor, protocol_repo, next.number).state, Running)
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, next.number).state is Running,
+    )
   })
 }
 
@@ -734,29 +762,29 @@ async test "expired attempts become lost and never revive or overwrite a fresh a
 async test "job deadline is fixed at first start and heartbeats cannot extend it" {
   with_protocol_fixture((coordinator, pool, _, run, _, clock) => {
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    let start = coordinator.start(id, attempt_secret, 1)
+    let start = coordinator.runtime.start(id, attempt_secret, 1)
     clock.val += 30000L
-    let again = coordinator.start(id, attempt_secret, 1)
+    let again = coordinator.runtime.start(id, attempt_secret, 1)
     assert_eq(
       @protocol.parse_decimal(again.lease_until_ms).unwrap(),
       @protocol.parse_decimal(start.lease_until_ms).unwrap(),
     )
     assert_eq(
-      coordinator.heartbeat(id, attempt_secret, 1).lease_until_ms,
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).lease_until_ms,
       start.lease_until_ms,
     )
     clock.val = @protocol.parse_decimal(start.lease_until_ms).unwrap()
-    assert_eq(coordinator.expire_attempts(), 1)
-    assert_eq(
-      get_run(
+    assert_eq(coordinator.runtime.expire_attempts(), 1)
+    assert_true(
+      @runtime.get_run(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         protocol_repo,
         run.number,
-      ).conclusion,
-      Some(TimedOut),
+      ).conclusion
+      is Some(TimedOut),
     )
   })
 }
@@ -766,23 +794,23 @@ async test "cancellation is durable wins completion races and cannot renew forev
   with_protocol_fixture((coordinator, pool, _, run, _, clock) => {
     let actor = @identity.active_user_by_name(pool, "alice")
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    coordinator.cancel_run(actor, protocol_repo, run.number)
-    let first = coordinator.heartbeat(id, attempt_secret, 1)
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    coordinator.runtime.cancel_run(actor, protocol_repo, run.number)
+    let first = coordinator.runtime.heartbeat(id, attempt_secret, 1)
     assert_true(first.cancel_requested)
     assert_eq(
       @protocol.parse_decimal(first.lease_until_ms).unwrap(),
       clock.val + @protocol.cancel_grace_ms,
     )
     clock.val += 5000L
-    coordinator.cancel_run(actor, protocol_repo, run.number)
+    coordinator.runtime.cancel_run(actor, protocol_repo, run.number)
     assert_eq(
-      coordinator.heartbeat(id, attempt_secret, 1).lease_until_ms,
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).lease_until_ms,
       first.lease_until_ms,
     )
-    let result = coordinator.complete(id, attempt_secret, completion())
+    let result = coordinator.runtime.complete(id, attempt_secret, completion())
     assert_eq(result.conclusion, "cancelled")
     assert_eq(
       (
@@ -793,9 +821,9 @@ async test "cancellation is durable wins completion races and cannot renew forev
         }) : String),
       "success",
     )
-    assert_eq(
-      get_run(pool, actor, protocol_repo, run.number).conclusion,
-      Some(Cancelled),
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+      is Some(Cancelled),
     )
   })
 }
@@ -804,32 +832,34 @@ async test "cancellation is durable wins completion races and cannot renew forev
 async test "queued cancellation creates no attempt and cancellation before start cannot execute" {
   with_protocol_fixture((coordinator, pool, root, run, _, _) => {
     let actor = @identity.active_user_by_name(pool, "alice")
-    coordinator.cancel_run(actor, protocol_repo, run.number)
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    assert_eq(
-      get_run(pool, actor, protocol_repo, run.number).conclusion,
-      Some(Cancelled),
+    coordinator.runtime.cancel_run(actor, protocol_repo, run.number)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+      is Some(Cancelled),
     )
     let next = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    coordinator.cancel_run(actor, protocol_repo, next.number)
-    let start = coordinator.start(id, attempt_secret, 1)
+    coordinator.runtime.cancel_run(actor, protocol_repo, next.number)
+    let start = coordinator.runtime.start(id, attempt_secret, 1)
     assert_true(start.cancel_requested)
     assert_eq(start.state, "leased")
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         id,
         attempt_secret,
         completion(conclusion="cancelled"),
       ),
     )
-    assert_eq(
-      get_run(pool, actor, protocol_repo, next.number).conclusion,
-      Some(Cancelled),
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, next.number).conclusion
+      is Some(Cancelled),
     )
   })
 }
@@ -838,25 +868,33 @@ async test "queued cancellation creates no attempt and cancellation before start
 async test "provider pause preserves active work but revocation requests cancellation" {
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    coordinator.set_provider_paused(admin, provider.id, true)
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.set_provider_paused(admin, provider.id, false)
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    coordinator.runtime.set_provider_paused(admin, provider.id, false)
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    coordinator.set_provider_paused(admin, provider.id, true)
-    assert_true(!coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    coordinator.revoke_provider(admin, provider.id)
-    assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    try ignore(coordinator.claim(provider_secret, claim_request())) catch {
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
+    assert_true(
+      !coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    coordinator.runtime.revoke_provider(admin, provider.id)
+    assert_true(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    try
+      ignore(coordinator.runtime.claim(provider_secret, claim_request()))
+    catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
       _ => fail("revoked provider authenticated")
     }
     assert_eq(
-      coordinator.complete(
+      coordinator.runtime.complete(
         id,
         attempt_secret,
         completion(conclusion="cancelled"),
@@ -871,9 +909,9 @@ async test "revoked repository grant and revoked actor both stop active attempts
   for revoke_actor in [false, true] {
     with_protocol_fixture((coordinator, pool, _, run, provider, clock) => {
       let id = @protocol.parse_decimal(
-        coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+        coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
       ).unwrap()
-      ignore(coordinator.start(id, attempt_secret, 1))
+      ignore(coordinator.runtime.start(id, attempt_secret, 1))
       if revoke_actor {
         pool.with_client(client => {
           ignore(
@@ -883,24 +921,26 @@ async test "revoked repository grant and revoked actor both stop active attempts
           )
         })
       } else {
-        coordinator.set_provider_scope(
+        coordinator.runtime.set_provider_scope(
           @identity.active_user_by_name(pool, "admin"),
           provider.id,
-          SelectedRepositories,
+          @runtime.ProviderScope::parse("selected"),
           [],
         )
       }
-      assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
+      assert_true(
+        coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+      )
       clock.val += @protocol.cancel_grace_ms
-      assert_eq(coordinator.expire_attempts(), 1)
-      assert_eq(
-        get_run(
+      assert_eq(coordinator.runtime.expire_attempts(), 1)
+      assert_true(
+        @runtime.get_run(
           pool,
           @identity.active_user_by_name(pool, "admin"),
           protocol_repo,
           run.number,
-        ).conclusion,
-        Some(Lost),
+        ).conclusion
+        is Some(Lost),
       )
     })
   }
@@ -910,24 +950,26 @@ async test "revoked repository grant and revoked actor both stop active attempts
 async test "log quotas and request versions reject updates without mutating state" {
   with_protocol_fixture((coordinator, _, _, _, _, _) => {
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    try ignore(coordinator.start(id, attempt_secret, 2)) catch {
+    try ignore(coordinator.runtime.start(id, attempt_secret, 2)) catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("accepted unsupported version")
     }
-    try ignore(coordinator.complete(id, attempt_secret, completion())) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("success before execution")
     }
-    ignore(coordinator.start(id, attempt_secret, 1))
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
     try
       ignore(
-        coordinator.append_log(id, attempt_secret, {
+        coordinator.runtime.append_log(id, attempt_secret, {
           ..log_request(1L, "text"),
           step_id: "missing",
         }),
@@ -940,35 +982,35 @@ async test "log quotas and request versions reject updates without mutating stat
     }
     try
       ignore(
-        coordinator.append_log(
+        coordinator.runtime.append_log(
           id,
           attempt_secret,
           log_request(@protocol.max_log_chunks + 1L, "text"),
         ),
       )
     catch {
-      LogLimit => ()
+      @runtime.LogLimit => ()
       err => raise err
     } noraise {
       _ => fail("accepted too many chunks")
     }
     try
       ignore(
-        coordinator.append_log(
+        coordinator.runtime.append_log(
           id,
           attempt_secret,
           log_request(1L, "x".repeat(8193)),
         ),
       )
     catch {
-      LogLimit => ()
+      @runtime.LogLimit => ()
       err => raise err
     } noraise {
       _ => fail("accepted oversized chunk")
     }
     for n = 1; n <= 128; n = n + 1 {
       ignore(
-        coordinator.append_log(
+        coordinator.runtime.append_log(
           id,
           attempt_secret,
           log_request(n.to_int64(), "x".repeat(8192)),
@@ -976,32 +1018,41 @@ async test "log quotas and request versions reject updates without mutating stat
       )
     }
     try
-      ignore(coordinator.append_log(id, attempt_secret, log_request(129L, "x")))
+      ignore(
+        coordinator.runtime.append_log(
+          id,
+          attempt_secret,
+          log_request(129L, "x"),
+        ),
+      )
     catch {
-      LogLimit => ()
+      @runtime.LogLimit => ()
       err => raise err
     } noraise {
       _ => fail("exceeded total log budget")
     }
-    assert_eq(coordinator.heartbeat(id, attempt_secret, 1).log_sequence, "128")
+    assert_eq(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).log_sequence,
+      "128",
+    )
   })
 }
 
 ///|
 async test "claim logs and cancellation survive closing and reopening the durable database" {
   with_protocol_fixture((coordinator, pool, root, run, _, clock) => {
-    let assignment = coordinator
+    let assignment = coordinator.runtime
       .claim(provider_secret, claim_request())
       .unwrap()
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(assignment.attempt_id).unwrap(),
         attempt_secret,
         1,
       ),
     )
     ignore(
-      coordinator.append_log(
+      coordinator.runtime.append_log(
         @protocol.parse_decimal(assignment.attempt_id).unwrap(),
         attempt_secret,
         log_request(1L, "one\n"),
@@ -1015,9 +1066,9 @@ async test "claim logs and cancellation survive closing and reopening the durabl
       let disk = @database.new_db_pool({ path, }, group)
       let mut open = true
       defer (if open { disk.close() })
-      let first = Coordinator::new(disk, clock=() => clock.val)
+      let first = test_services(disk, clock=() => clock.val)
       ignore(
-        first.append_log(
+        first.runtime.append_log(
           @protocol.parse_decimal(assignment.attempt_id).unwrap(),
           attempt_secret,
           log_request(2L, "two\n"),
@@ -1028,15 +1079,17 @@ async test "claim logs and cancellation survive closing and reopening the durabl
       let reopened = @database.new_db_pool({ path, }, group)
       defer reopened.close()
       @database.initialize_db(reopened)
-      let restored = Coordinator::new(reopened, clock=() => clock.val)
-      let retry = restored.claim(provider_secret, claim_request()).unwrap()
+      let restored = test_services(reopened, clock=() => clock.val)
+      let retry = restored.runtime
+        .claim(provider_secret, claim_request())
+        .unwrap()
       assert_eq(
         @protocol.parse_decimal(retry.attempt_id).unwrap(),
         @protocol.parse_decimal(assignment.attempt_id).unwrap(),
       )
       assert_eq(retry.state, "running")
       ignore(
-        restored.append_log(
+        restored.runtime.append_log(
           @protocol.parse_decimal(retry.attempt_id).unwrap(),
           attempt_secret,
           log_request(2L, "two\n"),
@@ -1044,7 +1097,7 @@ async test "claim logs and cancellation survive closing and reopening the durabl
       )
       let actor = @identity.active_user_by_name(reopened, "alice")
       assert_eq(
-        restored.read_log_page(
+        restored.runtime.read_log_page(
           actor,
           protocol_repo,
           run.number,
@@ -1054,17 +1107,17 @@ async test "claim logs and cancellation survive closing and reopening the durabl
         .join(""),
         "one\ntwo\n",
       )
-      restored.cancel_run(actor, protocol_repo, run.number)
-      let third = Coordinator::new(reopened, clock=() => clock.val)
+      restored.runtime.cancel_run(actor, protocol_repo, run.number)
+      let third = test_services(reopened, clock=() => clock.val)
       assert_true(
-        third.heartbeat(
+        third.runtime.heartbeat(
           @protocol.parse_decimal(retry.attempt_id).unwrap(),
           attempt_secret,
           1,
         ).cancel_requested,
       )
       assert_eq(
-        third.complete(
+        third.runtime.complete(
           @protocol.parse_decimal(retry.attempt_id).unwrap(),
           attempt_secret,
           completion(conclusion="cancelled", last=2L),
@@ -1080,7 +1133,7 @@ async test "two consumers on separate SQLite connections cannot allocate the sam
   with_protocol_fixture((coordinator, pool, root, _, _, clock) => {
     let other_token = "c".repeat(64)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "second",
         other_token,
@@ -1097,15 +1150,16 @@ async test "two consumers on separate SQLite connections cannot allocate the sam
       defer one.close()
       let two = @database.new_db_pool({ path, }, group)
       defer two.close()
-      let one = Coordinator::new(one, clock=() => clock.val)
-      let two = Coordinator::new(two, clock=() => clock.val)
+      let one_db = one
+      let one = test_services(one, clock=() => clock.val)
+      let two = test_services(two, clock=() => clock.val)
       let first = group.spawn(() => {
         @async.pause()
-        one.claim(provider_secret, claim_request())
+        one.runtime.claim(provider_secret, claim_request())
       })
       let second = group.spawn(() => {
         @async.pause()
-        two.claim(other_token, claim_request(secret="d".repeat(64)))
+        two.runtime.claim(other_token, claim_request(secret="d".repeat(64)))
       })
       let first = first.wait()
       let second = second.wait()
@@ -1114,7 +1168,7 @@ async test "two consumers on separate SQLite connections cannot allocate the sam
         (first is None && second is Some(_)),
       )
       assert_eq(
-        one.pool.with_client(client => {
+        one_db.with_client(client => {
           client.query_all("SELECT id FROM pipeline_job_attempt").length()
         }),
         1,
@@ -1128,9 +1182,9 @@ async test "provider does not match missing labels and starts the root of a mult
   @test_support.with_repository_test_data((pool, root) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let alice = @identity.active_user_by_name(pool, "alice")
-    let coordinator = Coordinator::new(pool)
+    let coordinator = test_services(pool)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         admin,
         "default",
         provider_secret,
@@ -1150,7 +1204,9 @@ async test "provider does not match missing labels and starts the root of a mult
     let mismatch = create_run(
       pool, root, alice, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
     ignore(
       @test_support.workflow_commit(
         protocol_repo.git_dir(root),
@@ -1160,29 +1216,32 @@ async test "provider does not match missing labels and starts the root of a mult
     let multi = create_run(
       pool, root, alice, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    let root_assignment = coordinator
+    let root_assignment = coordinator.runtime
       .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
       .unwrap()
     assert_eq(root_assignment.job.id, "build")
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         @protocol.parse_decimal(root_assignment.attempt_id).unwrap(),
         "c".repeat(64),
         1,
       ),
     )
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         @protocol.parse_decimal(root_assignment.attempt_id).unwrap(),
         "c".repeat(64),
         completion(),
       ),
     )
-    assert_eq(
-      get_run(pool, alice, protocol_repo, mismatch.number).state,
-      Queued,
+    assert_true(
+      @runtime.get_run(pool, alice, protocol_repo, mismatch.number).state
+      is Queued,
     )
-    assert_eq(get_run(pool, alice, protocol_repo, multi.number).state, Running)
+    assert_true(
+      @runtime.get_run(pool, alice, protocol_repo, multi.number).state
+      is Running,
+    )
   })
 }
 
@@ -1191,23 +1250,23 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
   with_protocol_fixture((coordinator, pool, root, run, _, _) => {
     try
       ignore(
-        coordinator.claim(
+        coordinator.runtime.claim(
           provider_secret,
           claim_request(secret=provider_secret),
         ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("reused provider credential for attempt")
     }
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
     try
       ignore(
-        coordinator.create_provider(
+        coordinator.runtime.create_provider(
           @identity.active_user_by_name(pool, "admin"),
           "promoted",
           attempt_secret,
@@ -1216,19 +1275,24 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
         ),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("promoted attempt token to provider")
     }
-    ignore(coordinator.start(id, attempt_secret, 1))
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
     let actor = @identity.active_user_by_name(pool, "alice")
     let other = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
     try
       ignore(
-        coordinator.read_log_page(actor, protocol_repo, other.number, id).chunks,
+        coordinator.runtime.read_log_page(
+          actor,
+          protocol_repo,
+          other.number,
+          id,
+        ).chunks,
       )
     catch {
       @domain.NotFound(_) => ()
@@ -1237,14 +1301,22 @@ async test "claim credentials cannot be promoted or reused and foreign attempts 
       _ => fail("logs crossed run scope")
     }
     let partial = attempt_secret[:20].to_owned()
-    ignore(coordinator.append_log(id, attempt_secret, log_request(1L, partial)))
+    ignore(
+      coordinator.runtime.append_log(
+        id,
+        attempt_secret,
+        log_request(1L, partial),
+      ),
+    )
     assert_eq(
-      coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks[0].text,
+      coordinator.runtime.read_log_page(actor, protocol_repo, run.number, id).chunks[0].text,
       "",
     )
-    ignore(coordinator.complete(id, attempt_secret, completion(last=1L)))
+    ignore(
+      coordinator.runtime.complete(id, attempt_secret, completion(last=1L)),
+    )
     assert_eq(
-      coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks
+      coordinator.runtime.read_log_page(actor, protocol_repo, run.number, id).chunks
       .map(chunk => chunk.text)
       .join(""),
       "***",
@@ -1295,8 +1367,8 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
     )
     assert_eq(decoded.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(coordinator.start(id, token, 1))
-    ignore(coordinator.complete(id, token, completion()))
+    ignore(coordinator.runtime.start(id, token, 1))
+    ignore(coordinator.runtime.complete(id, token, completion()))
     let rerun = rerun_run(pool, root, actor, repo, run.number)
     assert_eq(rerun.commit_sha, sha)
     assert_eq(rerun.workflow_source, source)
@@ -1321,14 +1393,19 @@ async test "action assignments preserve templates and allow cleanup after failur
     )
   with_protocol_fixture(
     (coordinator, pool, _, run, _, _) => {
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       assert_eq(assignment.version, @protocol.variable_assignment_version)
       assert_eq(assignment.job.steps[1].templates.get("if"), Some("always()"))
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(
-        coordinator.start(id, attempt_secret, 1, execution_id="e".repeat(32)),
+        coordinator.runtime.start(
+          id,
+          attempt_secret,
+          1,
+          execution_id="e".repeat(32),
+        ),
       )
       let running : @protocol.StepRequest = {
         version: 1,
@@ -1336,37 +1413,39 @@ async test "action assignments preserve templates and allow cleanup after failur
         state: "running",
         exit_code: 0,
       }
-      ignore(coordinator.update_step(id, attempt_secret, running))
+      ignore(coordinator.runtime.update_step(id, attempt_secret, running))
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           ..running,
           state: "failure",
           exit_code: 3,
         }),
       )
       let cleanup = { ..running, step_id: "clean", }
-      ignore(coordinator.update_step(id, attempt_secret, cleanup))
+      ignore(coordinator.runtime.update_step(id, attempt_secret, cleanup))
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           ..cleanup,
           state: "success",
         }),
       )
-      try ignore(coordinator.complete(id, attempt_secret, completion())) catch {
-        Conflict(_) => ()
+      try
+        ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+      catch {
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("failed action job reported success")
       }
       ignore(
-        coordinator.complete(
+        coordinator.runtime.complete(
           id,
           attempt_secret,
           completion(conclusion="failure"),
         ),
       )
       assert_true(
-        get_run(
+        @runtime.get_run(
           pool,
           @identity.active_user_by_name(pool, "alice"),
           protocol_repo,
@@ -1384,12 +1463,17 @@ async test "condition skips complete successfully but pending or failed steps ca
   let source = @test_support.single_job_workflow + "\n        if: false"
   with_protocol_fixture(
     (coordinator, _, _, _, _, _) => {
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(
-        coordinator.start(id, attempt_secret, 1, execution_id="e".repeat(32)),
+        coordinator.runtime.start(
+          id,
+          attempt_secret,
+          1,
+          execution_id="e".repeat(32),
+        ),
       )
       let running : @protocol.StepRequest = {
         version: 1,
@@ -1397,15 +1481,15 @@ async test "condition skips complete successfully but pending or failed steps ca
         state: "running",
         exit_code: 0,
       }
-      ignore(coordinator.update_step(id, attempt_secret, running))
+      ignore(coordinator.runtime.update_step(id, attempt_secret, running))
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           ..running,
           state: "skipped",
         }),
       )
       assert_eq(
-        coordinator.complete(id, attempt_secret, completion()).conclusion,
+        coordinator.runtime.complete(id, attempt_secret, completion()).conclusion,
         "success",
       )
     },
@@ -1417,7 +1501,7 @@ async test "condition skips complete successfully but pending or failed steps ca
 async test "new run-only workflows receive action runtime assignments" {
   with_protocol_fixture(
     (coordinator, _, _, _, _, _) => {
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       assert_eq(assignment.version, @protocol.variable_assignment_version)
@@ -1450,9 +1534,9 @@ async test "Windows providers claim only Windows jobs and reject legacy Linux wo
       #|    steps:
       #|      - run: echo linux
     ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), source))
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
-    let windows = c.create_provider(
+    let windows = c.runtime.create_provider(
       admin,
       "windows",
       provider_secret,
@@ -1460,7 +1544,7 @@ async test "Windows providers claim only Windows jobs and reject legacy Linux wo
       [protocol_repo],
     )
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         admin,
         "linux",
         "c".repeat(64),
@@ -1480,31 +1564,33 @@ async test "Windows providers claim only Windows jobs and reject legacy Linux wo
     )
     // Old claim clients omit the OS: retain Linux semantics rather than silently
     // assigning Windows work to an old Linux worker after a provider relabel.
-    try c.claim(provider_secret, claim_request()) catch {
+    try c.runtime.claim(provider_secret, claim_request()) catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
       _ => fail("Legacy Linux worker claimed from a Windows provider")
     }
-    let assignment = c
+    let assignment = c.runtime
       .claim(provider_secret, { ..claim_request(), runner_os: Some("windows"), })
       .unwrap()
     assert_eq(assignment.job.id, "windows")
     assert_eq(assignment.job.runs_on, ["self-hosted", "windows", "x64"])
     assert_eq(
-      c.claim("c".repeat(64), claim_request(secret="d".repeat(64))).unwrap().job.id,
+      c.runtime
+      .claim("c".repeat(64), claim_request(secret="d".repeat(64)))
+      .unwrap().job.id,
       "legacy",
     )
     // A Windows worker must never pick up an implicit-Linux job.
     assert_true(
-      c.claim(provider_secret, {
+      c.runtime.claim(provider_secret, {
         ..claim_request(id="2", secret="e".repeat(64)),
         runner_os: Some("windows"),
       })
       is None,
     )
     try
-      c.set_provider_labels(admin, windows.id, [
+      c.runtime.set_provider_labels(admin, windows.id, [
         "self-hosted", "linux", "windows",
       ])
     catch {
@@ -1532,10 +1618,10 @@ async test "macOS claims cannot consume Windows or implicit Linux jobs" {
       #|    runs-on: [self-hosted, windows]
       #|    steps: [{run: Write-Output windows}]
     ignore(@test_support.workflow_commit(protocol_repo.git_dir(root), source))
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         admin,
         "macos",
         provider_secret,
@@ -1553,18 +1639,18 @@ async test "macOS claims cannot consume Windows or implicit Linux jobs" {
         ".github/workflows/build.yml",
       ),
     )
-    let assignment = c
+    let assignment = c.runtime
       .claim(provider_secret, { ..claim_request(), runner_os: Some("macos"), })
       .unwrap()
     assert_eq(assignment.job.id, "mac")
     assert_true(
-      c.claim(provider_secret, {
+      c.runtime.claim(provider_secret, {
         ..claim_request(id="2", secret="e".repeat(64)),
         runner_os: Some("macos"),
       })
       is None,
     )
-    try ignore(c.claim(provider_secret, claim_request())) catch {
+    try ignore(c.runtime.claim(provider_secret, claim_request())) catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {

@@ -30,7 +30,7 @@ fn artifact_bearer(req : @moonback.Request) -> String raise {
 
 ///|
 pub let artifact_rpc_module : @moonback.Module = Module(ctx => {
-  let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let coordinator = ctx.require(@web_context.pipeline_results_key)
   ctx.post("/:operation", async fn(req, res) {
     let (status, json) = try {
       let token = artifact_bearer(req)
@@ -113,7 +113,7 @@ fn artifact_block_list(text : String) -> Array[String] raise {
       raise @domain.BadRequest(message="invalid block list XML")
     }
     result.push(value.to_owned())
-    guard result.length() <= @pipeline.maximum_artifact_blocks else {
+    guard result.length() <= @results.maximum_artifact_blocks else {
       raise @domain.BadRequest(message="artifact block count exceeded")
     }
     rest = after.trim().to_owned()
@@ -138,7 +138,7 @@ async fn[T] with_artifact_transfer(
 
 ///|
 pub let artifact_blob_module : @moonback.Module = Module(ctx => {
-  let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let coordinator = ctx.require(@web_context.pipeline_results_key)
   let root = ctx.require(@web_context.config_root)
   // Bound in-flight upload buffers, disk staging and download file descriptors.
   let transfers = @async.Semaphore(4)
@@ -173,7 +173,7 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
             }
             None => {
               let limit = coordinator.artifact_block_limit(id, sig)
-              guard limit > @pipeline.maximum_artifact_block_bytes else {
+              guard limit > @results.maximum_artifact_block_bytes else {
                 raise @domain.BadRequest(message="unsupported blob operation")
               }
               let bytes = artifact_request_bytes(req, limit)
@@ -247,7 +247,7 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
 
 ///|
 pub let cache_rpc_module : @moonback.Module = Module(ctx => {
-  let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let coordinator = ctx.require(@web_context.pipeline_results_key)
   ctx.post("/:operation", async fn(req, res) {
     let (status, json) = try {
       let token = artifact_bearer(req)

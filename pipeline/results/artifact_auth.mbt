@@ -17,36 +17,15 @@ fn base64url(bytes : Bytes) -> String {
 }
 
 ///|
-fn artifact_live(
-  tx : @database.DbTransaction,
-  attempt : Int64,
-  execution : String,
-  now : Int64,
-) -> @database.DbRow raise {
-  let row = tx.query_opt(attempt_select + " WHERE a.id=?", params=[attempt])
-  guard row is Some(row) &&
-    (row.get_name("status") : String) == "running" &&
-    (row.get_name("execution_id") : String?) == Some(execution) &&
-    (row.get_name("lease_until_ms") : Int64?) is Some(lease) &&
-    lease > now &&
-    (row.get_name("deadline_ms") : Int64?) is Some(deadline) &&
-    deadline > now &&
-    (row.get_name("cancel_at_ms") : Int64?) is None &&
-    !(row.get_name("cancel_requested") : Bool) &&
-    attempt_authorized(tx, row) else {
-    raise @domain.Unauthorized(message="artifact runtime is no longer live")
-  }
-  row
-}
-
-///|
-pub fn Coordinator::artifact_runtime(
-  self : Coordinator,
+pub fn Service::artifact_runtime(
+  self : Service,
   id : Int64,
   token : String,
   request : @protocol.ArtifactRuntimeRequest,
 ) -> @protocol.ArtifactRuntime raise {
-  check_version(request.version)
+  guard request.version == @protocol.version else {
+    raise @domain.BadRequest(message="unsupported runner protocol version")
+  }
   guard request.origin.length() <= 320 &&
     (
       request.origin.has_prefix("https://") ||
@@ -61,17 +40,14 @@ pub fn Coordinator::artifact_runtime(
     request.origin.iter().all(ch => ch.to_int() > 32 && ch.to_int() < 127) else {
     raise @domain.BadRequest(message="artifact origin must be a server origin")
   }
-  self.authenticate_attempt(id, token)
+  @runtime.Coordinator::new(self.pool).authenticate_attempt(id, token)
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
         let now = (self.clock)()
-        let row = artifact_live(tx, id, request.execution_id, now)
-        let expires = Int64::min(
-          now + 3600000L,
-          (row.get_name("deadline_ms") : Int64),
-        )
-        let run : Int64 = row.get_name("run_id")
+        let row = @runtime.live_attempt(tx, id, request.execution_id, now)
+        let expires = Int64::min(now + 3600000L, row.deadline_ms)
+        let run : Int64 = row.run_id
         let payload : Json = {
           "scp": "Actions.Results:" + run.to_string() + ":" + id.to_string(),
           "exp": (expires / 1000L).to_double(),
@@ -132,12 +108,12 @@ fn artifact_access(
     raise @domain.Unauthorized(message="invalid artifact runtime")
   }
   let id : Int64 = grant.get_name("attempt_id")
-  let row = artifact_live(tx, id, grant.get_name("execution_id"), now)
+  let row = @runtime.live_attempt(tx, id, grant.get_name("execution_id"), now)
   {
     runtime_hash: hash,
     attempt_id: id,
-    run_id: row.get_name("run_id"),
-    repository_id: row.get_name("repository_id"),
+    run_id: row.run_id,
+    repository_id: row.repository_id,
     origin: grant.get_name("origin"),
   }
 }

@@ -1,7 +1,7 @@
 ///|
 async test "managed provider HTTP registration and runtime settings enforce separate credentials and revisions" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, cookie) => {
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = @runtime.Coordinator::new(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     let registration = "a".repeat(64)
     let token = "b".repeat(64)

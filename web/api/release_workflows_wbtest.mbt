@@ -40,7 +40,7 @@ async test "release and manual workflow choices coexist and the release run snap
     assert_false(html.contains("Unavailable workflows"))
 
     let scope = @repository.repository_scope(pool, actor, repo)
-    @pipeline.save_secret(
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -91,7 +91,7 @@ async test "release and manual workflow choices coexist and the release run snap
     assert_false(@repository.pipeline_push_enabled(pool, actor, repo))
     assert_true(@pipeline.run_next_ref_event(pool, root))
     assert_false(@pipeline.run_next_ref_event(pool, root))
-    let events = @pipeline.list_trigger_events(pool, actor, repo)
+    let events = @runtime.list_trigger_events(pool, actor, repo)
     assert_eq(events.length(), 1)
     assert_eq(events[0].reference, "refs/tags/v1.2.3")
     assert_eq(events[0].error, "")
@@ -116,9 +116,9 @@ async test "release and manual workflow choices coexist and the release run snap
       )
     })
     assert_true(@pipeline.run_next_ref_event(pool, root))
-    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 1)
 
-    let c = @pipeline.Coordinator::new(pool)
+    let c = @runtime.Coordinator::new(pool)
     c.cancel_run(actor, repo, run.number)
     let rerun = @pipeline.rerun_run(pool, root, actor, repo, run.number)
     assert_eq(rerun.commit_sha, sha)
@@ -244,7 +244,7 @@ async test "prereleases and untrusted release publishers do not create runs" {
       )
     }
     assert_false(@pipeline.run_next_ref_event(pool, root))
-    let events = @pipeline.list_trigger_events(pool, actor, repo)
+    let events = @runtime.list_trigger_events(pool, actor, repo)
     assert_eq(events.length(), 1)
     assert_eq(events[0].reference, "refs/tags/v1.0.2")
     assert_eq(events[0].error, "Release commit is not on the default branch.")
@@ -266,9 +266,9 @@ async test "prereleases and untrusted release publishers do not create runs" {
       )
     })
     assert_true(@pipeline.run_next_ref_event(pool, root))
-    let revoked = @pipeline.list_trigger_events(pool, actor, repo)[0]
+    let revoked = @runtime.list_trigger_events(pool, actor, repo)[0]
     assert_eq(revoked.reference, "refs/tags/v1.0.3")
     assert_true(revoked.error.contains("repository owner or admin required"))
-    assert_true(@pipeline.list_runs(pool, actor, repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, repo).is_empty())
   })
 }

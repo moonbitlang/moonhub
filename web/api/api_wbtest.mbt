@@ -293,7 +293,7 @@ async test "optional pull request discovery cannot turn API write permission int
       @collaboration.merge_checks(pool, mr)[0].state,
       "awaiting_approval",
     )
-    assert_true(@pipeline.list_runs(pool, actor, repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, repo).is_empty())
     let (status, json) = api_test_request(
       port,
       "/repos/alice/demo/mrs/1/checks",
@@ -332,7 +332,7 @@ async test "optional pull request discovery cannot turn API write permission int
       ignore(client.execute("UPDATE merge_request SET checks_poll_after = 0"))
     })
     assert_true(@pipeline.run_next_merge_check(pool, root))
-    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 1)
   })
 }
 
@@ -427,6 +427,6 @@ async test "API reopen observes closed source updates before a later push synchr
     let checks = @collaboration.merge_checks(pool, latest)
     assert_eq(checks.length(), 1)
     assert_eq(checks[0].state, "awaiting_approval")
-    assert_true(@pipeline.list_runs(pool, actor, repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, repo).is_empty())
   })
 }

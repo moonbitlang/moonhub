@@ -1,13 +1,6 @@
 import {
-  "hackwaly/moonhub/pipeline/environment",
-  "hackwaly/moonhub/storage",
-  "moonbitlang/core/debug",
-  "moonbitlang/x/codec/base64",
-  "moonbitlang/x/crypto",
   "moonbitlang/async",
-  "moonbitlang/async/fs",
   "moonbitlang/async/process",
-  "moonbitlang/core/json",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
   "hackwaly/moonhub/database",
@@ -17,11 +10,20 @@ import {
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/collaboration",
   "hackwaly/moonhub/pipeline/workflow",
-  "hackwaly/moonhub/pipeline/protocol",
+  "hackwaly/moonhub/pipeline/results",
+  "hackwaly/moonhub/pipeline/runtime",
 }
 
 import {
+  "hackwaly/moonhub/pipeline/environment",
+  "hackwaly/moonhub/storage",
+  "moonbitlang/x/codec/base64",
+  "moonbitlang/x/crypto",
+  "moonbitlang/async/fs",
+  "moonbitlang/core/json",
+  "hackwaly/moonhub/pipeline/protocol",
   "hackwaly/moonhub/test_support",
+  "hackwaly/moonhub/pipeline/oidc",
 } for "wbtest"
 
 supported_targets = "native"

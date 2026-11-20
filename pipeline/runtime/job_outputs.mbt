@@ -1,5 +1,5 @@
 ///|
-fn run_event_ref(
+pub fn run_event_ref(
   context : @workflow.RunContext?,
   branch : String,
   mr_number~ : Int64? = None,

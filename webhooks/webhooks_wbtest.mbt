@@ -467,7 +467,7 @@ async test "MR discussion reviews merge pushes and pipeline completion emit tran
     let run = @pipeline.create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
-    @pipeline.Coordinator::new(pool).cancel_run(actor, repo, run.number)
+    @runtime.Coordinator::new(pool).cancel_run(actor, repo, run.number)
     let events = deliveries(pool, actor, repo, id).filter(d => {
       d.kind == "workflow_run"
     })

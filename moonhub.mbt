@@ -182,7 +182,7 @@ async fn main {
             message="Usage: moonhub oidc-check CONFIG_FILE",
           )
         }
-        ignore(@pipeline.OidcIssuer::load(args[2]))
+        ignore(@oidc.OidcIssuer::load(args[2]))
         println("Workflow OIDC configuration valid")
         0
       } catch {

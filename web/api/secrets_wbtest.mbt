@@ -127,7 +127,7 @@ async test "secret API binds scope before reading a delayed JSON body" {
         assert_true(result is { "error": { "code": String(_), .. }, .. })
         if rebuild {
           assert_true(body.contains("repository has changed"))
-          assert_true(@pipeline.list_secrets(pool, actor, repo).is_empty())
+          assert_true(@runtime.list_secrets(pool, actor, repo).is_empty())
         }
         pool.with_client(client => {
           assert_true(

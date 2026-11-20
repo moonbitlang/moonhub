@@ -6,10 +6,10 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
     let number = pipeline_number(req)
-    let run = @pipeline.get_run(pool, actor, repo, number)
+    let run = @runtime.get_run(pool, actor, repo, number)
     let reasons = coordinator.queue_reasons(actor, repo, number)
     let environments = coordinator.job_environments(actor, repo, number)
-    let jobs = @pipeline.list_jobs(pool, actor, repo, number).map(job => {
+    let jobs = @runtime.list_jobs(pool, actor, repo, number).map(job => {
       let steps = if job.attempt_id is Some(id) {
         coordinator.read_steps(actor, repo, number, id)
       } else {

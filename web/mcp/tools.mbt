@@ -457,7 +457,7 @@ async fn markdown_arg(
 async fn invoke_tool(
   pool : @database.Database,
   root : String,
-  coordinator : @pipeline.Coordinator,
+  coordinator : @runtime.Coordinator,
   diff_executor : @gitops.DiffExecutor,
   actor : @domain.CurrentUser,
   name : String,
@@ -954,13 +954,13 @@ async fn invoke_tool(
     }
     "moonhub_list_variables" =>
       {
-        "items": @pipeline.list_variables(pool, actor, repo).map(
+        "items": @runtime.list_variables(pool, actor, repo).map(
           @dto.variable_json,
         ),
       }
     "moonhub_set_variable" => {
       let name = string_arg(args, "name").to_upper()
-      @pipeline.save_variable(
+      @runtime.save_variable(
         pool,
         actor,
         repo,
@@ -968,7 +968,7 @@ async fn invoke_tool(
         string_arg(args, "value"),
         decimal(string_arg(args, "version"), zero=true),
       )
-      let variable = @pipeline.list_variables(pool, actor, repo)
+      let variable = @runtime.list_variables(pool, actor, repo)
         .iter()
         .find_first(variable => variable.name == name)
       guard variable is Some(variable) else {
@@ -977,7 +977,7 @@ async fn invoke_tool(
       @dto.variable_json(variable)
     }
     "moonhub_delete_variable" => {
-      @pipeline.delete_variable(
+      @runtime.delete_variable(
         pool,
         actor,
         repo,
@@ -988,7 +988,7 @@ async fn invoke_tool(
     }
     "moonhub_list_runs" =>
       {
-        "items": @pipeline.list_runs(pool, actor, repo)
+        "items": @runtime.list_runs(pool, actor, repo)
         .iter()
         .take(50)
         .map(@dto.run_json)
@@ -996,8 +996,8 @@ async fn invoke_tool(
       }
     "moonhub_get_run" =>
       {
-        "run": @dto.run_json(@pipeline.get_run(pool, actor, repo, id)),
-        "jobs": @pipeline.list_jobs(pool, actor, repo, id).map(job => {
+        "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "jobs": @runtime.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
               "key": job.job_key,
@@ -1062,7 +1062,7 @@ async fn invoke_tool(
       @dto.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
     "moonhub_cancel_run" => {
       coordinator.cancel_run(actor, repo, id)
-      @dto.run_json(@pipeline.get_run(pool, actor, repo, id))
+      @dto.run_json(@runtime.get_run(pool, actor, repo, id))
     }
     _ => raise @domain.BadRequest(message="Unsupported tool")
   }

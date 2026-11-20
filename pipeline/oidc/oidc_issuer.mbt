@@ -153,3 +153,12 @@ async fn OidcIssuer::sign(self : OidcIssuer, claims : Json) -> String {
   }
   input + "." + signature
 }
+
+///|
+fn base64url(bytes : Bytes) -> String {
+  @base64.encode(bytes)
+  .replace_all(old="+", new="-")
+  .replace_all(old="/", new="_")
+  .trim_end(chars="=")
+  .to_owned()
+}

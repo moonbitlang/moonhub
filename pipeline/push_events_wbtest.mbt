@@ -50,13 +50,13 @@ async test "push intents recover after ref commit and run exact snapshots once d
     @repository.recover_ref_events_locked(pool, scope, git_dir)
     assert_true(run_next_ref_event(pool, root))
     assert_true(run_next_ref_event(pool, root))
-    let runs = list_runs(pool, actor, repo)
+    let runs = @runtime.list_runs(pool, actor, repo)
     assert_eq(runs.length(), 2)
     assert_eq(runs[0].commit_sha, second)
     assert_eq(runs[1].commit_sha, first)
     assert_eq(runs[0].definition.jobs[0].steps[0].run, "echo second")
     assert_eq(runs[1].definition.jobs[0].steps[0].run, "echo fixture")
-    let events = list_trigger_events(pool, actor, repo)
+    let events = @runtime.list_trigger_events(pool, actor, repo)
     assert_eq(events.length(), 2)
     assert_eq(events[0].runs.length(), 1)
     assert_eq(events[0].runs[0].number, runs[0].number)
@@ -68,7 +68,7 @@ async test "push intents recover after ref commit and run exact snapshots once d
     assert_true(run_next_ref_event(pool, root))
     assert_true(run_next_ref_event(pool, root))
     assert_false(run_next_ref_event(pool, root))
-    assert_eq(list_runs(pool, actor, repo).length(), 2)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 2)
     for run in runs {
       assert_eq(
         @gitops.merge_git(git_dir, ["rev-parse", run.source_ref])
@@ -128,7 +128,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
       @gitops.merge_git(git_dir, ["update-ref", "refs/heads/feature", sha]),
     )
     assert_true(run_next_ref_event(pool, root))
-    assert_true(list_runs(pool, actor, repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, repo).is_empty())
     let invalid = @test_support.workflow_commit(
       git_dir,
       @test_support.single_job_workflow
@@ -167,7 +167,7 @@ async test "push trigger settings filters invalid workflows aborted updates and 
     })
     assert_true(run_next_ref_event(pool, root))
     let admin = @identity.active_user_by_name(pool, "admin")
-    assert_true(list_runs(pool, admin, repo).is_empty())
+    assert_true(@runtime.list_runs(pool, admin, repo).is_empty())
     assert_false(@test_support.ref_events(pool, scope)[0].error.is_empty())
   })
 }

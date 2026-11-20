@@ -1,7 +1,7 @@
 ///|
 async test "provider access forms preserve selected grants and require administrator CSRF" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, cookie) => {
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = @runtime.Coordinator::new(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     let token = "a".repeat(64)
     let provider = coordinator.create_provider(
@@ -47,7 +47,7 @@ async test "provider access forms preserve selected grants and require administr
       assert_eq(response.code, 400)
       assert_eq(
         coordinator.list_providers(admin)[0].scope,
-        @pipeline.ProviderScope::parse("selected"),
+        @runtime.ProviderScope::parse("selected"),
       )
     }
     let (invalid, invalid_body) = @web_testkit.http_post_path_with_cookie(
@@ -68,7 +68,7 @@ async test "provider access forms preserve selected grants and require administr
     )
     assert_eq(shared.code, 303)
     let current = coordinator.list_providers(admin)[0]
-    assert_eq(current.scope, @pipeline.ProviderScope::parse("all"))
+    assert_eq(current.scope, @runtime.ProviderScope::parse("all"))
     assert_true(current.repositories.is_empty())
     assert_true(current.paused)
     let (_, listing) = @web_testkit.http_get_path_with_cookie(
@@ -118,7 +118,7 @@ async test "provider access forms preserve selected grants and require administr
 ///|
 async test "create provider supports explicit shared scope and defaults to selected" {
   @web_testkit.with_ssh_settings_app((port, pool, _, _, cookie) => {
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = @runtime.Coordinator::new(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     let (_, body) = @web_testkit.http_get_path_with_cookie(
       port, "/-/admin/pipelines/providers", cookie,
@@ -145,8 +145,8 @@ async test "create provider supports explicit shared scope and defaults to selec
       assert_eq(created.code, 200)
     }
     let providers = coordinator.list_providers(admin)
-    assert_eq(providers[0].scope, @pipeline.ProviderScope::parse("selected"))
-    assert_eq(providers[1].scope, @pipeline.ProviderScope::parse("all"))
+    assert_eq(providers[0].scope, @runtime.ProviderScope::parse("selected"))
+    assert_eq(providers[1].scope, @runtime.ProviderScope::parse("all"))
   })
 }
 
@@ -168,7 +168,7 @@ async test "pipeline page explains no grant then no provider contact without lea
             pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
           ),
         )
-        let coordinator = @pipeline.Coordinator::new(pool)
+        let coordinator = @runtime.Coordinator::new(pool)
         let admin = @identity.active_user_by_name(pool, "admin")
         let provider = coordinator.create_provider(
           admin,
@@ -189,7 +189,7 @@ async test "pipeline page explains no grant then no provider contact without lea
         coordinator.set_provider_scope(
           admin,
           provider.id,
-          @pipeline.ProviderScope::parse("all"),
+          @runtime.ProviderScope::parse("all"),
           [],
         )
         let (_, updated) = @web_testkit.http_get_path_with_cookie(

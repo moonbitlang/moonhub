@@ -12,7 +12,7 @@ assert.equal(graph.status, 'success', JSON.stringify(graph.error));
 assert.ok([2, 3].includes(graph.version), 'Update this check for the new moon tree schema');
 
 const allowed = {
-  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli', 'runner/cli', 'storage'],
+  '': ['config', 'domain', 'database', 'identity', 'gitops', 'repository', 'ssh', 'web', 'runner', 'pipeline', 'provider', 'pipeline/protocol', 'cli', 'runner/cli', 'storage', 'pipeline/runtime', 'pipeline/oidc'],
   cli: ['domain', 'diff/protocol'],
   domain: [],
   config: [],
@@ -30,7 +30,10 @@ const allowed = {
   webhooks: ['domain', 'database', 'identity', 'repository', 'gitops'],
   attachments: ['domain', 'database', 'identity', 'repository'],
   collaboration: ['domain', 'database', 'identity', 'gitops', 'repository', 'attachments'],
-  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/protocol', 'pipeline/environment', 'storage'],
+  pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/runtime', 'pipeline/results'],
+  'pipeline/runtime': ['domain', 'database', 'identity', 'gitops', 'repository', 'pipeline/workflow', 'pipeline/protocol', 'pipeline/environment'],
+  'pipeline/results': ['domain', 'database', 'identity', 'repository', 'storage', 'pipeline/runtime', 'pipeline/protocol'],
+  'pipeline/oidc': ['domain', 'database', 'identity', 'pipeline/runtime', 'pipeline/protocol', 'pipeline/workflow'],
   'pipeline/protocol': ['pipeline/environment'],
   'pipeline/environment': [],
   'pipeline/actions': [],
@@ -43,18 +46,18 @@ const allowed = {
   ssh: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration'],
   web: [
     'gitops', 'storage', 'releases', 'web/views/releases',
-    'domain', 'config', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline', 'attachments', 'webhooks',
+    'domain', 'config', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline', 'pipeline/runtime', 'pipeline/results', 'pipeline/oidc', 'attachments', 'webhooks',
     'web/assets', 'web/api', 'web/mcp', 'web/pipeline_api', 'web/context', 'web/views/auth', 'web/views/account',
     'web/views/namespaces', 'web/views/repositories', 'web/views/issues',
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications', 'web/views/attachments',
   ],
   'web/views/releases': ['releases','domain','repository','web/context','web/ui'],
-  'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
-  'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
-  'web/dto': ['domain', 'collaboration', 'pipeline'],
-  'web/pipeline_api': ['domain', 'identity', 'pipeline', 'pipeline/protocol', 'web/context'],
+  'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'pipeline/runtime', 'attachments', 'web/dto', 'web/context'],
+  'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'pipeline/runtime', 'attachments', 'web/dto', 'web/context'],
+  'web/dto': ['domain', 'collaboration', 'pipeline/runtime'],
+  'web/pipeline_api': ['domain', 'identity', 'pipeline/protocol', 'pipeline/runtime', 'pipeline/results', 'pipeline/oidc', 'web/context'],
   'web/assets': ['domain'],
-  'web/context': ['releases', 'diff/protocol', 'webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
+  'web/context': ['releases', 'diff/protocol', 'webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline/runtime', 'pipeline/results', 'pipeline/oidc', 'web/ui'],
   'web/ui': ['diff/protocol', 'gitops', 'domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/spa'],
   'web/spa': [],
   'web/client': ['web/spa'],
@@ -64,7 +67,7 @@ const allowed = {
   'web/views/account': ['domain', 'identity', 'ssh', 'web/context', 'web/ui'],
   'web/views/namespaces': ['domain', 'identity', 'repository', 'web/context', 'web/ui'],
   'web/views/repositories': [
-    'domain', 'database', 'gitops', 'identity', 'pipeline', 'repository', 'releases', 'ssh', 'webhooks', 'web/assets', 'web/context', 'web/ui',
+    'domain', 'database', 'gitops', 'identity', 'pipeline/runtime', 'repository', 'releases', 'ssh', 'webhooks', 'web/assets', 'web/context', 'web/ui',
   ],
   'web/views/issues': ['domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/context', 'web/ui'],
   'web/views/merge_requests': [
@@ -72,7 +75,7 @@ const allowed = {
   ],
   'web/views/settings': ['domain', 'mail', 'repository', 'web/assets', 'web/context', 'web/ui'],
   'web/views/pipelines': [
-    'domain', 'database', 'identity', 'repository', 'pipeline', 'pipeline/protocol', 'pipeline/environment',
+    'domain', 'database', 'identity', 'repository', 'pipeline', 'pipeline/runtime', 'pipeline/results', 'pipeline/protocol', 'pipeline/environment',
     'web/assets', 'web/context', 'web/ui',
   ],
   test_support: ['database', 'gitops', 'repository'],
@@ -95,6 +98,15 @@ for (const edge of graph.edges) {
   if (local.has(edge.to) && production && !allowed[from]?.includes(target.rel)) {
     failures.push(`${from || '(root)'} must not import ${target.rel || '(root)'} in production`);
   }
+  if (production && local.has(edge.to) && ['test_support', 'web/testkit'].includes(target.rel) && from !== 'web/testkit') {
+    failures.push(`${from || '(root)'} must not import test fixtures in production`);
+  }
+  if (['pipeline/runtime', 'pipeline/results', 'pipeline/oidc'].includes(from) && local.has(edge.to) && target.rel === 'pipeline') {
+    failures.push(`${from} must not depend on Pipeline orchestration, including in tests`);
+  }
+  if (from === 'pipeline/runtime' && local.has(edge.to) && ['pipeline/results', 'pipeline/oidc'].includes(target.rel)) {
+    failures.push(`${from} must not depend on Results or OIDC, including in tests`);
+  }
   if (from === 'web/dto' && (
     target.module === 'moonbitlang/moonback' ||
     (target.module === 'moonbitlang/async' && /^http(?:\/|$)/.test(target.rel)) ||
@@ -112,6 +124,22 @@ for (const edge of graph.edges) {
   }
   if (from.startsWith('web/views/') && target.rel.startsWith('web/views/') && from !== target.rel) {
     failures.push(`${from} must not depend on sibling page package ${target.rel}`);
+  }
+}
+// Verify the standalone executable's entire production dependency slice.
+const runnerEntry = [...local].find(id => graph.nodes[id].rel === 'cmd/moonhub-runner');
+const visited = new Set();
+const pending = [runnerEntry];
+while (pending.length) {
+  const id = pending.pop();
+  if (visited.has(id)) continue;
+  visited.add(id);
+  const target = graph.nodes[id];
+  if (local.has(id) && (['database', 'pipeline', 'pipeline/runtime', 'pipeline/results', 'pipeline/oidc', 'web'].includes(target.rel) || target.rel.startsWith('web/'))) {
+    failures.push(`Standalone runner must not include ${target.rel}`);
+  }
+  for (const edge of graph.edges) {
+    if (edge.from === id && edge.kinds.includes('source')) pending.push(edge.to);
   }
 }
 assert.deepEqual(failures, [], failures.join('\n'));

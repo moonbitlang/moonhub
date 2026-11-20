@@ -126,7 +126,7 @@ async test "release browser pages escape text enforce CSRF and stream authorized
     })
     assert_eq(published.code, 303)
     ignore(client.read_all())
-    let events = @pipeline.list_trigger_events(pool, actor, repo)
+    let events = @runtime.list_trigger_events(pool, actor, repo)
     assert_eq(events.length(), 1)
     assert_eq(events[0].reference, "refs/tags/v4.0.0")
     assert_eq(events[0].state, "ready")
@@ -179,7 +179,7 @@ async test "release job credential publishes only its repository and is revoked 
     let run = @pipeline.create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
-    let c = @pipeline.Coordinator::new(pool)
+    let c = @runtime.Coordinator::new(pool)
     let provider = "c".repeat(64)
     let attempt = "d".repeat(64)
     ignore(
@@ -221,7 +221,7 @@ async test "release job credential publishes only its repository and is revoked 
       ).0,
       201,
     )
-    assert_true(@pipeline.list_trigger_events(pool, actor, repo).is_empty())
+    assert_true(@runtime.list_trigger_events(pool, actor, repo).is_empty())
     assert_eq(
       api_test_request(
         port,

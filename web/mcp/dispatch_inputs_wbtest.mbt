@@ -177,6 +177,6 @@ async test "MCP transports the maximum UTF8 dispatch payload with bounded tool-s
       error
       is { "error": { "message": String("request body is too large"), .. }, .. },
     )
-    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 1)
   })
 }

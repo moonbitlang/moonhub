@@ -13,9 +13,9 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let actor = @identity.active_user_by_name(pool, "alice")
     let admin = @identity.active_user_by_name(pool, "admin")
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = test_services(pool)
     let registration = @identity.random_hex(32)
-    let provider = coordinator.create_provider(
+    let provider = coordinator.runtime.create_provider(
       admin,
       "macos-acceptance",
       registration,
@@ -34,7 +34,15 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
           "/-/runner-api/v1",
           App(
             Module(child => {
-              child.provide(@web_context.pipeline_coordinator_key, coordinator)
+              child.provide(
+                @web_context.pipeline_coordinator_key,
+                coordinator.runtime,
+              )
+              child.provide(
+                @web_context.pipeline_results_key,
+                coordinator.results,
+              )
+              child.provide(@web_context.pipeline_oidc_key, coordinator.oidc)
               child.provide(@web_context.config_root, root)
               child.use_(runner_api_module)
             }),
@@ -91,7 +99,10 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
             guard worker.try_wait() is None else {
               fail(@fs.read_file(state + "/worker.log").text())
             }
-            let control = coordinator.provider_control(admin, provider.id)
+            let control = coordinator.runtime.provider_control(
+              admin,
+              provider.id,
+            )
             if control.snapshot.workers
               .iter()
               .find_first(w => {
@@ -145,18 +156,23 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
         let first_log = Ref(0L)
         @async.with_timeout(150000, () => {
           for ;; {
-            let job = @pipeline.list_jobs(pool, actor, repo, run.number)[0]
+            let job = @runtime.list_jobs(pool, actor, repo, run.number)[0]
             if job.attempt_id is Some(id) {
-              let logs = coordinator.read_log_page(actor, repo, run.number, id).chunks
+              let logs = coordinator.runtime.read_log_page(
+                  actor,
+                  repo,
+                  run.number,
+                  id,
+                ).chunks
               if logs.any(chunk => chunk.text.contains("macos-probe-ready")) &&
                 first_log.val == 0L {
                 first_log.val = @env.now().reinterpret_as_int64() - begin
                 if attempt == 3 {
-                  coordinator.cancel_run(actor, repo, run.number)
+                  coordinator.runtime.cancel_run(actor, repo, run.number)
                 }
               }
             }
-            let current = @pipeline.get_run(pool, actor, repo, run.number)
+            let current = @runtime.get_run(pool, actor, repo, run.number)
             if current.state is Completed {
               assert_true(
                 if attempt == 1 {
@@ -175,7 +191,7 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
                 println(
                   "step state: " +
                   @debug.to_string(
-                    coordinator.read_steps(actor, repo, run.number, id),
+                    coordinator.runtime.read_steps(actor, repo, run.number, id),
                   ),
                 )
               }
@@ -199,10 +215,10 @@ async test "macOS VM standby executes real HTTP jobs and replenishes clean capac
         .trim()
         .to_owned()
       let id = @protocol.parse_decimal(worker_id).unwrap()
-      coordinator.drain_worker(credential, id)
+      coordinator.runtime.drain_worker(credential, id)
       @async.with_timeout(30000, () => {
         for ;; {
-          let control = coordinator.provider_control(admin, provider.id)
+          let control = coordinator.runtime.provider_control(admin, provider.id)
           if control.snapshot.workers.any(w => {
               w.id == worker_id && w.state == "drained"
             }) {

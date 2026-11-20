@@ -15,8 +15,8 @@ fn cache_string(
 }
 
 ///|
-pub fn Coordinator::cache_rpc(
-  self : Coordinator,
+pub fn Service::cache_rpc(
+  self : Service,
   token : String,
   operation : String,
   payload : Json,

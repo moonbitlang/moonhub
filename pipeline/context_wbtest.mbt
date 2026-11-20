@@ -45,8 +45,8 @@ async test "manual run context and resolved env survive ref drift and snapshot r
     let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
     assert_eq(assignment.job.steps[0].env.get("SHA"), Some(sha))
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(coordinator.start(id, token, 1))
-    ignore(coordinator.complete(id, token, completion()))
+    ignore(coordinator.runtime.start(id, token, 1))
+    ignore(coordinator.runtime.complete(id, token, completion()))
     let again = rerun_run(pool, root, actor, repo, run.number)
     assert_eq(ToJson::to_json(again.context.unwrap()), ToJson::to_json(context))
     assert_eq(
@@ -67,7 +67,10 @@ async test "manual run context and resolved env survive ref drift and snapshot r
       _ => true
     }
     assert_true(rejected)
-    assert_eq(get_run(pool, actor, repo, run.number).context.unwrap().sha, sha)
+    assert_eq(
+      @runtime.get_run(pool, actor, repo, run.number).context.unwrap().sha,
+      sha,
+    )
   })
 }
 
@@ -77,7 +80,7 @@ async test "push context is taken from durable event and retained on rerun" {
     let actor = @identity.active_user_by_name(pool, "alice")
     let repo = protocol_repo
     let dir = repo.git_dir(root)
-    save_variable(pool, actor, repo, "PUSH_CONFIG", "captured", 0L)
+    @runtime.save_variable(pool, actor, repo, "PUSH_CONFIG", "captured", 0L)
     let sha = @test_support.workflow_commit(dir, context_workflow)
     @repository.set_pipeline_push_enabled(pool, root, actor, repo, true)
     @repository.record_received_transaction(
@@ -99,7 +102,7 @@ async test "push context is taken from durable event and retained on rerun" {
     )
     ignore(@test_support.merge_test_commit(dir, "pushed", sha, "later push\n"))
     assert_true(run_next_ref_event(pool, root))
-    let run = list_runs(pool, actor, repo)[0]
+    let run = @runtime.list_runs(pool, actor, repo)[0]
     let context = run.context.unwrap()
     assert_eq(context.sha, sha)
     assert_eq(context.event_name, "push")
@@ -125,7 +128,7 @@ async test "MR context uses merged candidate and reruns use saved context not li
   with_merge_check_fixture(
     (pool, root, _, actor, mr) => {
       poll_merge_checks(pool, root)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       let context = run.context.unwrap()
       assert_eq(context.event_name, "pull_request")
       assert_true(context.inputs.is_empty())
@@ -234,7 +237,7 @@ async test "legacy contextless snapshot can still be read claimed and rerun" {
         )
       })
     })
-    assert_true(get_run(pool, actor, repo, run.number).context is None)
+    assert_true(@runtime.get_run(pool, actor, repo, run.number).context is None)
     let coordinator = merge_check_provider(pool)
     finish_merge_check(coordinator)
     let again = rerun_run(pool, root, actor, repo, run.number)

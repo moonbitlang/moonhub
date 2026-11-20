@@ -7,7 +7,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
   ctx.get(
     "/repos/:owner/:repo/variables",
     api_handler(req => {
-      let variables = @pipeline.list_variables(
+      let variables = @runtime.list_variables(
         pool,
         api_actor(pool, req, "read"),
         @web_context.repo_param(req),
@@ -22,7 +22,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let repo = @web_context.repo_param(req)
       let name = @web_context.required_param(req, "variable", "variable").to_upper()
       let body = api_body(req, ["value", "version"], body_limit=327680)
-      @pipeline.save_variable(
+      @runtime.save_variable(
         pool,
         actor,
         repo,
@@ -30,7 +30,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         field(body, "value"),
         number(field(body, "version"), zero=true),
       )
-      let variable = @pipeline.list_variables(pool, actor, repo)
+      let variable = @runtime.list_variables(pool, actor, repo)
         .iter()
         .find_first(variable => variable.name == name)
       guard variable is Some(variable) else {
@@ -44,7 +44,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
       let body = api_body(req, ["version"])
-      @pipeline.delete_variable(
+      @runtime.delete_variable(
         pool,
         actor,
         @web_context.repo_param(req),
@@ -57,7 +57,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
   ctx.get(
     "/repos/:owner/:repo/secrets",
     api_handler(req => {
-      let secrets = @pipeline.list_secrets(
+      let secrets = @runtime.list_secrets(
         pool,
         api_actor(pool, req, "read"),
         @web_context.repo_param(req),
@@ -73,7 +73,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let name = @web_context.required_param(req, "secret", "secret").to_upper()
       let scope = @repository.repository_scope(pool, actor, repo)
       let body = api_body(req, ["value", "branch", "workflow", "version"])
-      @pipeline.save_secret(
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -88,7 +88,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         field(body, "workflow"),
         number(field(body, "version"), zero=true),
       )
-      let secret = @pipeline.list_secrets(pool, actor, repo)
+      let secret = @runtime.list_secrets(pool, actor, repo)
         .iter()
         .find_first(secret => secret.name == name)
       guard secret is Some(secret) else {
@@ -102,7 +102,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
       let body = api_body(req, ["version"])
-      @pipeline.delete_secret(
+      @runtime.delete_secret(
         pool,
         actor,
         @web_context.repo_param(req),
@@ -821,7 +821,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "read")
       {
-        "items": @pipeline.list_runs(pool, actor, @web_context.repo_param(req))
+        "items": @runtime.list_runs(pool, actor, @web_context.repo_param(req))
         .iter()
         .take(50)
         .map(@dto.run_json)
@@ -837,8 +837,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let id = number(@web_context.required_param(req, "number", "run"))
       let environments = coordinator.job_environments(actor, repo, id)
       {
-        "run": @dto.run_json(@pipeline.get_run(pool, actor, repo, id)),
-        "jobs": @pipeline.list_jobs(pool, actor, repo, id).map(job => {
+        "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "jobs": @runtime.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
               "key": job.job_key,
@@ -906,7 +906,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           @dto.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
         "cancel" => {
           coordinator.cancel_run(actor, repo, id)
-          @dto.run_json(@pipeline.get_run(pool, actor, repo, id))
+          @dto.run_json(@runtime.get_run(pool, actor, repo, id))
         }
         _ => raise @domain.BadRequest(message="unsupported CI action")
       }

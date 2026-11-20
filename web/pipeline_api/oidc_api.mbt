@@ -2,7 +2,7 @@
 // Public discovery and keys share the configured issuer, never a request Host
 // header. The token endpoint accepts only a live execution's scoped credential.
 pub let oidc_module : @moonback.Module = Module(ctx => {
-  let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let coordinator = ctx.require(@web_context.pipeline_oidc_key)
   ctx.get(
     "/.well-known/openid-configuration",
     json_handler(_ => coordinator.oidc_discovery()),

@@ -50,7 +50,7 @@ async test "OIDC HTTP discovery keys and scoped token exchange enforce execution
         ).0,
         401,
       )
-      ignore(c.start(id, lease, 1, execution_id=request.execution_id))
+      ignore(c.runtime.start(id, lease, 1, execution_id=request.execution_id))
       let (status, json) = @web_testkit.runner_post_json(
         port,
         path,
@@ -95,7 +95,7 @@ async test "OIDC HTTP discovery keys and scoped token exchange enforce execution
       assert_true(
         response is { "value": String(jwt), .. } && jwt.split(".").count() == 3,
       )
-      assert_eq(c.oidc_jwks(), keys)
+      assert_eq(c.oidc.oidc_jwks(), keys)
     },
     workflow~,
     oidc=true,
@@ -203,7 +203,7 @@ async test "real runner carries OIDC through shell JavaScript pre main post and 
               fields.get("repository") == Some(Json::string("alice/demo")),
             )
             token = @identity.random_hex(32)
-            assignment = c
+            assignment = c.runtime
               .claim("a".repeat(64), {
                 environments: None,
                 version: 1,
@@ -231,8 +231,8 @@ async test "OIDC upstream AWS Action exchanges a verifiable identity through rea
   with_artifact_http(
     (port, c, pool, root, a, lease) => {
       let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-      ignore(c.start(id, lease, 1, execution_id="e".repeat(32)))
-      let grant = c.oidc_runtime(id, lease, {
+      ignore(c.runtime.start(id, lease, 1, execution_id="e".repeat(32)))
+      let grant = c.oidc.oidc_runtime(id, lease, {
         version: 1,
         execution_id: "e".repeat(32),
       })

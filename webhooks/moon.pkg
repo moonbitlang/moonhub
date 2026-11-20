@@ -1,4 +1,8 @@
 import {
+  "hackwaly/moonhub/pipeline/runtime",
+} for "wbtest"
+
+import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/identity",

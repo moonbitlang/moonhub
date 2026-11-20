@@ -19,7 +19,7 @@ fn schedule_run(tx : @database.DbTransaction, run : Run) -> Unit raise {
       params=[run.repository_id, key],
     ) {
     if cancel || !(row.get_name("admitted") : Bool) {
-      cancel_check_run(tx, row.get_name("run_id"))
+      cancel_run_in_transaction(tx, row.get_name("run_id"))
     }
   }
   let active = tx.query_opt(

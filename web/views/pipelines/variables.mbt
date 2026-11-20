@@ -5,7 +5,7 @@ pub let repository_variables_module : @moonback.Module = Module(ctx => {
   ctx.get("/:owner/:repo/settings/variables", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
-    let variables = @pipeline.list_variables(pool, actor, scope.repo)
+    let variables = @runtime.list_variables(pool, actor, scope.repo)
     let manager = @identity.can_manage_team(pool, actor, scope.team_id)
     res.send_html(
       render_variables(
@@ -46,7 +46,7 @@ pub let repository_variables_module : @moonback.Module = Module(ctx => {
       let scope = pipeline_scope(pool, actor, req)
       require_pipeline_manager(pool, actor, scope)
       let name = @web_context.required_param(req, "variable", "variable").to_upper()
-      let variable = @pipeline.list_variables(pool, actor, scope.repo)
+      let variable = @runtime.list_variables(pool, actor, scope.repo)
         .iter()
         .find_first(variable => variable.name == name)
       guard variable is Some(variable) else {
@@ -97,8 +97,8 @@ pub let repository_variables_module : @moonback.Module = Module(ctx => {
       guard version is Some(version) else {
         raise @domain.BadRequest(message="Invalid variable version.")
       }
-      @pipeline.save_variable(pool, actor, scope.repo, name, value, version) catch {
-        @domain.BadRequest(message~) | @pipeline.Conflict(message) => {
+      @runtime.save_variable(pool, actor, scope.repo, name, value, version) catch {
+        @domain.BadRequest(message~) | @runtime.Conflict(message) => {
           res.send_html(
             render_variable_form(
               assets,
@@ -136,7 +136,7 @@ pub let repository_variables_module : @moonback.Module = Module(ctx => {
       req,
       "repository-variables:\{scope.id}",
     )
-    @pipeline.delete_variable(
+    @runtime.delete_variable(
       pool,
       actor,
       scope.repo,
@@ -157,7 +157,7 @@ fn render_variables(
   assets : Map[String, String],
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
-  variables : Array[@pipeline.RepositoryVariable],
+  variables : Array[@runtime.RepositoryVariable],
   manager : Bool,
   saved : Bool,
 ) -> @moonback.Html {
@@ -189,7 +189,7 @@ fn render_variables(
 
 ///|
 fn render_repository_variable_list(
-  variables : Array[@pipeline.RepositoryVariable],
+  variables : Array[@runtime.RepositoryVariable],
   management_path : String?,
 ) -> @moonback.Html {
   Html(b => {
@@ -257,7 +257,7 @@ fn render_variable_delete(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
   csrf : String,
-  variable : @pipeline.RepositoryVariable,
+  variable : @runtime.RepositoryVariable,
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(repo) + "/settings/variables"
   @web_ui.layout(

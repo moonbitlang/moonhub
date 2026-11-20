@@ -19,7 +19,7 @@ let artifact_http_workflow : String =
 async fn with_artifact_http(
   f : async (
     Int32,
-    @pipeline.Coordinator,
+    MachineServices,
     @database.Database,
     String,
     @protocol.Assignment,
@@ -40,17 +40,17 @@ async fn with_artifact_http(
         path,
         "http://127.0.0.1:" + listener.addr.port().to_string(),
       )
-      Some(@pipeline.OidcIssuer::load(path, allow_http=true))
+      Some(@oidc.OidcIssuer::load(path, allow_http=true))
     } else {
       None
     }
     let storage = @env.get_env_var("MOONHUB_TEST_S3_CONFIG").map(text => {
       @storage.Config::parse(@json.parse(text))
     })
-    let c = @pipeline.Coordinator::new(pool, oidc?, storage?)
+    let c = test_services(pool, oidc?, storage?)
     let token = "a".repeat(64)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "artifacts",
         token,
@@ -59,7 +59,7 @@ async fn with_artifact_http(
       ),
     )
     for name, value in variables {
-      @pipeline.save_variable(
+      @runtime.save_variable(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         repo,
@@ -80,7 +80,7 @@ async fn with_artifact_http(
       ),
     )
     let lease = "b".repeat(64)
-    let assignment = c
+    let assignment = c.runtime
       .claim(token, {
         environments: None,
         version: 1,
@@ -90,7 +90,9 @@ async fn with_artifact_http(
       })
       .unwrap()
     let dependencies : @moonback.Module = Module(ctx => {
-      ctx.provide(@web_context.pipeline_coordinator_key, c)
+      ctx.provide(@web_context.pipeline_coordinator_key, c.runtime)
+      ctx.provide(@web_context.pipeline_results_key, c.results)
+      ctx.provide(@web_context.pipeline_oidc_key, c.oidc)
       ctx.provide(@web_context.config_root, root)
     })
     let app = @moonback.App(
@@ -149,7 +151,7 @@ async test "artifact HTTP mounts validate credentials Twirp fields and Azure blo
   with_artifact_http((port, c, _, _, a, lease) => {
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
     let execution = "e".repeat(32)
-    ignore(c.start(id, lease, 1, execution_id=execution))
+    ignore(c.runtime.start(id, lease, 1, execution_id=execution))
     let origin = "http://127.0.0.1:\{port}"
     let (status, granted) = @web_testkit.runner_post_json(
       port,
@@ -264,7 +266,7 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
       let a = if phase == "produce" {
         first
       } else {
-        c
+        c.runtime
         .claim("a".repeat(64), {
           environments: None,
           version: 1,
@@ -276,8 +278,8 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
       }
       let attempt = @protocol.parse_decimal(a.attempt_id).unwrap()
       let execution = @identity.random_hex(16)
-      ignore(c.start(attempt, token, 1, execution_id=execution))
-      let grant = c.artifact_runtime(attempt, token, {
+      ignore(c.runtime.start(attempt, token, 1, execution_id=execution))
+      let grant = c.results.artifact_runtime(attempt, token, {
         version: 1,
         execution_id: execution,
         origin,
@@ -306,7 +308,7 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
         let heartbeat : @async.Task[Unit] = group.spawn(() => {
           for ;; {
             @async.sleep(5000)
-            ignore(c.heartbeat(attempt, token, 1))
+            ignore(c.runtime.heartbeat(attempt, token, 1))
           }
         })
         defer heartbeat.cancel()
@@ -326,10 +328,12 @@ async fn upstream_service_smoke(enabled : String, script_name : String) -> Unit 
         state: "running",
         exit_code: 0,
       }
-      ignore(c.update_step(attempt, token, request))
-      ignore(c.update_step(attempt, token, { ..request, state: "success", }))
+      ignore(c.runtime.update_step(attempt, token, request))
       ignore(
-        c.complete(attempt, token, {
+        c.runtime.update_step(attempt, token, { ..request, state: "success", }),
+      )
+      ignore(
+        c.runtime.complete(attempt, token, {
           version: 1,
           conclusion: "success",
           last_log_sequence: "0",
@@ -357,9 +361,9 @@ async test "production artifact mounts keep browser downloads repository authori
         @test_support.single_job_workflow,
       ),
     )
-    let c = @pipeline.Coordinator::new(pool)
+    let c = test_services(pool)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "browser-artifact",
         "a".repeat(64),
@@ -375,7 +379,7 @@ async test "production artifact mounts keep browser downloads repository authori
       "pipeline",
       ".github/workflows/build.yml",
     )
-    let a = c
+    let a = c.runtime
       .claim("a".repeat(64), {
         environments: None,
         version: 1,
@@ -385,9 +389,11 @@ async test "production artifact mounts keep browser downloads repository authori
       })
       .unwrap()
     let attempt = @protocol.parse_decimal(a.attempt_id).unwrap()
-    ignore(c.start(attempt, "b".repeat(64), 1, execution_id="e".repeat(32)))
+    ignore(
+      c.runtime.start(attempt, "b".repeat(64), 1, execution_id="e".repeat(32)),
+    )
     let origin = "http://127.0.0.1:\{port}"
-    let grant = c.artifact_runtime(attempt, "b".repeat(64), {
+    let grant = c.results.artifact_runtime(attempt, "b".repeat(64), {
       version: 1,
       execution_id: "e".repeat(32),
       origin,
@@ -425,18 +431,18 @@ async test "production artifact mounts keep browser downloads repository authori
       .unwrap()
       .to_owned(),
     ).unwrap()
-    c.stage_artifact_block(root, id, sig, "YQ==", b"archive")
-    c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"archive")
+    c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
     let finalize = fields.copy()
     finalize["size"] = "7"
     finalize["hash"] = "sha256:0eb3e36bfb24dcd9bb1d1bece1531216b59539a8fde17ee80224af0653c92aa3"
-    let _ = c.artifact_rpc(
+    let _ = c.results.artifact_rpc(
       grant.token,
       "FinalizeArtifact",
       Json::object(finalize),
     )
     ignore(
-      c.update_step(attempt, "b".repeat(64), {
+      c.runtime.update_step(attempt, "b".repeat(64), {
         version: 1,
         step_id: "check",
         state: "running",
@@ -444,7 +450,7 @@ async test "production artifact mounts keep browser downloads repository authori
       }),
     )
     ignore(
-      c.update_step(attempt, "b".repeat(64), {
+      c.runtime.update_step(attempt, "b".repeat(64), {
         version: 1,
         step_id: "check",
         state: "success",
@@ -452,7 +458,7 @@ async test "production artifact mounts keep browser downloads repository authori
       }),
     )
     ignore(
-      c.complete(attempt, "b".repeat(64), {
+      c.runtime.complete(attempt, "b".repeat(64), {
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
@@ -653,9 +659,9 @@ async test "upstream Cache v4 actions save in post and restore exact prefix and 
 async test "Cache HTTP authenticates RPCs handles single PUT replay and accepts Azure SDK sized blocks" {
   with_artifact_http((port, c, _, _, a, lease) => {
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-    ignore(c.start(id, lease, 1, execution_id="e".repeat(32)))
+    ignore(c.runtime.start(id, lease, 1, execution_id="e".repeat(32)))
     let origin = "http://127.0.0.1:\{port}"
-    let grant = c.artifact_runtime(id, lease, {
+    let grant = c.results.artifact_runtime(id, lease, {
       version: 1,
       execution_id: "e".repeat(32),
       origin,

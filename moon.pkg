@@ -1,4 +1,9 @@
 import {
+  "hackwaly/moonhub/pipeline/oidc",
+  "hackwaly/moonhub/pipeline/runtime",
+}
+
+import {
   "hackwaly/moonhub/cli",
   "moonbitlang/core/argparse",
   "moonbitlang/async",

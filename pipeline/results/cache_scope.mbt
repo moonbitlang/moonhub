@@ -2,9 +2,9 @@
 let maximum_cache_bytes : Int64 = 536870912L
 
 ///|
-fn snapshot_cache_scope(
+pub fn snapshot_cache_scope(
   tx : @database.DbTransaction,
-  run : Run,
+  run : @runtime.Run,
   check : Int64,
   source~ : Int64 = 0L,
 ) -> Unit raise {
@@ -95,8 +95,8 @@ fn check_cache_bytes(
 }
 
 ///|
-async fn Coordinator::make_cache_space(
-  self : Coordinator,
+async fn Service::make_cache_space(
+  self : Service,
   root : String,
   id : Int64,
   sig : String,
