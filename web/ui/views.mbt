@@ -18,7 +18,14 @@ pub fn layout(
     navigation is RepositoryNavigation(_, _, _)
   let sidebar = shell &&
     !(navigation
-    is RepositoryNavigation(_, "files-root" | "files" | "commits", _))
+    is RepositoryNavigation(
+      _,
+      "files-root"
+      | "files"
+      | "commits"
+      | "pipeline-variables",
+      _,
+    ))
   let collapsible = sidebar &&
     !(navigation is RepositoryNavigation(_, active, _) &&
     is_repository_settings(active))

@@ -372,6 +372,7 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .repository-secret-form { max-width: 720px; overflow-wrap: anywhere; }
 .repository-secrets .ssh-key-heading h2, .repository-secrets .ssh-key-metadata dd { overflow-wrap: anywhere; }
 .repository-secrets .ssh-key-metadata > div { min-width: 0; max-width: 100%; }
+.repository-variable-value { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ssh-settings-back { margin-bottom: 20px; font-size: 13px; }
 .ssh-key-count { margin: 5px 0 0; color: var(--color-muted); font-size: 13px; }
 .ssh-key-list { margin: 0; padding: 0; border-top: 1px solid var(--color-border); list-style: none; }
