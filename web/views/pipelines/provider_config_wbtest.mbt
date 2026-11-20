@@ -33,9 +33,12 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       defaults: { "runner_image": "runner:v1" },
     }
     let body = ToJson::to_json(request).stringify()
-    assert_eq(post_json(port, "/providers/register", body).0, 401)
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(port, "/providers/register", body).0,
+      401,
+    )
+    assert_eq(
+      @web_testkit.runner_post_json(
         port,
         "/providers/register",
         body,
@@ -44,11 +47,21 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       401,
     )
     assert_eq(
-      post_json(port, "/providers/register", body, token=registration).0,
+      @web_testkit.runner_post_json(
+        port,
+        "/providers/register",
+        body,
+        token=registration,
+      ).0,
       200,
     )
     assert_eq(
-      post_json(port, "/providers/register", body, token=registration).0,
+      @web_testkit.runner_post_json(
+        port,
+        "/providers/register",
+        body,
+        token=registration,
+      ).0,
       200,
     )
     let sync : @protocol.ProviderSyncRequest = {
@@ -62,7 +75,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       defaults: None,
     }
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/providers/sync",
         ToJson::to_json(sync).stringify(),
@@ -71,7 +84,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       401,
     )
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/providers/sync",
         ToJson::to_json(sync).stringify(),
@@ -85,7 +98,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       token: worker,
     }
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/workers/register",
         ToJson::to_json(w).stringify(),
@@ -94,7 +107,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       200,
     )
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/workers/register",
         ToJson::to_json({ ..w, key: "stolen", }).stringify(),
@@ -166,7 +179,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       applied_revision: "2",
     }
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/workers/sync",
         ToJson::to_json(ready).stringify(),
@@ -175,7 +188,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
       200,
     )
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/providers/sync",
         ToJson::to_json(sync).stringify(),
@@ -185,7 +198,7 @@ async test "managed provider HTTP registration and runtime settings enforce sepa
     )
     coordinator.revoke_provider(admin, provider.id)
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/workers/sync",
         ToJson::to_json(ready).stringify(),

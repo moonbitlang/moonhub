@@ -94,7 +94,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           "X-Content-Type-Options": "nosniff",
         })
       })
-      stream_artifact(() => reader.read(), writer, authorize)
+      @web_context.stream_artifact(() => reader.read(), writer, authorize)
     })
   })
   ctx.get("/-/admin/pipelines/providers", async fn(req, res) {

@@ -55,9 +55,12 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       "controller_id": "manager",
       "revision": "1",
     }
-    assert_eq(post_json(port, path, body.stringify()).0, 401)
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(port, path, body.stringify()).0,
+      401,
+    )
+    assert_eq(
+      @web_testkit.runner_post_json(
         port,
         path,
         body.stringify(),
@@ -66,7 +69,10 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       401,
     )
     for token in ["a".repeat(64), "c".repeat(64), "d".repeat(64)] {
-      assert_eq(post_json(port, path, body.stringify(), token~).0, 401)
+      assert_eq(
+        @web_testkit.runner_post_json(port, path, body.stringify(), token~).0,
+        401,
+      )
     }
     for
       bad in [
@@ -80,12 +86,17 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
         },
       ] {
       assert_eq(
-        post_json(port, path, bad.stringify(), token="b".repeat(64)).0,
+        @web_testkit.runner_post_json(
+          port,
+          path,
+          bad.stringify(),
+          token="b".repeat(64),
+        ).0,
         400,
       )
     }
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         path,
         ({ "version": 1, "controller_id": "stale", "revision": "1" } : Json).stringify(),
@@ -94,7 +105,12 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       409,
     )
     assert_eq(
-      post_json(port, path, body.stringify(), token="b".repeat(64)).0,
+      @web_testkit.runner_post_json(
+        port,
+        path,
+        body.stringify(),
+        token="b".repeat(64),
+      ).0,
       200,
     )
     let snapshot = c.sync_worker("c".repeat(64), {
@@ -106,7 +122,12 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
     assert_eq(snapshot.isolation_revision, Some("1"))
     c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
     assert_eq(
-      post_json(port, path, body.stringify(), token="b".repeat(64)).0,
+      @web_testkit.runner_post_json(
+        port,
+        path,
+        body.stringify(),
+        token="b".repeat(64),
+      ).0,
       409,
     )
   })

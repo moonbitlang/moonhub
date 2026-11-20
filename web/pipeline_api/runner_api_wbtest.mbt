@@ -1,41 +1,4 @@
 ///|
-async fn post_json(
-  port : Int32,
-  path : String,
-  body : String,
-  token~ : String = "",
-  cookie~ : String = "",
-  content_type~ : String = "application/json",
-) -> (Int32, Json) {
-  let client = @http.Client("http://127.0.0.1:\{port}")
-  defer client.close()
-  let headers : Map[@http.CaseInsensitiveString, String] = {
-    "Content-Type": content_type,
-  }
-  if !token.is_empty() {
-    headers["Authorization"] = "Bearer " + token
-  }
-  if !cookie.is_empty() {
-    headers["Cookie"] = cookie
-  }
-  let response = client.post(
-    "/-/runner-api/v1" + path,
-    body,
-    extra_headers=headers,
-  )
-  let text = client.read_all().text()
-  assert_true(response.headers.get("cache-control") is Some("no-store"))
-  assert_true(response.headers.get("location") is None)
-  assert_true(
-    response.headers
-    .get("content-type")
-    .unwrap_or("")
-    .has_prefix("application/json"),
-  )
-  (response.code, @json.parse(text))
-}
-
-///|
 async test "runner module requires injected coordinator rather than reading config" {
   try {
     let app = @moonback.App(runner_api_module)
@@ -90,7 +53,7 @@ async test "production runner mount uses bearer auth never browser sessions and 
         )
         credential
       }
-      let (status, result) = post_json(
+      let (status, result) = @web_testkit.runner_post_json(
         port,
         "/claims",
         ToJson::to_json({ ..request, runner_os: Some(os), }).stringify(),
@@ -99,27 +62,57 @@ async test "production runner mount uses bearer auth never browser sessions and 
       assert_eq(status, 200)
       assert_eq(result, { "version": 1, "assignment": Json::null() })
     }
-    assert_eq(post_json(port, "/claims", body).0, 401)
+    assert_eq(@web_testkit.runner_post_json(port, "/claims", body).0, 401)
     assert_eq(
-      post_json(port, "/claims", body, cookie="\{alice.name}=\{alice.value}").0,
+      @web_testkit.runner_post_json(
+        port,
+        "/claims",
+        body,
+        cookie="\{alice.name}=\{alice.value}",
+      ).0,
       401,
     )
-    assert_eq(post_json(port, "/claims", body, token=attempt_token).0, 401)
-    let (status, result) = post_json(port, "/claims", body, token~)
+    assert_eq(
+      @web_testkit.runner_post_json(port, "/claims", body, token=attempt_token).0,
+      401,
+    )
+    let (status, result) = @web_testkit.runner_post_json(
+      port,
+      "/claims",
+      body,
+      token~,
+    )
     assert_eq(status, 200)
     assert_eq(result, { "version": 1, "assignment": Json::null() })
     assert_eq(
-      post_json(port, "/claims", body, token~, content_type="text/plain").0,
+      @web_testkit.runner_post_json(
+        port,
+        "/claims",
+        body,
+        token~,
+        content_type="text/plain",
+      ).0,
       400,
     )
-    assert_eq(post_json(port, "/claims", "{", token~).0, 400)
-    assert_eq(post_json(port, "/claims", "[]", token~).0, 400)
     assert_eq(
-      post_json(port, "/claims", "{\"version\":1,\"unknown\":true}", token~).0,
+      @web_testkit.runner_post_json(port, "/claims", "{", token~).0,
       400,
     )
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(port, "/claims", "[]", token~).0,
+      400,
+    )
+    assert_eq(
+      @web_testkit.runner_post_json(
+        port,
+        "/claims",
+        "{\"version\":1,\"unknown\":true}",
+        token~,
+      ).0,
+      400,
+    )
+    assert_eq(
+      @web_testkit.runner_post_json(
         port,
         "/claims",
         ToJson::to_json({ ..request, version: 99, }).stringify(),
@@ -127,20 +120,38 @@ async test "production runner mount uses bearer auth never browser sessions and 
       ).0,
       400,
     )
-    assert_eq(post_json(port, "/claims", " ".repeat(65537), token~).0, 413)
     assert_eq(
-      post_json(port, "/attempts/1/start", "{\"version\":1}", token~).0,
+      @web_testkit.runner_post_json(port, "/claims", " ".repeat(65537), token~).0,
+      413,
+    )
+    assert_eq(
+      @web_testkit.runner_post_json(
+        port,
+        "/attempts/1/start",
+        "{\"version\":1}",
+        token~,
+      ).0,
       401,
     )
     assert_eq(
-      post_json(port, "/attempts/not-id/start", "{\"version\":1}", token~).0,
+      @web_testkit.runner_post_json(
+        port,
+        "/attempts/not-id/start",
+        "{\"version\":1}",
+        token~,
+      ).0,
       400,
     )
     // Even unexpected database errors must stay on the JSON/redacted boundary.
     pool.with_client(client => {
       client.batch_execute("DROP TABLE pipeline_provider_label")
     })
-    let (status, result) = post_json(port, "/claims", body, token~)
+    let (status, result) = @web_testkit.runner_post_json(
+      port,
+      "/claims",
+      body,
+      token~,
+    )
     assert_eq(status, 500)
     assert_true(!result.stringify().contains("pipeline_provider_label"))
     assert_true(!result.stringify().contains(token))
@@ -201,7 +212,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         request_id: @identity.random_hex(16),
         attempt_token,
       }
-      let (code, json) = post_json(
+      let (code, json) = @web_testkit.runner_post_json(
         port,
         "/claims",
         ToJson::to_json(claim).stringify(),
@@ -217,7 +228,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       let base = "/attempts/\{assignment.attempt_id}"
       assert_eq(@protocol.parse_decimal(assignment.run_id).unwrap(), run.id)
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           "/claims",
           ToJson::to_json(claim).stringify(),
@@ -226,7 +237,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         json,
       )
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/start",
           "{\"version\":1}",
@@ -234,7 +245,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         ).0,
         401,
       )
-      let (code, json) = post_json(
+      let (code, json) = @web_testkit.runner_post_json(
         port,
         base + "/start",
         "{\"version\":1}",
@@ -252,7 +263,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         @protocol.parse_decimal(started.server_time_ms).unwrap(),
         clock.val,
       )
-      let (code, json) = post_json(
+      let (code, json) = @web_testkit.runner_post_json(
         port,
         base + "/heartbeat",
         "{\"version\":1}",
@@ -261,7 +272,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       assert_eq(code, 200)
       assert_eq((@json.from_json(json) : @protocol.LeaseState).state, "running")
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/logs",
           "{\"version\":1,\"sequence\":1,\"step_id\":\"check\",\"stream\":\"stdout\",\"text\":\"numeric sequence\"}",
@@ -278,7 +289,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       }
       for sequence in ["", "-1", "+1", " 1", "01", "1e3", "9223372036854775808"] {
         assert_eq(
-          post_json(
+          @web_testkit.runner_post_json(
             port,
             base + "/logs",
             ToJson::to_json({ ..chunk, sequence, }).stringify(),
@@ -289,11 +300,21 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
       }
       let body = ToJson::to_json(chunk).stringify()
       assert_eq(
-        post_json(port, base + "/logs", body, token=attempt_token).0,
+        @web_testkit.runner_post_json(
+          port,
+          base + "/logs",
+          body,
+          token=attempt_token,
+        ).0,
         200,
       )
       assert_eq(
-        post_json(port, base + "/logs", body, token=attempt_token).0,
+        @web_testkit.runner_post_json(
+          port,
+          base + "/logs",
+          body,
+          token=attempt_token,
+        ).0,
         200,
       )
       assert_eq(
@@ -315,7 +336,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         chunk.text,
       )
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/logs",
           ToJson::to_json({ ..chunk, sequence: "3", }).stringify(),
@@ -324,7 +345,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         409,
       )
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/logs",
           ToJson::to_json({ ..chunk, sequence: "2", text: "x".repeat(8193), }).stringify(),
@@ -339,7 +360,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         outputs: Map([]),
       }
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/complete",
           "{\"version\":1,\"conclusion\":\"success\",\"last_log_sequence\":1}",
@@ -352,7 +373,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
           "", "-1", "+1", " 1", "01", "1e3", "9223372036854775808",
         ] {
         assert_eq(
-          post_json(
+          @web_testkit.runner_post_json(
             port,
             base + "/complete",
             ToJson::to_json({ ..complete, last_log_sequence, }).stringify(),
@@ -362,14 +383,24 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         )
       }
       let body = ToJson::to_json(complete).stringify()
-      let first = post_json(port, base + "/complete", body, token=attempt_token)
+      let first = @web_testkit.runner_post_json(
+        port,
+        base + "/complete",
+        body,
+        token=attempt_token,
+      )
       assert_eq(first.0, 200)
       assert_eq(
-        post_json(port, base + "/complete", body, token=attempt_token).1,
+        @web_testkit.runner_post_json(
+          port,
+          base + "/complete",
+          body,
+          token=attempt_token,
+        ).1,
         first.1,
       )
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/complete",
           ToJson::to_json({ ..complete, conclusion: "failure", }).stringify(),
@@ -378,7 +409,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         409,
       )
       assert_eq(
-        post_json(
+        @web_testkit.runner_post_json(
           port,
           base + "/heartbeat",
           "{\"version\":1}",

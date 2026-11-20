@@ -42,7 +42,7 @@ async test "environment forms preserve authorization revisions defaults and inva
       defaults: None,
     }
     assert_eq(
-      post_json(
+      @web_testkit.runner_post_json(
         port,
         "/providers/sync",
         ToJson::to_json(sync).stringify(),

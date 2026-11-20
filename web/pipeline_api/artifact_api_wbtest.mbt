@@ -151,7 +151,7 @@ async test "artifact HTTP mounts validate credentials Twirp fields and Azure blo
     let execution = "e".repeat(32)
     ignore(c.start(id, lease, 1, execution_id=execution))
     let origin = "http://127.0.0.1:\{port}"
-    let (status, granted) = post_json(
+    let (status, granted) = @web_testkit.runner_post_json(
       port,
       "/attempts/" + a.attempt_id + "/artifact-runtime",
       ToJson::to_json(@protocol.ArtifactRuntimeRequest::{
@@ -535,7 +535,7 @@ async test "artifact streams time out stalled writers and release transfer capac
   }
   try
     with_artifact_transfer(transfers, () => (), () => {
-      stream_artifact(
+      @web_context.stream_artifact(
         () => file.read_some(max_len=65536),
         writer,
         () => (),
@@ -622,7 +622,7 @@ async test "artifact streams stop on authorization revocation before the next ch
   }
   let calls = Ref(0)
   try
-    stream_artifact(() => file.read_some(max_len=65536), writer, () => {
+    @web_context.stream_artifact(() => file.read_some(max_len=65536), writer, () => {
       calls.val += 1
       if calls.val > 1 {
         raise @domain.Unauthorized(message="revoked")

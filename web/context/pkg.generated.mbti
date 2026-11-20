@@ -12,6 +12,7 @@ import {
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/webhooks",
   "moonbitlang/async/http",
+  "moonbitlang/async/io",
   "moonbitlang/moonback",
 }
 
@@ -109,6 +110,8 @@ pub fn rev_param(@moonback.Request) -> String raise @domain.AppError
 pub fn session_cookie(String) -> @http.Cookie
 
 pub let session_cookie_name : String
+
+pub async fn stream_artifact(async () -> Bytes?, &@io.Writer, () -> Unit raise, timeout_ms? : Int32) -> Unit
 
 pub fn structured_diff_options(@moonback.Request) -> @protocol.Options raise
 
