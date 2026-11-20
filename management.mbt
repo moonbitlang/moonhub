@@ -403,13 +403,13 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
           pool,
           cli_value(options, "admin"),
         )
-        let provider = @pipeline.Coordinator::new(pool).create_provider(
+        let provider = @runtime.Coordinator::new(pool).create_provider(
           admin,
           cli_value(options, "name"),
           token,
           labels,
           repositories,
-          scope=@pipeline.ProviderScope::parse(cli_value(options, "scope")),
+          scope=@runtime.ProviderScope::parse(cli_value(options, "scope")),
         )
         println("Registered pipeline provider \{provider.id}:\{provider.name}")
       }
@@ -438,7 +438,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
           pool,
           cli_value(options, "admin"),
         )
-        let provider = @pipeline.Coordinator::new(pool).ensure_provider(
+        let provider = @runtime.Coordinator::new(pool).ensure_provider(
           admin,
           cli_value(options, "name"),
           token,
@@ -448,7 +448,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
             .get("preserve-existing")
             .unwrap_or(false),
           scope=single_value(options, "scope").map(
-            @pipeline.ProviderScope::parse,
+            @runtime.ProviderScope::parse,
           ),
         )
         println("Ensured pipeline provider \{provider.id}:\{provider.name}")

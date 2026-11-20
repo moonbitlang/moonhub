@@ -1,0 +1,33 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/pipeline/oidc"
+
+import {
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/pipeline/protocol",
+  "moonbitlang/core/json",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct OidcIssuer {
+  // private fields
+}
+pub fn OidcIssuer::discovery(Self) -> @json.Json
+pub fn OidcIssuer::jwks(Self) -> @json.Json
+pub async fn OidcIssuer::load(String, node? : String, allow_http? : Bool) -> Self
+
+pub struct Service {
+  // private fields
+}
+pub fn Service::new(@database.Database, oidc? : OidcIssuer, clock? : () -> Int64) -> Self
+pub fn Service::oidc_discovery(Self) -> @json.Json raise
+pub fn Service::oidc_jwks(Self) -> @json.Json raise
+pub fn Service::oidc_runtime(Self, Int64, String, @protocol.OidcRuntimeRequest) -> @protocol.OidcRuntime raise
+pub async fn Service::oidc_token(Self, Int64, String, String) -> @json.Json
+
+// Type aliases
+
+// Traits

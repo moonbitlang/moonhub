@@ -268,7 +268,7 @@ async fn render_tree(
     head is Some(commit) &&
     commit.hash == sha &&
     (rev == branch || rev == "HEAD" || rev == sha) {
-    @pipeline.commit_workflow_runs(pool, actor, repo, branch~, sha~)
+    @runtime.commit_workflow_runs(pool, actor, repo, branch~, sha~)
   } else {
     []
   }

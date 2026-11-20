@@ -56,15 +56,15 @@ async test "pull request automatically runs built-in checkout against its merged
         pool, scope, dir, actor, "MR checkout", "", branch, "master", false,
       )
       assert_true(@pipeline.run_next_merge_check(pool, root))
-      let run = @pipeline.list_runs(pool, actor, repo)[0]
+      let run = @runtime.list_runs(pool, actor, repo)[0]
       assert_eq(run.workflow_source, workflow)
       assert_eq(run.context.unwrap().head_ref, branch)
       assert_eq(run.context.unwrap().sha, run.commit_sha)
-      let coordinator = @pipeline.Coordinator::new(pool)
+      let coordinator = test_services(pool)
       let provider_token = @identity.random_hex(32)
       let attempt_token = @identity.random_hex(32)
       ignore(
-        coordinator.create_provider(
+        coordinator.runtime.create_provider(
           @identity.active_user_by_name(pool, "admin"),
           "runner",
           provider_token,
@@ -72,7 +72,7 @@ async test "pull request automatically runs built-in checkout against its merged
           [repo],
         ),
       )
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_token, {
           environments: None,
           version: 1,
@@ -89,8 +89,14 @@ async test "pull request automatically runs built-in checkout against its merged
               Module(child => {
                 child.provide(@web_context.config_root, root)
                 child.provide(
-                  @web_context.pipeline_coordinator_key, coordinator,
+                  @web_context.pipeline_coordinator_key,
+                  coordinator.runtime,
                 )
+                child.provide(
+                  @web_context.pipeline_results_key,
+                  coordinator.results,
+                )
+                child.provide(@web_context.pipeline_oidc_key, coordinator.oidc)
                 child.use_(runner_api_module)
               }),
             ),
@@ -136,7 +142,7 @@ async test "pull request automatically runs built-in checkout against its merged
           )
         })
         @async.with_timeout(6000, () => {
-          while coordinator.read_log_page(
+          while coordinator.runtime.read_log_page(
                   actor,
                   repo,
                   run.number,
@@ -146,8 +152,8 @@ async test "pull request automatically runs built-in checkout against its merged
           }
         })
         assert_true(
-          @pipeline.get_run(pool, actor, repo, run.number).state
-          is @pipeline.Running,
+          @runtime.get_run(pool, actor, repo, run.number).state
+          is @runtime.Running,
         )
         let result = running.wait()
         assert_eq(result.conclusion, "success")
@@ -176,7 +182,7 @@ async test "pull request automatically runs built-in checkout against its merged
           @collaboration.merge_checks(pool, mr)[0].conclusion,
           "success",
         )
-        let logs = coordinator.read_log_page(
+        let logs = coordinator.runtime.read_log_page(
             actor,
             repo,
             run.number,
@@ -191,7 +197,7 @@ async test "pull request automatically runs built-in checkout against its merged
           "\nlive-output\nfinished\n",
         )
         assert_true(!logs.contains(attempt_token))
-        let steps = coordinator.read_steps(
+        let steps = coordinator.runtime.read_steps(
           actor,
           repo,
           run.number,
@@ -225,11 +231,11 @@ async test "duplicate runner is fenced while original receives remote cancellati
       let run = @pipeline.create_run(
         pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
       )
-      let coordinator = @pipeline.Coordinator::new(pool)
+      let coordinator = test_services(pool)
       let provider_token = @identity.random_hex(32)
       let attempt_token = @identity.random_hex(32)
       ignore(
-        coordinator.create_provider(
+        coordinator.runtime.create_provider(
           @identity.active_user_by_name(pool, "admin"),
           "runner",
           provider_token,
@@ -237,7 +243,7 @@ async test "duplicate runner is fenced while original receives remote cancellati
           [repo],
         ),
       )
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_token, {
           environments: None,
           version: 1,
@@ -254,8 +260,14 @@ async test "duplicate runner is fenced while original receives remote cancellati
               Module(child => {
                 child.provide(@web_context.config_root, root)
                 child.provide(
-                  @web_context.pipeline_coordinator_key, coordinator,
+                  @web_context.pipeline_coordinator_key,
+                  coordinator.runtime,
                 )
+                child.provide(
+                  @web_context.pipeline_results_key,
+                  coordinator.results,
+                )
+                child.provide(@web_context.pipeline_oidc_key, coordinator.oidc)
                 child.use_(runner_api_module)
               }),
             ),
@@ -302,13 +314,13 @@ async test "duplicate runner is fenced while original receives remote cancellati
         assert_eq(duplicate.conclusion, "lost")
         assert_true(!duplicate.reported)
         assert_true(!@fs.exists(other + "/repository/ready"))
-        coordinator.cancel_run(actor, repo, run.number)
+        coordinator.runtime.cancel_run(actor, repo, run.number)
         let report = @async.with_timeout(6000, () => original.wait())
         assert_eq(report.conclusion, "cancelled")
         assert_true(report.reported)
         assert_true(!@fs.exists(workspace + "/repository/survivor"))
         assert_eq(
-          coordinator.read_steps(
+          coordinator.runtime.read_steps(
             actor,
             repo,
             run.number,

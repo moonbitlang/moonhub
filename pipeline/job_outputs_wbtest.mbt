@@ -23,17 +23,17 @@ let output_workflow : String =
 
 ///|
 fn complete_output_job(
-  c : Coordinator,
+  c : PipelineFixture,
   a : @protocol.Assignment,
   token : String,
   outputs : Map[String, String],
   conclusion~ : String = "success",
 ) -> @protocol.CompleteRequest raise {
   let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-  ignore(c.start(id, token, 1, execution_id="1".repeat(32)))
+  ignore(c.runtime.start(id, token, 1, execution_id="1".repeat(32)))
   for step in a.job.steps {
     ignore(
-      c.update_step(id, token, {
+      c.runtime.update_step(id, token, {
         version: 1,
         step_id: step.id,
         state: "running",
@@ -41,7 +41,7 @@ fn complete_output_job(
       }),
     )
     ignore(
-      c.update_step(id, token, {
+      c.runtime.update_step(id, token, {
         version: 1,
         step_id: step.id,
         state: if conclusion == "failure" {
@@ -58,7 +58,7 @@ fn complete_output_job(
     )
   }
   let request = { ..completion(conclusion~), outputs, }
-  ignore(c.complete(id, token, request)) catch {
+  ignore(c.runtime.complete(id, token, request)) catch {
     @domain.BadRequest(message~) => fail(message)
     err => raise err
   }
@@ -69,7 +69,7 @@ fn complete_output_job(
 async test "job outputs publish atomically filter delivered secrets and bind idempotent completion" {
   with_protocol_fixture(
     (c, pool, _, run, _, _) => {
-      let a = c.claim(provider_secret, claim_request()).unwrap()
+      let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
       assert_eq(a.version, @protocol.variable_assignment_version)
       assert_eq(a.job.id, "prepare")
       let id = @protocol.parse_decimal(a.attempt_id).unwrap()
@@ -85,9 +85,12 @@ async test "job outputs publish atomically filter delivered secrets and bind ide
         "version": "1.2.3",
         "secret": "prefix-never-publish",
       })
-      assert_eq(c.complete(id, attempt_secret, request).conclusion, "success")
       assert_eq(
-        c.complete(id, attempt_secret, {
+        c.runtime.complete(id, attempt_secret, request).conclusion,
+        "success",
+      )
+      assert_eq(
+        c.runtime.complete(id, attempt_secret, {
           ..request,
           outputs: { "secret": "prefix-never-publish", "version": "1.2.3" },
         }).conclusion,
@@ -95,18 +98,18 @@ async test "job outputs publish atomically filter delivered secrets and bind ide
       )
       try
         ignore(
-          c.complete(id, attempt_secret, {
+          c.runtime.complete(id, attempt_secret, {
             ..request,
             outputs: { "version": "changed" },
           }),
         )
       catch {
-        Conflict(_) => ()
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("changed output completion accepted")
       }
-      let b = c
+      let b = c.runtime
         .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
         .unwrap()
       assert_eq(b.job.id, "build")
@@ -118,7 +121,7 @@ async test "job outputs publish atomically filter delivered secrets and bind ide
       )
       assert_true(b.job.needs.get("skip") is None)
       ignore(complete_output_job(c, b, "c".repeat(64), Map([])))
-      let jobs = list_jobs(
+      let jobs = @runtime.list_jobs(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         protocol_repo,
@@ -167,11 +170,11 @@ async test "job conditions propagate ancestor failure but explicit cleanup may r
     #|    steps: [{id: diagnose, run: echo diagnose}]
   with_protocol_fixture(
     (c, pool, _, run, _, _) => {
-      let a = c.claim(provider_secret, claim_request()).unwrap()
+      let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
       ignore(
         complete_output_job(c, a, attempt_secret, Map([]), conclusion="failure"),
       )
-      let b = c
+      let b = c.runtime
         .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
         .unwrap()
       assert_eq(b.job.id, "cleanup")
@@ -180,14 +183,14 @@ async test "job conditions propagate ancestor failure but explicit cleanup may r
         Some(({ "result": "failure", "outputs": {} } : Json)),
       )
       ignore(complete_output_job(c, b, "c".repeat(64), Map([])))
-      let d = c
+      let d = c.runtime
         .claim(provider_secret, claim_request(id="3", secret="d".repeat(64)))
         .unwrap()
       assert_eq(d.job.id, "diagnose")
       assert_true(d.job.needs.get("fail") is None)
       ignore(complete_output_job(c, d, "d".repeat(64), Map([])))
       assert_true(
-        get_run(
+        @runtime.get_run(
           pool,
           @identity.active_user_by_name(pool, "alice"),
           protocol_repo,
@@ -217,7 +220,7 @@ async test "matrix needs aggregates outputs by completion order and waits for al
   with_protocol_fixture(
     (c, pool, _, _, _, _) => {
       ignore(
-        c.create_provider(
+        c.runtime.create_provider(
           @identity.active_user_by_name(pool, "admin"),
           "second",
           "c".repeat(64),
@@ -225,8 +228,8 @@ async test "matrix needs aggregates outputs by completion order and waits for al
           [protocol_repo],
         ),
       )
-      let a = c.claim(provider_secret, claim_request()).unwrap()
-      let b = c
+      let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      let b = c.runtime
         .claim("c".repeat(64), claim_request(id="2", secret="d".repeat(64)))
         .unwrap()
       ignore(
@@ -234,7 +237,7 @@ async test "matrix needs aggregates outputs by completion order and waits for al
           "shared": "second-instance-first",
         }),
       )
-      let empty = c
+      let empty = c.runtime
         .claim("c".repeat(64), claim_request(id="3", secret="e".repeat(64)))
         .unwrap()
       ignore(
@@ -243,13 +246,16 @@ async test "matrix needs aggregates outputs by completion order and waits for al
         }),
       )
       assert_true(
-        c.claim(provider_secret, claim_request(id="4", secret="f".repeat(64)))
+        c.runtime.claim(
+          provider_secret,
+          claim_request(id="4", secret="f".repeat(64)),
+        )
         is None,
       )
       // Upstream runners omit empty values. The last finishing instance must
       // not erase a non-empty output from an earlier matrix completion.
       ignore(complete_output_job(c, empty, "e".repeat(64), { "shared": "" }))
-      let after = c
+      let after = c.runtime
         .claim(provider_secret, claim_request(id="5", secret="0".repeat(64)))
         .unwrap()
       assert_eq(
@@ -280,14 +286,17 @@ async test "invalid dynamic job conditions fail locally and root false condition
     )
   with_protocol_fixture(
     (c, pool, _, run, _, _) => {
-      let a = c.claim(provider_secret, claim_request()).unwrap()
+      let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
       ignore(complete_output_job(c, a, attempt_secret, { "version": "{" }))
       assert_true(
-        c.claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
+        c.runtime.claim(
+          provider_secret,
+          claim_request(id="2", secret="c".repeat(64)),
+        )
         is None,
       )
       assert_true(
-        get_run(
+        @runtime.get_run(
           pool,
           @identity.active_user_by_name(pool, "alice"),
           protocol_repo,
@@ -296,7 +305,7 @@ async test "invalid dynamic job conditions fail locally and root false condition
         is Some(Failure),
       )
       assert_true(
-        list_jobs(
+        @runtime.list_jobs(
           pool,
           @identity.active_user_by_name(pool, "alice"),
           protocol_repo,
@@ -313,7 +322,7 @@ async test "invalid dynamic job conditions fail locally and root false condition
   with_protocol_fixture(
     (c, _, _, run, _, _) => {
       assert_true(run.state is Completed)
-      assert_true(c.claim(provider_secret, claim_request()) is None)
+      assert_true(c.runtime.claim(provider_secret, claim_request()) is None)
     },
     workflow=@test_support.single_job_workflow.replace_all(
       old="runs-on:",
@@ -326,9 +335,9 @@ async test "invalid dynamic job conditions fail locally and root false condition
 async test "outputs from expired cancelled or previous run attempts cannot leak into a new run" {
   with_protocol_fixture(
     (c, pool, root, run, _, clock) => {
-      let old = c.claim(provider_secret, claim_request()).unwrap()
+      let old = c.runtime.claim(provider_secret, claim_request()).unwrap()
       clock.val += @protocol.lease_ms + 1L
-      ignore(c.expire_attempts())
+      ignore(c.runtime.expire_attempts())
       let restarted = rerun_run(
         pool,
         root,
@@ -336,7 +345,7 @@ async test "outputs from expired cancelled or previous run attempts cannot leak 
         protocol_repo,
         run.number,
       )
-      let fresh = c
+      let fresh = c.runtime
         .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
         .unwrap()
       assert_eq(fresh.job.id, "prepare")
@@ -345,7 +354,7 @@ async test "outputs from expired cancelled or previous run attempts cannot leak 
           complete_output_job(c, old, attempt_secret, { "version": "stale" }),
         )
       catch {
-        Conflict(_) => ()
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("expired lease published output")
@@ -353,7 +362,7 @@ async test "outputs from expired cancelled or previous run attempts cannot leak 
       ignore(
         complete_output_job(c, fresh, "c".repeat(64), { "version": "1.2.3" }),
       )
-      let build = c
+      let build = c.runtime
         .claim(provider_secret, claim_request(id="3", secret="d".repeat(64)))
         .unwrap()
       ignore(complete_output_job(c, build, "d".repeat(64), Map([])))
@@ -364,26 +373,29 @@ async test "outputs from expired cancelled or previous run attempts cannot leak 
         protocol_repo,
         restarted.number,
       )
-      let again = c
+      let again = c.runtime
         .claim(provider_secret, claim_request(id="4", secret="e".repeat(64)))
         .unwrap()
       assert_eq(again.run_id, rerun.id.to_string())
       assert_true(again.job.needs.is_empty())
       assert_eq(again.job.id, "prepare")
-      c.cancel_run(
+      c.runtime.cancel_run(
         @identity.active_user_by_name(pool, "alice"),
         protocol_repo,
         rerun.number,
       )
       let id = @protocol.parse_decimal(again.attempt_id).unwrap()
       ignore(
-        c.complete(id, "e".repeat(64), {
+        c.runtime.complete(id, "e".repeat(64), {
           ..completion(conclusion="cancelled"),
           outputs: { "version": "cancelled" },
         }),
       )
       assert_true(
-        c.claim(provider_secret, claim_request(id="5", secret="f".repeat(64)))
+        c.runtime.claim(
+          provider_secret,
+          claim_request(id="5", secret="f".repeat(64)),
+        )
         is None,
       )
       pool.with_client(client => {
@@ -404,9 +416,11 @@ async test "outputs from expired cancelled or previous run attempts cannot leak 
 async test "undeclared oversized and NUL outputs are rejected without completing an attempt" {
   with_protocol_fixture(
     (c, pool, _, _, _, _) => {
-      let a = c.claim(provider_secret, claim_request()).unwrap()
+      let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
       let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-      ignore(c.start(id, attempt_secret, 1, execution_id="1".repeat(32)))
+      ignore(
+        c.runtime.start(id, attempt_secret, 1, execution_id="1".repeat(32)),
+      )
       for
         values in [
           { "undeclared": "value" },
@@ -421,7 +435,7 @@ async test "undeclared oversized and NUL outputs are rejected without completing
         ] {
         try
           ignore(
-            c.complete(id, attempt_secret, {
+            c.runtime.complete(id, attempt_secret, {
               ..completion(conclusion="failure"),
               outputs: values,
             }),
@@ -438,7 +452,9 @@ async test "undeclared oversized and NUL outputs are rejected without completing
           client.query_all("SELECT * FROM pipeline_job_output").is_empty(),
         )
       })
-      ignore(c.complete(id, attempt_secret, completion(conclusion="failure")))
+      ignore(
+        c.runtime.complete(id, attempt_secret, completion(conclusion="failure")),
+      )
     },
     workflow=output_workflow,
   )
@@ -454,7 +470,7 @@ async test "run output quota is enforced transactionally across matrix jobs" {
     (c, pool, _, run, _, _) => {
       for index = 0; index < 9; index = index + 1 {
         let token = @identity.random_hex(32)
-        let a = c
+        let a = c.runtime
           .claim(provider_secret, {
             environments: None,
             version: 1,
@@ -464,21 +480,23 @@ async test "run output quota is enforced transactionally across matrix jobs" {
           })
           .unwrap()
         let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-        ignore(c.start(id, token, 1, execution_id="1".repeat(32)))
+        ignore(c.runtime.start(id, token, 1, execution_id="1".repeat(32)))
         let request = {
           ..completion(conclusion="failure"),
           outputs: { "version": "x".repeat(16300), "secret": "y".repeat(16300) },
         }
         if index < 8 {
-          ignore(c.complete(id, token, request))
+          ignore(c.runtime.complete(id, token, request))
         } else {
-          try ignore(c.complete(id, token, request)) catch {
+          try ignore(c.runtime.complete(id, token, request)) catch {
             @domain.BadRequest(_) => ()
             err => raise err
           } noraise {
             _ => fail("run outputs exceeded quota")
           }
-          ignore(c.complete(id, token, completion(conclusion="failure")))
+          ignore(
+            c.runtime.complete(id, token, completion(conclusion="failure")),
+          )
         }
       }
       pool.with_client(client => {
@@ -491,7 +509,7 @@ async test "run output quota is enforced transactionally across matrix jobs" {
         )
       })
       assert_true(
-        get_run(
+        @runtime.get_run(
           pool,
           @identity.active_user_by_name(pool, "alice"),
           protocol_repo,
@@ -538,7 +556,7 @@ async test "legacy definition 3 assignments keep their wire version empty datafl
     let c = merge_check_provider(pool)
     for _ in 0..<3 {
       let token = @identity.random_hex(32)
-      let a = c
+      let a = c.runtime
         .claim(provider_secret, {
           environments: None,
           version: 1,
@@ -569,7 +587,7 @@ async test "legacy definition 3 assignments keep their wire version empty datafl
         )
       })
       ignore(
-        c.complete(
+        c.runtime.complete(
           @protocol.parse_decimal(a.attempt_id).unwrap(),
           token,
           request,

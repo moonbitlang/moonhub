@@ -32,9 +32,11 @@ async test "repository variables snapshot atomically and survive edits deletion 
     let actor = @identity.active_user_by_name(pool, "alice")
     let repo = protocol_repo
     let dir = repo.git_dir(root)
-    save_variable(pool, actor, repo, "openseek_s3_region", "ap-southeast-1", 0L)
-    save_variable(pool, actor, repo, "ENABLED", "yes", 0L)
-    save_variable(
+    @runtime.save_variable(
+      pool, actor, repo, "openseek_s3_region", "ap-southeast-1", 0L,
+    )
+    @runtime.save_variable(pool, actor, repo, "ENABLED", "yes", 0L)
+    @runtime.save_variable(
       pool, actor, repo, "LITERAL", "${{ secrets.NOT_A_SECRET }}", 0L,
     )
     let sha = @test_support.workflow_commit(dir, variables_workflow)
@@ -56,9 +58,9 @@ async test "repository variables snapshot atomically and survive edits deletion 
       (scheduled.get_name("group_key") : String),
       "release-ap-southeast-1-refs/heads/pipeline",
     )
-    for variable in list_variables(pool, actor, repo) {
+    for variable in @runtime.list_variables(pool, actor, repo) {
       if variable.name == "OPENSEEK_S3_REGION" {
-        save_variable(
+        @runtime.save_variable(
           pool,
           actor,
           repo,
@@ -67,7 +69,13 @@ async test "repository variables snapshot atomically and survive edits deletion 
           variable.version,
         )
       } else {
-        delete_variable(pool, actor, repo, variable.name, variable.version)
+        @runtime.delete_variable(
+          pool,
+          actor,
+          repo,
+          variable.name,
+          variable.version,
+        )
       }
     }
     ignore(
@@ -88,7 +96,7 @@ async test "repository variables snapshot atomically and survive edits deletion 
     assert_eq(second.job.id, "consume")
     assert_eq(ToJson::to_json(second.job.variables), ToJson::to_json(captured))
     ignore(complete_output_job(c, second, token, Map([])))
-    let completed = get_run(pool, actor, repo, run.number)
+    let completed = @runtime.get_run(pool, actor, repo, run.number)
     assert_true(completed.conclusion is Some(Success))
     let again = rerun_run(pool, root, actor, repo, run.number)
     assert_eq(again.commit_sha, sha)
@@ -141,7 +149,9 @@ async test "legacy definition five reruns do not capture newly configured reposi
         )
       })
     })
-    save_variable(pool, actor, protocol_repo, "NOW_AVAILABLE", "new", 0L)
+    @runtime.save_variable(
+      pool, actor, protocol_repo, "NOW_AVAILABLE", "new", 0L,
+    )
     let c = merge_check_provider(pool)
     let (a, token) = claim_dag_attempt(c, provider_secret)
     assert_eq(a.version, @protocol.dispatch_assignment_version)
@@ -160,12 +170,12 @@ async test "legacy definition five reruns do not capture newly configured reposi
 async test "authorized MR checks capture public repository variables" {
   with_merge_check_fixture(
     (pool, root, _, actor, _) => {
-      save_variable(
+      @runtime.save_variable(
         pool, actor, protocol_repo, "OPENSEEK_S3_REGION", "mr-region", 0L,
       )
-      save_variable(pool, actor, protocol_repo, "ENABLED", "yes", 0L)
+      @runtime.save_variable(pool, actor, protocol_repo, "ENABLED", "yes", 0L)
       poll_merge_checks(pool, root)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       assert_eq(
         run.context.unwrap().variables.get("OPENSEEK_S3_REGION"),
         Some("mr-region"),

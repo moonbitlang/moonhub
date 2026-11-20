@@ -17,9 +17,9 @@ async test "production runner mount uses bearer auth never browser sessions and 
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, _) => {
     let token = @identity.random_hex(32)
     let attempt_token = @identity.random_hex(32)
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = test_services(pool)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "http",
         token,
@@ -43,7 +43,7 @@ async test "production runner mount uses bearer auth never browser sessions and 
       } else {
         let credential = @identity.random_hex(32)
         ignore(
-          coordinator.create_provider(
+          coordinator.runtime.create_provider(
             @identity.active_user_by_name(pool, "admin"),
             "http-" + os,
             credential,
@@ -176,9 +176,9 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
     let provider_token = @identity.random_hex(32)
     let attempt_token = @identity.random_hex(32)
     let clock = Ref(1700000000000L)
-    let coordinator = @pipeline.Coordinator::new(pool, clock=() => clock.val)
+    let coordinator = test_services(pool, clock=() => clock.val)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "test",
         provider_token,
@@ -192,7 +192,15 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
           "/-/runner-api/v1",
           App(
             Module(child => {
-              child.provide(@web_context.pipeline_coordinator_key, coordinator)
+              child.provide(
+                @web_context.pipeline_coordinator_key,
+                coordinator.runtime,
+              )
+              child.provide(
+                @web_context.pipeline_results_key,
+                coordinator.results,
+              )
+              child.provide(@web_context.pipeline_oidc_key, coordinator.oidc)
               child.use_(runner_api_module)
             }),
           ),
@@ -318,7 +326,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         200,
       )
       assert_eq(
-        coordinator.read_log_page(
+        coordinator.runtime.read_log_page(
           actor,
           repo,
           run.number,
@@ -327,7 +335,7 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         1,
       )
       assert_eq(
-        coordinator.read_log_page(
+        coordinator.runtime.read_log_page(
           actor,
           repo,
           run.number,
@@ -418,9 +426,65 @@ async test "simulated provider completes a real HTTP attempt with retry safe log
         409,
       )
       assert_true(
-        @pipeline.get_run(pool, actor, repo, run.number).conclusion
-        is Some(@pipeline.Success),
+        @runtime.get_run(pool, actor, repo, run.number).conclusion
+        is Some(@runtime.Success),
       )
     })
+  })
+}
+
+///|
+async test "machine modules require each service from the application container" {
+  @test_support.with_ssh_test_db(pool => {
+    let services = test_services(pool)
+    for
+      (module_, expected) in [
+        (artifact_rpc_module, "moonhub.pipeline_results"),
+        (cache_rpc_module, "moonhub.pipeline_results"),
+        (artifact_blob_module, "moonhub.pipeline_results"),
+        (oidc_module, "moonhub.pipeline_oidc"),
+        (runner_api_module, "moonhub.pipeline_results"),
+      ] {
+      try {
+        let app = @moonback.App(
+          Module(ctx => {
+            ctx.provide(@web_context.pipeline_coordinator_key, services.runtime)
+            ctx.use_(module_)
+          }),
+          config=Config(custom=[
+            @moonback.Config::custom(
+              @web_context.pipeline_results_key,
+              services.results,
+            ),
+            @moonback.Config::custom(
+              @web_context.pipeline_oidc_key,
+              services.oidc,
+            ),
+          ]),
+        )
+        app.close()
+      } catch {
+        @moonback.MissingDependency(name~) => assert_eq(name, expected)
+        err => raise err
+      } noraise {
+        _ => fail("machine module read a service from bootstrap configuration")
+      }
+    }
+    try {
+      let app = @moonback.App(
+        Module(ctx => {
+          ctx.provide(@web_context.pipeline_coordinator_key, services.runtime)
+          ctx.provide(@web_context.pipeline_results_key, services.results)
+          ctx.use_(runner_api_module)
+        }),
+      )
+      app.close()
+    } catch {
+      @moonback.MissingDependency(name~) =>
+        assert_eq(name, "moonhub.pipeline_oidc")
+      err => raise err
+    } noraise {
+      _ => fail("runner module accepted a missing OIDC service")
+    }
   })
 }

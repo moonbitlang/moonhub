@@ -1,5 +1,4 @@
 import {
-  "hackwaly/moonhub/web/dto",
   "hackwaly/moonhub/releases",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/attachments",
@@ -16,6 +15,8 @@ import {
   "moonbitlang/core/json",
   "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
+  "hackwaly/moonhub/web/dto",
+  "hackwaly/moonhub/pipeline/runtime",
 }
 
 import {

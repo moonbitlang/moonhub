@@ -1,6 +1,6 @@
 ///|
-fn Coordinator::capture_storage_location(
-  self : Coordinator,
+fn Service::capture_storage_location(
+  self : Service,
   tx : @database.DbTransaction,
   id : Int64,
   cache : Bool,
@@ -27,8 +27,8 @@ fn blob_location(tx : @database.DbTransaction, id : Int64) -> String raise {
 }
 
 ///|
-fn Coordinator::blob_store(
-  self : Coordinator,
+fn Service::blob_store(
+  self : Service,
   root : String,
   location : String,
 ) -> @storage.Store raise {
@@ -99,10 +99,7 @@ pub async fn ArtifactBlob::with_reader(
 }
 
 ///|
-async fn Coordinator::cleanup_blob_garbage(
-  self : Coordinator,
-  root : String,
-) -> Bool {
+async fn Service::cleanup_blob_garbage(self : Service, root : String) -> Bool {
   let mut complete = true
   let now = (self.clock)()
   let rows = self.pool.with_client(client => {

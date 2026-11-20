@@ -1,5 +1,5 @@
 ///|
-fn Coordinator::oidc_issuer(self : Coordinator) -> OidcIssuer raise {
+fn Service::oidc_issuer(self : Service) -> OidcIssuer raise {
   guard self.oidc is Some(issuer) else {
     raise @domain.BadRequest(message="workflow OIDC is not configured")
   }
@@ -12,25 +12,26 @@ fn oidc_live(
   attempt : Int64,
   execution : String,
   now : Int64,
-) -> @database.DbRow raise {
-  let row = artifact_live(tx, attempt, execution, now)
-  guard (row.get_name("definition_version") : Int64) >= 7L &&
-    attempt_job(row).id_token_write else {
+) -> @runtime.LiveAttempt raise {
+  let row = @runtime.live_attempt(tx, attempt, execution, now)
+  guard row.definition_version >= 7 && row.job().id_token_write else {
     raise @domain.Unauthorized(message="job does not grant id-token: write")
   }
   row
 }
 
 ///|
-pub fn Coordinator::oidc_runtime(
-  self : Coordinator,
+pub fn Service::oidc_runtime(
+  self : Service,
   id : Int64,
   token : String,
   request : @protocol.OidcRuntimeRequest,
 ) -> @protocol.OidcRuntime raise {
-  check_version(request.version)
+  guard request.version == @protocol.version else {
+    raise @domain.BadRequest(message="unsupported runner protocol version")
+  }
   let issuer = self.oidc_issuer()
-  self.authenticate_attempt(id, token)
+  @runtime.Coordinator::new(self.pool).authenticate_attempt(id, token)
   self.pool.with_client(client => {
     client.with_transaction(
       tx => {
@@ -48,7 +49,7 @@ pub fn Coordinator::oidc_runtime(
           raise @domain.BadRequest(message="too many OIDC runtime grants")
         }
         let credential = @identity.random_hex(32)
-        let expires = Int64::min(now + 3600000L, row.get_name("deadline_ms"))
+        let expires = Int64::min(now + 3600000L, row.deadline_ms)
         ignore(
           tx.execute(
             "INSERT INTO pipeline_oidc_runtime(token_hash,attempt_id,execution_id,expires_ms) VALUES(?,?,?,?)",
@@ -79,14 +80,17 @@ pub fn Coordinator::oidc_runtime(
 }
 
 ///|
-fn Coordinator::oidc_claims(
-  self : Coordinator,
+fn Service::oidc_claims(
+  self : Service,
   id : Int64,
   token : String,
   audience : String,
   consume : Bool,
 ) -> Json raise {
-  check_token(token)
+  guard token.length() == 64 &&
+    token.iter().all(ch => ch.is_ascii_digit() || (ch >= 'a' && ch <= 'f')) else {
+    raise @domain.Unauthorized(message="invalid runner credentials")
+  }
   let issuer = self.oidc_issuer()
   let audience = if audience.is_empty() {
     issuer.audiences[0]
@@ -128,19 +132,19 @@ fn Coordinator::oidc_claims(
         }
         let run = tx.query_one(
           "SELECT r.*, m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id=?",
-          params=[(row.get_name("run_id") : Int64)],
+          params=[row.run_id],
         )
         let context : @workflow.RunContext = @json.from_json(
           @json.parse((run.get_name("context_json") : String?).unwrap_or("{}")),
         )
-        let repository_id : Int64 = row.get_name("repository_id")
+        let repository_id : Int64 = row.repository_id
         let repo = context.repository
         let mr_number = if context.event_name == "pull_request" {
           Some((run.get_name("mr_number") : Int64))
         } else {
           None
         }
-        let event_ref = run_event_ref(
+        let event_ref = @runtime.run_event_ref(
           Some(context),
           run.get_name("source_branch"),
           mr_number~,
@@ -155,8 +159,7 @@ fn Coordinator::oidc_claims(
             .replace_all(old="%", new="%25")
             .replace_all(old=":", new="%3A")
           })
-        let expires = Int64::min(now + 300000L, row.get_name("deadline_ms")) /
-          1000L
+        let expires = Int64::min(now + 300000L, row.deadline_ms) / 1000L
         guard expires > now / 1000L else {
           raise @domain.Unauthorized(message="job is expiring")
         }
@@ -171,15 +174,15 @@ fn Coordinator::oidc_claims(
           "repository": repo,
           "repository_id": repository_id.to_string(),
           "ref": event_ref,
-          "sha": (row.get_name("commit_sha") : String),
-          "run_id": (row.get_name("run_id") : Int64).to_string(),
-          "job_id": (row.get_name("job_key") : String),
+          "sha": row.commit_sha,
+          "run_id": row.run_id.to_string(),
+          "job_id": row.job_key,
           "event_name": context.event_name,
           "workflow_ref": repo +
           "/" +
           (run.get_name("workflow_path") : String) +
           "@" +
-          (row.get_name("commit_sha") : String),
+          row.commit_sha,
         }
       },
       immediate=true,
@@ -188,8 +191,8 @@ fn Coordinator::oidc_claims(
 }
 
 ///|
-pub async fn Coordinator::oidc_token(
-  self : Coordinator,
+pub async fn Service::oidc_token(
+  self : Service,
   id : Int64,
   token : String,
   audience : String,
@@ -215,11 +218,11 @@ pub async fn Coordinator::oidc_token(
 }
 
 ///|
-pub fn Coordinator::oidc_discovery(self : Coordinator) -> Json raise {
+pub fn Service::oidc_discovery(self : Service) -> Json raise {
   self.oidc_issuer().discovery()
 }
 
 ///|
-pub fn Coordinator::oidc_jwks(self : Coordinator) -> Json raise {
+pub fn Service::oidc_jwks(self : Service) -> Json raise {
   self.oidc_issuer().jwks()
 }

@@ -1,0 +1,16 @@
+import {
+  "moonbitlang/async",
+  "moonbitlang/x/codec/base64",
+  "moonbitlang/x/crypto",
+  "hackwaly/moonhub/database",
+  "hackwaly/moonhub/domain",
+  "moonbitlang/core/env",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/pipeline/protocol",
+  "hackwaly/moonhub/repository",
+  "hackwaly/moonhub/pipeline/runtime",
+  "hackwaly/moonhub/storage",
+  "moonbitlang/core/encoding/utf8",
+}
+
+supported_targets = "native"

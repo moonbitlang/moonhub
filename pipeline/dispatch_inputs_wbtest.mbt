@@ -53,7 +53,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
         (group.get_name("group_key") : String),
         "release-stable-refs/heads/pipeline",
       )
-      let first = c.claim(provider_secret, claim_request()).unwrap()
+      let first = c.runtime.claim(provider_secret, claim_request()).unwrap()
       assert_eq(first.version, @protocol.variable_assignment_version)
       assert_eq(first.job.id, "prepare")
       assert_eq(
@@ -86,7 +86,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
         complete_output_job(c, first, attempt_secret, { "version": "1.2.3" }),
       )
       let token = "c".repeat(64)
-      let second = c
+      let second = c.runtime
         .claim(provider_secret, claim_request(id="2", secret=token))
         .unwrap()
       assert_eq(second.job.id, "consume")
@@ -96,7 +96,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
       )
       ignore(complete_output_job(c, second, token, Map([])))
       assert_true(
-        get_run(pool, actor, protocol_repo, run.number).conclusion
+        @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
         is Some(Success),
       )
       let again = rerun_run(pool, root, actor, protocol_repo, run.number)
@@ -106,7 +106,7 @@ async test "dispatch captures typed inputs for scheduler assignment and immutabl
       )
       assert_eq(again.commit_sha, run.commit_sha)
       assert_eq(again.workflow_source, dispatch_workflow)
-      let repeated = c
+      let repeated = c.runtime
         .claim(provider_secret, claim_request(id="3", secret="d".repeat(64)))
         .unwrap()
       assert_eq(
@@ -154,7 +154,7 @@ async test "invalid dispatch inputs leave no run or source pin" {
       } noraise {
         _ => fail("invalid dispatch accepted")
       }
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
       assert_eq(
         @gitops.merge_git(dir, [
           "for-each-ref", "--format=%(refname)", "refs/moonhub/pipelines/",
@@ -259,7 +259,7 @@ async test "MR scheduler and runner agree on captured event reference with empty
   with_merge_check_fixture(
     (pool, root, _, actor, _) => {
       poll_merge_checks(pool, root)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       assert_true(run.context.unwrap().inputs.is_empty())
       let c = merge_check_provider(pool)
       let (assignment, _) = claim_dag_attempt(c, provider_secret)

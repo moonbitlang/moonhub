@@ -19,7 +19,7 @@ fn release_token(req : @moonback.Request) -> String? raise {
 ///|
 fn release_access(
   pool : @database.Database,
-  coordinator : @pipeline.Coordinator,
+  coordinator : @runtime.Coordinator,
   req : @moonback.Request,
   repo : @domain.RepoId,
 ) -> @releases.Access raise {
@@ -216,7 +216,7 @@ pub let releases_api_module : @moonback.Module = Module(ctx => {
       }
       let path = ".github/workflows/" +
         @web_context.required_param(req, "workflow", "workflow")
-      let (count, runs) = @pipeline.workflow_run_history(
+      let (count, runs) = @runtime.workflow_run_history(
         pool,
         actor,
         repo,
@@ -237,9 +237,9 @@ pub let releases_api_module : @moonback.Module = Module(ctx => {
                 "display_title": run.display_title,
                 "head_sha": run.commit_sha,
                 "head_branch": run.source_branch,
-                "status": if run.state is @pipeline.Completed {
+                "status": if run.state is @runtime.Completed {
                   "completed"
-                } else if run.state is @pipeline.Running {
+                } else if run.state is @runtime.Running {
                   "in_progress"
                 } else {
                   "queued"
@@ -247,12 +247,12 @@ pub let releases_api_module : @moonback.Module = Module(ctx => {
                 "conclusion": run.conclusion
                 .map(c => {
                   match c {
-                    @pipeline.Success => "success"
-                    @pipeline.Failure => "failure"
-                    @pipeline.Cancelled => "cancelled"
-                    @pipeline.TimedOut => "timed_out"
-                    @pipeline.Lost => "lost"
-                    @pipeline.Skipped => "skipped"
+                    @runtime.Success => "success"
+                    @runtime.Failure => "failure"
+                    @runtime.Cancelled => "cancelled"
+                    @runtime.TimedOut => "timed_out"
+                    @runtime.Lost => "lost"
+                    @runtime.Skipped => "skipped"
                   }
                 })
                 .map(Json::string)

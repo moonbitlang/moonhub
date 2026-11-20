@@ -10,29 +10,39 @@ async test "provider label replacement changes matching without replacing creden
         ),
       )
     })
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.set_provider_paused(admin, provider.id, true)
-    coordinator.set_provider_labels(admin, provider.id, [
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    coordinator.runtime.set_provider_paused(admin, provider.id, true)
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "SELF-HOSTED", "linux", "moonhub-build", "linux",
     ])
-    let updated = coordinator.list_providers(admin)[0]
+    let updated = coordinator.runtime.list_providers(admin)[0]
     assert_eq(updated.id, provider.id)
     assert_eq(updated.name, provider.name)
     assert_true(updated.paused)
     assert_false(updated.revoked)
     assert_eq(updated.labels, ["linux", "moonhub-build", "self-hosted"])
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-    coordinator.set_provider_paused(admin, provider.id, false)
-    let assigned = coordinator.claim(provider_secret, claim_request()).unwrap()
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
+    coordinator.runtime.set_provider_paused(admin, provider.id, false)
+    let assigned = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
     let id = @protocol.parse_decimal(assigned.attempt_id).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    coordinator.set_provider_labels(admin, provider.id, ["self-hosted", "linux"])
-    assert_eq(coordinator.list_providers(admin)[0].labels, [
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
+      "self-hosted", "linux",
+    ])
+    assert_eq(coordinator.runtime.list_providers(admin)[0].labels, [
       "linux", "self-hosted",
     ])
-    assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
+    assert_true(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
     assert_eq(
-      coordinator.complete(
+      coordinator.runtime.complete(
         id,
         attempt_secret,
         completion(conclusion="cancelled"),
@@ -40,7 +50,7 @@ async test "provider label replacement changes matching without replacing creden
       "cancelled",
     )
     assert_true(
-      coordinator.claim(
+      coordinator.runtime.claim(
         provider_secret,
         claim_request(id="2", secret="c".repeat(64)),
       )
@@ -64,15 +74,19 @@ async test "provider label replacement changes matching without replacing creden
 async test "removing an unrelated label leaves matching running work unchanged" {
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    coordinator.set_provider_labels(admin, provider.id, [
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "unused",
     ])
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    coordinator.set_provider_labels(admin, provider.id, ["self-hosted", "linux"])
-    assert_false(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
+      "self-hosted", "linux",
+    ])
+    assert_false(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
   })
 }
 
@@ -92,25 +106,34 @@ async test "label removal cancels leased work and reconciliation releases the pr
     let queued = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    coordinator.set_provider_labels(admin, provider.id, [
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "moonhub-build",
     ])
-    let assigned = coordinator.claim(provider_secret, claim_request()).unwrap()
+    let assigned = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
     assert_eq(assigned.run_id, run.id.to_string())
     let id = @protocol.parse_decimal(assigned.attempt_id).unwrap()
-    coordinator.set_provider_labels(admin, provider.id, ["self-hosted", "linux"])
-    assert_true(coordinator.start(id, attempt_secret, 1).cancel_requested)
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
+      "self-hosted", "linux",
+    ])
+    assert_true(
+      coordinator.runtime.start(id, attempt_secret, 1).cancel_requested,
+    )
     clock.val += 100L
-    coordinator.set_provider_labels(admin, provider.id, [
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "moonhub-build",
     ])
-    assert_true(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    clock.val += @protocol.cancel_grace_ms
-    assert_eq(coordinator.expire_attempts(), 1)
     assert_true(
-      get_run(pool, actor, protocol_repo, run.number).conclusion is Some(Lost),
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
     )
-    let next = coordinator
+    clock.val += @protocol.cancel_grace_ms
+    assert_eq(coordinator.runtime.expire_attempts(), 1)
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+      is Some(Lost),
+    )
+    let next = coordinator.runtime
       .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
       .unwrap()
     assert_eq(next.run_id, queued.id.to_string())
@@ -122,19 +145,23 @@ async test "editing one provider does not cancel another provider's running atte
   with_protocol_fixture((coordinator, pool, _, _, provider, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    let other = coordinator.create_provider(
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    let other = coordinator.runtime.create_provider(
       admin,
       "other-labels",
       "d".repeat(64),
       ["self-hosted", "linux", "unused"],
       [protocol_repo],
     )
-    coordinator.set_provider_labels(admin, other.id, ["self-hosted", "linux"])
-    assert_false(coordinator.heartbeat(id, attempt_secret, 1).cancel_requested)
-    assert_eq(coordinator.list_providers(admin)[0].id, provider.id)
+    coordinator.runtime.set_provider_labels(admin, other.id, [
+      "self-hosted", "linux",
+    ])
+    assert_false(
+      coordinator.runtime.heartbeat(id, attempt_secret, 1).cancel_requested,
+    )
+    assert_eq(coordinator.runtime.list_providers(admin)[0].id, provider.id)
   })
 }
 
@@ -153,17 +180,19 @@ async test "invalid label replacements leave the complete existing set unchanged
         ["self-hosted", "linux", "x".repeat(65)],
         ["self-hosted", "linux", "a", "b", "c", "d", "e", "f", "g"],
       ] {
-      try coordinator.set_provider_labels(admin, provider.id, labels) catch {
+      try
+        coordinator.runtime.set_provider_labels(admin, provider.id, labels)
+      catch {
         @domain.BadRequest(_) => ()
         err => raise err
       } noraise {
         _ => fail("accepted invalid labels")
       }
-      assert_eq(coordinator.list_providers(admin)[0].labels, [
+      assert_eq(coordinator.runtime.list_providers(admin)[0].labels, [
         "linux", "self-hosted",
       ])
     }
-    coordinator.set_provider_labels(admin, provider.id, [
+    coordinator.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted",
       "linux",
       "x".repeat(64),
@@ -173,7 +202,7 @@ async test "invalid label replacements leave the complete existing set unchanged
       "d",
       "e",
     ])
-    assert_eq(coordinator.list_providers(admin)[0].labels.length(), 8)
+    assert_eq(coordinator.runtime.list_providers(admin)[0].labels.length(), 8)
   })
 }
 
@@ -183,7 +212,9 @@ async test "provider label edits require a current administrator and a nonrevoke
     let admin = @identity.active_user_by_name(pool, "admin")
     let alice = @identity.active_user_by_name(pool, "alice")
     let labels = ["self-hosted", "linux", "moonhub-build"]
-    try coordinator.set_provider_labels(alice, provider.id, labels) catch {
+    try
+      coordinator.runtime.set_provider_labels(alice, provider.id, labels)
+    catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
@@ -196,7 +227,9 @@ async test "provider label edits require a current administrator and a nonrevoke
         ]),
       )
     })
-    try coordinator.set_provider_labels(admin, provider.id, labels) catch {
+    try
+      coordinator.runtime.set_provider_labels(admin, provider.id, labels)
+    catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
@@ -209,16 +242,16 @@ async test "provider label edits require a current administrator and a nonrevoke
         ]),
       )
     })
-    coordinator.revoke_provider(admin, provider.id)
+    coordinator.runtime.revoke_provider(admin, provider.id)
     for id in [provider.id, provider.id + 999L] {
-      try coordinator.set_provider_labels(admin, id, labels) catch {
+      try coordinator.runtime.set_provider_labels(admin, id, labels) catch {
         @domain.NotFound(_) => ()
         err => raise err
       } noraise {
         _ => fail("changed revoked or missing provider")
       }
     }
-    assert_eq(coordinator.list_providers(admin)[0].labels, [
+    assert_eq(coordinator.runtime.list_providers(admin)[0].labels, [
       "linux", "self-hosted",
     ])
   })
@@ -232,20 +265,26 @@ async test "Ubuntu environment selectors require exact provider image and archit
   )
   with_protocol_fixture(
     (coordinator, pool, _, _, provider, _) => {
-      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+      assert_true(
+        coordinator.runtime.claim(provider_secret, claim_request()) is None,
+      )
       let admin = @identity.active_user_by_name(pool, "admin")
-      coordinator.set_provider_labels(admin, provider.id, [
+      coordinator.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "linux", "x64", "ubuntu-22.04",
       ])
-      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-      coordinator.set_provider_labels(admin, provider.id, [
+      assert_true(
+        coordinator.runtime.claim(provider_secret, claim_request()) is None,
+      )
+      coordinator.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "linux", "arm64", "ubuntu-24.04",
       ])
-      assert_true(coordinator.claim(provider_secret, claim_request()) is None)
-      coordinator.set_provider_labels(admin, provider.id, [
+      assert_true(
+        coordinator.runtime.claim(provider_secret, claim_request()) is None,
+      )
+      coordinator.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "linux", "x64", "ubuntu-24.04",
       ])
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       assert_eq(assignment.job.runs_on, [

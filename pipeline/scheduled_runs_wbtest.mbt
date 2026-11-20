@@ -25,11 +25,11 @@ async test "scheduled snapshots are opt in use UTC default branch and deduplicat
     })
     let when = 1794463200000L
     run_due_schedules(pool, root, now_ms=when)
-    assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
     set_scheduled_runs(pool, actor, protocol_repo, true)
     run_due_schedules(pool, root, now_ms=when)
     run_due_schedules(pool, root, now_ms=when)
-    let runs = list_runs(pool, actor, protocol_repo)
+    let runs = @runtime.list_runs(pool, actor, protocol_repo)
     assert_eq(runs.length(), 1)
     assert_eq(runs[0].commit_sha, sha)
     assert_eq(runs[0].context.unwrap().event_name, "schedule")
@@ -38,7 +38,7 @@ async test "scheduled snapshots are opt in use UTC default branch and deduplicat
       ignore(c.execute("UPDATE pipeline_schedule_config SET polled_minute=-1"))
     })
     run_due_schedules(pool, root, now_ms=when)
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
     let manual = create_run(
       pool,
       root,
@@ -51,7 +51,7 @@ async test "scheduled snapshots are opt in use UTC default branch and deduplicat
     assert_eq(manual.display_title, "Release 1.2.3 by @alice")
     set_scheduled_runs(pool, actor, protocol_repo, false)
     run_due_schedules(pool, root, now_ms=when + 86400000L)
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
   })
 }
 
@@ -60,7 +60,7 @@ async test "a scheduled tick cannot dispatch to a replacement repository after t
   @test_support.with_repository_test_data((pool, root) => {
     let alice = @identity.active_user_by_name(pool, "alice")
     set_scheduled_runs(pool, alice, protocol_repo, true)
-    let stale = require_run_author(pool, alice, protocol_repo)
+    let stale = @runtime.require_run_author(pool, alice, protocol_repo)
     let target = @repository.transfer_repository(
       pool,
       root,
@@ -98,8 +98,8 @@ async test "a scheduled tick cannot dispatch to a replacement repository after t
     } noraise {
       _ => fail("dispatched a stale schedule against a replacement repository")
     }
-    assert_true(list_runs(pool, alice, protocol_repo).is_empty())
-    assert_true(list_runs(pool, alice, target).is_empty())
+    assert_true(@runtime.list_runs(pool, alice, protocol_repo).is_empty())
+    assert_true(@runtime.list_runs(pool, alice, target).is_empty())
   })
 }
 
@@ -119,9 +119,9 @@ async test "job API grants are repository permission event and live attempt boun
     let run = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "release",
         provider_secret,
@@ -129,25 +129,29 @@ async test "job API grants are repository permission event and live attempt boun
         [protocol_repo],
       ),
     )
-    let claimed = c.claim(provider_secret, claim_request()).unwrap()
+    let claimed = c.runtime.claim(provider_secret, claim_request()).unwrap()
     assert_eq(claimed.version, @protocol.release_assignment_version)
     let id = @protocol.parse_decimal(claimed.attempt_id).unwrap()
-    ignore(c.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
-    let grant = c.api_runtime(id, attempt_secret, {
+    ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
+    let grant = c.runtime.api_runtime(id, attempt_secret, {
       version: 1,
       execution_id: "e".repeat(32),
     })
     assert_eq(
-      c.authenticate_job_api(grant.token, protocol_repo, "contents:write").id,
+      c.runtime.authenticate_job_api(
+        grant.token,
+        protocol_repo,
+        "contents:write",
+      ).id,
       actor.id,
     )
     assert_eq(
-      c.authenticate_job_api(grant.token, protocol_repo, "actions:read").id,
+      c.runtime.authenticate_job_api(grant.token, protocol_repo, "actions:read").id,
       actor.id,
     )
     try
       ignore(
-        c.authenticate_job_api(
+        c.runtime.authenticate_job_api(
           grant.token,
           { owner: "other", name: "repo", },
           "contents:write",
@@ -159,10 +163,14 @@ async test "job API grants are repository permission event and live attempt boun
     } noraise {
       _ => fail("cross repository job token accepted")
     }
-    c.cancel_run(actor, protocol_repo, run.number)
+    c.runtime.cancel_run(actor, protocol_repo, run.number)
     try
       ignore(
-        c.authenticate_job_api(grant.token, protocol_repo, "contents:write"),
+        c.runtime.authenticate_job_api(
+          grant.token,
+          protocol_repo,
+          "contents:write",
+        ),
       )
     catch {
       @domain.Unauthorized(_) => ()
@@ -184,9 +192,9 @@ async test "explicit contents read grants release reads without publication or l
         pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
       ),
     )
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "reader",
         provider_secret,
@@ -194,21 +202,29 @@ async test "explicit contents read grants release reads without publication or l
         [protocol_repo],
       ),
     )
-    let assignment = c.claim(provider_secret, claim_request()).unwrap()
+    let assignment = c.runtime.claim(provider_secret, claim_request()).unwrap()
     assert_eq(assignment.version, @protocol.release_assignment_version)
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(c.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
-    let grant = c.api_runtime(id, attempt_secret, {
+    ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
+    let grant = c.runtime.api_runtime(id, attempt_secret, {
       version: 1,
       execution_id: "e".repeat(32),
     })
     assert_eq(
-      c.authenticate_job_api(grant.token, protocol_repo, "contents:read").id,
+      c.runtime.authenticate_job_api(
+        grant.token,
+        protocol_repo,
+        "contents:read",
+      ).id,
       actor.id,
     )
     try
       ignore(
-        c.authenticate_job_api(grant.token, protocol_repo, "contents:write"),
+        c.runtime.authenticate_job_api(
+          grant.token,
+          protocol_repo,
+          "contents:write",
+        ),
       )
     catch {
       @domain.Forbidden(_) => ()

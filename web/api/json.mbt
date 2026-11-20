@@ -11,7 +11,7 @@ fn api_handler(
           @domain.NotFound(message~) => (404, "not_found", message)
           @domain.BadRequest(message~) => (400, "invalid_request", message)
           @gitops.DiffFailure(message) => (503, "diff_unavailable", message)
-          @pipeline.Conflict(message) => (409, "conflict", message)
+          @runtime.Conflict(message) => (409, "conflict", message)
           @gitops.Failure(message~) =>
             (400, "git_error", @domain.public_merge_block_reason(message))
           _ => (500, "internal_error", @domain.internal_error_message)

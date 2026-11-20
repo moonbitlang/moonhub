@@ -30,10 +30,10 @@ fn require_pipeline_manager(
 fn parse_provider_access(
   scope : String,
   repositories : String,
-) -> (@pipeline.ProviderScope, Array[@domain.RepoId]) raise {
-  let scope = @pipeline.ProviderScope::parse(scope)
+) -> (@runtime.ProviderScope, Array[@domain.RepoId]) raise {
+  let scope = @runtime.ProviderScope::parse(scope)
   let repos : Array[@domain.RepoId] = []
-  if scope is @pipeline.SelectedRepositories {
+  if scope is @runtime.SelectedRepositories {
     for path in repositories.split(",") {
       let path = path.trim()
       if !path.is_empty() {
@@ -50,6 +50,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let results = ctx.require(@web_context.pipeline_results_key)
   ctx.use_(pipeline_updates_module)
   ctx.use_(provider_config_module)
   ctx.get("/:owner/:repo/actions/runs/:run/artifacts/:artifact", async fn(
@@ -57,7 +58,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     res,
   ) {
     let actor = @web_context.require_current_user(req)
-    let blob = coordinator.user_artifact(
+    let blob = results.user_artifact(
       root,
       actor,
       @web_context.repo_param(req),
@@ -70,7 +71,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     )
     let authorize = () => {
       ignore(
-        coordinator.user_artifact(
+        results.user_artifact(
           root,
           actor,
           @web_context.repo_param(req),
@@ -149,7 +150,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     } catch {
       @domain.BadRequest(message~)
       | @domain.NotFound(message~)
-      | @pipeline.Conflict(message) => {
+      | @runtime.Conflict(message) => {
         res.send_html(
           render_provider_admin(
             assets,
@@ -385,7 +386,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         actor,
         scope,
         if tab == "runs" {
-          @pipeline.list_runs(
+          @runtime.list_runs(
             pool,
             actor,
             scope.repo,
@@ -405,13 +406,13 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         },
         @web_context.request_form_token(req, "pipelines:settings"),
         if tab == "events" {
-          @pipeline.list_trigger_events(pool, actor, scope.repo)
+          @runtime.list_trigger_events(pool, actor, scope.repo)
         } else {
           []
         },
         tab,
         variables=if tab == "variables" {
-          @pipeline.list_variables(pool, actor, scope.repo)
+          @runtime.list_variables(pool, actor, scope.repo)
         } else {
           []
         },
@@ -547,8 +548,8 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
     let number = pipeline_number(req)
-    let run = @pipeline.get_run(pool, actor, scope.repo, number)
-    let jobs = @pipeline.list_jobs(pool, actor, scope.repo, number)
+    let run = @runtime.get_run(pool, actor, scope.repo, number)
+    let jobs = @runtime.list_jobs(pool, actor, scope.repo, number)
     let reasons = coordinator.queue_reasons(actor, scope.repo, number)
     let pages : Array[PipelineJobPage] = []
     for job in jobs {
@@ -580,7 +581,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         pages,
         manager,
         @web_context.request_form_token(req, "pipelines:" + run.id.to_string()),
-        @pipeline.merge_check_context(pool, actor, scope.repo, number),
+        @runtime.merge_check_context(pool, actor, scope.repo, number),
         environments=coordinator.job_environments(actor, scope.repo, number),
       ),
       headers=@web_context.private_page_headers(),
@@ -590,7 +591,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
     let number = pipeline_number(req)
-    let run = @pipeline.get_run(pool, actor, scope.repo, number)
+    let run = @runtime.get_run(pool, actor, scope.repo, number)
     ignore(@web_context.protected_form(req, "pipelines:" + run.id.to_string()))
     coordinator.cancel_run(actor, scope.repo, number)
     res.send_void(
@@ -606,7 +607,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let actor = @web_context.require_current_user(req)
     let scope = pipeline_scope(pool, actor, req)
     let number = pipeline_number(req)
-    let run = @pipeline.get_run(pool, actor, scope.repo, number)
+    let run = @runtime.get_run(pool, actor, scope.repo, number)
     ignore(@web_context.protected_form(req, "pipelines:" + run.id.to_string()))
     let rerun = @pipeline.rerun_run(pool, root, actor, scope.repo, number)
     res.send_void(

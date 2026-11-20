@@ -6,8 +6,20 @@ let pipeline_dependencies_module : @moonback.Module = Module(ctx => {
   }
   let coordinator = config
     .get_custom(@web_context.pipeline_coordinator_key)
-    .unwrap_or_else(() => @pipeline.Coordinator::new(pool))
+    .unwrap_or_else(() => @runtime.Coordinator::new(pool))
   ctx.provide(@web_context.pipeline_coordinator_key, coordinator)
+  ctx.provide(
+    @web_context.pipeline_results_key,
+    config
+    .get_custom(@web_context.pipeline_results_key)
+    .unwrap_or_else(() => @results.Service::new(pool)),
+  )
+  ctx.provide(
+    @web_context.pipeline_oidc_key,
+    config
+    .get_custom(@web_context.pipeline_oidc_key)
+    .unwrap_or_else(() => @oidc.Service::new(pool)),
+  )
   if ctx.resolve(@web_context.config_root) is None {
     if config.get_custom(@web_context.config_root) is Some(root) {
       ctx.provide(@web_context.config_root, root)

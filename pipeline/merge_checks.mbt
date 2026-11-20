@@ -1,27 +1,4 @@
 ///|
-fn cancel_check_run(tx : @database.DbTransaction, run_id : Int64) -> Unit raise {
-  ignore(
-    tx.execute(
-      "UPDATE pipeline_run SET cancel_requested = 1 WHERE id = ? AND status <> 'completed'",
-      params=[run_id],
-    ),
-  )
-  ignore(
-    tx.execute(
-      "UPDATE pipeline_job SET status = 'completed', conclusion = 'cancelled' WHERE run_id = ? AND status IN ('queued', 'waiting')",
-      params=[run_id],
-    ),
-  )
-  ignore(
-    tx.execute(
-      "UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, CAST(strftime('%s', 'now') AS INTEGER) * 1000) WHERE status <> 'completed' AND job_id IN (SELECT id FROM pipeline_job WHERE run_id = ?)",
-      params=[run_id],
-    ),
-  )
-  finalize_run(tx, run_id)
-}
-
-///|
 fn cancel_obsolete_merge_checks(
   pool : @database.Database,
   mr : @collaboration.MergeRequest,
@@ -40,7 +17,7 @@ fn cancel_obsolete_merge_checks(
               "SELECT id FROM pipeline_run WHERE merge_check_id = ? AND status <> 'completed'",
               params=[id],
             ) {
-            cancel_check_run(tx, run.get_name("id"))
+            @runtime.cancel_run_in_transaction(tx, run.get_name("id"))
           }
           ignore(
             tx.execute(
@@ -127,8 +104,8 @@ async fn create_merge_check_run(
   workflow_path : String,
 ) -> Unit {
   let actor = @identity.active_user_by_name(pool, actor_name)
-  ignore(require_run_author(pool, actor, scope.repo))
-  validate_workflow_path(workflow_path)
+  ignore(@runtime.require_run_author(pool, actor, scope.repo))
+  @runtime.validate_workflow_path(workflow_path)
   let source = read_workflow_source(git_dir, sha, workflow_path)
   let definition = @workflow.parse(source)
   let context : @workflow.RunContext = {
@@ -144,7 +121,7 @@ async fn create_merge_check_run(
   let definition = @workflow.resolve_context(definition, context)
   let pin = "refs/moonhub/pipelines/mr-" + check_id.to_string()
   ignore(@gitops.merge_git(git_dir, ["update-ref", "--no-deref", pin, sha]))
-  ignore(require_run_author(pool, actor, scope.repo))
+  ignore(@runtime.require_run_author(pool, actor, scope.repo))
   pool.with_client(client => {
     client.with_transaction(tx => {
       guard tx.query_opt(
@@ -226,7 +203,7 @@ pub async fn run_next_merge_check(
               "SELECT p.id FROM pipeline_run p JOIN merge_check c ON c.id = p.merge_check_id WHERE c.merge_request_id = ? AND p.status <> 'completed'",
               params=[id],
             ) {
-            cancel_check_run(tx, run.get_name("id"))
+            @runtime.cancel_run_in_transaction(tx, run.get_name("id"))
           }
           ignore(
             tx.execute(
@@ -283,7 +260,7 @@ pub async fn run_next_merge_check(
         continue
       }
       try {
-        validate_workflow_path(path)
+        @runtime.validate_workflow_path(path)
         let source = read_workflow_source(git_dir, sha, path)
         let trigger = @workflow.triggers(source)
         if !trigger.matches_pull_request(event, branch=mr.target) {

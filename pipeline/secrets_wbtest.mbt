@@ -15,7 +15,7 @@ let credentials_fixture : String = "{\"username\":\"private-user\",\"token\":\"p
 
 ///|
 async fn with_secret_fixture(
-  f : async (@database.Database, String, Coordinator, Run) -> Unit,
+  f : async (@database.Database, String, PipelineFixture, @runtime.Run) -> Unit,
   two_steps~ : Bool = false,
 ) -> Unit {
   @test_support.with_repository_test_data((pool, root) => {
@@ -31,7 +31,7 @@ async fn with_secret_fixture(
         },
       ),
     )
-    save_secret(
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -45,9 +45,9 @@ async fn with_secret_fixture(
     let run = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
-    let coordinator = Coordinator::new(pool)
+    let coordinator = test_services(pool)
     ignore(
-      coordinator.create_provider(
+      coordinator.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "secrets",
         provider_secret,
@@ -63,13 +63,13 @@ async fn with_secret_fixture(
 async test "repository secrets require managers validate inputs and survive deletion without stale revision reuse" {
   with_secret_fixture((pool, root, _, run) => {
     let actor = @identity.active_user_by_name(pool, "alice")
-    let metadata = list_secrets(pool, actor, protocol_repo)[0]
+    let metadata = @runtime.list_secrets(pool, actor, protocol_repo)[0]
     assert_eq(metadata.name, "PUBLISH_TOKEN")
     assert_true(
       !Debug::to_repr(metadata).to_string().contains("private-token-value"),
     )
     let bob = @identity.active_user_by_name(pool, "bob")
-    try ignore(list_secrets(pool, bob, protocol_repo)) catch {
+    try ignore(@runtime.list_secrets(pool, bob, protocol_repo)) catch {
       @domain.NotFound(_) | @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
@@ -80,7 +80,7 @@ async test "repository secrets require managers validate inputs and survive dele
         "1TOKEN", "bad-name", "GITHUB_TOKEN", "RUNNER_TOKEN", "MOONHUB_TOKEN",
       ] {
       try
-        save_secret(
+        @runtime.save_secret(
           pool,
           root,
           actor,
@@ -100,7 +100,7 @@ async test "repository secrets require managers validate inputs and survive dele
     }
     for value in ["", "a\u{0000}b", "x".repeat(16385)] {
       try
-        save_secret(
+        @runtime.save_secret(
           pool,
           root,
           actor,
@@ -119,7 +119,7 @@ async test "repository secrets require managers validate inputs and survive dele
       }
     }
     try
-      save_secret(
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -131,12 +131,12 @@ async test "repository secrets require managers validate inputs and survive dele
         0L,
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("stale save overwrote secret")
     }
-    save_secret(
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -147,7 +147,7 @@ async test "repository secrets require managers validate inputs and survive dele
       metadata.workflow_path,
       metadata.version,
     )
-    let updated = list_secrets(pool, actor, protocol_repo)[0]
+    let updated = @runtime.list_secrets(pool, actor, protocol_repo)[0]
     assert_true(updated.version > metadata.version)
     pool.with_client(client => {
       assert_eq(
@@ -173,8 +173,14 @@ async test "repository secrets require managers validate inputs and survive dele
         assert_true(!(row.get_name("detail") : String).contains("private"))
       }
     })
-    delete_secret(pool, actor, protocol_repo, metadata.name, updated.version)
-    save_secret(
+    @runtime.delete_secret(
+      pool,
+      actor,
+      protocol_repo,
+      metadata.name,
+      updated.version,
+    )
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -185,12 +191,18 @@ async test "repository secrets require managers validate inputs and survive dele
       metadata.workflow_path,
       0L,
     )
-    let recreated = list_secrets(pool, actor, protocol_repo)[0]
+    let recreated = @runtime.list_secrets(pool, actor, protocol_repo)[0]
     assert_true(recreated.version > updated.version)
     try
-      delete_secret(pool, actor, protocol_repo, metadata.name, updated.version)
+      @runtime.delete_secret(
+        pool,
+        actor,
+        protocol_repo,
+        metadata.name,
+        updated.version,
+      )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("stale delete removed recreated secret")
@@ -231,22 +243,29 @@ async test "secret policy rejects different branches workflows and MR contexts b
       try
         pool.with_client(client => {
           client.with_transaction(tx => {
-            validate_secret_policy(
-              tx,
-              repo_id,
-              "pipeline",
-              run.workflow_path,
-              Some({
-                repository: "alice/demo",
-                sha: run.commit_sha,
-                event_name: event,
-                head_ref: "",
-                base_ref: "",
-                inputs: Map([]),
-                variables: Map([]),
-                release_tag: None,
-              }),
-              run.definition,
+            ignore(
+              @runtime.insert_run_snapshot(
+                tx,
+                repo_id,
+                actor.id,
+                run.workflow_path,
+                run.workflow_name,
+                "pipeline",
+                run.commit_sha,
+                "refs/moonhub/pipelines/rejected",
+                run.workflow_source,
+                run.definition,
+                context=Some({
+                  repository: "alice/demo",
+                  sha: run.commit_sha,
+                  event_name: event,
+                  head_ref: "",
+                  base_ref: "",
+                  inputs: Map([]),
+                  variables: Map([]),
+                  release_tag: None,
+                }),
+              ),
             )
           })
         })
@@ -257,8 +276,8 @@ async test "secret policy rejects different branches workflows and MR contexts b
         _ => fail("unsupported event gained secret access")
       }
     }
-    let secret = list_secrets(pool, actor, protocol_repo)[0]
-    save_secret(
+    let secret = @runtime.list_secrets(pool, actor, protocol_repo)[0]
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -293,7 +312,7 @@ async test "secret policy rejects different branches workflows and MR contexts b
 async test "step secret delivery binds execution and step masks issued values across rotation deletion and chunks" {
   with_secret_fixture((pool, root, coordinator, run) => {
     let actor = @identity.active_user_by_name(pool, "alice")
-    let assignment = coordinator
+    let assignment = coordinator.runtime
       .claim(provider_secret, claim_request())
       .unwrap()
     assert_eq(assignment.version, @protocol.variable_assignment_version)
@@ -310,35 +329,41 @@ async test "step secret delivery binds execution and step masks issued values ac
       execution_id: "c".repeat(32),
       step_id: "check",
     }
-    try ignore(coordinator.step_secrets(id, attempt_secret, request)) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.step_secrets(id, attempt_secret, request))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("leased attempt fetched secrets")
     }
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         id,
         attempt_secret,
         1,
         execution_id=request.execution_id,
       ),
     )
-    try ignore(coordinator.step_secrets(id, attempt_secret, request)) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.step_secrets(id, attempt_secret, request))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("pending step fetched secrets")
     }
     ignore(
-      coordinator.update_step(id, attempt_secret, {
+      coordinator.runtime.update_step(id, attempt_secret, {
         version: 1,
         step_id: "check",
         state: "running",
         exit_code: 0,
       }),
     )
-    try ignore(coordinator.step_secrets(id, provider_secret, request)) catch {
+    try
+      ignore(coordinator.runtime.step_secrets(id, provider_secret, request))
+    catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -346,25 +371,25 @@ async test "step secret delivery binds execution and step masks issued values ac
     }
     try
       ignore(
-        coordinator.step_secrets(id, attempt_secret, {
+        coordinator.runtime.step_secrets(id, attempt_secret, {
           ..request,
           execution_id: "d".repeat(32),
         }),
       )
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("wrong execution fetched secrets")
     }
     assert_eq(
-      coordinator.step_secrets(id, attempt_secret, request).env.get(
+      coordinator.runtime.step_secrets(id, attempt_secret, request).env.get(
         "CREDENTIALS",
       ),
       Some(credentials_fixture),
     )
-    let secret = list_secrets(pool, actor, protocol_repo)[0]
-    save_secret(
+    let secret = @runtime.list_secrets(pool, actor, protocol_repo)[0]
+    @runtime.save_secret(
       pool,
       root,
       actor,
@@ -376,20 +401,20 @@ async test "step secret delivery binds execution and step masks issued values ac
       secret.version,
     )
     assert_eq(
-      coordinator.step_secrets(id, attempt_secret, request).env.get(
+      coordinator.runtime.step_secrets(id, attempt_secret, request).env.get(
         "CREDENTIALS",
       ),
       Some(credentials_fixture),
     )
     ignore(
-      coordinator.append_log(
+      coordinator.runtime.append_log(
         id,
         attempt_secret,
         log_request(1L, "credential=" + credentials_fixture[:30].to_owned()),
       ),
     )
     ignore(
-      coordinator.append_log(
+      coordinator.runtime.append_log(
         id,
         attempt_secret,
         log_request(
@@ -398,29 +423,42 @@ async test "step secret delivery binds execution and step masks issued values ac
         ),
       ),
     )
-    let secret = list_secrets(pool, actor, protocol_repo)[0]
-    delete_secret(pool, actor, protocol_repo, secret.name, secret.version)
+    let secret = @runtime.list_secrets(pool, actor, protocol_repo)[0]
+    @runtime.delete_secret(
+      pool,
+      actor,
+      protocol_repo,
+      secret.name,
+      secret.version,
+    )
     ignore(
-      coordinator.append_log(
+      coordinator.runtime.append_log(
         id,
         attempt_secret,
         log_request(3L, "value\ntruncated=private-tok"),
       ),
     )
-    try ignore(coordinator.step_secrets(id, attempt_secret, request)) catch {
+    try
+      ignore(coordinator.runtime.step_secrets(id, attempt_secret, request))
+    catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
       _ => fail("deleted secret was issued again")
     }
     ignore(
-      coordinator.complete(
+      coordinator.runtime.complete(
         id,
         attempt_secret,
         completion(conclusion="failure", last=3L),
       ),
     )
-    let logs = coordinator.read_log_page(actor, protocol_repo, run.number, id).chunks
+    let logs = coordinator.runtime.read_log_page(
+        actor,
+        protocol_repo,
+        run.number,
+        id,
+      ).chunks
       .map(chunk => chunk.text)
       .join("")
     assert_eq(logs, "credential=***\ntoken=***\ntruncated=***")
@@ -444,33 +482,11 @@ async test "step secret delivery binds execution and step masks issued values ac
 }
 
 ///|
-test "streaming mask handles overlaps Unicode multiple values and multiline credentials" {
-  assert_eq(mask_log("prefix abc", ["abc", "abcdef"]), ("prefix ", "abc"))
-  assert_eq(
-    mask_log("abcdef and abc!", ["abc", "abcdef"]),
-    ("*** and ***!", ""),
-  )
-  assert_eq(
-    mask_log("before 密钥 after", ["密钥"]),
-    ("before *** after", ""),
-  )
-  let masks = secret_masks("one-secret\ntwo-secret\n")
-  assert_eq(mask_log("one-secret and two-secret!", masks), ("*** and ***!", ""))
-  assert_eq(
-    mask_log(
-      "nested-private-value!",
-      secret_masks("{\"registry\": [{\"token\":\"nested-private-value\"}]}"),
-    ),
-    ("***!", ""),
-  )
-}
-
-///|
 async test "rotated values apply to later steps and reruns without changing the source snapshot" {
   with_secret_fixture(
     (pool, root, coordinator, run) => {
       let actor = @identity.active_user_by_name(pool, "alice")
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
@@ -480,7 +496,7 @@ async test "rotated values apply to later steps and reruns without changing the 
         step_id: "check",
       }
       ignore(
-        coordinator.start(
+        coordinator.runtime.start(
           id,
           attempt_secret,
           1,
@@ -488,7 +504,7 @@ async test "rotated values apply to later steps and reruns without changing the 
         ),
       )
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           version: 1,
           step_id: "check",
           state: "running",
@@ -496,13 +512,13 @@ async test "rotated values apply to later steps and reruns without changing the 
         }),
       )
       assert_eq(
-        coordinator.step_secrets(id, attempt_secret, request).env.get(
+        coordinator.runtime.step_secrets(id, attempt_secret, request).env.get(
           "CREDENTIALS",
         ),
         Some(credentials_fixture),
       )
-      let current = list_secrets(pool, actor, protocol_repo)[0]
-      save_secret(
+      let current = @runtime.list_secrets(pool, actor, protocol_repo)[0]
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -514,7 +530,7 @@ async test "rotated values apply to later steps and reruns without changing the 
         current.version,
       )
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           version: 1,
           step_id: "check",
           state: "success",
@@ -522,7 +538,7 @@ async test "rotated values apply to later steps and reruns without changing the 
         }),
       )
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           version: 1,
           step_id: "later",
           state: "running",
@@ -530,34 +546,39 @@ async test "rotated values apply to later steps and reruns without changing the 
         }),
       )
       assert_eq(
-        coordinator.step_secrets(id, attempt_secret, {
+        coordinator.runtime.step_secrets(id, attempt_secret, {
           ..request,
           step_id: "later",
         }).env.get("CREDENTIALS"),
         Some("next-step-value"),
       )
       ignore(
-        coordinator.update_step(id, attempt_secret, {
+        coordinator.runtime.update_step(id, attempt_secret, {
           version: 1,
           step_id: "later",
           state: "success",
           exit_code: 0,
         }),
       )
-      ignore(coordinator.complete(id, attempt_secret, completion()))
+      ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
       let rerun = rerun_run(pool, root, actor, protocol_repo, run.number)
       assert_eq(rerun.commit_sha, run.commit_sha)
       assert_eq(rerun.workflow_source, run.workflow_source)
       let token = "d".repeat(64)
-      let assigned = coordinator
+      let assigned = coordinator.runtime
         .claim(provider_secret, claim_request(id="2", secret=token))
         .unwrap()
       let next_id = @protocol.parse_decimal(assigned.attempt_id).unwrap()
       ignore(
-        coordinator.start(next_id, token, 1, execution_id=request.execution_id),
+        coordinator.runtime.start(
+          next_id,
+          token,
+          1,
+          execution_id=request.execution_id,
+        ),
       )
       ignore(
-        coordinator.update_step(next_id, token, {
+        coordinator.runtime.update_step(next_id, token, {
           version: 1,
           step_id: "check",
           state: "running",
@@ -565,7 +586,9 @@ async test "rotated values apply to later steps and reruns without changing the 
         }),
       )
       assert_eq(
-        coordinator.step_secrets(next_id, token, request).env.get("CREDENTIALS"),
+        coordinator.runtime.step_secrets(next_id, token, request).env.get(
+          "CREDENTIALS",
+        ),
         Some("next-step-value"),
       )
     },
@@ -585,13 +608,15 @@ async test "repository members cannot manage secrets and revoked provider grants
         ),
       )
     })
-    try ignore(list_secrets(pool, bob, protocol_repo)) catch {
+    try ignore(@runtime.list_secrets(pool, bob, protocol_repo)) catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
       _ => fail("ordinary repository member managed secrets")
     }
-    let assigned = coordinator.claim(provider_secret, claim_request()).unwrap()
+    let assigned = coordinator.runtime
+      .claim(provider_secret, claim_request())
+      .unwrap()
     let id = @protocol.parse_decimal(assigned.attempt_id).unwrap()
     let request : @protocol.SecretRequest = {
       version: 1,
@@ -599,7 +624,7 @@ async test "repository members cannot manage secrets and revoked provider grants
       step_id: "check",
     }
     ignore(
-      coordinator.start(
+      coordinator.runtime.start(
         id,
         attempt_secret,
         1,
@@ -607,7 +632,7 @@ async test "repository members cannot manage secrets and revoked provider grants
       ),
     )
     ignore(
-      coordinator.update_step(id, attempt_secret, {
+      coordinator.runtime.update_step(id, attempt_secret, {
         version: 1,
         step_id: "check",
         state: "running",
@@ -615,14 +640,16 @@ async test "repository members cannot manage secrets and revoked provider grants
       }),
     )
     let admin = @identity.active_user_by_name(pool, "admin")
-    coordinator.set_provider_scope(
+    coordinator.runtime.set_provider_scope(
       admin,
-      coordinator.list_providers(admin)[0].id,
-      SelectedRepositories,
+      coordinator.runtime.list_providers(admin)[0].id,
+      @runtime.ProviderScope::parse("selected"),
       [],
     )
-    try ignore(coordinator.step_secrets(id, attempt_secret, request)) catch {
-      Conflict(_) => ()
+    try
+      ignore(coordinator.runtime.step_secrets(id, attempt_secret, request))
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("revoked provider grant exposed a secret")

@@ -46,7 +46,7 @@ pub async fn run_next_ref_event(
         pool,
         row.get_name("actor_name"),
       )
-      ignore(require_run_author(pool, actor, scope.repo))
+      ignore(@runtime.require_run_author(pool, actor, scope.repo))
       let sha : String = row.get_name("new_sha")
       let reference : String = row.get_name("reference")
       let (branch, release_tag) = match release_branch {
@@ -104,7 +104,7 @@ pub async fn run_next_ref_event(
           continue
         }
         try {
-          validate_workflow_path(path)
+          @runtime.validate_workflow_path(path)
           let source = read_workflow_source(git_dir, sha, path)
           let trigger = @workflow.triggers(source)
           if release_tag is Some(_) {
@@ -153,7 +153,7 @@ pub async fn run_next_ref_event(
           ignore(
             @gitops.merge_git(git_dir, ["update-ref", "--no-deref", pin, sha]),
           )
-          ignore(require_run_author(pool, actor, scope.repo))
+          ignore(@runtime.require_run_author(pool, actor, scope.repo))
           pool.with_client(client => {
             client.with_transaction(tx => {
               ignore(

@@ -46,8 +46,8 @@ fn artifact_wire_row(row : @database.DbRow) -> Json raise {
 }
 
 ///|
-pub fn Coordinator::artifact_rpc(
-  self : Coordinator,
+pub fn Service::artifact_rpc(
+  self : Service,
   token : String,
   operation : String,
   payload : Json,
@@ -118,7 +118,9 @@ pub fn Coordinator::artifact_rpc(
                 params=[access.run_id, name],
               )
               is None else {
-              raise Conflict("artifact name already exists; use overwrite")
+              raise @runtime.Conflict(
+                "artifact name already exists; use overwrite",
+              )
             }
             let count : Int64 = tx
               .query_one(

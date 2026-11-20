@@ -13,7 +13,7 @@ async test "real runner obtains step secrets through HTTP and stores only masked
         new="env: {CREDENTIAL: '${{ secrets.TOKEN }}'}\n        run: printf '%s' \"$CREDENTIAL\"",
       )
       ignore(@test_support.workflow_commit(repo.git_dir(root), workflow))
-      @pipeline.save_secret(
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -27,7 +27,7 @@ async test "real runner obtains step secrets through HTTP and stores only masked
       let run = @pipeline.create_run(
         pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
       )
-      let coordinator = @pipeline.Coordinator::new(pool)
+      let coordinator = @runtime.Coordinator::new(pool)
       let provider = @identity.random_hex(32)
       let token = @identity.random_hex(32)
       ignore(
@@ -57,6 +57,14 @@ async test "real runner obtains step secrets through HTTP and stores only masked
                 child.provide(@web_context.config_root, root)
                 child.provide(
                   @web_context.pipeline_coordinator_key, coordinator,
+                )
+                child.provide(
+                  @web_context.pipeline_results_key,
+                  @results.Service::new(pool),
+                )
+                child.provide(
+                  @web_context.pipeline_oidc_key,
+                  @oidc.Service::new(pool),
                 )
                 child.use_(runner_api_module)
               }),

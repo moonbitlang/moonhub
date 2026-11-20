@@ -38,7 +38,7 @@ pub async fn serve(config : Config) -> Unit {
     @collaboration.start_review_requests_worker(pool, config.root, group)
     let oidc = if @config.env_value("MOONHUB_OIDC_CONFIG") is Some(path) {
       Some(
-        @pipeline.OidcIssuer::load(
+        @oidc.OidcIssuer::load(
           path,
           node=@config.env_value("MOONHUB_OIDC_NODE").unwrap_or("node"),
         ),
@@ -83,11 +83,13 @@ pub async fn serve(config : Config) -> Unit {
         @async.sleep(60000)
       }
     })
-    let coordinator = @pipeline.Coordinator::new(pool, oidc?, storage?)
+    let coordinator = @runtime.Coordinator::new(pool)
+    let results = @results.Service::new(pool, storage?)
+    let oidc_service = @oidc.Service::new(pool, oidc?)
     coordinator.start_lease_worker(group)
     group.spawn_bg(no_wait=true, () => {
       for ;; {
-        coordinator.cleanup_artifacts(config.root) catch {
+        results.cleanup_artifacts(config.root) catch {
           _ => println("artifact cleanup failed; will retry")
         }
         @async.sleep(60000)
@@ -104,6 +106,8 @@ pub async fn serve(config : Config) -> Unit {
     @pipeline.start_ref_event_worker(pool, config.root, group)
     @pipeline.start_merge_checks_worker(pool, config.root, group)
     let custom = [
+      @moonback.Config::custom(@web_context.pipeline_results_key, results),
+      @moonback.Config::custom(@web_context.pipeline_oidc_key, oidc_service),
       @moonback.Config::custom(@web_context.release_service_key, releases),
       @moonback.Config::custom(@web_context.release_origin_key, release_origin),
       @moonback.Config::custom(@web_context.diff_executor_key, diff_executor),

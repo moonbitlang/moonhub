@@ -4,52 +4,6 @@ priv suberror SnapshotError {
 }
 
 ///|
-fn require_run_author(
-  pool : @database.Database,
-  actor : @domain.CurrentUser,
-  repo : @domain.RepoId,
-) -> @repository.RepositoryScope raise {
-  let current = @identity.active_user_by_name(pool, actor.name_key)
-  guard current.id == actor.id else {
-    raise @domain.Unauthorized(message="account changed")
-  }
-  let scope = @repository.repository_scope(pool, current, repo)
-  @repository.authorize_repository(pool, current, repo, Write)
-  guard @identity.can_manage_team(pool, current, scope.team_id) else {
-    raise @domain.Forbidden(
-      message="repository owner or admin required to create a pipeline run",
-    )
-  }
-  scope
-}
-
-///|
-fn validate_workflow_path(path : String) -> Unit raise {
-  let parts = path.split("/").collect()
-  guard parts.length() == 3 &&
-    parts[0] == ".github" &&
-    parts[1] == "workflows" &&
-    path.length() <= 240 &&
-    (path.has_suffix(".yml") || path.has_suffix(".yaml")) &&
-    parts[2].length() > 4 &&
-    parts[2].get_char(0) is Some(first) &&
-    (first.is_ascii_alphabetic() || first.is_ascii_digit() || first == '_') &&
-    parts[2]
-    .iter()
-    .all(ch => {
-      ch.is_ascii_alphabetic() ||
-      ch.is_ascii_digit() ||
-      ch == '_' ||
-      ch == '-' ||
-      ch == '.'
-    }) else {
-    raise @domain.BadRequest(
-      message="workflow must be a YAML file directly under .github/workflows",
-    )
-  }
-}
-
-///|
 async fn read_workflow_source(
   git_dir : String,
   sha : String,
@@ -88,154 +42,6 @@ async fn read_workflow_source(
 }
 
 ///|
-fn insert_run_snapshot(
-  tx : @database.DbTransaction,
-  repository_id : Int64,
-  actor_id : Int64,
-  workflow_path : String,
-  workflow_name : String,
-  branch : String,
-  sha : String,
-  pin : String,
-  source : String,
-  definition : @workflow.Workflow,
-  definition_version~ : Int32 = @workflow.format_version,
-  context~ : @workflow.RunContext? = None,
-  event_id~ : Int64 = 0L,
-  merge_check_id~ : Int64 = 0L,
-  cache_scope_source~ : Int64 = 0L,
-  capture_variables~ : Bool = true,
-) -> Run raise {
-  let context = if definition_version >= 6 && capture_variables {
-    context.map(context => {
-      ..context,
-      variables: snapshot_variables(tx, repository_id),
-    })
-  } else {
-    context
-  }
-  validate_secret_policy(
-    tx, repository_id, branch, workflow_path, context, definition,
-  )
-  let number : Int64 = tx
-    .query_one(
-      "SELECT COALESCE(MAX(number), 0) + 1 AS number FROM pipeline_run WHERE repository_id = ?",
-      params=[repository_id],
-    )
-    .get_name("number")
-  let display_title = if definition.run_name.is_empty() {
-    workflow_name
-  } else {
-    let event_ref = run_event_ref(context, branch)
-    let github : Map[String, Json] = {
-      "repository": context.map(c => c.repository).unwrap_or(""),
-      "sha": sha,
-      "event_name": context
-      .map(c => c.event_name)
-      .unwrap_or("workflow_dispatch"),
-      "ref": event_ref,
-      "actor": (
-        tx
-        .query_one("SELECT name_key FROM user WHERE id=?", params=[actor_id])
-        .get_name("name_key") : String),
-      "workflow": workflow_name,
-    }
-    if context is Some(saved) && saved.release_tag is Some(_) {
-      github["event"] = ToJson::to_json(run_event_context(saved, event_ref~))
-    }
-    let title = @workflow.scheduling_template(definition.run_name, {
-      "github": ToJson::to_json(github),
-      "inputs": ToJson::to_json(context.map(c => c.inputs).unwrap_or(Map([]))),
-    }) catch {
-      @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
-    }
-    guard !title.is_empty() &&
-      @utf8.encode(title).length() <= 512 &&
-      !title.contains("\u0000") else {
-      raise @domain.BadRequest(message="run-name requires 1 to 512 UTF-8 bytes")
-    }
-    title
-  }
-  let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, '')) RETURNING *",
-    params=[
-      repository_id,
-      number,
-      actor_id,
-      workflow_path,
-      workflow_name,
-      display_title,
-      branch,
-      sha,
-      pin,
-      definition_version.to_int64(),
-      source,
-      ToJson::to_json(definition).stringify(),
-      event_id,
-      merge_check_id,
-      context.map(value => ToJson::to_json(value).stringify()).unwrap_or(""),
-    ],
-  )
-  let run = Run::from_row(row)
-  snapshot_cache_scope(tx, run, merge_check_id, source=cache_scope_source)
-  if merge_check_id != 0L {
-    ignore(
-      tx.execute(
-        "UPDATE merge_check SET run_number = ?, requested_by_user_id = ?, state = 'queued', conclusion = '', last_error = '' WHERE id = ?",
-        params=[number, actor_id, merge_check_id],
-      ),
-    )
-  }
-  for ordinal, job in definition.jobs {
-    let _ = tx.execute(
-      "INSERT INTO pipeline_job (run_id, job_key, ordinal, status, matrix_group, max_parallel, matrix_fail_fast) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      params=[
-        run.id,
-        job.id,
-        ordinal.to_int64(),
-        if definition_version >= 4 || !job.needs.is_empty() {
-          "waiting"
-        } else {
-          "queued"
-        },
-        job.matrix_group,
-        job.max_parallel.to_int64(),
-        job.fail_fast,
-      ],
-    )
-  }
-  for job in definition.jobs {
-    let job_id : Int64 = tx
-      .query_one(
-        "SELECT id FROM pipeline_job WHERE run_id = ? AND job_key = ?",
-        params=[run.id, job.id],
-      )
-      .get_name("id")
-    for label in job.runs_on {
-      let _ = tx.execute(
-        "INSERT INTO pipeline_job_label (job_id, label) VALUES (?, ?)",
-        params=[job_id, label],
-      )
-    }
-    for need in job.needs {
-      let _ = tx.execute(
-        "INSERT INTO pipeline_job_need (run_id, job_key, needs_job_key) VALUES (?, ?, ?)",
-        params=[run.id, job.id, need],
-      )
-    }
-  }
-  schedule_run(tx, run)
-  if definition_version >= 4 {
-    advance_run_jobs(tx, run.id)
-    finalize_run(tx, run.id)
-    return Run::from_row(
-      tx.query_one("SELECT * FROM pipeline_run WHERE id=?", params=[run.id]),
-    )
-  }
-  run
-}
-
-///|
 pub async fn create_run(
   pool : @database.Database,
   root : String,
@@ -245,12 +51,12 @@ pub async fn create_run(
   workflow_path : String,
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
-) -> Run {
+) -> @runtime.Run {
   create_run_event(
     pool,
     root,
     actor,
-    require_run_author(pool, actor, repo),
+    @runtime.require_run_author(pool, actor, repo),
     branch,
     workflow_path,
     inputs~,
@@ -269,11 +75,11 @@ async fn create_run_event(
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
   scheduled_minute~ : Int64 = -1L,
-) -> Run {
+) -> @runtime.Run {
   let repo = scope.repo
-  validate_workflow_path(workflow_path)
+  @runtime.validate_workflow_path(workflow_path)
   @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
-    ignore(require_run_author(pool, actor, repo))
+    ignore(@runtime.require_run_author(pool, actor, repo))
     if scheduled_minute >= 0L {
       let previous = pool.with_client(c => {
         let config = c.query_opt(
@@ -290,7 +96,7 @@ async fn create_run_event(
         )
       })
       if previous is Some(previous) {
-        return Run::from_row(previous)
+        return @runtime.get_run(pool, actor, repo, previous.get_name("number"))
       }
     }
     let sha = @gitops.branch_sha(git_dir, branch)
@@ -379,7 +185,7 @@ async fn create_run_event(
     }
     // Git subprocesses yield. Recheck permissions after the final await and
     // before the synchronous database transaction publishes the snapshot.
-    ignore(require_run_author(pool, actor, repo))
+    ignore(@runtime.require_run_author(pool, actor, repo))
     let name = if definition.name.is_empty() {
       workflow_path
     } else {
@@ -432,16 +238,16 @@ pub async fn rerun_run(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
   number : Int64,
-) -> Run {
-  let scope = require_run_author(pool, actor, repo)
-  let previous = get_run(pool, actor, repo, number)
+) -> @runtime.Run {
+  let scope = @runtime.require_run_author(pool, actor, repo)
+  let previous = @runtime.get_run(pool, actor, repo, number)
   guard previous.state is Completed else {
     raise @domain.BadRequest(
       message="only completed pipeline runs can be rerun",
     )
   }
   @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
-    ignore(require_run_author(pool, actor, repo))
+    ignore(@runtime.require_run_author(pool, actor, repo))
     let merge_check_id : Int64 = pool.with_client(client => {
       client
       .query_one(
@@ -483,7 +289,7 @@ pub async fn rerun_run(
         _ => println("pipeline rerun snapshot cleanup failed for \{pin}")
       }
     })
-    ignore(require_run_author(pool, actor, repo))
+    ignore(@runtime.require_run_author(pool, actor, repo))
     let run = pool.with_client(client => {
       client.with_transaction(tx => {
         let rerun = insert_run_snapshot(

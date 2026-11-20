@@ -6,14 +6,16 @@ async test "checkout requires a live authorized attempt and denies stale source 
     ] {
     with_protocol_fixture((coordinator, pool, root, run, provider, clock) => {
       let id = @protocol.parse_decimal(
-        coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+        coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
       ).unwrap()
       if reason != "leased" {
-        ignore(coordinator.start(id, attempt_secret, 1))
-        let archive = coordinator.read_source(root, id, attempt_secret)
+        ignore(coordinator.runtime.start(id, attempt_secret, 1))
+        let archive = coordinator.runtime.read_source(root, id, attempt_secret)
         assert_true(archive.length() > 1024)
         assert_true(
-          coordinator.read_source_bundle(root, id, attempt_secret).length() >
+          coordinator.runtime
+          .read_source_bundle(root, id, attempt_secret)
+          .length() >
           100,
         )
       }
@@ -21,14 +23,15 @@ async test "checkout requires a live authorized attempt and denies stale source 
       match reason {
         "expired" => clock.val += @protocol.lease_ms
         "completed" =>
-          ignore(coordinator.complete(id, attempt_secret, completion()))
-        "cancelled" => coordinator.cancel_run(admin, protocol_repo, run.number)
-        "revoked" => coordinator.revoke_provider(admin, provider.id)
+          ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+        "cancelled" =>
+          coordinator.runtime.cancel_run(admin, protocol_repo, run.number)
+        "revoked" => coordinator.runtime.revoke_provider(admin, provider.id)
         "grant" =>
-          coordinator.set_provider_scope(
+          coordinator.runtime.set_provider_scope(
             admin,
             provider.id,
-            SelectedRepositories,
+            @runtime.ProviderScope::parse("selected"),
             [],
           )
         "actor" =>
@@ -41,84 +44,41 @@ async test "checkout requires a live authorized attempt and denies stale source 
           })
         _ => ()
       }
-      try ignore(coordinator.read_source(root, id, attempt_secret)) catch {
-        Conflict(_) => ()
+      try
+        ignore(coordinator.runtime.read_source(root, id, attempt_secret))
+      catch {
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("stale attempt retrieved source")
       }
       try
-        ignore(coordinator.read_source_bundle(root, id, attempt_secret))
+        ignore(coordinator.runtime.read_source_bundle(root, id, attempt_secret))
       catch {
-        Conflict(_) => ()
+        @runtime.Conflict(_) => ()
         err => raise err
       } noraise {
         _ => fail("stale attempt retrieved git bundle")
       }
       try
-        ignore(coordinator.read_source_bundle(root, id, provider_secret))
+        ignore(
+          coordinator.runtime.read_source_bundle(root, id, provider_secret),
+        )
       catch {
         @domain.Unauthorized(_) => ()
         err => raise err
       } noraise {
         _ => fail("provider retrieved git bundle")
       }
-      try ignore(coordinator.read_source(root, id, provider_secret)) catch {
+      try
+        ignore(coordinator.runtime.read_source(root, id, provider_secret))
+      catch {
         @domain.Unauthorized(_) => ()
         err => raise err
       } noraise {
         _ => fail("provider credential retrieved source")
       }
     })
-  }
-}
-
-///|
-test "tar rejects symlinks and submodules while both formats reject unsafe paths" {
-  let hash = "a".repeat(40)
-  validate_source_tree(
-    "100644 blob \{hash}\tREADME.md\u{0000}100755 blob \{hash}\tbin/build\u{0000}",
-  )
-  validate_source_tree(
-    "120000 blob \{hash}\tlink\u{0000}160000 commit \{hash}\tsrc/parser\u{0000}",
-    git_bundle=true,
-  )
-  for
-    entry in [
-      "120000 blob \{hash}\tlink",
-      "160000 commit \{hash}\tmodule",
-      "100644 blob \{hash}\t.home/.moon/config",
-      "100644 blob \{hash}\t.tmp/file",
-      "100644 blob \{hash}\t.git/config",
-      "120000 blob \{hash}\t.git/config",
-      "160000 commit \{hash}\t.home/module",
-      "160000 commit \{hash}\t.tmp/module",
-      "160000 commit \{hash}\tsrc/.git/module",
-      "160000 commit \{hash}\t../module",
-      "160000 commit \{hash}\t/absolute-module",
-      "160000 commit \{hash}\tsrc\\module",
-      "160000 commit \{hash}\tsrc\nmodule",
-      "040000 tree \{hash}\tdirectory",
-      "160000 blob \{hash}\twrong-type",
-      "100644 blob \{hash}\t../outside",
-      "100644 blob \{hash}\t/absolute",
-      "100644 blob \{hash}\ta\nfile",
-    ] {
-    try validate_source_tree(entry + "\u{0000}") catch {
-      @domain.BadRequest(_) => ()
-      err => raise err
-    } noraise {
-      _ => fail("unsafe checkout tree accepted")
-    }
-    if entry != "120000 blob \{hash}\tlink" &&
-      entry != "160000 commit \{hash}\tmodule" {
-      try validate_source_tree(entry + "\u{0000}", git_bundle=true) catch {
-        @domain.BadRequest(_) => ()
-        err => raise err
-      } noraise {
-        _ => fail("unsafe bundle tree accepted")
-      }
-    }
   }
 }
 
@@ -189,21 +149,25 @@ async test "source bundle preserves symlinks and gitlinks without fetching submo
       .to_owned()
     ignore(@gitops.merge_git(dir, ["update-ref", "refs/heads/pipeline", sha]))
     let actor = @identity.active_user_by_name(pool, "alice")
-    coordinator.cancel_run(actor, protocol_repo, original.number)
+    coordinator.runtime.cancel_run(actor, protocol_repo, original.number)
     let run = create_run(
       pool, root, actor, protocol_repo, "pipeline", ".github/workflows/build.yml",
     )
     let id = @protocol.parse_decimal(
-      coordinator.claim(provider_secret, claim_request()).unwrap().attempt_id,
+      coordinator.runtime.claim(provider_secret, claim_request()).unwrap().attempt_id,
     ).unwrap()
-    ignore(coordinator.start(id, attempt_secret, 1))
-    try ignore(coordinator.read_source(root, id, attempt_secret)) catch {
+    ignore(coordinator.runtime.start(id, attempt_secret, 1))
+    try
+      ignore(coordinator.runtime.read_source(root, id, attempt_secret))
+    catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("tar source accepted symlinks")
     }
-    let bundle = coordinator.read_source_bundle(root, id, attempt_secret)
+    let bundle = coordinator.runtime.read_source_bundle(
+      root, id, attempt_secret,
+    )
     let scratch = @fs.tmpdir(prefix="moonhub-bundle-test-")
     defer @fs.rmdir(scratch, recursive=true)
     @fs.write_file(scratch + "/source.bundle", bundle)
@@ -303,20 +267,22 @@ async test "source bundle preserves symlinks and gitlinks without fetching submo
 async test "contents none is enforced on both source formats even with a live token" {
   with_protocol_fixture(
     (coordinator, _, root, _, _, _) => {
-      let assignment = coordinator
+      let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
       assert_false(assignment.job.contents_read)
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-      ignore(coordinator.start(id, attempt_secret, 1))
-      try ignore(coordinator.read_source(root, id, attempt_secret)) catch {
+      ignore(coordinator.runtime.start(id, attempt_secret, 1))
+      try
+        ignore(coordinator.runtime.read_source(root, id, attempt_secret))
+      catch {
         @domain.Forbidden(_) => ()
         err => raise err
       } noraise {
         _ => fail("permissions-none job received archive")
       }
       try
-        ignore(coordinator.read_source_bundle(root, id, attempt_secret))
+        ignore(coordinator.runtime.read_source_bundle(root, id, attempt_secret))
       catch {
         @domain.Forbidden(_) => ()
         err => raise err

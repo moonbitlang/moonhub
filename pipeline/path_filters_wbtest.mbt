@@ -93,7 +93,7 @@ async test "push path filtering uses immutable before and after snapshots includ
     // Both events are consumed after main already points at the renamed tree.
     assert_true(run_next_ref_event(pool, root))
     assert_true(run_next_ref_event(pool, root))
-    let runs = list_runs(pool, actor, repo)
+    let runs = @runtime.list_runs(pool, actor, repo)
     assert_eq(runs.length(), 1)
     assert_eq(runs[0].commit_sha, renamed)
     let changes = changed_paths(dir, unmatched, renamed).unwrap()
@@ -129,7 +129,7 @@ async test "automatic PR discovery respects base branch and changed file filters
       (pool, root, _, actor, mr) => {
         poll_merge_checks(pool, root)
         assert_eq(
-          list_runs(pool, actor, protocol_repo).length(),
+          @runtime.list_runs(pool, actor, protocol_repo).length(),
           expected,
           msg=options,
         )
@@ -178,7 +178,7 @@ async test "PR paths compare against the merge base rather than target-only chan
       pool, scope, dir, actor, "filter", "", "feature", "master", false,
     )
     poll_merge_checks(pool, root)
-    assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
     assert_true(@collaboration.merge_checks(pool, mr).is_empty())
   })
 }
@@ -192,7 +192,7 @@ async test "repository required checks do not disappear behind workflow path fil
   with_merge_check_fixture(
     (pool, root, _, actor, mr) => {
       poll_merge_checks(pool, root)
-      assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+      assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
       assert_true(@collaboration.merge_checks(pool, mr)[0].required)
     },
     workflow=source,

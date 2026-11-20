@@ -4,7 +4,7 @@ fn artifact_directory(root : String, key : String) -> String {
 }
 
 ///|
-async fn artifact_test_text(blob : ArtifactBlob) -> String {
+async fn artifact_test_text(blob : @results.ArtifactBlob) -> String {
   let bytes : Array[Byte] = []
   blob.with_reader(reader => {
     while reader.read() is Some(chunk) {
@@ -45,12 +45,12 @@ fn artifact_test_url(value : Json, field : String) -> (Int64, String) raise {
 
 ///|
 fn artifact_test_start(
-  c : Coordinator,
+  c : PipelineFixture,
 ) -> (@protocol.Assignment, @protocol.ArtifactRuntime) raise {
-  let assignment = c.claim(provider_secret, claim_request()).unwrap()
+  let assignment = c.runtime.claim(provider_secret, claim_request()).unwrap()
   let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-  ignore(c.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
-  let grant = c.artifact_runtime(id, attempt_secret, {
+  ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
+  let grant = c.results.artifact_runtime(id, attempt_secret, {
     version: 1,
     execution_id: "e".repeat(32),
     origin: "https://moonhub.example",
@@ -63,10 +63,10 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
   with_protocol_fixture((c, pool, root, _, _, _) => {
     let (a, grant) = artifact_test_start(c)
     let request = artifact_test_request(a, { "name": "bundle", "version": 4 })
-    let created = c.artifact_rpc(grant.token, "CreateArtifact", request)
+    let created = c.results.artifact_rpc(grant.token, "CreateArtifact", request)
     let (id, sig) = artifact_test_url(created, "signed_upload_url")
     let list = artifact_test_request(a, {})
-    assert_eq(c.artifact_rpc(grant.token, "ListArtifacts", list), {
+    assert_eq(c.results.artifact_rpc(grant.token, "ListArtifacts", list), {
       "artifacts": [],
     })
     let key : String = pool.with_client(client => {
@@ -77,13 +77,15 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
       .get_name("storage_key")
     })
     let directory = artifact_directory(root, key)
-    c.stage_artifact_block(root, id, sig, "YQ==", b"old")
-    c.stage_artifact_block(root, id, sig, "YQ==", b"abc")
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"old")
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"abc")
     assert_eq(@fs.readdir(directory).length(), 1)
-    c.stage_artifact_block(root, id, sig, "Yg==", b"def")
+    c.results.stage_artifact_block(root, id, sig, "Yg==", b"def")
     // Failure to open the assembled archive must not strand the record in assembling.
     @fs.rename(directory, directory + "-offline")
-    try c.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="]) catch {
+    try
+      c.results.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="])
+    catch {
       _ => ()
     } noraise {
       _ => fail("commit succeeded without its data directory")
@@ -100,11 +102,13 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
       "pending",
     )
     @fs.rename(directory + "-offline", directory)
-    c.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="])
+    c.results.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="])
     // A lost response can replay the commit safely; reordered bytes cannot.
-    c.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="])
-    try c.commit_artifact_blocks(root, id, sig, ["YQ==", "Yg=="]) catch {
-      Conflict(_) => ()
+    c.results.commit_artifact_blocks(root, id, sig, ["Yg==", "YQ=="])
+    try
+      c.results.commit_artifact_blocks(root, id, sig, ["YQ==", "Yg=="])
+    catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("changed a committed archive")
@@ -118,7 +122,7 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
     })
     try
       ignore(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           grant.token,
           "FinalizeArtifact",
           artifact_test_request(a, {
@@ -134,22 +138,22 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
     } noraise {
       _ => fail("accepted incorrect digest")
     }
-    assert_eq(c.artifact_rpc(grant.token, "FinalizeArtifact", finalize), {
-      "ok": true,
-      "artifact_id": id.to_string(),
-    })
-    assert_eq(c.artifact_rpc(grant.token, "FinalizeArtifact", finalize), {
-      "ok": true,
-      "artifact_id": id.to_string(),
-    })
-    let listed = c.artifact_rpc(grant.token, "ListArtifacts", list)
+    assert_eq(
+      c.results.artifact_rpc(grant.token, "FinalizeArtifact", finalize),
+      { "ok": true, "artifact_id": id.to_string() },
+    )
+    assert_eq(
+      c.results.artifact_rpc(grant.token, "FinalizeArtifact", finalize),
+      { "ok": true, "artifact_id": id.to_string() },
+    )
+    let listed = c.results.artifact_rpc(grant.token, "ListArtifacts", list)
     guard listed is { "artifacts": [artifact], .. } else {
       fail("artifact not listed")
     }
     assert_eq(artifact_test_string(artifact, "digest"), hash)
     assert_eq(artifact_test_string(artifact, "database_id"), id.to_string())
     assert_eq(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "ListArtifacts",
         artifact_test_request(a, { "name_filter": "absent" }),
@@ -157,41 +161,41 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
       { "artifacts": [] },
     )
     let (_, read_sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "GetSignedArtifactURL",
         artifact_test_request(a, { "name": "bundle" }),
       ),
       "signed_url",
     )
-    let blob = c.artifact_blob(root, id, read_sig)
+    let blob = c.results.artifact_blob(root, id, read_sig)
     assert_eq(artifact_test_text(blob), "defabc")
-    try c.authorize_artifact_blob(id, read_sig, "write") catch {
+    try c.results.authorize_artifact_blob(id, read_sig, "write") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
       _ => fail("download capability permitted upload")
     }
-    try c.authorize_artifact_blob(id, sig, "read") catch {
+    try c.results.authorize_artifact_blob(id, sig, "read") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
       _ => fail("upload capability permitted download")
     }
     let reader = @identity.active_user_by_name(pool, "alice")
-    assert_eq(
-      c.user_artifact(
-        root,
-        reader,
-        protocol_repo,
-        @protocol.parse_decimal(a.run_id).unwrap(),
-        id,
-      ).key,
-      blob.key,
+    let user_blob = c.results.user_artifact(
+      root,
+      reader,
+      protocol_repo,
+      @protocol.parse_decimal(a.run_id).unwrap(),
+      id,
     )
+    assert_eq(user_blob.id, blob.id)
+    assert_eq(user_blob.digest, blob.digest)
+    assert_eq(artifact_test_text(user_blob), artifact_test_text(blob))
     try
       ignore(
-        c.user_artifact(
+        c.results.user_artifact(
           root,
           @identity.active_user_by_name(pool, "bob"),
           protocol_repo,
@@ -207,20 +211,20 @@ async test "artifact blocks retry without leaking files and finalize verifies ar
       _ => fail("unauthorized browser download")
     }
     ignore(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "DeleteArtifact",
         artifact_test_request(a, { "name": "bundle" }),
       ),
     )
-    try ignore(c.artifact_blob(root, id, read_sig)) catch {
+    try ignore(c.results.artifact_blob(root, id, read_sig)) catch {
       @domain.Forbidden(_) => ()
       err => raise err
     } noraise {
       _ => fail("deleted artifact remained readable")
     }
-    ignore(c.artifact_rpc(grant.token, "CreateArtifact", request))
-    c.cleanup_artifacts(root)
+    ignore(c.results.artifact_rpc(grant.token, "CreateArtifact", request))
+    c.results.cleanup_artifacts(root)
     assert_false(@fs.exists(directory))
   })
 }
@@ -232,7 +236,9 @@ async test "artifact runtime credentials are execution fenced and separate from 
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
     let request = artifact_test_request(a, {})
     for token in [provider_secret, attempt_secret, grant.token + "x"] {
-      try ignore(c.artifact_rpc(token, "ListArtifacts", request)) catch {
+      try
+        ignore(c.results.artifact_rpc(token, "ListArtifacts", request))
+      catch {
         @domain.Unauthorized(_) => ()
         err => raise err
       } noraise {
@@ -241,7 +247,7 @@ async test "artifact runtime credentials are execution fenced and separate from 
     }
     try
       ignore(
-        c.artifact_runtime(id, attempt_secret, {
+        c.results.artifact_runtime(id, attempt_secret, {
           version: 1,
           execution_id: "f".repeat(32),
           origin: "https://moonhub.example",
@@ -255,7 +261,7 @@ async test "artifact runtime credentials are execution fenced and separate from 
     }
     try
       ignore(
-        c.artifact_rpc(grant.token, "ListArtifacts", {
+        c.results.artifact_rpc(grant.token, "ListArtifacts", {
           "workflow_run_backend_id": "999",
           "workflow_job_run_backend_id": a.attempt_id,
         }),
@@ -268,7 +274,7 @@ async test "artifact runtime credentials are execution fenced and separate from 
     }
     try
       ignore(
-        c.artifact_rpc(grant.token, "ListArtifacts", {
+        c.results.artifact_rpc(grant.token, "ListArtifacts", {
           "workflow_run_backend_id": a.run_id,
           "workflow_job_run_backend_id": "999",
         }),
@@ -294,15 +300,22 @@ async test "artifact runtime credentials are execution fenced and separate from 
         grant.token,
       )
     })
-    c.revoke_provider(@identity.active_user_by_name(pool, "admin"), provider.id)
-    try ignore(c.artifact_rpc(grant.token, "ListArtifacts", request)) catch {
+    c.runtime.revoke_provider(
+      @identity.active_user_by_name(pool, "admin"),
+      provider.id,
+    )
+    try
+      ignore(c.results.artifact_rpc(grant.token, "ListArtifacts", request))
+    catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
       _ => fail("revoked provider retained artifact access")
     }
     clock.val += 3600001L
-    try ignore(c.artifact_rpc(grant.token, "ListArtifacts", request)) catch {
+    try
+      ignore(c.results.artifact_rpc(grant.token, "ListArtifacts", request))
+    catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -316,18 +329,18 @@ async test "later jobs download same-run artifacts while old credentials and oth
   with_protocol_fixture(workflow=dag_workflow, (c, pool, root, _, _, _) => {
     let (build, grant) = artifact_test_start(c)
     let (id, sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "CreateArtifact",
         artifact_test_request(build, { "name": "cross-job", "version": 4 }),
       ),
       "signed_upload_url",
     )
-    c.stage_artifact_block(root, id, sig, "YQ==", b"zip")
-    c.commit_artifact_blocks(root, id, sig, ["YQ=="])
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"zip")
+    c.results.commit_artifact_blocks(root, id, sig, ["YQ=="])
     let hash = "sha256:" + @crypto.bytes_to_hex_string(@crypto.sha256(b"zip"))
     ignore(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "FinalizeArtifact",
         artifact_test_request(build, {
@@ -339,7 +352,7 @@ async test "later jobs download same-run artifacts while old credentials and oth
     )
     let attempt = @protocol.parse_decimal(build.attempt_id).unwrap()
     ignore(
-      c.update_step(attempt, attempt_secret, {
+      c.runtime.update_step(attempt, attempt_secret, {
         version: 1,
         step_id: "build",
         state: "running",
@@ -347,17 +360,17 @@ async test "later jobs download same-run artifacts while old credentials and oth
       }),
     )
     ignore(
-      c.update_step(attempt, attempt_secret, {
+      c.runtime.update_step(attempt, attempt_secret, {
         version: 1,
         step_id: "build",
         state: "success",
         exit_code: 0,
       }),
     )
-    ignore(c.complete(attempt, attempt_secret, completion()))
+    ignore(c.runtime.complete(attempt, attempt_secret, completion()))
     try
       ignore(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           grant.token,
           "ListArtifacts",
           artifact_test_request(build, {}),
@@ -369,17 +382,19 @@ async test "later jobs download same-run artifacts while old credentials and oth
     } noraise {
       _ => fail("completed producer retained access")
     }
-    let next = c
+    let next = c.runtime
       .claim(provider_secret, claim_request(id="2", secret="d".repeat(64)))
       .unwrap()
     let next_id = @protocol.parse_decimal(next.attempt_id).unwrap()
-    ignore(c.start(next_id, "d".repeat(64), 1, execution_id="f".repeat(32)))
-    let consumer = c.artifact_runtime(next_id, "d".repeat(64), {
+    ignore(
+      c.runtime.start(next_id, "d".repeat(64), 1, execution_id="f".repeat(32)),
+    )
+    let consumer = c.results.artifact_runtime(next_id, "d".repeat(64), {
       version: 1,
       execution_id: "f".repeat(32),
       origin: "https://moonhub.example",
     })
-    guard c.artifact_rpc(
+    guard c.results.artifact_rpc(
         consumer.token,
         "ListArtifacts",
         artifact_test_request(next, {}),
@@ -388,14 +403,17 @@ async test "later jobs download same-run artifacts while old credentials and oth
       fail("cross-job list failed")
     }
     let (_, read_sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         consumer.token,
         "GetSignedArtifactURL",
         artifact_test_request(build, { "name": "cross-job" }),
       ),
       "signed_url",
     )
-    assert_eq(artifact_test_text(c.artifact_blob(root, id, read_sig)), "zip")
+    assert_eq(
+      artifact_test_text(c.results.artifact_blob(root, id, read_sig)),
+      "zip",
+    )
     // A second provider can execute an unrelated run concurrently.
     let other_run = create_run(
       pool,
@@ -407,7 +425,7 @@ async test "later jobs download same-run artifacts while old credentials and oth
     )
     let other_provider = "9".repeat(64)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "other-artifact",
         other_provider,
@@ -415,19 +433,21 @@ async test "later jobs download same-run artifacts while old credentials and oth
         [protocol_repo],
       ),
     )
-    let other = c
+    let other = c.runtime
       .claim(other_provider, claim_request(id="3", secret="c".repeat(64)))
       .unwrap()
     assert_eq(other.run_id, other_run.id.to_string())
     let other_id = @protocol.parse_decimal(other.attempt_id).unwrap()
-    ignore(c.start(other_id, "c".repeat(64), 1, execution_id="1".repeat(32)))
-    let unrelated = c.artifact_runtime(other_id, "c".repeat(64), {
+    ignore(
+      c.runtime.start(other_id, "c".repeat(64), 1, execution_id="1".repeat(32)),
+    )
+    let unrelated = c.results.artifact_runtime(other_id, "c".repeat(64), {
       version: 1,
       execution_id: "1".repeat(32),
       origin: "https://moonhub.example",
     })
     assert_eq(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         unrelated.token,
         "ListArtifacts",
         artifact_test_request(other, {}),
@@ -436,7 +456,7 @@ async test "later jobs download same-run artifacts while old credentials and oth
     )
     try
       ignore(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           unrelated.token,
           "GetSignedArtifactURL",
           artifact_test_request(build, { "name": "cross-job" }),
@@ -456,14 +476,14 @@ async test "artifact upload exceeds the old byte and block limits while cache li
   with_protocol_fixture((c, pool, root, _, _, _) => {
     let (a, grant) = artifact_test_start(c)
     let (id, sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "CreateArtifact",
         artifact_test_request(a, { "name": "desktop", "version": 4 }),
       ),
       "signed_upload_url",
     )
-    c.stage_artifact_block(root, id, sig, "first", b"x")
+    c.results.stage_artifact_block(root, id, sig, "first", b"x")
     // Account for a large staged block without allocating a multi-GiB fixture.
     pool.with_client(client => {
       ignore(
@@ -473,33 +493,33 @@ async test "artifact upload exceeds the old byte and block limits while cache li
         ),
       )
     })
-    c.stage_artifact_block(root, id, sig, "second", b"x")
-    try c.stage_artifact_block(root, id, sig, "third", b"x") catch {
+    c.results.stage_artifact_block(root, id, sig, "second", b"x")
+    try c.results.stage_artifact_block(root, id, sig, "third", b"x") catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("artifact exceeded its 2 GiB limit")
     }
-    c.stage_artifact_block(root, id, sig, "first", b"x")
+    c.results.stage_artifact_block(root, id, sig, "first", b"x")
     let blocks = ["first", "second"]
     for i = 2; i < 256; i = i + 1 {
       let block = "part" + i.to_string()
-      c.stage_artifact_block(root, id, sig, block, b"x")
+      c.results.stage_artifact_block(root, id, sig, block, b"x")
       blocks.push(block)
     }
-    try c.stage_artifact_block(root, id, sig, "overflow", b"x") catch {
+    try c.results.stage_artifact_block(root, id, sig, "overflow", b"x") catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("accepted a 257th artifact block")
     }
     // Retrying an existing block is legal even at the block-count limit.
-    c.stage_artifact_block(root, id, sig, "first", b"x")
-    c.commit_artifact_blocks(root, id, sig, blocks)
+    c.results.stage_artifact_block(root, id, sig, "first", b"x")
+    c.results.commit_artifact_blocks(root, id, sig, blocks)
     let hash = "sha256:" +
       @crypto.bytes_to_hex_string(@crypto.sha256(@utf8.encode("x".repeat(256))))
     ignore(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "FinalizeArtifact",
         artifact_test_request(a, {
@@ -510,7 +530,7 @@ async test "artifact upload exceeds the old byte and block limits while cache li
       ),
     )
     let (download, read_sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "GetSignedArtifactURL",
         artifact_test_request(a, { "name": "desktop" }),
@@ -518,18 +538,18 @@ async test "artifact upload exceeds the old byte and block limits while cache li
       "signed_url",
     )
     assert_eq(
-      artifact_test_text(c.artifact_blob(root, download, read_sig)),
+      artifact_test_text(c.results.artifact_blob(root, download, read_sig)),
       "x".repeat(256),
     )
     let (cache, cache_sig) = artifact_test_url(
-      c.cache_rpc(
+      c.results.cache_rpc(
         grant.token,
         "CreateCacheEntry",
         cache_test_request("bounded"),
       ),
       "signed_upload_url",
     )
-    c.stage_artifact_block(root, cache, cache_sig, "first", b"x")
+    c.results.stage_artifact_block(root, cache, cache_sig, "first", b"x")
     pool.with_client(client => {
       ignore(
         client.execute(
@@ -538,15 +558,17 @@ async test "artifact upload exceeds the old byte and block limits while cache li
         ),
       )
     })
-    try c.stage_artifact_block(root, cache, cache_sig, "second", b"x") catch {
+    try
+      c.results.stage_artifact_block(root, cache, cache_sig, "second", b"x")
+    catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("cache exceeded its 512 MiB limit")
     }
-    c.stage_artifact_block(root, cache, cache_sig, "first", b"x")
+    c.results.stage_artifact_block(root, cache, cache_sig, "first", b"x")
     for i = 1; i < 64; i = i + 1 {
-      c.stage_artifact_block(
+      c.results.stage_artifact_block(
         root,
         cache,
         cache_sig,
@@ -554,13 +576,15 @@ async test "artifact upload exceeds the old byte and block limits while cache li
         b"x",
       )
     }
-    try c.stage_artifact_block(root, cache, cache_sig, "overflow", b"x") catch {
+    try
+      c.results.stage_artifact_block(root, cache, cache_sig, "overflow", b"x")
+    catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("cache accepted a 65th block")
     }
-    try c.commit_artifact_blocks(root, cache, cache_sig, blocks) catch {
+    try c.results.commit_artifact_blocks(root, cache, cache_sig, blocks) catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
@@ -579,7 +603,7 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
   with_protocol_fixture((c, pool, root, _, _, clock) => {
     let (a, grant) = artifact_test_start(c)
     let (id, sig) = artifact_test_url(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         grant.token,
         "CreateArtifact",
         artifact_test_request(a, { "name": "limits", "version": 4 }),
@@ -587,26 +611,26 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
       "signed_upload_url",
     )
     for blocks in [[], ["missing"], ["YQ==", "YQ=="]] {
-      try c.commit_artifact_blocks(root, id, sig, blocks) catch {
+      try c.results.commit_artifact_blocks(root, id, sig, blocks) catch {
         @domain.BadRequest(_) => ()
         err => raise err
       } noraise {
         _ => fail("invalid block list")
       }
     }
-    try c.stage_artifact_block(root, id, sig, "../bad", b"data") catch {
+    try c.results.stage_artifact_block(root, id, sig, "../bad", b"data") catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("block traversal")
     }
     try
-      c.stage_artifact_block(
+      c.results.stage_artifact_block(
         root,
         id,
         sig,
         "YQ==",
-        Bytes::make(maximum_artifact_block_bytes + 1, b'\x00'),
+        Bytes::make(@results.maximum_artifact_block_bytes + 1, b'\x00'),
       )
     catch {
       @domain.BadRequest(_) => ()
@@ -614,16 +638,16 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
     } noraise {
       _ => fail("oversized block accepted")
     }
-    c.stage_artifact_block(root, id, sig, "YQ==", b"abc")
+    c.results.stage_artifact_block(root, id, sig, "YQ==", b"abc")
     pool.with_client(client => {
       ignore(
         client.execute(
           "UPDATE pipeline_artifact_block SET size=? WHERE artifact_id=?",
-          params=[maximum_artifact_bytes, id],
+          params=[@results.maximum_artifact_bytes, id],
         ),
       )
     })
-    try c.stage_artifact_block(root, id, sig, "Yg==", b"x") catch {
+    try c.results.stage_artifact_block(root, id, sig, "Yg==", b"x") catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
@@ -642,7 +666,7 @@ async test "artifact storage enforces limits and reaps expired and cascade-orpha
     @fs.mkdir(artifact_directory(root, orphan), permission=0o700)
     @fs.write_file(artifact_directory(root, orphan) + "/data", b"orphan")
     clock.val += 604800001L
-    c.cleanup_artifacts(root)
+    c.results.cleanup_artifacts(root)
     assert_false(@fs.exists(artifact_directory(root, key)))
     assert_false(@fs.exists(artifact_directory(root, orphan)))
     pool.with_client(client => {
@@ -668,7 +692,7 @@ async test "artifact capabilities expire independently and cancellation fences a
     let (a, grant) = artifact_test_start(c)
     let create = artifact_test_request(a, { "name": "fenced", "version": 4 })
     let (id, sig) = artifact_test_url(
-      c.artifact_rpc(grant.token, "CreateArtifact", create),
+      c.results.artifact_rpc(grant.token, "CreateArtifact", create),
       "signed_upload_url",
     )
     pool.with_client(client => {
@@ -678,7 +702,7 @@ async test "artifact capabilities expire independently and cancellation fences a
         ]),
       )
     })
-    try c.stage_artifact_block(root, id, sig, "YQ==", b"x") catch {
+    try c.results.stage_artifact_block(root, id, sig, "YQ==", b"x") catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -686,11 +710,15 @@ async test "artifact capabilities expire independently and cancellation fences a
     }
     // Capability expiry does not revoke the still-live runtime credential.
     assert_eq(
-      c.artifact_rpc(grant.token, "ListArtifacts", artifact_test_request(a, {})),
+      c.results.artifact_rpc(
+        grant.token,
+        "ListArtifacts",
+        artifact_test_request(a, {}),
+      ),
       { "artifacts": [] },
     )
     let attempt = @protocol.parse_decimal(a.attempt_id).unwrap()
-    let another = c.artifact_runtime(attempt, attempt_secret, {
+    let another = c.results.artifact_runtime(attempt, attempt_secret, {
       version: 1,
       execution_id: "e".repeat(32),
       origin: "https://moonhub.example",
@@ -705,7 +733,7 @@ async test "artifact capabilities expire independently and cancellation fences a
     })
     try
       ignore(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           grant.token,
           "ListArtifacts",
           artifact_test_request(a, {}),
@@ -718,7 +746,7 @@ async test "artifact capabilities expire independently and cancellation fences a
       _ => fail("expired runtime accepted")
     }
     assert_eq(
-      c.artifact_rpc(
+      c.results.artifact_rpc(
         another.token,
         "ListArtifacts",
         artifact_test_request(a, {}),
@@ -726,7 +754,7 @@ async test "artifact capabilities expire independently and cancellation fences a
       { "artifacts": [] },
     )
     ignore(
-      c.cancel_run(
+      c.runtime.cancel_run(
         @identity.active_user_by_name(pool, "alice"),
         protocol_repo,
         run.number,
@@ -734,7 +762,7 @@ async test "artifact capabilities expire independently and cancellation fences a
     )
     try
       ignore(
-        c.artifact_rpc(
+        c.results.artifact_rpc(
           another.token,
           "ListArtifacts",
           artifact_test_request(a, {}),

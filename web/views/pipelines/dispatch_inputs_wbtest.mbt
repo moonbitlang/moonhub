@@ -104,7 +104,7 @@ async test "browser selects PR-only jobs without changing workflow or branch" {
     assert_eq(response.code, 303)
     assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
     let actor = @identity.active_user_by_name(pool, "alice")
-    assert_eq(@pipeline.get_run(pool, actor, repo, 1L).workflow_source, source)
+    assert_eq(@runtime.get_run(pool, actor, repo, 1L).workflow_source, source)
   })
 }
 
@@ -185,7 +185,7 @@ async test "browser dispatch creates typed inputs including explicit false and d
     )
     assert_eq(response.code, 303)
     assert_eq(response.headers.get("location"), Some("/alice/demo/pipelines/1"))
-    let run = @pipeline.get_run(
+    let run = @runtime.get_run(
       pool,
       @identity.active_user_by_name(pool, "alice"),
       { owner: "alice", name: "demo", },
@@ -287,7 +287,7 @@ async test "browser dispatch validation errors retain escaped submitted values a
       }
     }
     assert_true(
-      @pipeline.list_runs(pool, @identity.active_user_by_name(pool, "alice"), {
+      @runtime.list_runs(pool, @identity.active_user_by_name(pool, "alice"), {
         owner: "alice",
         name: "demo",
       }).is_empty(),
@@ -367,7 +367,7 @@ async test "browser dispatch requires authentication repository permission and C
     assert_eq(cross_site.code, 403)
     ignore(client.read_all())
     assert_true(
-      @pipeline.list_runs(pool, @identity.active_user_by_name(pool, "alice"), {
+      @runtime.list_runs(pool, @identity.active_user_by_name(pool, "alice"), {
         owner: "alice",
         name: "demo",
       }).is_empty(),
@@ -407,7 +407,7 @@ async test "browser dispatch accepts maximum UTF8 inputs after percent encoding"
       port, "/alice/demo/pipelines", fields, cookie,
     )
     assert_eq(created.code, 303)
-    let run = @pipeline.get_run(pool, actor, repo, 1L)
+    let run = @runtime.get_run(pool, actor, repo, 1L)
     assert_eq(run.context.unwrap().inputs.get("payload"), Some(Json(value)))
     let (invalid, error) = @web_testkit.http_post_path_with_cookie(
       port,
@@ -425,6 +425,6 @@ async test "browser dispatch accepts maximum UTF8 inputs after percent encoding"
     )
     assert_eq(oversized.code, 400)
     assert_true(error.contains("form is too large"))
-    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 1)
   })
 }

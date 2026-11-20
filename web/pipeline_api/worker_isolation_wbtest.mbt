@@ -1,9 +1,9 @@
 ///|
 async test "isolation HTTP acknowledgement requires the live outside controller and exact revision" {
   @web_testkit.with_ssh_settings_app((port, pool, cookie, _, _) => {
-    let c = @pipeline.Coordinator::new(pool)
+    let c = test_services(pool)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "ci-http",
         "a".repeat(64),
@@ -12,7 +12,7 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       ),
     )
     ignore(
-      c.register_runner("a".repeat(64), {
+      c.runtime.register_runner("a".repeat(64), {
         version: 1,
         name: "ci-http",
         mode: "asg",
@@ -33,7 +33,7 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       }),
     )
     ignore(
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         environment_protocol: None,
         version: 1,
         controller_id: "manager",
@@ -44,7 +44,7 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
         defaults: None,
       }),
     )
-    let worker = c.register_worker("b".repeat(64), {
+    let worker = c.runtime.register_worker("b".repeat(64), {
       version: 1,
       key: "i-http",
       token: "c".repeat(64),
@@ -113,14 +113,17 @@ async test "isolation HTTP acknowledgement requires the live outside controller 
       ).0,
       200,
     )
-    let snapshot = c.sync_worker("c".repeat(64), {
+    let snapshot = c.runtime.sync_worker("c".repeat(64), {
       environments: None,
       version: 1,
       state: "starting",
       applied_revision: "1",
     })
     assert_eq(snapshot.isolation_revision, Some("1"))
-    c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
+    c.runtime.drain_worker(
+      "b".repeat(64),
+      @protocol.parse_decimal(worker.id).unwrap(),
+    )
     assert_eq(
       @web_testkit.runner_post_json(
         port,

@@ -52,8 +52,8 @@ async test "real runner consumes captured vars in env conditions Action inputs p
         let repo : @domain.RepoId = { owner: "alice", name: "demo", }
         let actor = @identity.active_user_by_name(pool, "alice")
         // The stored settings can change while already queued jobs retain their copy.
-        for variable in @pipeline.list_variables(pool, actor, repo) {
-          @pipeline.delete_variable(
+        for variable in @runtime.list_variables(pool, actor, repo) {
+          @runtime.delete_variable(
             pool,
             actor,
             repo,
@@ -83,7 +83,7 @@ async test "real runner consumes captured vars in env conditions Action inputs p
             action_runtime=@fs.realpath("runner/actions/runtime.mjs"),
           )
           if report.conclusion != "success" {
-            let logs = c.read_log_page(
+            let logs = c.runtime.read_log_page(
                 actor,
                 repo,
                 @protocol.parse_decimal(first.run_id).unwrap(),
@@ -100,7 +100,7 @@ async test "real runner consumes captured vars in env conditions Action inputs p
               "ap-southeast-1",
             )
             token = @identity.random_hex(32)
-            assignment = c
+            assignment = c.runtime
               .claim("a".repeat(64), {
                 environments: None,
                 version: 1,
@@ -113,8 +113,8 @@ async test "real runner consumes captured vars in env conditions Action inputs p
           }
         }
         assert_true(
-          @pipeline.list_runs(pool, actor, repo)[0].conclusion
-          is Some(@pipeline.Success),
+          @runtime.list_runs(pool, actor, repo)[0].conclusion
+          is Some(@runtime.Success),
         )
       })
     },

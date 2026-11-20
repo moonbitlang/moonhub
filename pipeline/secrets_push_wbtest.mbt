@@ -65,7 +65,7 @@ async test "secret policy diagnostics do not suppress other push workflows" {
         ignore(
           @gitops.merge_git(dir, ["update-ref", "refs/heads/publish", sha]),
         )
-        save_secret(
+        @runtime.save_secret(
           pool,
           root,
           actor,
@@ -95,12 +95,12 @@ async test "secret policy diagnostics do not suppress other push workflows" {
         "\{"0".repeat(40)} \{sha} refs/heads/review",
       )
       assert_true(run_next_ref_event(pool, root))
-      let events = list_trigger_events(pool, actor, repo)
+      let events = @runtime.list_trigger_events(pool, actor, repo)
       assert_eq(events[0].state, "processed")
       assert_true(events[0].error.contains(".github/workflows/a-publish.yml"))
       assert_true(events[0].error.contains("Secret TOKEN"))
       assert_true(!events[0].error.contains("private-push-token"))
-      let runs = list_runs(pool, actor, repo)
+      let runs = @runtime.list_runs(pool, actor, repo)
       assert_eq(runs.length(), 1)
       assert_eq(runs[0].workflow_path, ".github/workflows/b-build.yml")
       assert_eq(events[0].runs.length(), 1)
@@ -119,7 +119,7 @@ async test "MR secret policy reports configuration errors without claiming execu
       assert_eq(checks[0].state, "error")
       assert_true(checks[0].error.contains("never MR checks"))
       assert_true(!checks[0].error.contains("permission was revoked"))
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
     },
     workflow=pull_request_workflow.replace_all(
       old="run: test -f README.md",

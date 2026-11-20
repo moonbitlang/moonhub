@@ -1,7 +1,7 @@
 ///|
 async test "provider label forms preserve errors, enforce admin and CSRF, and keep existing identity" {
   @web_testkit.with_ssh_settings_app((port, pool, alice, _, admin_cookie) => {
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = @runtime.Coordinator::new(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
     let token = "d".repeat(64)
     let provider = coordinator.create_provider(
@@ -134,7 +134,7 @@ async test "saving provider labels unblocks queued work and cancels incompatible
         let run = @pipeline.create_run(
           pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
         )
-        let coordinator = @pipeline.Coordinator::new(pool)
+        let coordinator = @runtime.Coordinator::new(pool)
         let provider_token = "a".repeat(64)
         let provider = coordinator.create_provider(
           admin,

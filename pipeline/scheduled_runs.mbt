@@ -5,7 +5,7 @@ pub fn set_scheduled_runs(
   repo : @domain.RepoId,
   enabled : Bool,
 ) -> Unit raise {
-  let scope = require_run_author(pool, actor, repo)
+  let scope = @runtime.require_run_author(pool, actor, repo)
   pool.with_client(c => {
     ignore(
       c.execute(
@@ -22,7 +22,7 @@ pub fn scheduled_runs_status(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
 ) -> (Bool, String) raise {
-  let scope = require_run_author(pool, actor, repo)
+  let scope = @runtime.require_run_author(pool, actor, repo)
   pool.with_client(c => {
     if c.query_opt(
         "SELECT enabled,last_error FROM pipeline_schedule_config WHERE repository_id=?",
@@ -64,7 +64,7 @@ pub async fn run_due_schedules(
     let mut failed = false
     try {
       let actor = @identity.active_user_by_name(pool, row.get_name("actor"))
-      let scope = require_run_author(pool, actor, repo)
+      let scope = @runtime.require_run_author(pool, actor, repo)
       guard scope.id == id else {
         raise @domain.NotFound(message="scheduled repository has changed")
       }

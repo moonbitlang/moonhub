@@ -1,19 +1,19 @@
 import {
-  "moonbitlang/async",
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
-  "moonbitlang/async/http",
   "hackwaly/moonhub/identity",
-  "moonbitlang/core/json",
-  "moonbitlang/moonback",
-  "hackwaly/moonhub/releases",
   "hackwaly/moonhub/repository",
-  "hackwaly/moonhub/web/views/repositories" @repository_views,
+  "hackwaly/moonhub/releases",
   "hackwaly/moonhub/test_support",
-  "moonbitlang/core/encoding/utf8",
   "hackwaly/moonhub/web",
   "hackwaly/moonhub/web/context" @web_context,
+  "hackwaly/moonhub/web/views/repositories" @repository_views,
+  "moonbitlang/async",
+  "moonbitlang/async/http",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/moonback",
+  "moonbitlang/core/json",
 }
 
 supported_targets = "native"

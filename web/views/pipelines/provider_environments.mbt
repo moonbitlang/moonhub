@@ -13,7 +13,7 @@ fn environment_form_values(
 
 ///|
 fn render_environment_form(
-  control : @pipeline.ProviderControl,
+  control : @runtime.ProviderControl,
   csrf : String,
   id : String,
   values : Map[String, String],
@@ -65,7 +65,7 @@ fn render_environment_form(
 
 ///|
 fn render_provider_environments(
-  control : @pipeline.ProviderControl,
+  control : @runtime.ProviderControl,
   csrf : String,
   submitted : Map[String, String],
   target : String,
@@ -140,7 +140,7 @@ fn render_provider_environments(
 
 ///|
 fn updated_environment_values(
-  control : @pipeline.ProviderControl,
+  control : @runtime.ProviderControl,
   form : Map[String, String],
 ) -> (Array[@environment.Definition], String) raise {
   let profiles = control.snapshot.environments.unwrap_or([])

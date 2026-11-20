@@ -76,10 +76,10 @@ async test "original Desktop Windows workflow packages uploads and restores with
         }
       }
     })
-    let c = @pipeline.Coordinator::new(pool)
+    let c = test_services(pool)
     let provider_token = @identity.random_hex(32)
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         @identity.active_user_by_name(pool, "admin"),
         "desktop-acceptance",
         provider_token,
@@ -89,7 +89,9 @@ async test "original Desktop Windows workflow packages uploads and restores with
     )
     let listener = @moonback.listen(port=0)
     let dependencies : @moonback.Module = Module(ctx => {
-      ctx.provide(@web_context.pipeline_coordinator_key, c)
+      ctx.provide(@web_context.pipeline_coordinator_key, c.runtime)
+      ctx.provide(@web_context.pipeline_results_key, c.results)
+      ctx.provide(@web_context.pipeline_oidc_key, c.oidc)
       ctx.provide(@web_context.config_root, root)
     })
     let next_token = @identity.random_hex(32)
@@ -102,7 +104,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
             return
           }
           let token = @identity.random_hex(32)
-          let assignment = c
+          let assignment = c.runtime
             .claim(provider_token, {
               environments: None,
               version: 1,
@@ -180,7 +182,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
         // Network-dependent upstream code remains explicit opt-in.
         for job in definition.jobs {
           let token = @identity.random_hex(32)
-          let assignment = c
+          let assignment = c.runtime
             .claim(provider_token, {
               environments: None,
               version: 1,
@@ -199,11 +201,13 @@ async test "original Desktop Windows workflow packages uploads and restores with
             },
           )
           let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-          ignore(c.start(id, token, 1, execution_id=@identity.random_hex(16)))
+          ignore(
+            c.runtime.start(id, token, 1, execution_id=@identity.random_hex(16)),
+          )
           for step in job.steps {
             for state in ["running", "success"] {
               ignore(
-                c.update_step(id, token, {
+                c.runtime.update_step(id, token, {
                   version: 1,
                   step_id: step.id,
                   state,
@@ -213,7 +217,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
             }
           }
           ignore(
-            c.complete(id, token, {
+            c.runtime.complete(id, token, {
               version: 1,
               conclusion: "success",
               last_log_sequence: "0",

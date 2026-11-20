@@ -1,5 +1,5 @@
 ///|
-pub suberror ExecutionError {
+pub(all) suberror ExecutionError {
   Conflict(String)
   LogLimit
 }
@@ -7,20 +7,15 @@ pub suberror ExecutionError {
 ///|
 pub struct Coordinator {
   priv pool : @database.Database
-  priv storage : @storage.Config?
-  priv downloads : @async.Semaphore
-  priv oidc : OidcIssuer?
   priv clock : () -> Int64
 }
 
 ///|
 pub fn Coordinator::new(
   pool : @database.Database,
-  oidc? : OidcIssuer,
-  storage? : @storage.Config,
   clock~ : () -> Int64 = () => @env.now().reinterpret_as_int64(),
 ) -> Coordinator {
-  { pool, clock, oidc, storage, downloads: @async.Semaphore(4), }
+  { pool, clock, }
 }
 
 ///|

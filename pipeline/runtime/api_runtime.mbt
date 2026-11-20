@@ -11,9 +11,8 @@ pub fn Coordinator::api_runtime(
     c.with_transaction(
       tx => {
         let now = (self.clock)()
-        let row = artifact_live(tx, id, request.execution_id, now)
-        guard (row.get_name("definition_version") : Int64) >= 8L &&
-          attempt_job(row).api_permissions != 0 else {
+        let row = live_attempt(tx, id, request.execution_id, now)
+        guard row.definition_version >= 8 && row.job().api_permissions != 0 else {
           raise @domain.Forbidden(message="job API permissions required")
         }
         let count : Int64 = tx
@@ -33,7 +32,7 @@ pub fn Coordinator::api_runtime(
               @identity.hash_token(credential),
               id,
               request.execution_id,
-              (row.get_name("deadline_ms") : Int64),
+              row.deadline_ms,
             ],
           ),
         )
@@ -68,17 +67,16 @@ pub fn Coordinator::authenticate_job_api(
       guard grant is Some(grant) else {
         raise @domain.Unauthorized(message="invalid job API credential")
       }
-      let row = artifact_live(
+      let row = live_attempt(
         tx,
         grant.get_name("attempt_id"),
         grant.get_name("execution_id"),
         now,
       )
-      guard (row.get_name("owner_name") : String) == repo.owner &&
-        (row.get_name("repo_name") : String) == repo.name else {
+      guard row.owner_name == repo.owner && row.repo_name == repo.name else {
         raise @domain.Forbidden(message="job API repository mismatch")
       }
-      let job = attempt_job(row)
+      let job = row.job()
       let allowed = match permission {
         "contents:read" => job.contents_read
         "contents:write" => job.api_permissions.land(2) != 0
@@ -91,7 +89,7 @@ pub fn Coordinator::authenticate_job_api(
       if permission == "contents:write" {
         let run = tx.query_one(
           "SELECT merge_check_id,context_json FROM pipeline_run WHERE id=?",
-          params=[(row.get_name("run_id") : Int64)],
+          params=[row.run_id],
         )
         let context : @workflow.RunContext = @json.from_json(
           @json.parse((run.get_name("context_json") : String?).unwrap_or("{}")),
@@ -106,7 +104,7 @@ pub fn Coordinator::authenticate_job_api(
       (
         tx
         .query_one("SELECT name_key FROM user WHERE id=? AND status='active'", params=[
-          (row.get_name("requested_by_user_id") : Int64),
+          row.requested_by_user_id,
         ])
         .get_name("name_key") : String)
     })

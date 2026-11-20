@@ -75,8 +75,8 @@ fn runner_error(err : Error) -> (Int32, Json) {
     @domain.Forbidden(message~) => (403, "forbidden", message)
     @domain.NotFound(message~) => (404, "not_found", message)
     @domain.BadRequest(message~) => (400, "invalid_request", message)
-    @pipeline.Conflict(message) => (409, "conflict", message)
-    @pipeline.LogLimit | PayloadTooLarge =>
+    @runtime.Conflict(message) => (409, "conflict", message)
+    @runtime.LogLimit | PayloadTooLarge =>
       (413, "limit_exceeded", "request or log limit exceeded")
     _ => (500, "internal_error", "runner request failed")
   }
@@ -100,6 +100,8 @@ fn json_handler(
 ///|
 pub let runner_api_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let results = ctx.require(@web_context.pipeline_results_key)
+  let oidc = ctx.require(@web_context.pipeline_oidc_key)
   let root = ctx.resolve(@web_context.config_root)
   ctx.post(
     "/providers/register",
@@ -281,7 +283,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
         _ =>
           raise @domain.BadRequest(message="invalid artifact runtime request")
       }
-      ToJson::to_json(coordinator.artifact_runtime(id, token, request))
+      ToJson::to_json(results.artifact_runtime(id, token, request))
     }),
   )
   ctx.post(
@@ -295,7 +297,7 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       let request : @protocol.OidcRuntimeRequest = @json.from_json(payload) catch {
         _ => raise @domain.BadRequest(message="invalid OIDC runtime request")
       }
-      ToJson::to_json(coordinator.oidc_runtime(id, token, request))
+      ToJson::to_json(oidc.oidc_runtime(id, token, request))
     }),
   )
   ctx.post(

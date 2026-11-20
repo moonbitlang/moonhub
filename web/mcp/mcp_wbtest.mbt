@@ -1073,7 +1073,7 @@ async test "MCP CI tools create query cancel rerun and reject out of scope log r
       } else {
       fail("run missing")
     }
-    let coordinator = @pipeline.Coordinator::new(pool)
+    let coordinator = @runtime.Coordinator::new(pool)
     let provider_token = @identity.random_hex(32)
     let attempt_token = @identity.random_hex(32)
     ignore(
@@ -1250,7 +1250,7 @@ async test "MCP explicit origin policy and rate limits are isolated per applicat
       ctx.provide(@web_context.config_root, root)
       ctx.provide(
         @web_context.pipeline_coordinator_key,
-        @pipeline.Coordinator::new(pool),
+        @runtime.Coordinator::new(pool),
       )
       ctx.provide(allowed_origins_key, ["https://trusted.example"])
       ctx.use_(mcp_module)

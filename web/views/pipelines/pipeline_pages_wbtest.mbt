@@ -41,13 +41,13 @@ async test "pipeline pages list runs, show jobs, and cancel with CSRF" {
           alice,
         )
         assert_eq(cancel_response.code, 303)
-        let conclusion = @pipeline.get_run(
+        let conclusion = @runtime.get_run(
             pool,
             @identity.active_user_by_name(pool, "alice"),
             repo,
             run.number,
           ).conclusion
-        assert_true(conclusion is Some(@pipeline.Cancelled))
+        assert_true(conclusion is Some(@runtime.Cancelled))
       },
       repo_root=root,
     )
@@ -75,7 +75,7 @@ async test "site admins can create, pause, and revoke pipeline providers" {
     assert_eq(created_response.code, 200)
     assert_true(created_body.contains("Provider created"))
     assert_true(created_body.contains("web-provider"))
-    let provider = @pipeline.Coordinator::new(pool).list_providers(
+    let provider = @runtime.Coordinator::new(pool).list_providers(
         @identity.active_user_by_name(pool, "admin"),
       )[0]
     let (paused_response, _) = @web_testkit.http_post_path_with_cookie(
@@ -86,7 +86,7 @@ async test "site admins can create, pause, and revoke pipeline providers" {
     )
     assert_eq(paused_response.code, 303)
     assert_true(
-      @pipeline.Coordinator::new(pool).list_providers(
+      @runtime.Coordinator::new(pool).list_providers(
         @identity.active_user_by_name(pool, "admin"),
       )[0].paused,
     )
@@ -98,7 +98,7 @@ async test "site admins can create, pause, and revoke pipeline providers" {
     )
     assert_eq(revoked_response.code, 303)
     assert_true(
-      @pipeline.Coordinator::new(pool).list_providers(
+      @runtime.Coordinator::new(pool).list_providers(
         @identity.active_user_by_name(pool, "admin"),
       )[0].revoked,
     )
@@ -121,7 +121,7 @@ async test "pipeline polling uses browser authorization cursors and final log co
         let run = @pipeline.create_run(
           pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
         )
-        let coordinator = @pipeline.Coordinator::new(pool)
+        let coordinator = @runtime.Coordinator::new(pool)
         ignore(
           coordinator.create_provider(
             @identity.active_user_by_name(pool, "admin"),

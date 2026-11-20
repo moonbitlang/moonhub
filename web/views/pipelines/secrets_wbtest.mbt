@@ -76,7 +76,7 @@ async test "repository secret pages protect forms preserve metadata and never ec
       303,
     )
     assert_true(
-      @pipeline.list_secrets(
+      @runtime.list_secrets(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         { owner: "alice", name: "demo", },
@@ -144,7 +144,7 @@ async test "secret forms retain their original scope while an incomplete body ou
         assert_false(body.contains("delayed-form-private-value"))
         if rebuild {
           assert_true(body.contains("repository has changed"))
-          assert_true(@pipeline.list_secrets(pool, actor, repo).is_empty())
+          assert_true(@runtime.list_secrets(pool, actor, repo).is_empty())
         }
         pool.with_client(client => {
           assert_true(

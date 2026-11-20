@@ -1,27 +1,28 @@
 import {
-  "moonbitlang/async",
-  "hackwaly/moonhub/database",
-  "hackwaly/moonhub/domain",
-  "moonbitlang/core/env",
   "hackwaly/moonhub/pipeline/environment",
-  "hackwaly/moonhub/identity",
-  "moonbitlang/core/json",
-  "moonbitlang/moonback",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/database",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/pipeline/protocol",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/web/assets" @web_assets,
   "hackwaly/moonhub/web/context" @web_context,
   "hackwaly/moonhub/web/ui" @web_ui,
+  "moonbitlang/async",
+  "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/moonback",
+  "hackwaly/moonhub/identity",
+  "hackwaly/moonhub/pipeline/runtime",
 }
 
 import {
-  "moonbitlang/async/fs",
-  "hackwaly/moonhub/gitops",
-  "moonbitlang/async/http",
-  "hackwaly/moonhub/test_support",
   "moonbitlang/core/encoding/utf8",
+  "hackwaly/moonhub/gitops",
+  "moonbitlang/async/fs",
+  "hackwaly/moonhub/test_support",
   "hackwaly/moonhub/web/testkit" @web_testkit,
+  "moonbitlang/async/http",
 } for "wbtest"
 
 supported_targets = "native"
