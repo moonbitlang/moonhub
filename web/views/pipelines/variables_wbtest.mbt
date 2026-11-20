@@ -148,6 +148,83 @@ async test "variable readers can view values but cannot manage them" {
 }
 
 ///|
+async test "Actions variables are read-only and use repository read access" {
+  @web_testkit.with_repository_test_app((port, pool, _, alice, bob) => {
+    let base = "/alice/demo/pipelines"
+    let path = base + "?tab=variables"
+    let (empty, empty_html) = @web_testkit.http_get_path_with_cookie(
+      port, path, alice,
+    )
+    assert_eq(empty.code, 200)
+    assert_true(empty_html.contains(">No repository variables.</p>"))
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let first_lines = "\n<script>&hello</script>\n  "
+    let long_line = "x".repeat(49152 - first_lines.length() - 1)
+    let value = first_lines + long_line + "\n"
+    @pipeline.save_variable(
+      pool,
+      actor,
+      { owner: "alice", name: "demo", },
+      "DEPLOY_REGION",
+      value,
+      0L,
+    )
+    let (denied, denied_html) = @web_testkit.http_get_path_with_cookie(
+      port, path, bob,
+    )
+    assert_eq(denied.code, 404)
+    assert_false(denied_html.contains("DEPLOY_REGION"))
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE repository SET visibility = 'public' WHERE id = 1",
+        ),
+      )
+    })
+    let (guest, _) = @web_testkit.http_get_path(port, path)
+    assert_eq(guest.code, 303)
+    assert_eq(guest.headers.get("location"), Some("/-/login"))
+    for (cookie, manager) in [(bob, false), (alice, true)] {
+      let (response, html) = @web_testkit.http_get_path_with_cookie(
+        port, path, cookie,
+      )
+      assert_eq(response.code, 200)
+      assert_eq(response.headers.get("cache-control"), Some("no-store"))
+      assert_true(html.contains("<h2>DEPLOY_REGION</h2>"))
+      assert_true(
+        html.contains(
+          "<code>\n&lt;script&gt;&amp;hello&lt;/script&gt;\n  " +
+          long_line +
+          "\n</code>",
+        ),
+      )
+      assert_true(html.contains("<dt>Updated</dt><dd><time datetime=\""))
+      assert_false(html.contains("<script>&hello</script>"))
+      assert_eq(html.contains("Manage variables"), manager)
+      if manager {
+        assert_true(
+          html.contains(
+            "href=\"/alice/demo/settings/variables\">Manage variables</a>",
+          ),
+        )
+      }
+      assert_false(html.contains("Add variable"))
+      assert_false(html.contains("Edit variable"))
+      assert_false(html.contains("Delete DEPLOY_REGION"))
+    }
+    for tab in ["runs", "events", "settings"] {
+      let (response, html) = @web_testkit.http_get_path_with_cookie(
+        port,
+        base + "?tab=" + tab,
+        alice,
+      )
+      assert_eq(response.code, 200)
+      assert_false(html.contains("DEPLOY_REGION"))
+    }
+  })
+}
+
+///|
 async test "variable forms accept maximum URL-encoded UTF8 values and reject one byte over" {
   @web_testkit.with_repository_test_app((port, pool, _, alice, _) => {
     let base = "/alice/demo/settings/variables"

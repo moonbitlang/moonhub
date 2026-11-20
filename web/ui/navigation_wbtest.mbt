@@ -39,6 +39,11 @@ async test "all shell breadcrumbs link to existing sections and identify the cur
           "Actions",
           ["/alice", "/alice/demo", "/alice/demo/pipelines"],
         ),
+        (
+          "/alice/demo/pipelines?tab=variables",
+          "Actions",
+          ["/alice", "/alice/demo", "/alice/demo/pipelines"],
+        ),
         ("/alice/demo/settings/branches", "Branch protection", ["/alice/demo"]),
         (
           "/alice/demo/settings/deploy-keys",
@@ -197,7 +202,7 @@ async test "repository sidebar matches the current page and hides management for
     }
     for
       suffix in [
-        "", "/tree/master/src", "/blob/master/src/main.mbt", "/commits",
+        "", "/tree/master/src", "/blob/master/src/main.mbt", "/commits", "/pipelines?tab=variables",
       ] {
       let (response, body) = @web_testkit.http_get_path_with_cookie(
         port,

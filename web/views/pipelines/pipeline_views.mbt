@@ -105,6 +105,7 @@ fn render_pipeline_list(
   csrf : String,
   events : Array[@pipeline.TriggerEvent],
   tab : String,
+  variables~ : Array[@pipeline.RepositoryVariable],
   page : Int64,
   status : String,
   branch : String,
@@ -119,11 +120,19 @@ fn render_pipeline_list(
       b <+ "<div class=\"page-heading page-heading--actions\"><h1>Actions</h1>"
       if manager && tab == "runs" {
         b <+ "<a class=\"button-link\" href=\"\{base}/new\">Run workflow</a>"
+      } else if manager && tab == "variables" {
+        b <+
+          "<a class=\"button-link\" href=\"\{@web_ui.repo_link(scope.repo)}/settings/variables\">Manage variables</a>"
       }
       b <+ "</div>"
       if tab != "settings" {
         b <+ "<nav class=\"page-tabs\" aria-label=\"Actions views\">"
-        for (key, label) in [("runs", "Runs"), ("events", "Trigger events")] {
+        for
+          (key, label) in [
+            ("runs", "Runs"),
+            ("events", "Trigger events"),
+            ("variables", "Variables"),
+          ] {
           b <+ "<a href=\"\{base}?tab=\{key}\""
           if tab == key {
             b <+ " aria-current=\"page\""
@@ -177,6 +186,8 @@ fn render_pipeline_list(
           b <+ "<li class=\"empty-state\"><h2>No trigger events yet</h2></li>"
         }
         b <+ "</ul>"
+      } else if tab == "variables" {
+        b <+ "\{render_repository_variable_list(variables, None)}"
       } else {
         b <+
           "<form class=\"list-filters\" method=\"get\"><input type=\"hidden\" name=\"tab\" value=\"runs\"><label class=\"field\"><span>Status</span><select name=\"status\">"
@@ -256,12 +267,11 @@ fn render_pipeline_list(
     },
     navigation=@web_ui.RepositoryNavigation(
       scope.repo,
-      if tab == "settings" {
-        "action-settings"
-      } else if tab == "events" {
-        "pipeline-events"
-      } else {
-        "pipeline-runs"
+      match tab {
+        "settings" => "action-settings"
+        "events" => "pipeline-events"
+        "variables" => "pipeline-variables"
+        _ => "pipeline-runs"
       },
       manager,
     ),

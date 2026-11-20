@@ -30,7 +30,11 @@ fn repository_section(active : String, manager : Bool) -> String {
   } else if active == "merge-requests" || active.has_prefix("pull-") {
     "merge-requests"
   } else if active
-    is ("pipelines" | "pipeline-runs" | "pipeline-events" | "variables") {
+    is ("pipelines"
+    | "pipeline-runs"
+    | "pipeline-events"
+    | "pipeline-variables"
+    | "variables") {
     "pipelines"
   } else {
     "code"
@@ -172,8 +176,10 @@ fn render_breadcrumbs(navigation : PageNavigation) -> @moonback.Html {
         "issues" | "issues-assigned" => ("Issues", "/issues")
         "merge-requests" | "pull-author" | "pull-reviews" =>
           ("Pull requests", "/merge-requests")
-        "pipelines" | "pipeline-runs" | "pipeline-events" =>
-          ("Actions", "/pipelines")
+        "pipelines"
+        | "pipeline-runs"
+        | "pipeline-events"
+        | "pipeline-variables" => ("Actions", "/pipelines")
         "action-settings" =>
           ("Actions configuration", "/pipelines?tab=settings")
         "mirrors" => ("Mirrors", "/settings/mirrors")

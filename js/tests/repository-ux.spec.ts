@@ -245,7 +245,7 @@ test('latest commit Actions status opens its workflow list and links to run deta
   const views = page.getByRole('navigation', { name: 'Actions views', exact: true });
   const workflows = sidebar.getByRole('navigation', { name: 'Workflows in this view', exact: true });
   await expect(workflows.getByRole('link')).toHaveText(['Build and package']);
-  await expect(views.getByRole('link')).toHaveText(['Runs', 'Trigger events']);
+  await expect(views.getByRole('link')).toHaveText(['Runs', 'Trigger events', 'Variables']);
   await expect(sidebar.getByRole('link')).toHaveText(['Build and package']);
   await workflows.getByRole('link', { name: 'Build and package', exact: true }).click();
   await expect(page.getByLabel('Workflow file', { exact: true })).toHaveValue('.github/workflows/build.yml');

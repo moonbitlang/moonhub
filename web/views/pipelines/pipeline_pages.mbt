@@ -367,7 +367,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let scope = pipeline_scope(pool, actor, req)
     let manager = @identity.can_manage_team(pool, actor, scope.team_id)
     let tab = req.query().get("tab").unwrap_or("runs")
-    guard ["runs", "events", "settings"].contains(tab) else {
+    guard ["runs", "events", "variables", "settings"].contains(tab) else {
       raise @domain.BadRequest(message="invalid pipeline tab")
     }
     if tab == "settings" {
@@ -410,6 +410,11 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
           []
         },
         tab,
+        variables=if tab == "variables" {
+          @pipeline.list_variables(pool, actor, scope.repo)
+        } else {
+          []
+        },
         page,
         status,
         branch,

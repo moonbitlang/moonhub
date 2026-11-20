@@ -178,27 +178,37 @@ fn render_variables(
       }
       b <+
         "<p>Values are visible to repository readers and are not masked in logs. Store credentials in secrets. New runs capture these values; existing runs and snapshot reruns keep their saved values.</p>"
-      if variables.is_empty() {
-        b <+
-          "<p class=\"ssh-keys-empty muted\">No repository variables. Add configuration referenced with vars.NAME.</p>"
-      } else {
-        b <+ "<ul class=\"ssh-key-list\" aria-label=\"Repository variables\">"
-        for variable in variables {
-          b <+
-            "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{variable.name}</h2></div><pre><code>\{variable.value}</code></pre><dl class=\"ssh-key-metadata\"><div><dt>Updated</dt><dd>\{@web_ui.timestamp(variable.updated_at)}</dd></div></dl>"
-          if manager {
-            b <+
-              "<div class=\"ssh-form-actions\"><a href=\"\{base}/\{variable.name}/edit\" aria-label=\"Edit \{variable.name}\">Edit variable</a><a class=\"ssh-revoke-link\" href=\"\{base}/\{variable.name}/delete\" aria-label=\"Delete \{variable.name}\">Delete</a></div>"
-          }
-          b <+ "</div></li>"
-        }
-        b <+ "</ul>"
-      }
-      b <+ "</section>"
+      let management_path = if manager { Some(base) } else { None }
+      b <+
+        "\{render_repository_variable_list(variables, management_path)}</section>"
     }),
     current_user=Some(actor),
     navigation=@web_ui.RepositoryNavigation(repo, "variables", manager),
   )
+}
+
+///|
+fn render_repository_variable_list(
+  variables : Array[@pipeline.RepositoryVariable],
+  management_path : String?,
+) -> @moonback.Html {
+  Html(b => {
+    if variables.is_empty() {
+      b <+ "<p class=\"ssh-keys-empty muted\">No repository variables.</p>"
+    } else {
+      b <+ "<ul class=\"ssh-key-list\" aria-label=\"Repository variables\">"
+      for variable in variables {
+        b <+
+          "<li class=\"ssh-key-item\"><div class=\"ssh-key-content\"><div class=\"ssh-key-heading\"><h2>\{variable.name}</h2></div><pre class=\"repository-variable-value\"><code>\{variable.value}</code></pre><dl class=\"ssh-key-metadata\"><div><dt>Updated</dt><dd>\{@web_ui.timestamp(variable.updated_at)}</dd></div></dl>"
+        if management_path is Some(base) {
+          b <+
+            "<div class=\"ssh-form-actions\"><a href=\"\{base}/\{variable.name}/edit\" aria-label=\"Edit \{variable.name}\">Edit variable</a><a class=\"ssh-revoke-link\" href=\"\{base}/\{variable.name}/delete\" aria-label=\"Delete \{variable.name}\">Delete</a></div>"
+        }
+        b <+ "</div></li>"
+      }
+      b <+ "</ul>"
+    }
+  })
 }
 
 ///|
