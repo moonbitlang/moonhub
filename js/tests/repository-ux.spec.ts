@@ -254,10 +254,41 @@ test('latest commit Actions status opens its workflow list and links to run deta
   expect(Object.fromEntries(new URL(page.url()).searchParams)).toEqual({
     tab: 'runs', workflow: '.github/workflows/build.yml', status: 'success', branch: 'master',
   });
-  await views.getByRole('link', { name: 'Trigger events', exact: true }).click();
-  await expect(views.getByRole('link', { name: 'Trigger events', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(sidebar).toBeVisible();
-  await expect(sidebar.getByRole('link')).toHaveCount(0);
+  const actions = page.getByRole('navigation', { name: 'Repository navigation' })
+    .getByRole('link', { name: 'Actions', exact: true });
+  const currentView = views.locator('[aria-current="page"]');
+  const manage = page.getByRole('link', { name: 'Manage variables', exact: true });
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await views.getByRole('link', { name: 'Trigger events', exact: true }).click();
+    await expect(currentView).toHaveText('Trigger events');
+    await expect(sidebar.getByRole('link')).toHaveCount(0);
+    if (width === 1280) await expect(sidebar).toBeVisible();
+
+    await views.getByRole('link', { name: 'Variables', exact: true }).click();
+    await expect(page).toHaveURL(/\/alice\/demo\/pipelines\?tab=variables$/);
+    await expect(currentView).toHaveText('Variables');
+    await expect(actions).toHaveAttribute('aria-current', 'page');
+    await expect(sidebar).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toHaveCount(0);
+    const variables = page.getByRole('list', { name: 'Repository variables' });
+    await expect(variables.getByRole('heading', { name: 'REGION', exact: true })).toBeVisible();
+    await expect(variables.locator('code')).toHaveJSProperty(
+      'textContent', 'eu-west-1\n  <region> & edge\n' + 'x'.repeat(256),
+    );
+    await expect(variables.locator('time')).toHaveAttribute('datetime', '2026-11-19T12:00:00Z');
+    await expect(manage).toHaveAttribute('href', '/alice/demo/settings/variables');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+    await views.getByRole('link', { name: 'Runs', exact: true }).click();
+    await expect(currentView).toHaveText('Runs');
+    if (width === 320) {
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    }
+    await workflows.getByRole('link', { name: 'Lint', exact: true }).click();
+    await expect(page.getByLabel('Workflow file', { exact: true })).toHaveValue('.github/workflows/lint.yml');
+    await expect(page.getByRole('link', { name: '#2 · Lint', exact: true })).toBeVisible();
+  }
 });
 
 test('file finder follows its trigger through resizing and scrolling with a long file list', async ({ page }) => {
