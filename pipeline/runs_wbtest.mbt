@@ -25,7 +25,12 @@ async test "a run snapshots its configuration and pins source across force pushe
     )
     try
       ignore(
-        get_run(pool, alice, { owner: "alice", name: "public", }, run.number),
+        @runtime.get_run(
+          pool,
+          alice,
+          { owner: "alice", name: "public", },
+          run.number,
+        ),
       )
     catch {
       @domain.NotFound(_) => ()
@@ -36,7 +41,7 @@ async test "a run snapshots its configuration and pins source across force pushe
     assert_eq(run.number, 1L)
     assert_eq(run.commit_sha, sha)
     assert_eq(run.workflow_source, sample_workflow)
-    assert_eq(run.state, Queued)
+    assert_true(run.state is Queued)
     assert_eq(run.conclusion, None)
     assert_eq(run.definition_version, @workflow.format_version)
     assert_eq(run.definition.jobs.length(), 2)
@@ -44,15 +49,15 @@ async test "a run snapshots its configuration and pins source across force pushe
       @gitops.merge_git(git_dir, ["rev-parse", run.source_ref]).trim(),
       sha,
     )
-    let jobs = list_jobs(pool, alice, repo, run.number)
+    let jobs = @runtime.list_jobs(pool, alice, repo, run.number)
     assert_eq(jobs.length(), 2)
-    assert_eq(
-      jobs.iter().find_first(job => job.job_key == "build").unwrap().state,
-      Queued,
+    assert_true(
+      jobs.iter().find_first(job => job.job_key == "build").unwrap().state
+      is Queued,
     )
-    assert_eq(
-      jobs.iter().find_first(job => job.job_key == "test").unwrap().state,
-      Waiting,
+    assert_true(
+      jobs.iter().find_first(job => job.job_key == "test").unwrap().state
+      is Waiting,
     )
     pool.with_client(client => {
       assert_eq(client.query_all("SELECT * FROM pipeline_job_need").length(), 1)
@@ -74,7 +79,7 @@ async test "a run snapshots its configuration and pins source across force pushe
       @gitops.merge_git(git_dir, ["cat-file", "-t", sha]).trim(),
       "commit",
     )
-    let restored = get_run(pool, alice, repo, 1L)
+    let restored = @runtime.get_run(pool, alice, repo, 1L)
     assert_eq(restored.commit_sha, sha)
     assert_eq(restored.workflow_source, sample_workflow)
     assert_eq(
@@ -123,9 +128,9 @@ async test "explicit rerun clones the completed snapshot instead of the current 
       ToJson::to_json(original.definition),
     )
     assert_true(rerun.source_ref != original.source_ref)
-    assert_eq(rerun.state, Queued)
+    assert_true(rerun.state is Queued)
     assert_true(
-      list_jobs(pool, alice, repo, rerun.number)
+      @runtime.list_jobs(pool, alice, repo, rerun.number)
       .iter()
       .find_first(job => job.job_key == "build")
       .unwrap().state
@@ -166,7 +171,7 @@ async test "pipeline creation and reads enforce current repository permissions" 
     let run = create_run(
       pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
     )
-    try ignore(get_run(pool, bob, repo, run.number)) catch {
+    try ignore(@runtime.get_run(pool, bob, repo, run.number)) catch {
       @domain.NotFound(_) => ()
       err => raise err
     } noraise {
@@ -189,7 +194,7 @@ async test "pipeline creation and reads enforce current repository permissions" 
         "INSERT INTO team_member (team_id, user_id, role) VALUES (1, 2, 'member')",
       )
     })
-    assert_eq(get_run(pool, bob, repo, run.number).id, run.id)
+    assert_eq(@runtime.get_run(pool, bob, repo, run.number).id, run.id)
     try
       ignore(
         create_run(
@@ -230,7 +235,7 @@ async test "pipeline creation and reads enforce current repository permissions" 
         "UPDATE \"user\" SET status = 'disabled' WHERE id = 1",
       )
     })
-    try ignore(get_run(pool, alice, repo, run.number)) catch {
+    try ignore(@runtime.get_run(pool, alice, repo, run.number)) catch {
       @domain.NotFound(_) => ()
       err => raise err
     } noraise {
@@ -277,7 +282,7 @@ async test "manager selected jobs run original PR-only workflow without changing
       assert_eq(definition.jobs.length(), 1)
       assert_eq(definition.jobs[0].id, "build")
     })
-    Coordinator::new(pool).cancel_run(actor, repo, run.number)
+    test_services(pool).runtime.cancel_run(actor, repo, run.number)
     let rerun = rerun_run(pool, root, actor, repo, run.number)
     assert_eq(rerun.commit_sha, sha)
   })
@@ -376,43 +381,53 @@ async test "database failures roll back the entire snapshot and release its Git 
     let alice = @identity.active_user_by_name(pool, "alice")
     let git_dir = repo.git_dir(root)
     ignore(@test_support.workflow_commit(git_dir, sample_workflow))
-    pool.with_client(client => {
-      client.batch_execute(
-        "CREATE TRIGGER reject_pipeline_job BEFORE INSERT ON pipeline_job BEGIN SELECT RAISE(ABORT, 'injected failure'); END;",
+    for table in ["pipeline_job", "pipeline_cache_scope"] {
+      pool.with_client(client => {
+        client.batch_execute(
+          "CREATE TRIGGER reject_snapshot BEFORE INSERT ON " +
+          table +
+          " BEGIN SELECT RAISE(ABORT, 'injected failure'); END;",
+        )
+      })
+      let failed = try {
+        ignore(
+          create_run(
+            pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
+          ),
+        )
+        false
+      } catch {
+        _ => true
+      }
+      assert_true(failed)
+      assert_eq(
+        pool.with_client(client => {
+          client.query_all("SELECT id FROM pipeline_run").length()
+        }),
+        0,
       )
-    })
-    let failed = try {
-      ignore(
-        create_run(
-          pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
-        ),
+      assert_eq(
+        pool.with_client(client => {
+          client.query_all("SELECT id FROM pipeline_job").length()
+        }),
+        0,
       )
-      false
-    } catch {
-      _ => true
+      assert_eq(
+        @gitops.merge_git(git_dir, [
+          "for-each-ref", "--format=%(refname)", "refs/moonhub/pipelines/",
+        ]),
+        "",
+      )
+      assert_eq(
+        pool.with_client(client => {
+          client.query_all("SELECT run_id FROM pipeline_cache_scope").length()
+        }),
+        0,
+      )
+      pool.with_client(client => {
+        client.batch_execute("DROP TRIGGER reject_snapshot")
+      })
     }
-    assert_true(failed)
-    assert_eq(
-      pool.with_client(client => {
-        client.query_all("SELECT id FROM pipeline_run").length()
-      }),
-      0,
-    )
-    assert_eq(
-      pool.with_client(client => {
-        client.query_all("SELECT id FROM pipeline_job").length()
-      }),
-      0,
-    )
-    assert_eq(
-      @gitops.merge_git(git_dir, [
-        "for-each-ref", "--format=%(refname)", "refs/moonhub/pipelines/",
-      ]),
-      "",
-    )
-    pool.with_client(client => {
-      client.batch_execute("DROP TRIGGER reject_pipeline_job")
-    })
     assert_eq(
       create_run(
         pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
@@ -453,7 +468,10 @@ async test "concurrent requests allocate distinct run numbers and immutable snap
       _ => true
     }
     assert_true(rejected)
-    assert_eq(get_run(pool, alice, repo, 1L).workflow_source, sample_workflow)
+    assert_eq(
+      @runtime.get_run(pool, alice, repo, 1L).workflow_source,
+      sample_workflow,
+    )
     assert_true(
       pool.with_client(client => {
         client.query_all("PRAGMA foreign_key_check").is_empty()
@@ -490,16 +508,19 @@ async test "pipeline snapshots survive closing and reopening the database" {
       let reopened = @database.new_db_pool(config, group)
       defer reopened.close()
       @database.initialize_db(reopened)
-      let restored = get_run(reopened, actor, repo, run.number)
+      let restored = @runtime.get_run(reopened, actor, repo, run.number)
       assert_eq(restored.commit_sha, run.commit_sha)
       assert_eq(restored.source_ref, run.source_ref)
-      assert_eq(restored.state, Queued)
+      assert_true(restored.state is Queued)
       assert_eq(restored.workflow_source, sample_workflow)
       assert_eq(
         ToJson::to_json(restored.context.unwrap()),
         ToJson::to_json(run.context.unwrap()),
       )
-      assert_eq(list_jobs(reopened, actor, repo, run.number).length(), 2)
+      assert_eq(
+        @runtime.list_jobs(reopened, actor, repo, run.number).length(),
+        2,
+      )
     })
   })
 }
@@ -513,7 +534,7 @@ async test "attempt history and same-run dependency constraints are enforced" {
     let run = create_run(
       pool, root, alice, repo, "pipeline", ".github/workflows/build.yml",
     )
-    let job = list_jobs(pool, alice, repo, run.number)[0]
+    let job = @runtime.list_jobs(pool, alice, repo, run.number)[0]
     pool.with_client(client => {
       let _ = client.execute(
         "INSERT INTO pipeline_job_attempt (job_id, number, status) VALUES (?, 1, 'leased')",
@@ -559,6 +580,6 @@ async test "attempt history and same-run dependency constraints are enforced" {
         assert_true(rejected, msg=sql)
       }
     })
-    assert_eq(get_run(pool, alice, repo, run.number).state, Queued)
+    assert_true(@runtime.get_run(pool, alice, repo, run.number).state is Queued)
   })
 }

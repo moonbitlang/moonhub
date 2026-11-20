@@ -1,33 +1,33 @@
 ///|
 priv struct PipelineJobPage {
-  job : @pipeline.JobRun
+  job : @runtime.JobRun
   steps : Array[@protocol.StepState]
-  logs : @pipeline.LogPage?
-  reason : @pipeline.QueueReason?
+  logs : @runtime.LogPage?
+  reason : @runtime.QueueReason?
 }
 
 ///|
-fn queue_reason_text(reason : @pipeline.QueueReason) -> String {
+fn queue_reason_text(reason : @runtime.QueueReason) -> String {
   match reason {
-    @pipeline.WaitingConcurrency =>
+    @runtime.WaitingConcurrency =>
       "Waiting for the previous run in this concurrency group to finish."
-    @pipeline.WaitingMatrixCapacity =>
+    @runtime.WaitingMatrixCapacity =>
       "Waiting for an available matrix parallel slot."
-    @pipeline.WaitingDependencies => "Waiting for dependency jobs to succeed."
-    @pipeline.RequesterUnavailable =>
+    @runtime.WaitingDependencies => "Waiting for dependency jobs to succeed."
+    @runtime.RequesterUnavailable =>
       "The requester no longer has permission to run this job, or the repository is not ready."
-    @pipeline.NoAuthorizedProvider =>
+    @runtime.NoAuthorizedProvider =>
       "No provider is authorized for this repository."
-    @pipeline.NoMatchingLabels =>
+    @runtime.NoMatchingLabels =>
       "No authorized provider matches all required job labels."
-    @pipeline.EnvironmentUnavailable =>
+    @runtime.EnvironmentUnavailable =>
       "No authorized provider offers this job's saved execution image. Restore a matching environment before running this snapshot."
-    @pipeline.ProvidersPaused => "All matching providers are paused."
-    @pipeline.ProvidersBusy =>
+    @runtime.ProvidersPaused => "All matching providers are paused."
+    @runtime.ProvidersBusy =>
       "All matching providers are busy with another job."
-    @pipeline.NoRecentProviderContact =>
+    @runtime.NoRecentProviderContact =>
       "No idle matching provider has contacted the server in the last minute."
-    @pipeline.AwaitingClaim =>
+    @runtime.AwaitingClaim =>
       "Waiting for an available provider to claim this job."
   }
 }
@@ -49,42 +49,42 @@ fn pipeline_html(value : String) -> String {
 }
 
 ///|
-fn pipeline_run_state(state : @pipeline.RunState) -> String {
+fn pipeline_run_state(state : @runtime.RunState) -> String {
   match state {
-    @pipeline.Queued => "queued"
-    @pipeline.Running => "running"
-    @pipeline.Completed => "completed"
+    @runtime.Queued => "queued"
+    @runtime.Running => "running"
+    @runtime.Completed => "completed"
   }
 }
 
 ///|
-fn pipeline_job_state(state : @pipeline.JobState) -> String {
+fn pipeline_job_state(state : @runtime.JobState) -> String {
   match state {
-    @pipeline.Waiting => "waiting"
-    @pipeline.Queued => "queued"
-    @pipeline.Leased => "leased"
-    @pipeline.Running => "running"
-    @pipeline.Completed => "completed"
+    @runtime.Waiting => "waiting"
+    @runtime.Queued => "queued"
+    @runtime.Leased => "leased"
+    @runtime.Running => "running"
+    @runtime.Completed => "completed"
   }
 }
 
 ///|
-fn pipeline_conclusion(value : @pipeline.Conclusion?) -> String {
+fn pipeline_conclusion(value : @runtime.Conclusion?) -> String {
   match value {
     None => ""
-    Some(@pipeline.Success) => "success"
-    Some(@pipeline.Failure) => "failure"
-    Some(@pipeline.Cancelled) => "cancelled"
-    Some(@pipeline.TimedOut) => "timed_out"
-    Some(@pipeline.Lost) => "lost"
-    Some(@pipeline.Skipped) => "skipped"
+    Some(@runtime.Success) => "success"
+    Some(@runtime.Failure) => "failure"
+    Some(@runtime.Cancelled) => "cancelled"
+    Some(@runtime.TimedOut) => "timed_out"
+    Some(@runtime.Lost) => "lost"
+    Some(@runtime.Skipped) => "skipped"
   }
 }
 
 ///|
 fn pipeline_result(
-  state : @pipeline.RunState,
-  conclusion : @pipeline.Conclusion?,
+  state : @runtime.RunState,
+  conclusion : @runtime.Conclusion?,
 ) -> String {
   let conclusion = pipeline_conclusion(conclusion)
   if conclusion.is_empty() {
@@ -99,13 +99,13 @@ fn render_pipeline_list(
   assets : Map[String, String],
   user : @domain.CurrentUser,
   scope : @repository.RepositoryScope,
-  runs : Array[@pipeline.Run],
+  runs : Array[@runtime.Run],
   manager : Bool,
   push_enabled : Bool,
   csrf : String,
-  events : Array[@pipeline.TriggerEvent],
+  events : Array[@runtime.TriggerEvent],
   tab : String,
-  variables~ : Array[@pipeline.RepositoryVariable],
+  variables~ : Array[@runtime.RepositoryVariable],
   page : Int64,
   status : String,
   branch : String,
@@ -473,11 +473,11 @@ fn render_pipeline_detail(
   assets : Map[String, String],
   user : @domain.CurrentUser,
   scope : @repository.RepositoryScope,
-  run : @pipeline.Run,
+  run : @runtime.Run,
   jobs : Array[PipelineJobPage],
   manager : Bool,
   csrf : String,
-  merge : @pipeline.MergeCheckContext?,
+  merge : @runtime.MergeCheckContext?,
   environments~ : Map[String, @environment.Definition] = Map([]),
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(scope.repo) +
@@ -499,12 +499,12 @@ fn render_pipeline_detail(
       if manager {
         b <+ "<div class=\"mr-actions\">"
         b <+ "<form data-run-cancel method=\"post\" action=\"\{base}/cancel\""
-        if run.state is @pipeline.Completed {
+        if run.state is @runtime.Completed {
           b <+ " hidden"
         }
         b <+
           "><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><button class=\"danger-button\" type=\"submit\">Cancel run</button></form><form data-run-rerun method=\"post\" action=\"\{base}/rerun\""
-        if !(run.state is @pipeline.Completed) {
+        if !(run.state is @runtime.Completed) {
           b <+ " hidden"
         }
         b <+

@@ -118,7 +118,7 @@ MOONHUB_MACOS_TART=/absolute/path/to/tart \
 MOONHUB_MACOS_TART_HOME=/absolute/path/to/private/tart \
 MOONHUB_MACOS_IMAGE=local:moonhub-macos-v1 \
 MOONHUB_MACOS_HOST=192.168.64.1 \
-moon test --strip -j 1 web/views/pipelines \
+moon test --strip -j 1 web/pipeline_api \
   --filter 'macOS VM standby executes real HTTP jobs and replenishes clean capacity'
 ```
 

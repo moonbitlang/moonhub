@@ -7,12 +7,12 @@ pub let api_module : @moonback.Module = Module(ctx => {
   ctx.get(
     "/repos/:owner/:repo/variables",
     api_handler(req => {
-      let variables = @pipeline.list_variables(
+      let variables = @runtime.list_variables(
         pool,
         api_actor(pool, req, "read"),
         @web_context.repo_param(req),
       )
-      { "items": variables.map(variable_json) }
+      { "items": variables.map(@dto.variable_json) }
     }),
   )
   ctx.post(
@@ -22,7 +22,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let repo = @web_context.repo_param(req)
       let name = @web_context.required_param(req, "variable", "variable").to_upper()
       let body = api_body(req, ["value", "version"], body_limit=327680)
-      @pipeline.save_variable(
+      @runtime.save_variable(
         pool,
         actor,
         repo,
@@ -30,13 +30,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
         field(body, "value"),
         number(field(body, "version"), zero=true),
       )
-      let variable = @pipeline.list_variables(pool, actor, repo)
+      let variable = @runtime.list_variables(pool, actor, repo)
         .iter()
         .find_first(variable => variable.name == name)
       guard variable is Some(variable) else {
         raise @domain.NotFound(message="Variable changed. Reload its value.")
       }
-      variable_json(variable)
+      @dto.variable_json(variable)
     }),
   )
   ctx.post(
@@ -44,7 +44,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
       let body = api_body(req, ["version"])
-      @pipeline.delete_variable(
+      @runtime.delete_variable(
         pool,
         actor,
         @web_context.repo_param(req),
@@ -57,12 +57,12 @@ pub let api_module : @moonback.Module = Module(ctx => {
   ctx.get(
     "/repos/:owner/:repo/secrets",
     api_handler(req => {
-      let secrets = @pipeline.list_secrets(
+      let secrets = @runtime.list_secrets(
         pool,
         api_actor(pool, req, "read"),
         @web_context.repo_param(req),
       )
-      { "items": secrets.map(secret_json) }
+      { "items": secrets.map(@dto.secret_json) }
     }),
   )
   ctx.post(
@@ -73,7 +73,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let name = @web_context.required_param(req, "secret", "secret").to_upper()
       let scope = @repository.repository_scope(pool, actor, repo)
       let body = api_body(req, ["value", "branch", "workflow", "version"])
-      @pipeline.save_secret(
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -88,13 +88,13 @@ pub let api_module : @moonback.Module = Module(ctx => {
         field(body, "workflow"),
         number(field(body, "version"), zero=true),
       )
-      let secret = @pipeline.list_secrets(pool, actor, repo)
+      let secret = @runtime.list_secrets(pool, actor, repo)
         .iter()
         .find_first(secret => secret.name == name)
       guard secret is Some(secret) else {
         raise @domain.NotFound(message="Secret changed. Reload its metadata.")
       }
-      secret_json(secret)
+      @dto.secret_json(secret)
     }),
   )
   ctx.post(
@@ -102,7 +102,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "write")
       let body = api_body(req, ["version"])
-      @pipeline.delete_secret(
+      @runtime.delete_secret(
         pool,
         actor,
         @web_context.repo_param(req),
@@ -174,7 +174,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
         page(req),
       )
       {
-        "items": rows[:Int32::min(50, rows.length())].to_owned().map(mr_json),
+        "items": rows[:Int32::min(50, rows.length())]
+        .to_owned()
+        .map(@dto.mr_json),
         "has_more": rows.length() > 50,
       }
     }),
@@ -214,7 +216,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           issue=number(field(body, "issue", fallback="0"), zero=true),
           authorize_checks=false,
         )
-        mr_json(mr)
+        @dto.mr_json(mr)
       })
     }),
   )
@@ -235,9 +237,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let rows = @collaboration.list_merge_activity(pool, mr, page(req))
       let activities = rows[:Int32::min(50, rows.length())]
         .to_owned()
-        .map(a => activity_json(a))
+        .map(a => @dto.activity_json(a))
       {
-        "mr": mr_json(mr),
+        "mr": @dto.mr_json(mr),
         "reviewers": @collaboration.review_requests(pool, actor, scope, mr).map(person => {
             (
               {
@@ -258,7 +260,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
               "name": person.display_name,
             } : Json)
         }),
-        "checks": @collaboration.merge_checks(pool, mr).map(check_json),
+        "checks": @collaboration.merge_checks(pool, mr).map(@dto.check_json),
         "has_more": rows.length() > 50,
         "activity": activities,
         "unresolved_discussions": @collaboration.unresolved_merge_discussions(
@@ -292,7 +294,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           page=current_page,
         )
         {
-          "discussion": discussion_json(discussion),
+          "discussion": @dto.discussion_json(discussion),
           "has_more": current_page * 50L < discussion.reply_count,
         }
       } else {
@@ -307,7 +309,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         {
           "items": rows[:Int32::min(50, rows.length())]
           .to_owned()
-          .map(d => discussion_json(d, preview=true)),
+          .map(d => @dto.discussion_json(d, preview=true)),
           "has_more": rows.length() > 50,
           "unresolved_count": @collaboration.unresolved_merge_discussions(
             pool, scope, actor, mr,
@@ -420,7 +422,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       )
       {
         "version": mr.version.to_string(),
-        "checks": @collaboration.merge_checks(pool, mr).map(check_json),
+        "checks": @collaboration.merge_checks(pool, mr).map(@dto.check_json),
       }
     }),
   )
@@ -657,7 +659,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         }
         if created_discussion is Some(id) {
           {
-            "discussion": discussion_json(
+            "discussion": @dto.discussion_json(
               @collaboration.merge_discussion(pool, scope, actor, current, id),
             ),
           }
@@ -666,7 +668,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           ) {
           {
             "reply_id": reply_id.map(id => id.to_string()).unwrap_or(""),
-            "discussion": discussion_json(
+            "discussion": @dto.discussion_json(
               @collaboration.merge_discussion(
                 pool,
                 scope,
@@ -677,7 +679,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
             ),
           }
         } else {
-          mr_json(@collaboration.require_merge_request(pool, scope, id))
+          @dto.mr_json(@collaboration.require_merge_request(pool, scope, id))
         }
       })
     }),
@@ -705,7 +707,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
         req.query().get("q").unwrap_or(""),
       )
       {
-        "items": rows[:Int32::min(50, rows.length())].to_owned().map(issue_json),
+        "items": rows[:Int32::min(50, rows.length())]
+        .to_owned()
+        .map(@dto.issue_json),
         "has_more": rows.length() > 50,
       }
     }),
@@ -732,7 +736,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         field(body, "description", fallback=""),
         number(field(body, "assignee", fallback="0"), zero=true),
       )
-      issue_json(@collaboration.require_issue(pool, scope, id))
+      @dto.issue_json(@collaboration.require_issue(pool, scope, id))
     }),
   )
   ctx.get(
@@ -751,7 +755,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       )
       let rows = @collaboration.list_issue_activity(pool, issue, page(req))
       {
-        "issue": issue_json(issue),
+        "issue": @dto.issue_json(issue),
         "has_more": rows.length() > 50,
         "activity": rows[:Int32::min(50, rows.length())]
         .to_owned()
@@ -809,7 +813,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
         ),
         field(body, "body", fallback=""),
       )
-      issue_json(@collaboration.require_issue(pool, scope, issue.number))
+      @dto.issue_json(@collaboration.require_issue(pool, scope, issue.number))
     }),
   )
   ctx.get(
@@ -817,10 +821,10 @@ pub let api_module : @moonback.Module = Module(ctx => {
     api_handler(req => {
       let actor = api_actor(pool, req, "read")
       {
-        "items": @pipeline.list_runs(pool, actor, @web_context.repo_param(req))
+        "items": @runtime.list_runs(pool, actor, @web_context.repo_param(req))
         .iter()
         .take(50)
-        .map(run_json)
+        .map(@dto.run_json)
         .collect(),
       }
     }),
@@ -833,8 +837,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let id = number(@web_context.required_param(req, "number", "run"))
       let environments = coordinator.job_environments(actor, repo, id)
       {
-        "run": run_json(@pipeline.get_run(pool, actor, repo, id)),
-        "jobs": @pipeline.list_jobs(pool, actor, repo, id).map(job => {
+        "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "jobs": @runtime.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
               "key": job.job_key,
@@ -846,7 +850,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 Running => "running"
                 Completed => "completed"
               },
-              "conclusion": conclusion_json(job.conclusion),
+              "conclusion": @dto.conclusion_json(job.conclusion),
               "attempt": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
             } : Json)
         }),
@@ -876,7 +880,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       } else {
         []
       }
-      run_json(
+      @dto.run_json(
         @pipeline.create_run(
           pool,
           root,
@@ -898,10 +902,11 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let repo = @web_context.repo_param(req)
       let id = number(@web_context.required_param(req, "number", "run"))
       match @web_context.required_param(req, "action", "action") {
-        "rerun" => run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
+        "rerun" =>
+          @dto.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
         "cancel" => {
           coordinator.cancel_run(actor, repo, id)
-          run_json(@pipeline.get_run(pool, actor, repo, id))
+          @dto.run_json(@runtime.get_run(pool, actor, repo, id))
         }
         _ => raise @domain.BadRequest(message="unsupported CI action")
       }

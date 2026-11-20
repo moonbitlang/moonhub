@@ -138,7 +138,7 @@ async test "pull request workflows discover without branch rules deduplicate and
     (pool, root, scope, actor, mr) => {
       poll_merge_checks(pool, root)
       poll_merge_checks(pool, root)
-      let runs = list_runs(pool, actor, protocol_repo)
+      let runs = @runtime.list_runs(pool, actor, protocol_repo)
       assert_eq(runs.length(), 1)
       assert_eq(runs[0].workflow_source, pull_request_workflow)
       assert_false(@collaboration.merge_checks(pool, mr)[0].required)
@@ -147,8 +147,14 @@ async test "pull request workflows discover without branch rules deduplicate and
       assert_eq(assignment.version, @protocol.variable_assignment_version)
       assert_eq(assignment.job.steps[0].uses, "actions/checkout@v4")
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-      ignore(coordinator.start(id, token, 1))
-      ignore(coordinator.complete(id, token, completion(conclusion="failure")))
+      ignore(coordinator.runtime.start(id, token, 1))
+      ignore(
+        coordinator.runtime.complete(
+          id,
+          token,
+          completion(conclusion="failure"),
+        ),
+      )
       assert_eq(
         @collaboration.merge_blocker(
           pool,
@@ -174,13 +180,13 @@ async test "pull request execution approval survives discovery but not a new sou
         @collaboration.merge_checks(pool, mr)[0].state,
         "awaiting_approval",
       )
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
       @collaboration.approve_merge_checks(pool, scope, actor, mr, mr.version)
       poll_merge_checks(pool, root)
       let coordinator = merge_check_provider(pool)
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-      ignore(coordinator.start(id, token, 1))
+      ignore(coordinator.runtime.start(id, token, 1))
       let source = merge_check_commit(
         dir,
         "feature",
@@ -190,7 +196,7 @@ async test "pull request execution approval survives discovery but not a new sou
       poll_merge_checks(pool, root)
       let latest = @collaboration.require_merge_request(pool, scope, mr.number)
       assert_eq(latest.version, mr.version + 1L)
-      assert_true(coordinator.heartbeat(id, token, 1).cancel_requested)
+      assert_true(coordinator.runtime.heartbeat(id, token, 1).cancel_requested)
       assert_eq(
         @collaboration.merge_checks(pool, latest)[0].state,
         "awaiting_approval",
@@ -311,11 +317,11 @@ async test "retargeting cancels old execution and rebuilds required checks with 
       checks=[".github/workflows/build.yml"],
     )
     poll_merge_checks(pool, root)
-    let old_run = list_runs(pool, actor, protocol_repo)[0]
+    let old_run = @runtime.list_runs(pool, actor, protocol_repo)[0]
     let coordinator = merge_check_provider(pool)
     let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
     let attempt = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(coordinator.start(attempt, token, 1))
+    ignore(coordinator.runtime.start(attempt, token, 1))
     @collaboration.update_merge_request(
       pool,
       scope,
@@ -365,7 +371,7 @@ async test "retargeting cancels old execution and rebuilds required checks with 
     )
     @collaboration.approve_merge_checks(pool, scope, actor, current, 2L)
     poll_merge_checks(pool, root)
-    let new_run = list_runs(pool, actor, protocol_repo)[0]
+    let new_run = @runtime.list_runs(pool, actor, protocol_repo)[0]
     assert_true(new_run.number != old_run.number)
     assert_true(
       new_run.context is Some({ base_ref: "release", head_ref: "feature", .. }),
@@ -373,7 +379,7 @@ async test "retargeting cancels old execution and rebuilds required checks with 
     assert_true(old_run.context is Some({ base_ref: "master", .. }))
     assert_eq(@collaboration.merge_checks(pool, current)[0].state, "queued")
     assert_eq(
-      merge_check_context(pool, actor, protocol_repo, new_run.number).unwrap().version,
+      @runtime.merge_check_context(pool, actor, protocol_repo, new_run.number).unwrap().version,
       2L,
     )
   })
@@ -446,10 +452,10 @@ async test "retargeting selects the new target required workflows and reports mi
 }
 
 ///|
-fn merge_check_provider(pool : @database.Database) -> Coordinator raise {
-  let coordinator = Coordinator::new(pool)
+fn merge_check_provider(pool : @database.Database) -> PipelineFixture raise {
+  let coordinator = test_services(pool)
   ignore(
-    coordinator.create_provider(
+    coordinator.runtime.create_provider(
       @identity.active_user_by_name(pool, "admin"),
       "mr-provider",
       provider_secret,
@@ -462,13 +468,13 @@ fn merge_check_provider(pool : @database.Database) -> Coordinator raise {
 
 ///|
 fn finish_merge_check(
-  coordinator : Coordinator,
+  coordinator : PipelineFixture,
   result~ : String = "success",
 ) -> Unit raise {
   let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
   let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-  ignore(coordinator.start(id, token, 1))
-  ignore(coordinator.complete(id, token, completion(conclusion=result)))
+  ignore(coordinator.runtime.start(id, token, 1))
+  ignore(coordinator.runtime.complete(id, token, completion(conclusion=result)))
 }
 
 ///|
@@ -489,7 +495,7 @@ async test "MR checks pin merged trees and workflows deduplicate and gate actual
     }
     poll_merge_checks(pool, root)
     poll_merge_checks(pool, root)
-    let runs = list_runs(pool, actor, protocol_repo)
+    let runs = @runtime.list_runs(pool, actor, protocol_repo)
     assert_eq(
       runs.length(),
       1,
@@ -538,7 +544,7 @@ async test "MR reruns replace the gate result and older runs cannot be reused" {
     poll_merge_checks(pool, root)
     let coordinator = merge_check_provider(pool)
     finish_merge_check(coordinator)
-    let previous = list_runs(pool, actor, protocol_repo)[0]
+    let previous = @runtime.list_runs(pool, actor, protocol_repo)[0]
     let next = rerun_run(pool, root, actor, protocol_repo, previous.number)
     assert_eq(next.commit_sha, previous.commit_sha)
     assert_eq(next.workflow_source, previous.workflow_source)
@@ -581,7 +587,7 @@ async test "MR source changes cancel active checks and need explicit approval fo
     let coordinator = merge_check_provider(pool)
     let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    ignore(coordinator.start(id, token, 1))
+    ignore(coordinator.runtime.start(id, token, 1))
     ignore(
       merge_check_commit(
         dir,
@@ -597,14 +603,14 @@ async test "MR source changes cancel active checks and need explicit approval fo
       @collaboration.merge_checks(pool, latest)[0].state,
       "awaiting_approval",
     )
-    assert_true(coordinator.heartbeat(id, token, 1).cancel_requested)
-    ignore(coordinator.complete(id, token, completion()))
-    assert_eq(
-      get_run(pool, actor, protocol_repo, 1L).conclusion,
-      Some(Cancelled),
+    assert_true(coordinator.runtime.heartbeat(id, token, 1).cancel_requested)
+    ignore(coordinator.runtime.complete(id, token, completion()))
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, 1L).conclusion
+      is Some(Cancelled),
     )
     assert_true(
-      coordinator.claim(
+      coordinator.runtime.claim(
         provider_secret,
         claim_request(id="3", secret="e".repeat(64)),
       )
@@ -664,7 +670,7 @@ async test "MR source changes cancel active checks and need explicit approval fo
       ),
       "",
     )
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
   })
 }
 
@@ -675,11 +681,13 @@ async test "MR draft close and policy changes fence queued checks immediately" {
     poll_merge_checks(pool, root)
     let coordinator = merge_check_provider(pool)
     @collaboration.edit_merge_request(pool, scope, actor, mr, "draft", "", "")
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
     poll_merge_checks(pool, root)
-    assert_eq(
-      get_run(pool, actor, protocol_repo, 1L).conclusion,
-      Some(Cancelled),
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, 1L).conclusion
+      is Some(Cancelled),
     )
     let draft = @collaboration.require_merge_request(pool, scope, mr.number)
     @collaboration.edit_merge_request(
@@ -729,11 +737,13 @@ async test "MR draft close and policy changes fence queued checks immediately" {
       0L,
       checks=[".github/workflows/other.yml"],
     )
-    assert_true(coordinator.claim(provider_secret, claim_request()) is None)
+    assert_true(
+      coordinator.runtime.claim(provider_secret, claim_request()) is None,
+    )
     poll_merge_checks(pool, root)
-    assert_eq(
-      get_run(pool, actor, protocol_repo, 3L).conclusion,
-      Some(Cancelled),
+    assert_true(
+      @runtime.get_run(pool, actor, protocol_repo, 3L).conclusion
+      is Some(Cancelled),
     )
   })
 }
@@ -773,8 +783,8 @@ async test "MR worker and merge worker reject changed target and revoked permiss
         @collaboration.merge_revision(pool, latest),
       ).is_empty(),
     )
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
-    coordinator.cancel_run(actor, protocol_repo, 2L)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
+    coordinator.runtime.cancel_run(actor, protocol_repo, 2L)
     @collaboration.approve_merge_checks(
       pool,
       scope,
@@ -807,7 +817,7 @@ async test "MR worker and merge worker reject changed target and revoked permiss
     })
     poll_merge_checks(pool, root)
     assert_eq(@collaboration.merge_checks(pool, latest)[0].state, "error")
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
   })
 }
 
@@ -837,7 +847,7 @@ async test "MR required workflows fail closed when config is absent and manager 
     poll_merge_checks(pool, root)
     let latest = @collaboration.require_merge_request(pool, scope, mr.number)
     assert_eq(@collaboration.merge_checks(pool, latest)[0].state, "queued")
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
     @collaboration.save_branch_rule(
       pool,
       scope,
@@ -859,7 +869,7 @@ async test "MR required workflows fail closed when config is absent and manager 
       ).is_empty(),
     )
     poll_merge_checks(pool, root)
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
   })
 }
 
@@ -870,7 +880,7 @@ async test "pull request required checks keep the merge gate and target advances
       let dir = protocol_repo.git_dir(root)
       poll_merge_checks(pool, root)
       assert_true(@collaboration.merge_checks(pool, mr)[0].required)
-      assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+      assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
       let coordinator = merge_check_provider(pool)
       finish_merge_check(coordinator, result="failure")
       assert_true(
@@ -895,7 +905,7 @@ async test "pull request required checks keep the merge gate and target advances
       let latest = @collaboration.require_merge_request(pool, scope, mr.number)
       assert_eq(latest.version, mr.version + 1L)
       assert_eq(@collaboration.merge_checks(pool, latest)[0].state, "queued")
-      assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+      assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
       finish_merge_check(coordinator)
       assert_eq(
         @collaboration.merge_blocker(
@@ -919,7 +929,7 @@ async test "optional pull request runs stop when their approving manager loses a
       let coordinator = merge_check_provider(pool)
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-      ignore(coordinator.start(id, token, 1))
+      ignore(coordinator.runtime.start(id, token, 1))
       pool.with_client(client => {
         ignore(
           client.execute(
@@ -928,7 +938,7 @@ async test "optional pull request runs stop when their approving manager loses a
           ),
         )
       })
-      assert_true(coordinator.heartbeat(id, token, 1).cancel_requested)
+      assert_true(coordinator.runtime.heartbeat(id, token, 1).cancel_requested)
       assert_false(@collaboration.merge_checks(pool, mr)[0].required)
     },
     workflow=pull_request_workflow,
@@ -1047,7 +1057,7 @@ async test "oversized workflow records a preparation error without starving requ
     )
     poll_merge_checks(pool, root)
     poll_merge_checks(pool, root)
-    let runs = list_runs(pool, actor, protocol_repo)
+    let runs = @runtime.list_runs(pool, actor, protocol_repo)
     assert_eq(runs.length(), 1)
     assert_eq(runs[0].workflow_path, ".github/workflows/build.yml")
     let checks = @collaboration.merge_checks(pool, mr)
@@ -1131,7 +1141,7 @@ async test "proposed workflow shell and setup changes are pinned before approval
         @collaboration.merge_checks(pool, mr)[0].state,
         "awaiting_approval",
       )
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
       let candidate = merge_check_snapshot(
         dir,
         mr,
@@ -1143,7 +1153,7 @@ async test "proposed workflow shell and setup changes are pinned before approval
       )
       @collaboration.approve_merge_checks(pool, scope, actor, mr, mr.version)
       poll_merge_checks(pool, root)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       assert_eq(run.commit_sha, candidate)
       assert_eq(run.workflow_source, proposed)
       assert_eq(
@@ -1160,8 +1170,8 @@ async test "proposed workflow shell and setup changes are pinned before approval
       assert_eq(assignment.job.steps[0].moonbit_version, "nightly")
       assert_eq(assignment.job.steps[1].run, "moon version --all")
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-      ignore(coordinator.start(id, token, 1))
-      ignore(coordinator.complete(id, token, completion()))
+      ignore(coordinator.runtime.start(id, token, 1))
+      ignore(coordinator.runtime.complete(id, token, completion()))
       let again = rerun_run(pool, root, actor, protocol_repo, run.number)
       assert_eq(again.commit_sha, candidate)
       assert_eq(again.workflow_source, proposed)
@@ -1189,11 +1199,11 @@ async test "proposed workflow shell and setup changes are pinned before approval
         "awaiting_approval",
       )
       assert_eq(
-        get_run(pool, actor, protocol_repo, run.number).workflow_source,
+        @runtime.get_run(pool, actor, protocol_repo, run.number).workflow_source,
         proposed,
       )
       assert_eq(
-        get_run(pool, actor, protocol_repo, again.number).commit_sha,
+        @runtime.get_run(pool, actor, protocol_repo, again.number).commit_sha,
         candidate,
       )
       try rerun_run(pool, root, actor, protocol_repo, again.number) catch {
@@ -1219,7 +1229,7 @@ async test "invalid source workflow fails preparation without executing the targ
       assert_eq(checks[0].state, "error")
       assert_true(checks[0].error.contains("uses"))
       assert_true(checks[0].run_number is None)
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
       assert_false(
         @collaboration.merge_blocker(
           pool,
@@ -1265,7 +1275,7 @@ async test "deleting a required workflow in the source remains a blocking prepar
     assert_true(check.required)
     assert_eq(check.state, "error")
     assert_eq(check.error, "workflow is missing or is not a regular file")
-    assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+    assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
     assert_false(
       @collaboration.merge_blocker(
         pool,
@@ -1306,7 +1316,7 @@ async test "candidate discovery includes source additions and excludes optional 
         latest.version,
       )
       poll_merge_checks(pool, root)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       assert_eq(run.workflow_path, ".github/workflows/added.yml")
       assert_eq(run.workflow_source, pull_request_workflow)
       let coordinator = merge_check_provider(pool)
@@ -1323,7 +1333,7 @@ async test "candidate discovery includes source additions and excludes optional 
       poll_merge_checks(pool, root)
       let latest = @collaboration.require_merge_request(pool, scope, mr.number)
       assert_true(@collaboration.merge_checks(pool, latest).is_empty())
-      assert_eq(list_runs(pool, actor, protocol_repo).length(), 1)
+      assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 1)
     },
     workflow=pull_request_workflow,
     required=false,
@@ -1340,7 +1350,7 @@ async test "simultaneous source and target workflow edits use their merged defin
     (pool, root, scope, actor, mr) => {
       let dir = protocol_repo.git_dir(root)
       poll_merge_checks(pool, root)
-      let previous = list_runs(pool, actor, protocol_repo)[0]
+      let previous = @runtime.list_runs(pool, actor, protocol_repo)[0]
       let coordinator = merge_check_provider(pool)
       finish_merge_check(coordinator)
       let target = merge_check_commit(
@@ -1361,7 +1371,7 @@ async test "simultaneous source and target workflow edits use their merged defin
       poll_merge_checks(pool, root)
       let latest = @collaboration.require_merge_request(pool, scope, mr.number)
       assert_eq(latest.version, mr.version + 1L)
-      let run = list_runs(pool, actor, protocol_repo)[0]
+      let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       let merged_workflow = source_workflow.replace_all(
         old="name: Protocol fixture",
         new="name: Target updated",
@@ -1383,7 +1393,7 @@ async test "simultaneous source and target workflow edits use their merged defin
         ).is_empty(),
       )
       assert_eq(
-        get_run(pool, actor, protocol_repo, previous.number).workflow_source,
+        @runtime.get_run(pool, actor, protocol_repo, previous.number).workflow_source,
         source_workflow,
       )
     },
@@ -1421,7 +1431,7 @@ async test "conflicting candidate workflow edits cannot publish a run" {
       let check = @collaboration.merge_checks(pool, latest)[0]
       assert_eq(check.state, "error")
       assert_true(check.error.contains("conflicts"))
-      assert_true(list_runs(pool, actor, protocol_repo).is_empty())
+      assert_true(@runtime.list_runs(pool, actor, protocol_repo).is_empty())
     },
     source_workflow=Some(
       @test_support.single_job_workflow.replace_all(
@@ -1465,7 +1475,7 @@ async test "required and source-added automatic workflows share the same pinned 
       latest.version,
     )
     poll_merge_checks(pool, root)
-    let runs = list_runs(pool, actor, protocol_repo)
+    let runs = @runtime.list_runs(pool, actor, protocol_repo)
     assert_eq(runs.length(), 2)
     assert_eq(runs[0].commit_sha, runs[1].commit_sha)
     for run in runs {
@@ -1481,7 +1491,7 @@ async test "required and source-added automatic workflows share the same pinned 
     assert_false(checks[2].required)
     assert_true(checks[2].error.contains("uses"))
     poll_merge_checks(pool, root)
-    assert_eq(list_runs(pool, actor, protocol_repo).length(), 2)
+    assert_eq(@runtime.list_runs(pool, actor, protocol_repo).length(), 2)
     assert_eq(
       merge_check_snapshot(
         dir,

@@ -164,10 +164,10 @@ cleanup must succeed before the test removes its resources.
 Run the same acceptance on a dedicated Windows build host after building the
 image and preparing the single-commit source repository above:
 
-    moon test --build-only --strip -j 1 web/views/pipelines/desktop_windows_wbtest.mbt
+    moon test --build-only --strip -j 1 web/pipeline_api/desktop_windows_wbtest.mbt
     $env:MOONHUB_DESKTOP_WINDOWS_SMOKE = '1'
     $env:MOONHUB_OPENSEEK_SOURCE = "$pwd/.tmp/openseek-source.git"
-    node scripts/run-native-test.cjs _build/native/debug/test/web/views/pipelines/pipelines.whitebox_test.exe desktop_windows_wbtest.mbt
+    node scripts/run-native-test.cjs _build/native/debug/test/web/pipeline_api/pipeline_api.whitebox_test.exe desktop_windows_wbtest.mbt
 
 The wrapper checks the test result record as well as the process exit code.
 Generated MoonBit test executables can exit zero after reporting a failed test.

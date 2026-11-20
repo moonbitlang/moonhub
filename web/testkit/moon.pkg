@@ -13,6 +13,7 @@ import {
   "moonbitlang/async/http",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/moonback",
+  "moonbitlang/core/json",
 }
 
 supported_targets = "native"

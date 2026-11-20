@@ -27,8 +27,8 @@ fn control_registration(
 async test "managed registration is retry safe and configuration survives restart" {
   @test_support.with_repository_test_data((pool, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    let c = Coordinator::new(pool)
-    let provider = c.create_provider(
+    let c = test_services(pool)
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
@@ -36,39 +36,43 @@ async test "managed registration is retry safe and configuration survives restar
       [],
     )
     let request = control_registration()
-    let first = c.register_runner("a".repeat(64), request)
+    let first = c.runtime.register_runner("a".repeat(64), request)
     assert_eq(first.id, provider.id.to_string())
     assert_eq(first.config_revision, "1")
-    c.save_provider_config(admin, provider.id, 1L, { "image": "runner:v2" })
-    let retried = c.register_runner("a".repeat(64), request)
+    c.runtime.save_provider_config(admin, provider.id, 1L, {
+      "image": "runner:v2",
+    })
+    let retried = c.runtime.register_runner("a".repeat(64), request)
     assert_eq(retried.config_revision, "2")
     assert_eq(retried.config.get("image"), Some("runner:v2"))
     try
-      c.register_runner("a".repeat(64), {
+      c.runtime.register_runner("a".repeat(64), {
         ..request,
         provider_token: "c".repeat(64),
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("registration credential stole an existing identity")
     }
     try
-      c.save_provider_config(admin, provider.id, 1L, { "image": "runner:v3" })
+      c.runtime.save_provider_config(admin, provider.id, 1L, {
+        "image": "runner:v3",
+      })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("stale save overwrote configuration")
     }
-    try ignore(c.claim("a".repeat(64), claim_request())) catch {
+    try ignore(c.runtime.claim("a".repeat(64), claim_request())) catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
       _ => fail("registration token retained execution permission")
     }
-    let cfg = c.provider_control(admin, provider.id)
+    let cfg = c.runtime.provider_control(admin, provider.id)
     assert_eq(cfg.snapshot.config.get("image"), Some("runner:v2"))
   })
 }
@@ -77,10 +81,10 @@ async test "managed registration is retry safe and configuration survives restar
 async test "controller lease excludes a second manager and acknowledgements are bounded" {
   @test_support.with_repository_test_data((pool, _) => {
     let clock = Ref(1700000000000L)
-    let c = Coordinator::new(pool, clock=() => clock.val)
+    let c = test_services(pool, clock=() => clock.val)
     let admin = @identity.active_user_by_name(pool, "admin")
     ignore(
-      c.create_provider(
+      c.runtime.create_provider(
         admin,
         "managed",
         "a".repeat(64),
@@ -88,7 +92,12 @@ async test "controller lease excludes a second manager and acknowledgements are 
         [],
       ),
     )
-    ignore(c.register_runner("a".repeat(64), control_registration(mode="asg")))
+    ignore(
+      c.runtime.register_runner(
+        "a".repeat(64),
+        control_registration(mode="asg"),
+      ),
+    )
     let request : @protocol.ProviderSyncRequest = {
       environment_protocol: None,
       version: 1,
@@ -99,21 +108,27 @@ async test "controller lease excludes a second manager and acknowledgements are 
       schema: None,
       defaults: None,
     }
-    ignore(c.sync_provider("b".repeat(64), request))
+    ignore(c.runtime.sync_provider("b".repeat(64), request))
     try
-      c.sync_provider("b".repeat(64), { ..request, controller_id: "second", })
+      c.runtime.sync_provider("b".repeat(64), {
+        ..request,
+        controller_id: "second",
+      })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("two managers held the same lease")
     }
     clock.val += 60001L
     ignore(
-      c.sync_provider("b".repeat(64), { ..request, controller_id: "second", }),
+      c.runtime.sync_provider("b".repeat(64), {
+        ..request,
+        controller_id: "second",
+      }),
     )
     try
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         ..request,
         controller_id: "second",
         applied_revision: "2",
@@ -139,17 +154,17 @@ async test "worker identities share grants but claim independently and drain ato
     )
     let actor = @identity.active_user_by_name(pool, "alice")
     let admin = @identity.active_user_by_name(pool, "admin")
-    let c = Coordinator::new(pool)
-    let provider = c.create_provider(
+    let c = test_services(pool)
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
       ["self-hosted", "linux"],
       [repo],
     )
-    ignore(c.register_runner("a".repeat(64), control_registration()))
+    ignore(c.runtime.register_runner("a".repeat(64), control_registration()))
     ignore(
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         environment_protocol: None,
         version: 1,
         controller_id: "manager",
@@ -170,13 +185,13 @@ async test "worker identities share grants but claim independently and drain ato
         pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
       ),
     )
-    let first = c.register_worker("b".repeat(64), {
+    let first = c.runtime.register_worker("b".repeat(64), {
       version: 1,
       key: "one",
       token: "c".repeat(64),
     })
     ignore(
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "two",
         token: "d".repeat(64),
@@ -188,8 +203,8 @@ async test "worker identities share grants but claim independently and drain ato
       state: "ready",
       applied_revision: "1",
     }
-    ignore(c.sync_worker("c".repeat(64), ready))
-    ignore(c.sync_worker("d".repeat(64), ready))
+    ignore(c.runtime.sync_worker("c".repeat(64), ready))
+    ignore(c.runtime.sync_worker("d".repeat(64), ready))
     let claim : @protocol.ClaimRequest = {
       environments: None,
       version: 1,
@@ -197,12 +212,16 @@ async test "worker identities share grants but claim independently and drain ato
       request_id: "1".repeat(32),
       attempt_token: "e".repeat(64),
     }
-    c.save_provider_config(admin, provider.id, 1L, { "image": "runner:v2" })
-    assert_true(c.claim("c".repeat(64), claim) is None)
-    ignore(c.sync_worker("c".repeat(64), { ..ready, applied_revision: "2", }))
-    assert_true(c.claim("c".repeat(64), claim) is None)
+    c.runtime.save_provider_config(admin, provider.id, 1L, {
+      "image": "runner:v2",
+    })
+    assert_true(c.runtime.claim("c".repeat(64), claim) is None)
     ignore(
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_worker("c".repeat(64), { ..ready, applied_revision: "2", }),
+    )
+    assert_true(c.runtime.claim("c".repeat(64), claim) is None)
+    ignore(
+      c.runtime.sync_provider("b".repeat(64), {
         environment_protocol: None,
         version: 1,
         controller_id: "manager",
@@ -214,20 +233,29 @@ async test "worker identities share grants but claim independently and drain ato
       }),
     )
     assert_true(
-      c.claim("d".repeat(64), { ..claim, request_id: "0".repeat(32), }) is None,
+      c.runtime.claim("d".repeat(64), { ..claim, request_id: "0".repeat(32), })
+      is None,
     )
-    ignore(c.sync_worker("d".repeat(64), { ..ready, applied_revision: "2", }))
+    ignore(
+      c.runtime.sync_worker("d".repeat(64), { ..ready, applied_revision: "2", }),
+    )
     try
-      c.claim("c".repeat(64), { ..claim, attempt_token: "a".repeat(64), })
+      c.runtime.claim("c".repeat(64), {
+        ..claim,
+        attempt_token: "a".repeat(64),
+      })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("registration credential became an attempt credential")
     }
-    let a = c.claim("c".repeat(64), claim).unwrap()
-    assert_eq(c.claim("c".repeat(64), claim).unwrap().attempt_id, a.attempt_id)
-    let b = c
+    let a = c.runtime.claim("c".repeat(64), claim).unwrap()
+    assert_eq(
+      c.runtime.claim("c".repeat(64), claim).unwrap().attempt_id,
+      a.attempt_id,
+    )
+    let b = c.runtime
       .claim("d".repeat(64), {
         ..claim,
         runner_os: None,
@@ -236,27 +264,30 @@ async test "worker identities share grants but claim independently and drain ato
       })
       .unwrap()
     assert_true(a.attempt_id != b.attempt_id)
-    try c.sync_worker("c".repeat(64), ready) catch {
-      Conflict(_) => ()
+    try c.runtime.sync_worker("c".repeat(64), ready) catch {
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("worker skipped active task")
     }
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
-    ignore(c.start(id, "e".repeat(64), 1))
+    ignore(c.runtime.start(id, "e".repeat(64), 1))
     ignore(
-      c.complete(id, "e".repeat(64), {
+      c.runtime.complete(id, "e".repeat(64), {
         version: 1,
         conclusion: "success",
         last_log_sequence: "0",
         outputs: Map([]),
       }),
     )
-    c.drain_worker("b".repeat(64), @protocol.parse_decimal(first.id).unwrap())
-    let drained = c.sync_worker("c".repeat(64), ready)
+    c.runtime.drain_worker(
+      "b".repeat(64),
+      @protocol.parse_decimal(first.id).unwrap(),
+    )
+    let drained = c.runtime.sync_worker("c".repeat(64), ready)
     assert_true(drained.draining)
     assert_true(
-      c.claim("c".repeat(64), {
+      c.runtime.claim("c".repeat(64), {
         ..claim,
         runner_os: None,
         request_id: "3".repeat(32),
@@ -264,12 +295,14 @@ async test "worker identities share grants but claim independently and drain ato
       })
       is None,
     )
-    let control = c.provider_control(admin, provider.id)
+    let control = c.runtime.provider_control(admin, provider.id)
     let worker = control.snapshot.workers[0]
     assert_eq(worker.state, "drained")
     assert_eq(worker.active_attempts, 0)
-    c.revoke_provider(admin, provider.id)
-    try c.sync_worker("d".repeat(64), { ..ready, state: "busy", }) catch {
+    c.runtime.revoke_provider(admin, provider.id)
+    try
+      c.runtime.sync_worker("d".repeat(64), { ..ready, state: "busy", })
+    catch {
       @domain.Unauthorized(_) => ()
       err => raise err
     } noraise {
@@ -282,24 +315,24 @@ async test "worker identities share grants but claim independently and drain ato
 async test "expired workers are terminal and enrollment retries outlive bounded history" {
   @test_support.with_repository_test_data((pool, _) => {
     let clock = Ref(1700000000000L)
-    let c = Coordinator::new(pool, clock=() => clock.val)
+    let c = test_services(pool, clock=() => clock.val)
     let admin = @identity.active_user_by_name(pool, "admin")
-    let provider = c.create_provider(
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
       ["self-hosted", "linux"],
       [],
     )
-    ignore(c.register_runner("a".repeat(64), control_registration()))
+    ignore(c.runtime.register_runner("a".repeat(64), control_registration()))
     try
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "bad",
         token: "a".repeat(64),
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("registration credential became a worker credential")
@@ -309,9 +342,9 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
       key: "oldest",
       token: "c".repeat(64),
     }
-    let worker = c.register_worker("b".repeat(64), registration)
+    let worker = c.runtime.register_worker("b".repeat(64), registration)
     clock.val += 180001L
-    let snapshot = c.sync_provider("b".repeat(64), {
+    let snapshot = c.runtime.sync_provider("b".repeat(64), {
       environment_protocol: None,
       version: 1,
       controller_id: "manager",
@@ -324,14 +357,14 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
     assert_eq(snapshot.workers[0].state, "failed")
     assert_true(snapshot.workers[0].draining)
     try
-      c.sync_worker("c".repeat(64), {
+      c.runtime.sync_worker("c".repeat(64), {
         environments: None,
         version: 1,
         state: "ready",
         applied_revision: "1",
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("expired worker resumed task claims")
@@ -350,10 +383,10 @@ async test "expired workers are terminal and enrollment retries outlive bounded 
         )
       }
     })
-    let control = c.provider_control(admin, provider.id)
+    let control = c.runtime.provider_control(admin, provider.id)
     assert_eq(control.snapshot.workers.length(), 100)
     assert_true(!control.snapshot.workers.any(w => w.key == "oldest"))
-    let retry = c.register_worker("b".repeat(64), registration)
+    let retry = c.runtime.register_worker("b".repeat(64), registration)
     assert_eq(retry.id, worker.id)
     assert_eq(retry.state, "failed")
   })
@@ -370,8 +403,8 @@ async test "controller schema extension preserves configuration and requires the
   assert_true(legacy.defaults is None)
   @test_support.with_repository_test_data((pool, _) => {
     let admin = @identity.active_user_by_name(pool, "admin")
-    let c = Coordinator::new(pool)
-    let provider = c.create_provider(
+    let c = test_services(pool)
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
@@ -379,9 +412,11 @@ async test "controller schema extension preserves configuration and requires the
       [],
     )
     let registration = control_registration(mode="asg")
-    ignore(c.register_runner("a".repeat(64), registration))
-    c.save_provider_config(admin, provider.id, 1L, { "image": "runner:saved" })
-    ignore(c.sync_provider("b".repeat(64), legacy))
+    ignore(c.runtime.register_runner("a".repeat(64), registration))
+    c.runtime.save_provider_config(admin, provider.id, 1L, {
+      "image": "runner:saved",
+    })
+    ignore(c.runtime.sync_provider("b".repeat(64), legacy))
     let standby : @protocol.ConfigField = {
       name: "standby_workers",
       title: "Standby workers",
@@ -398,74 +433,84 @@ async test "controller schema extension preserves configuration and requires the
       defaults: Some({ "image": "runner:default", "standby_workers": "0" }),
     }
     try
-      c.sync_provider("b".repeat(64), { ..update, controller_id: "other", })
+      c.runtime.sync_provider("b".repeat(64), {
+        ..update,
+        controller_id: "other",
+      })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ =>
         fail("another controller changed the schema while the lease was held")
     }
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.schema.length(),
+      c.runtime.provider_control(admin, provider.id).snapshot.schema.length(),
       1,
     )
-    let upgraded = c.sync_provider("b".repeat(64), update)
+    let upgraded = c.runtime.sync_provider("b".repeat(64), update)
     assert_eq(upgraded.config_revision, "3")
     assert_eq(upgraded.config.get("image"), Some("runner:saved"))
     assert_eq(upgraded.config.get("standby_workers"), Some("0"))
-    let control = c.provider_control(admin, provider.id)
+    let control = c.runtime.provider_control(admin, provider.id)
     assert_eq(control.status, "pending")
     assert_eq(control.applied_revision, 2L)
-    assert_eq(c.sync_provider("b".repeat(64), update).config_revision, "3")
-    c.save_provider_config(admin, provider.id, 3L, {
+    assert_eq(
+      c.runtime.sync_provider("b".repeat(64), update).config_revision,
+      "3",
+    )
+    c.runtime.save_provider_config(admin, provider.id, 3L, {
       "image": "runner:saved",
       "standby_workers": "2",
     })
-    let applied = c.sync_provider("b".repeat(64), {
+    let applied = c.runtime.sync_provider("b".repeat(64), {
       ..update,
       observed_revision: "4",
       applied_revision: "4",
     })
     assert_eq(applied.config_revision, "4")
     assert_eq(applied.config.get("standby_workers"), Some("2"))
-    assert_eq(c.provider_control(admin, provider.id).status, "applied")
+    assert_eq(c.runtime.provider_control(admin, provider.id).status, "applied")
     let changed = { ..registration.schema[0], title: "Changed existing field", }
     try
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         ..update,
         schema: Some([changed, standby]),
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("changed an existing schema field")
     }
     try
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         ..update,
         schema: Some(registration.schema),
         defaults: Some(registration.defaults),
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       err => raise err
     } noraise {
       _ => fail("removed an existing schema field")
     }
-    try c.sync_provider("b".repeat(64), { ..update, defaults: None, }) catch {
+    try
+      c.runtime.sync_provider("b".repeat(64), { ..update, defaults: None, })
+    catch {
       @domain.BadRequest(_) => ()
       err => raise err
     } noraise {
       _ => fail("accepted schema without defaults")
     }
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.config_revision,
+      c.runtime.provider_control(admin, provider.id).snapshot.config_revision,
       "4",
     )
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.config.get("image"),
+      c.runtime.provider_control(admin, provider.id).snapshot.config.get(
+        "image",
+      ),
       Some("runner:saved"),
     )
   })
@@ -474,9 +519,9 @@ async test "controller schema extension preserves configuration and requires the
 ///|
 async test "prepared VM workers acknowledge drain only after explicit cleanup" {
   @test_support.with_repository_test_data((pool, _) => {
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
-    let provider = c.create_provider(
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
@@ -484,12 +529,12 @@ async test "prepared VM workers acknowledge drain only after explicit cleanup" {
       [],
     )
     ignore(
-      c.register_runner("a".repeat(64), {
+      c.runtime.register_runner("a".repeat(64), {
         ..control_registration(),
         mode: "tart",
       }),
     )
-    let worker = c.register_worker("b".repeat(64), {
+    let worker = c.runtime.register_worker("b".repeat(64), {
       version: 1,
       key: "mac",
       token: "c".repeat(64),
@@ -500,21 +545,28 @@ async test "prepared VM workers acknowledge drain only after explicit cleanup" {
       state: "ready",
       applied_revision: "1",
     }
-    ignore(c.sync_worker("c".repeat(64), ready))
-    c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
-    assert_true(c.sync_worker("c".repeat(64), ready).draining)
+    ignore(c.runtime.sync_worker("c".repeat(64), ready))
+    c.runtime.drain_worker(
+      "b".repeat(64),
+      @protocol.parse_decimal(worker.id).unwrap(),
+    )
+    assert_true(c.runtime.sync_worker("c".repeat(64), ready).draining)
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "ready",
     )
-    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "starting", }))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), { ..ready, state: "starting", }),
+    )
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "starting",
     )
-    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "drained", }))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), { ..ready, state: "drained", }),
+    )
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "drained",
     )
   })
@@ -523,17 +575,22 @@ async test "prepared VM workers acknowledge drain only after explicit cleanup" {
 ///|
 async test "Windows prepared workspaces require explicit drain acknowledgement" {
   @test_support.with_repository_test_data((pool, _) => {
-    let c = Coordinator::new(pool)
+    let c = test_services(pool)
     let admin = @identity.active_user_by_name(pool, "admin")
-    let provider = c.create_provider(
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
       ["self-hosted", "windows", "x64"],
       [],
     )
-    ignore(c.register_runner("a".repeat(64), control_registration(mode="asg")))
-    let worker = c.register_worker("b".repeat(64), {
+    ignore(
+      c.runtime.register_runner(
+        "a".repeat(64),
+        control_registration(mode="asg"),
+      ),
+    )
+    let worker = c.runtime.register_worker("b".repeat(64), {
       version: 1,
       key: "windows",
       token: "c".repeat(64),
@@ -544,23 +601,30 @@ async test "Windows prepared workspaces require explicit drain acknowledgement" 
       state: "ready",
       applied_revision: "1",
     }
-    ignore(c.sync_worker("c".repeat(64), ready))
-    c.drain_worker("b".repeat(64), @protocol.parse_decimal(worker.id).unwrap())
+    ignore(c.runtime.sync_worker("c".repeat(64), ready))
+    c.runtime.drain_worker(
+      "b".repeat(64),
+      @protocol.parse_decimal(worker.id).unwrap(),
+    )
     // A ready request can be in flight while the controller requests drain.
     // The worker still owns its prepared workspace until it observes the reply.
-    assert_true(c.sync_worker("c".repeat(64), ready).draining)
+    assert_true(c.runtime.sync_worker("c".repeat(64), ready).draining)
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "ready",
     )
-    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "starting", }))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), { ..ready, state: "starting", }),
+    )
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "starting",
     )
-    ignore(c.sync_worker("c".repeat(64), { ..ready, state: "drained", }))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), { ..ready, state: "drained", }),
+    )
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.workers[0].state,
+      c.runtime.provider_control(admin, provider.id).snapshot.workers[0].state,
       "drained",
     )
   })

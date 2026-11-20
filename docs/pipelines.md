@@ -594,7 +594,7 @@ and writes connection details to `_build/pipeline-logs-browser/preview.json`.
 ### Additional Acceptance
 
 ```sh
-moon test --strip -j 1 --deny-warn pipeline database web/views/pipelines
+moon test --strip -j 1 --deny-warn pipeline database web/views/pipelines web/pipeline_api
 ```
 
 Tests exercise production bearer-vs-cookie authentication, a simulated HTTP
@@ -767,7 +767,7 @@ Native execution and real HTTP integration tests need the system C compiler but
 no Docker daemon:
 
 ```sh
-moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines
+moon test --strip -j 1 --deny-warn runner pipeline web/views/pipelines web/pipeline_api
 ```
 
 Automatic source preparation and built-in checkout download a tar snapshot of

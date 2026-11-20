@@ -210,7 +210,7 @@ Opt-in upstream acceptance downloads and executes unmodified
 ```sh
 MOONHUB_OIDC_UPSTREAM=1 \
 MOONHUB_OIDC_NODE20=/absolute/path/to/node20 \
-moon test --strip -j 1 web/views/pipelines --filter '*OIDC upstream*'
+moon test --strip -j 1 web/pipeline_api --filter '*OIDC upstream*'
 ```
 
 The smoke uses real MoonHub discovery/JWKS/token HTTP endpoints and an isolated

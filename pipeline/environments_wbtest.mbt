@@ -1,10 +1,10 @@
 ///|
 priv struct EnvironmentFixture {
-  c : Coordinator
+  c : PipelineFixture
   pool : @database.Database
   root : String
   repo : @domain.RepoId
-  provider : Provider
+  provider : @runtime.Provider
   admin : @domain.CurrentUser
   actor : @domain.CurrentUser
 }
@@ -19,16 +19,16 @@ async fn with_environment_fixture(
     ignore(@test_support.workflow_commit(repo.git_dir(root), source))
     let admin = @identity.active_user_by_name(pool, "admin")
     let actor = @identity.active_user_by_name(pool, "alice")
-    let c = Coordinator::new(pool)
-    let provider = c.create_provider(
+    let c = test_services(pool)
+    let provider = c.runtime.create_provider(
       admin,
       "managed",
       "a".repeat(64),
       ["self-hosted", "linux", "moonhub-build", "ubuntu-24.04", "x64"],
       [repo],
     )
-    ignore(c.register_runner("a".repeat(64), control_registration()))
-    ignore(c.sync_provider("b".repeat(64), environment_sync(1L)))
+    ignore(c.runtime.register_runner("a".repeat(64), control_registration()))
+    ignore(c.runtime.sync_provider("b".repeat(64), environment_sync(1L)))
     f({ c, pool, root, repo, provider, admin, actor, })
   })
 }
@@ -103,66 +103,71 @@ async test "profiles match one complete environment and share worker capacity" {
     let { c, pool, root, repo, provider, admin, actor, } = fixture
     let debian = fixture_environment("debian", "debian-12", "a")
     let ubuntu = fixture_environment("ubuntu", "ubuntu-24.04", "b")
-    c.save_provider_environments(
+    c.runtime.save_provider_environments(
       admin,
       provider.id,
       1L,
       [debian, ubuntu],
       "debian",
     )
-    let control = c.sync_provider("b".repeat(64), environment_sync(2L))
+    let control = c.runtime.sync_provider("b".repeat(64), environment_sync(2L))
     let profiles = control.environments.unwrap()
     let run = create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
-    assert_eq(c.provider_control(admin, provider.id).snapshot.queued_jobs, 3)
+    assert_eq(
+      c.runtime.provider_control(admin, provider.id).snapshot.queued_jobs,
+      3,
+    )
     assert_true(
-      c.queue_reasons(actor, repo, run.number)["contradictory"]
+      c.runtime.queue_reasons(actor, repo, run.number)["contradictory"]
       is NoMatchingLabels,
     )
     ignore(
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "one",
         token: "c".repeat(64),
       }),
     )
     ignore(
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "two",
         token: "d".repeat(64),
       }),
     )
     let ready = environment_ready(2L, profiles)
-    try c.sync_worker("c".repeat(64), { ..ready, environments: None, }) catch {
-      Conflict(_) => ()
+    try
+      c.runtime.sync_worker("c".repeat(64), { ..ready, environments: None, })
+    catch {
+      @runtime.Conflict(_) => ()
       error => raise error
     } noraise {
       _ => fail("old worker advertised unprepared environments")
     }
-    ignore(c.sync_worker("c".repeat(64), ready))
-    ignore(c.sync_worker("d".repeat(64), ready))
+    ignore(c.runtime.sync_worker("c".repeat(64), ready))
+    ignore(c.runtime.sync_worker("d".repeat(64), ready))
     let claim = claim_request(secret="e".repeat(64))
-    assert_true(c.claim("c".repeat(64), claim) is None)
+    assert_true(c.runtime.claim("c".repeat(64), claim) is None)
     let debian_id = profiles
       .iter()
       .find_first(profile => profile.environment.selector == "debian-12")
       .unwrap().id
-    let first = c
+    let first = c.runtime
       .claim("c".repeat(64), { ..claim, environments: Some([debian_id]), })
       .unwrap()
     assert_eq(first.job.id, "debian")
     assert_eq(first.environment, Some(debian))
     assert_eq(first.version, @protocol.profile_assignment_version)
     assert_eq(
-      c
+      c.runtime
       .claim("c".repeat(64), { ..claim, environments: Some([debian_id]), })
       .unwrap().environment,
       first.environment,
     )
     assert_true(
-      c.claim("c".repeat(64), {
+      c.runtime.claim("c".repeat(64), {
         ..claim,
         request_id: "2".repeat(32),
         attempt_token: "f".repeat(64),
@@ -170,7 +175,7 @@ async test "profiles match one complete environment and share worker capacity" {
       })
       is None,
     )
-    let second = c
+    let second = c.runtime
       .claim("d".repeat(64), {
         ..claim,
         request_id: "3".repeat(32),
@@ -180,19 +185,24 @@ async test "profiles match one complete environment and share worker capacity" {
       .unwrap()
     assert_eq(second.job.id, "ubuntu")
     assert_eq(second.environment, Some(ubuntu))
-    assert_eq(c.provider_control(admin, provider.id).snapshot.queued_jobs, 1)
-    c.set_provider_labels(admin, provider.id, [
+    assert_eq(
+      c.runtime.provider_control(admin, provider.id).snapshot.queued_jobs,
+      1,
+    )
+    c.runtime.set_provider_labels(admin, provider.id, [
       "self-hosted", "linux", "moonhub-build", "x64", "ubuntu-24.04",
     ])
     assert_false(
-      c.heartbeat(
+      c.runtime.heartbeat(
         @protocol.parse_decimal(first.attempt_id).unwrap(),
         "e".repeat(64),
         1,
       ).cancel_requested,
     )
     try
-      c.set_provider_labels(admin, provider.id, ["self-hosted", "windows"])
+      c.runtime.set_provider_labels(admin, provider.id, [
+        "self-hosted", "windows",
+      ])
     catch {
       @domain.BadRequest(_) => ()
       error => raise error
@@ -208,22 +218,24 @@ async test "generic jobs pin the default image and reruns cannot silently switch
     let { c, pool, root, repo, provider, admin, actor, } = fixture
     let debian = fixture_environment("debian", "debian-12", "a")
     let ubuntu = fixture_environment("ubuntu", "ubuntu-24.04", "b")
-    c.save_provider_environments(
+    c.runtime.save_provider_environments(
       admin,
       provider.id,
       1L,
       [debian, ubuntu],
       "debian",
     )
-    let profiles = c.sync_provider("b".repeat(64), environment_sync(2L)).environments.unwrap()
+    let profiles = c.runtime.sync_provider("b".repeat(64), environment_sync(2L)).environments.unwrap()
     ignore(
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "one",
         token: "c".repeat(64),
       }),
     )
-    ignore(c.sync_worker("c".repeat(64), environment_ready(2L, profiles)))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), environment_ready(2L, profiles)),
+    )
     let original = create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
@@ -231,14 +243,17 @@ async test "generic jobs pin the default image and reruns cannot silently switch
       ..claim_request(secret="e".repeat(64)),
       environments: Some(profiles.map(profile => profile.id)),
     }
-    let first = c.claim("c".repeat(64), claim).unwrap()
+    let first = c.runtime.claim("c".repeat(64), claim).unwrap()
     assert_eq(first.environment, Some(debian))
     let attempt = @protocol.parse_decimal(first.attempt_id).unwrap()
-    ignore(c.start(attempt, "e".repeat(64), 1))
-    ignore(c.complete(attempt, "e".repeat(64), completion()))
+    ignore(c.runtime.start(attempt, "e".repeat(64), 1))
+    ignore(c.runtime.complete(attempt, "e".repeat(64), completion()))
     let rerun = rerun_run(pool, root, actor, repo, original.number)
-    assert_eq(c.job_environments(actor, repo, rerun.number)["build"], debian)
-    c.save_provider_environments(
+    assert_eq(
+      c.runtime.job_environments(actor, repo, rerun.number)["build"],
+      debian,
+    )
+    c.runtime.save_provider_environments(
       admin,
       provider.id,
       2L,
@@ -248,28 +263,35 @@ async test "generic jobs pin the default image and reruns cannot silently switch
       ],
       "ubuntu",
     )
-    let changed = c.sync_provider("b".repeat(64), environment_sync(3L)).environments.unwrap()
-    ignore(c.sync_worker("c".repeat(64), environment_ready(3L, changed)))
+    let changed = c.runtime.sync_provider("b".repeat(64), environment_sync(3L)).environments.unwrap()
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), environment_ready(3L, changed)),
+    )
     let next = {
       ..claim_request(id="2", secret="f".repeat(64)),
       environments: Some(changed.map(profile => profile.id)),
     }
-    assert_true(c.claim("c".repeat(64), next) is None)
+    assert_true(c.runtime.claim("c".repeat(64), next) is None)
     assert_true(
-      c.queue_reasons(actor, repo, rerun.number)["build"]
+      c.runtime.queue_reasons(actor, repo, rerun.number)["build"]
       is EnvironmentUnavailable,
     )
-    assert_eq(c.provider_control(admin, provider.id).snapshot.queued_jobs, 0)
-    c.save_provider_environments(
+    assert_eq(
+      c.runtime.provider_control(admin, provider.id).snapshot.queued_jobs,
+      0,
+    )
+    c.runtime.save_provider_environments(
       admin,
       provider.id,
       3L,
       [{ ..debian, name: "recovery", }, ubuntu],
       "ubuntu",
     )
-    let restored = c.sync_provider("b".repeat(64), environment_sync(4L)).environments.unwrap()
-    ignore(c.sync_worker("c".repeat(64), environment_ready(4L, restored)))
-    let retried = c
+    let restored = c.runtime.sync_provider("b".repeat(64), environment_sync(4L)).environments.unwrap()
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), environment_ready(4L, restored)),
+    )
+    let retried = c.runtime
       .claim("c".repeat(64), {
         ..next,
         environments: Some(restored.map(profile => profile.id)),
@@ -286,33 +308,47 @@ async test "environment administration preserves authorization and configuration
     let { c, provider, admin, actor, .. } = fixture
     let debian = fixture_environment("debian", "debian-12", "a")
     try
-      c.save_provider_environments(actor, provider.id, 1L, [debian], "debian")
+      c.runtime.save_provider_environments(
+        actor,
+        provider.id,
+        1L,
+        [debian],
+        "debian",
+      )
     catch {
       @domain.Forbidden(_) => ()
       error => raise error
     } noraise {
       _ => fail("repository owner configured provider images")
     }
-    c.save_provider_environments(admin, provider.id, 1L, [debian], "debian")
-    try c.save_provider_environments(admin, provider.id, 1L, [], "") catch {
-      Conflict(_) => ()
+    c.runtime.save_provider_environments(
+      admin,
+      provider.id,
+      1L,
+      [debian],
+      "debian",
+    )
+    try
+      c.runtime.save_provider_environments(admin, provider.id, 1L, [], "")
+    catch {
+      @runtime.Conflict(_) => ()
       error => raise error
     } noraise {
       _ => fail("stale save removed execution environments")
     }
     try
-      c.sync_provider("b".repeat(64), {
+      c.runtime.sync_provider("b".repeat(64), {
         ..environment_sync(2L),
         environment_protocol: None,
       })
     catch {
-      Conflict(_) => ()
+      @runtime.Conflict(_) => ()
       error => raise error
     } noraise {
       _ => fail("old controller accepted a multi-environment pool")
     }
     assert_eq(
-      c.provider_control(admin, provider.id).snapshot.environments
+      c.runtime.provider_control(admin, provider.id).snapshot.environments
       .unwrap()
       .length(),
       1,
@@ -326,16 +362,24 @@ async test "environment edits do not alter leased tasks and new jobs use the new
     let { c, pool, root, repo, provider, admin, actor, } = fixture
     let debian = fixture_environment("debian", "debian-12", "a")
     let ubuntu = fixture_environment("ubuntu", "ubuntu-24.04", "b")
-    c.save_provider_environments(admin, provider.id, 1L, [debian], "debian")
-    let profiles = c.sync_provider("b".repeat(64), environment_sync(2L)).environments.unwrap()
+    c.runtime.save_provider_environments(
+      admin,
+      provider.id,
+      1L,
+      [debian],
+      "debian",
+    )
+    let profiles = c.runtime.sync_provider("b".repeat(64), environment_sync(2L)).environments.unwrap()
     ignore(
-      c.register_worker("b".repeat(64), {
+      c.runtime.register_worker("b".repeat(64), {
         version: 1,
         key: "one",
         token: "c".repeat(64),
       }),
     )
-    ignore(c.sync_worker("c".repeat(64), environment_ready(2L, profiles)))
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), environment_ready(2L, profiles)),
+    )
     let original = create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
@@ -343,22 +387,33 @@ async test "environment edits do not alter leased tasks and new jobs use the new
       ..claim_request(secret="e".repeat(64)),
       environments: Some(profiles.map(profile => profile.id)),
     }
-    let assignment = c.claim("c".repeat(64), request).unwrap()
-    c.save_provider_environments(admin, provider.id, 2L, [ubuntu], "ubuntu")
+    let assignment = c.runtime.claim("c".repeat(64), request).unwrap()
+    c.runtime.save_provider_environments(
+      admin,
+      provider.id,
+      2L,
+      [ubuntu],
+      "ubuntu",
+    )
     assert_eq(
-      c.claim("c".repeat(64), request).unwrap().environment,
+      c.runtime.claim("c".repeat(64), request).unwrap().environment,
       Some(debian),
     )
     let attempt = @protocol.parse_decimal(assignment.attempt_id).unwrap()
-    assert_false(c.start(attempt, "e".repeat(64), 1).cancel_requested)
-    ignore(c.complete(attempt, "e".repeat(64), completion()))
-    assert_eq(c.job_environments(actor, repo, original.number)["build"], debian)
+    assert_false(c.runtime.start(attempt, "e".repeat(64), 1).cancel_requested)
+    ignore(c.runtime.complete(attempt, "e".repeat(64), completion()))
+    assert_eq(
+      c.runtime.job_environments(actor, repo, original.number)["build"],
+      debian,
+    )
     let next = create_run(
       pool, root, actor, repo, "pipeline", ".github/workflows/build.yml",
     )
-    let changed = c.sync_provider("b".repeat(64), environment_sync(3L)).environments.unwrap()
-    ignore(c.sync_worker("c".repeat(64), environment_ready(3L, changed)))
-    let claimed = c
+    let changed = c.runtime.sync_provider("b".repeat(64), environment_sync(3L)).environments.unwrap()
+    ignore(
+      c.runtime.sync_worker("c".repeat(64), environment_ready(3L, changed)),
+    )
+    let claimed = c.runtime
       .claim("c".repeat(64), {
         ..claim_request(id="2", secret="f".repeat(64)),
         environments: Some(changed.map(profile => profile.id)),

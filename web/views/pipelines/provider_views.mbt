@@ -2,7 +2,7 @@
 fn render_provider_admin(
   assets : Map[String, String],
   user : @domain.CurrentUser,
-  providers : Array[@pipeline.Provider],
+  providers : Array[@runtime.Provider],
   csrf : String,
   token : String?,
   error : String?,
@@ -45,7 +45,7 @@ fn render_provider_admin(
         }
         b <+
           "<li><div class=\"mr-list-title\"><strong>\{pipeline_html(provider.name)}</strong><span class=\"mr-state\" data-state=\"\{state}\">\{state}</span></div><p class=\"muted\">#\{provider.id.to_string()} · labels \{pipeline_html(provider.labels.join(", "))}</p>"
-        let access = if provider.scope is @pipeline.AllRepositories {
+        let access = if provider.scope is @runtime.AllRepositories {
           "All repositories (including new repositories)"
         } else if provider.repositories.is_empty() {
           "Selected repositories: none"
@@ -108,7 +108,7 @@ fn render_provider_scope_fields(
 fn render_provider_access(
   assets : Map[String, String],
   user : @domain.CurrentUser,
-  provider : @pipeline.Provider,
+  provider : @runtime.Provider,
   csrf : String,
   scope : String,
   repositories : String,
@@ -136,7 +136,7 @@ fn render_provider_access(
 fn render_provider_labels(
   assets : Map[String, String],
   user : @domain.CurrentUser,
-  provider : @pipeline.Provider,
+  provider : @runtime.Provider,
   csrf : String,
   labels : String,
   error : String?,

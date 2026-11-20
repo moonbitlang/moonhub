@@ -49,7 +49,7 @@ fn render_provider_workers(
 fn render_provider_config(
   assets : Map[String, String],
   actor : @domain.CurrentUser,
-  control : @pipeline.ProviderControl,
+  control : @runtime.ProviderControl,
   csrf : String,
   values : Map[String, String],
   error : String?,
@@ -181,7 +181,7 @@ let provider_config_module : @moonback.Module = Module(ctx => {
         actor, id, revision, values, default_name,
       )
     } catch {
-      @pipeline.Conflict(message) => {
+      @runtime.Conflict(message) => {
         res.send_html(
           render_provider_config(
             assets,
@@ -251,7 +251,7 @@ let provider_config_module : @moonback.Module = Module(ctx => {
       }
       coordinator.save_provider_config(actor, id, revision, values)
     } catch {
-      @pipeline.Conflict(message) => {
+      @runtime.Conflict(message) => {
         res.send_html(
           render_provider_config(
             assets,

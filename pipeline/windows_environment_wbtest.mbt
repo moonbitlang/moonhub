@@ -10,14 +10,14 @@ async test "Windows latest snapshot claims only matching 2025 providers and requ
     (c, pool, _, run, provider, _) => {
       let admin = @identity.active_user_by_name(pool, "admin")
       let request = { ..claim_request(), runner_os: Some("windows"), }
-      c.set_provider_labels(admin, provider.id, [
+      c.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "windows", "x64", "windows-2022",
       ])
-      assert_true(c.claim(provider_secret, request) is None)
-      c.set_provider_labels(admin, provider.id, [
+      assert_true(c.runtime.claim(provider_secret, request) is None)
+      c.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "windows", "x64", "windows-2025",
       ])
-      let assignment = c.claim(provider_secret, request).unwrap()
+      let assignment = c.runtime.claim(provider_secret, request).unwrap()
       assert_eq(assignment.version, @protocol.environment_assignment_version)
       assert_eq(assignment.job.runs_on, [
         "self-hosted", "windows", "x64", "windows-2025",
@@ -50,10 +50,10 @@ async test "Windows environment protocol retains OIDC dispatch and output contra
   with_protocol_fixture(
     (c, pool, _, _, provider, _) => {
       let admin = @identity.active_user_by_name(pool, "admin")
-      c.set_provider_labels(admin, provider.id, [
+      c.runtime.set_provider_labels(admin, provider.id, [
         "self-hosted", "windows", "x64", "windows-2025",
       ])
-      let assignment = c
+      let assignment = c.runtime
         .claim(provider_secret, {
           ..claim_request(),
           runner_os: Some("windows"),

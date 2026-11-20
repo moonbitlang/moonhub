@@ -7,6 +7,7 @@ import {
   "hackwaly/moonhub/repository",
   "moonbitlang/async/http",
   "moonbitlang/async/semaphore",
+  "moonbitlang/core/json",
   "moonbitlang/moonback",
 }
 
@@ -40,6 +41,8 @@ pub async fn rendered_blob_page(Int32) -> String
 pub async fn rendered_commit_page(Int32) -> String
 
 pub async fn repository_test_token(Int32, String, @http.Cookie) -> String
+
+pub async fn runner_post_json(Int32, String, String, token? : String, cookie? : String, content_type? : String) -> (Int32, @json.Json)
 
 pub async fn settings_form_token(Int32, @http.Cookie) -> String
 

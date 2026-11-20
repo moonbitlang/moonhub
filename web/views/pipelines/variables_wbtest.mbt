@@ -83,7 +83,7 @@ async test "variable pages protect changes and display escaped readable values" 
       303,
     )
     assert_true(
-      @pipeline.list_variables(
+      @runtime.list_variables(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         { owner: "alice", name: "demo", },
@@ -96,7 +96,7 @@ async test "variable pages protect changes and display escaped readable values" 
 async test "variable readers can view values but cannot manage them" {
   @web_testkit.with_repository_test_app((port, pool, _, alice, bob) => {
     let actor = @identity.active_user_by_name(pool, "alice")
-    @pipeline.save_variable(
+    @runtime.save_variable(
       pool,
       actor,
       { owner: "alice", name: "demo", },
@@ -161,7 +161,7 @@ async test "Actions variables are read-only and use repository read access" {
     let first_lines = "\n<script>&hello</script>\n  "
     let long_line = "x".repeat(49152 - first_lines.length() - 1)
     let value = first_lines + long_line + "\n"
-    @pipeline.save_variable(
+    @runtime.save_variable(
       pool,
       actor,
       { owner: "alice", name: "demo", },
@@ -243,7 +243,7 @@ async test "variable forms accept maximum URL-encoded UTF8 values and reject one
       @web_testkit.http_post_path_with_cookie(port, base, fields, alice).0.code,
       303,
     )
-    let variables = @pipeline.list_variables(
+    let variables = @runtime.list_variables(
       pool,
       @identity.active_user_by_name(pool, "alice"),
       { owner: "alice", name: "demo", },
@@ -307,7 +307,7 @@ async test "variable browser mutations reject cross-site and unauthenticated sub
     assert_eq(anonymous.code, 303)
     ignore(client.read_all())
     assert_true(
-      @pipeline.list_variables(
+      @runtime.list_variables(
         pool,
         @identity.active_user_by_name(pool, "alice"),
         { owner: "alice", name: "demo", },

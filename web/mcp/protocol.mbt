@@ -640,7 +640,7 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                       | @domain.Forbidden(message~)
                       | @domain.NotFound(message~) => message
                       @gitops.DiffFailure(message) => message
-                      @pipeline.Conflict(message) => message
+                      @runtime.Conflict(message) => message
                       @gitops.Failure(message~) =>
                         @domain.public_merge_block_reason(message)
                       _ => raise err

@@ -5,7 +5,6 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
-  "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/webhooks",
   "hackwaly/moonhub/web/ui" @web_ui,
@@ -16,6 +15,10 @@ import {
   "moonbitlang/core/string",
   "moonbitlang/moonback",
   "moonbitlang/x/crypto",
+  "moonbitlang/async/io",
+  "hackwaly/moonhub/pipeline/oidc",
+  "hackwaly/moonhub/pipeline/results",
+  "hackwaly/moonhub/pipeline/runtime",
 }
 
 import {

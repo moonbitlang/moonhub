@@ -32,6 +32,10 @@ import {
   "moonbitlang/async",
   "moonbitlang/async/signal",
   "moonbitlang/moonback",
+  "hackwaly/moonhub/pipeline/oidc",
+  "hackwaly/moonhub/web/pipeline_api",
+  "hackwaly/moonhub/pipeline/results",
+  "hackwaly/moonhub/pipeline/runtime",
 }
 
 import {

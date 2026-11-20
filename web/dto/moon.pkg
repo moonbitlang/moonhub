@@ -1,0 +1,7 @@
+import {
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/pipeline/runtime",
+}
+
+supported_targets = "native"

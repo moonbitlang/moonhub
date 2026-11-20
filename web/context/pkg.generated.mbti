@@ -7,11 +7,14 @@ import {
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
-  "hackwaly/moonhub/pipeline",
+  "hackwaly/moonhub/pipeline/oidc",
+  "hackwaly/moonhub/pipeline/results",
+  "hackwaly/moonhub/pipeline/runtime",
   "hackwaly/moonhub/releases",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/webhooks",
   "moonbitlang/async/http",
+  "moonbitlang/async/io",
   "moonbitlang/moonback",
 }
 
@@ -66,7 +69,11 @@ pub fn parse_form(String) -> Map[String, String]
 
 pub fn path_param(@moonback.Request) -> String raise @domain.AppError
 
-pub let pipeline_coordinator_key : @moonback.TypedKey[@pipeline.Coordinator]
+pub let pipeline_coordinator_key : @moonback.TypedKey[@runtime.Coordinator]
+
+pub let pipeline_oidc_key : @moonback.TypedKey[@oidc.Service]
+
+pub let pipeline_results_key : @moonback.TypedKey[@results.Service]
 
 pub fn positive_resource_number(String) -> Int64 raise
 
@@ -109,6 +116,8 @@ pub fn rev_param(@moonback.Request) -> String raise @domain.AppError
 pub fn session_cookie(String) -> @http.Cookie
 
 pub let session_cookie_name : String
+
+pub async fn stream_artifact(async () -> Bytes?, &@io.Writer, () -> Unit raise, timeout_ms? : Int32) -> Unit
 
 pub fn structured_diff_options(@moonback.Request) -> @protocol.Options raise
 

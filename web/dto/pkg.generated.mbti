@@ -1,0 +1,35 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/web/dto"
+
+import {
+  "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/pipeline/runtime",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn activity_json(@collaboration.MergeActivity, preview? : Bool) -> @json.Json
+
+pub fn check_json(@collaboration.MergeCheck) -> @json.Json
+
+pub fn conclusion_json(@runtime.Conclusion?) -> String
+
+pub fn discussion_json(@collaboration.MergeDiscussion, preview? : Bool) -> @json.Json
+
+pub fn issue_json(@collaboration.Issue) -> @json.Json
+
+pub fn mr_json(@collaboration.MergeRequest) -> @json.Json
+
+pub fn run_json(@runtime.Run) -> @json.Json
+
+pub fn secret_json(@runtime.RepositorySecret) -> @json.Json
+
+pub fn variable_json(@runtime.RepositoryVariable) -> @json.Json
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

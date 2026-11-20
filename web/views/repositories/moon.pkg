@@ -1,9 +1,12 @@
 import {
+  "hackwaly/moonhub/pipeline/runtime",
+}
+
+import {
   "hackwaly/moonhub/database",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/gitops",
   "hackwaly/moonhub/identity",
-  "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
   "hackwaly/moonhub/releases",
   "hackwaly/moonhub/webhooks",
@@ -25,3 +28,7 @@ import {
 } for "wbtest"
 
 supported_targets = "native"
+
+import {
+  "hackwaly/moonhub/pipeline",
+} for "wbtest"

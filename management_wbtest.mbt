@@ -41,7 +41,7 @@ async test "provider management CLI forwards explicit scope and preserves omitte
         )
       })
       let actor = @identity.active_user_by_name(pool, "admin")
-      let coordinator = @pipeline.Coordinator::new(pool)
+      let coordinator = @runtime.Coordinator::new(pool)
       let options = [
         "--db", db, "--name", "cli", "--token-file", token, "--admin", "admin",
       ]

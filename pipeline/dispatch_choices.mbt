@@ -24,7 +24,7 @@ pub async fn dispatch_choices(
   repo : @domain.RepoId,
   requested : String,
 ) -> DispatchChoices {
-  let scope = require_run_author(pool, actor, repo)
+  let scope = @runtime.require_run_author(pool, actor, repo)
   let (reader, git_dir) = @repository.open_repository_read(
     pool,
     root,
@@ -66,7 +66,7 @@ pub async fn dispatch_choices(
   let workflows : Array[WorkflowChoice] = []
   for path in paths {
     let (name, reason, inputs, jobs, dispatch) = try {
-      validate_workflow_path(path)
+      @runtime.validate_workflow_path(path)
       let source = read_workflow_source(git_dir, commit, path)
       let definition = @workflow.parse(source)
       let trigger = @workflow.triggers(source)
@@ -99,6 +99,6 @@ pub async fn dispatch_choices(
     }
     workflows.push({ path, name, reason, inputs, jobs, dispatch, })
   }
-  ignore(require_run_author(pool, actor, scope.repo))
+  ignore(@runtime.require_run_author(pool, actor, scope.repo))
   { branches, branch, commit, workflows, }
 }

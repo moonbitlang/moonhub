@@ -6,7 +6,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
   ctx.get("/:owner/:repo/settings/secrets", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     let repo = @web_context.repo_param(req)
-    let secrets = @pipeline.list_secrets(pool, actor, repo)
+    let secrets = @runtime.list_secrets(pool, actor, repo)
     res.send_html(
       render_secrets(
         assets,
@@ -45,7 +45,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
       let actor = @web_context.require_current_user(req)
       let scope = pipeline_scope(pool, actor, req)
       let name = @web_context.required_param(req, "secret", "secret").to_upper()
-      let secret = @pipeline.list_secrets(pool, actor, scope.repo)
+      let secret = @runtime.list_secrets(pool, actor, scope.repo)
         .iter()
         .find_first(secret => secret.name == name)
       guard secret is Some(secret) else {
@@ -97,7 +97,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
       guard version is Some(version) else {
         raise @domain.BadRequest(message="Invalid secret version.")
       }
-      @pipeline.save_secret(
+      @runtime.save_secret(
         pool,
         root,
         actor,
@@ -108,7 +108,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
         workflow,
         version,
       ) catch {
-        @domain.BadRequest(message~) | @pipeline.Conflict(message) => {
+        @domain.BadRequest(message~) | @runtime.Conflict(message) => {
           res.send_html(
             render_secret_form(
               assets,
@@ -149,7 +149,7 @@ pub let repository_secrets_module : @moonback.Module = Module(ctx => {
     let version = @web_context.positive_resource_number(
       form.get("version").unwrap_or(""),
     )
-    @pipeline.delete_secret(
+    @runtime.delete_secret(
       pool,
       actor,
       scope.repo,
@@ -170,7 +170,7 @@ fn render_secrets(
   assets : Map[String, String],
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
-  secrets : Array[@pipeline.RepositorySecret],
+  secrets : Array[@runtime.RepositorySecret],
   saved : Bool,
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(repo) + "/settings/secrets"
@@ -256,7 +256,7 @@ fn render_secret_delete(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
   csrf : String,
-  secret : @pipeline.RepositorySecret,
+  secret : @runtime.RepositorySecret,
 ) -> @moonback.Html {
   let base = @web_ui.repo_link(repo) + "/settings/secrets"
   @web_ui.layout(

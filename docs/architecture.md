@@ -28,7 +28,10 @@ unchanged.
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/environment` | Shared Linux environment definitions, immutable-image validation and actual userspace checks; core packages only |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Authorized run snapshots, repository CI secrets, public variable snapshots and step delivery, push and release trigger consumption, MR check execution, provider grants, atomic claims, leases, logs, cancellation, workflow OIDC signing/grants, Artifact/Cache v4 metadata, capabilities and storage policy and result persistence |
+| `pipeline` | Manual creation/reruns, workflow discovery, push/release/schedule trigger consumption and MR check orchestration; composes atomic Runtime and Results snapshots |
+| `pipeline/runtime` | Run records and queries, transactional snapshots, providers, scheduling, leases, steps, logs, source delivery, secrets/variables and live Job API authorization |
+| `pipeline/results` | Artifact/Cache credentials, RPCs, capabilities, block/object storage, quotas, downloads and cleanup |
+| `pipeline/oidc` | Optional issuer configuration, live execution credentials, claims, bounded signing, discovery and JWKS |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |
 | `provider` | Standalone Docker/ASG controllers, local Tart VM workers, config synchronization and execution cleanup; no database or Web dependency |
 | `runner/platform` | OS detection, safe paths, minimal OS environment and private Windows directory ACLs; no database or Web dependency |
@@ -37,7 +40,9 @@ unchanged.
 | `runner` | Single-job process execution, downloaded JavaScript/composite actions, bounded streaming logs, lease watchdog, cancellation and HTTP protocol client; no database or Web dependency |
 | `ssh` | SSH keys, authentication, Git transport and trusted receive hook entry points |
 | `web` | Application composition, dependency providers and server lifecycle |
-| `web/api` | Bearer-authenticated collaboration JSON API, DTO mapping and HTTP tests |
+| `web/api` | Bearer-authenticated collaboration JSON API, request validation, error mapping and HTTP tests |
+| `web/dto` | Shared REST/MCP business-object JSON serialization; no direct Moonback, HTTP or database dependency |
+| `web/pipeline_api` | Runner machine API, Artifact/Cache RPC, Blob and OIDC HTTP endpoints and execution integration tests |
 | `web/mcp` | Stateless MCP 2026-07-28 HTTP transport, tool catalog, business-service adapters and HTTP tests |
 | `web/context` | Typed dependency keys, request/session context, authentication, CSRF and request validation |
 | `web/ui` | Shared page layout, navigation, reusable presentation and HTML/page-response negotiation |
@@ -56,6 +61,8 @@ web/
   dependencies.mbt
   server.mbt
   context/
+  dto/
+  pipeline_api/
   ui/
   assets/
   views/
@@ -93,15 +100,34 @@ collaboration services. `web` is the outer application adapter.
 `pipeline/workflow` depends only on `pipeline/actions`, `pipeline/environment`,
 `moonbit-community/yaml` and core packages. Protocol, provider and runner share
 the environment package without database or Web dependencies.
-`pipeline` uses `storage` for object bytes and retains authorization, quotas and cleanup intent metadata.
-`pipeline` uses workflow/protocol definitions, repository/identity
-authorization, bounded Git operations, and the database adapter.
-`web/views/pipelines` owns the machine
-API and its HTTP tests. It is mounted independently of browser authentication;
-`web/dependencies.mbt` provides its coordinator and `web/server.mbt` owns lease
-reconciliation and artifact/cache cleanup. Artifact and Cache Results RPC and signed blob routes
-are mounted separately from browser authentication, while durable download links
-require repository read access; see [Artifact v4](artifact-v4.md). The independent
+`pipeline → pipeline/results → pipeline/runtime` is the production service
+direction. Orchestration may also call Runtime directly; OIDC depends on Runtime.
+None of the three service packages may import orchestration, even in tests.
+Runtime never imports Results or OIDC. Runtime owns SQL select fragments and row
+decoders; its read-only `LiveAttempt` validates lease, execution identity,
+cancellation and current authorization within the caller's transaction. Job
+permission consumers decode the workflow on demand; Artifact validation does not.
+Runtime provides the transactional snapshot writer and shared cancellation logic.
+Orchestration calls Results to capture (or copy on rerun) Cache scope in that same
+transaction, so a failure rolls back the entire snapshot.
+
+Results uses `storage` for object bytes and owns authorization, quotas and cleanup
+intent metadata. Results and OIDC each hold the database and an injectable clock;
+Results also owns storage configuration and download concurrency, while OIDC owns
+the optional issuer. Runtime's coordinator holds only the database and clock.
+Tests compose all services with the same controllable clock. File, network and
+signing operations stay outside database transactions.
+
+`web/pipeline_api` owns the machine API and its HTTP tests. It is mounted
+independently of browser authentication, with the existing paths and middleware
+order. `web/dependencies.mbt` publishes three app-scoped typed dependencies;
+feature modules obtain Runtime, Results and OIDC during initialization with
+`ctx.require`. `web/server.mbt` owns lease reconciliation and Results cleanup.
+The Pipeline page package retains list/detail/polling, provider management,
+secrets/variables forms and authorized durable downloads. Artifact and Cache RPC
+and signed blob routes remain independent of browser authentication, while
+durable download links require repository read access; see
+[Artifact v4](artifact-v4.md). The independent
 `runner` package executes assigned shell steps
 and JavaScript/composite actions. The `provider` package owns Docker/ASG
 controllers and workers plus the local Tart backend; `runner/cli` owns single-assignment execution arguments,
@@ -352,9 +378,9 @@ mutations reuse business services and repository locks. The API never implicitly
 authorizes code execution when creating an MR with a collaboration write token.
 
 `web/mcp` is an outer adapter mounted at `/-/mcp`, independently of browser
-middleware. It obtains database, repository root, Pipeline coordinator and origin
+middleware. It obtains database, repository root, Runtime coordinator and origin
 policy through `ctx.require`, and calls business services directly. It shares
-JSON DTO mapping with `web/api`; business packages do not import MCP. The
+JSON DTO mapping through `web/dto`; business packages do not import MCP. The
 composition boundary reads `MOONHUB_MCP_ALLOWED_ORIGINS`. No Runner credentials
 are converted into MCP credentials. See [MCP](mcp.md).
 

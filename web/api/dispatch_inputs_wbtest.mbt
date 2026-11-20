@@ -50,7 +50,7 @@ async test "run API selects original PR workflow jobs with execute permission an
     )
     assert_eq(status, 200)
     assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
-    assert_eq(@pipeline.get_run(pool, actor, repo, 1L).workflow_source, source)
+    assert_eq(@runtime.get_run(pool, actor, repo, 1L).workflow_source, source)
   })
 }
 
@@ -200,6 +200,6 @@ async test "run API transports the maximum UTF8 dispatch payload and rejects lar
       error
       is { "error": { "message": String("request body is too large"), .. }, .. },
     )
-    assert_eq(@pipeline.list_runs(pool, actor, repo).length(), 1)
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 1)
   })
 }

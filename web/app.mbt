@@ -2,7 +2,7 @@
 pub let app_module : @moonback.Module = Module(ctx => {
   let config = ctx.config()
   ctx.use_(pipeline_dependencies_module)
-  ctx.use_(@pipeline_views.oidc_module)
+  ctx.use_(@pipeline_api.oidc_module)
   ctx.mount("/\{@domain.PUBLIC_ASSETS_OWNER}", App(assets_module, config~))
   ctx.mount("/-/api/v1", App(user_api_module, config~))
   ctx.mount("/api/v3", App(user_api_module, config~))
@@ -24,19 +24,19 @@ pub let app_module : @moonback.Module = Module(ctx => {
 ///|
 let runner_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
-  ctx.use_(@pipeline_views.runner_api_module)
+  ctx.use_(@pipeline_api.runner_api_module)
 })
 
 ///|
 let artifact_rpc_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
-  ctx.use_(@pipeline_views.artifact_rpc_module)
+  ctx.use_(@pipeline_api.artifact_rpc_module)
 })
 
 ///|
 let artifact_blob_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
-  ctx.use_(@pipeline_views.artifact_blob_module)
+  ctx.use_(@pipeline_api.artifact_blob_module)
 })
 
 ///|
@@ -94,7 +94,7 @@ let user_api_module : @moonback.Module = Module(ctx => {
 ///|
 let cache_rpc_app_module : @moonback.Module = Module(ctx => {
   ctx.use_(pipeline_dependencies_module)
-  ctx.use_(@pipeline_views.cache_rpc_module)
+  ctx.use_(@pipeline_api.cache_rpc_module)
 })
 
 ///|

@@ -457,7 +457,7 @@ async fn markdown_arg(
 async fn invoke_tool(
   pool : @database.Database,
   root : String,
-  coordinator : @pipeline.Coordinator,
+  coordinator : @runtime.Coordinator,
   diff_executor : @gitops.DiffExecutor,
   actor : @domain.CurrentUser,
   name : String,
@@ -534,7 +534,7 @@ async fn invoke_tool(
         tool_page(args),
       )
       {
-        "items": rows.iter().take(50).map(@user_api.mr_json).collect(),
+        "items": rows.iter().take(50).map(@dto.mr_json).collect(),
         "has_more": rows.length() > 50,
       }
     }
@@ -547,9 +547,7 @@ async fn invoke_tool(
         "moonhub_get_merge_request_checks" =>
           {
             "version": mr.version.to_string(),
-            "checks": @collaboration.merge_checks(pool, mr).map(
-              @user_api.check_json,
-            ),
+            "checks": @collaboration.merge_checks(pool, mr).map(@dto.check_json),
           }
         "moonhub_get_merge_request_diff" => {
           let version = decimal(
@@ -628,7 +626,7 @@ async fn invoke_tool(
               page~,
             )
             {
-              "discussion": @user_api.discussion_json(discussion),
+              "discussion": @dto.discussion_json(discussion),
               "has_more": page * 50L < discussion.reply_count,
             }
           } else {
@@ -644,7 +642,7 @@ async fn invoke_tool(
               "items": rows
               .iter()
               .take(50)
-              .map(d => @user_api.discussion_json(d, preview=true))
+              .map(d => @dto.discussion_json(d, preview=true))
               .collect(),
               "has_more": rows.length() > 50,
             }
@@ -657,16 +655,14 @@ async fn invoke_tool(
             tool_page(args),
           )
           {
-            "mr": @user_api.mr_json(mr),
+            "mr": @dto.mr_json(mr),
             "activity": rows
             .iter()
             .take(50)
-            .map(a => @user_api.activity_json(a))
+            .map(a => @dto.activity_json(a))
             .collect(),
             "has_more": rows.length() > 50,
-            "checks": @collaboration.merge_checks(pool, mr).map(
-              @user_api.check_json,
-            ),
+            "checks": @collaboration.merge_checks(pool, mr).map(@dto.check_json),
           }
         }
       }
@@ -690,7 +686,7 @@ async fn invoke_tool(
         string_arg(args, "q", fallback=""),
       )
       {
-        "items": rows.iter().take(50).map(@user_api.issue_json).collect(),
+        "items": rows.iter().take(50).map(@dto.issue_json).collect(),
         "has_more": rows.length() > 50,
       }
     }
@@ -702,7 +698,7 @@ async fn invoke_tool(
         tool_page(args),
       )
       {
-        "issue": @user_api.issue_json(issue),
+        "issue": @dto.issue_json(issue),
         "has_more": rows.length() > 50,
         "activity": rows
         .iter()
@@ -728,7 +724,7 @@ async fn invoke_tool(
         markdown_arg(pool, root, scope, actor, args, "description", ""),
         decimal(string_arg(args, "assignee", fallback="0"), zero=true),
       )
-      @user_api.issue_json(@collaboration.require_issue(pool, scope, created))
+      @dto.issue_json(@collaboration.require_issue(pool, scope, created))
     }
     "moonhub_comment_issue"
     | "moonhub_edit_issue"
@@ -768,7 +764,7 @@ async fn invoke_tool(
         ),
         markdown_arg(pool, root, scope, actor, args, "body", ""),
       )
-      @user_api.issue_json(@collaboration.require_issue(pool, scope, id))
+      @dto.issue_json(@collaboration.require_issue(pool, scope, id))
     }
     "moonhub_create_merge_request" => {
       let draft = string_arg(args, "draft", fallback="false")
@@ -779,7 +775,7 @@ async fn invoke_tool(
         pool, root, scope, actor, args, "description", "",
       )
       @repository.with_repository_write(pool, root, actor, scope, (scope, dir) => {
-        @user_api.mr_json(
+        @dto.mr_json(
           @collaboration.create_merge_request(
             pool,
             scope,
@@ -953,18 +949,18 @@ async fn invoke_tool(
               },
             )
         }
-        @user_api.mr_json(@collaboration.require_merge_request(pool, scope, id))
+        @dto.mr_json(@collaboration.require_merge_request(pool, scope, id))
       })
     }
     "moonhub_list_variables" =>
       {
-        "items": @pipeline.list_variables(pool, actor, repo).map(
-          @user_api.variable_json,
+        "items": @runtime.list_variables(pool, actor, repo).map(
+          @dto.variable_json,
         ),
       }
     "moonhub_set_variable" => {
       let name = string_arg(args, "name").to_upper()
-      @pipeline.save_variable(
+      @runtime.save_variable(
         pool,
         actor,
         repo,
@@ -972,16 +968,16 @@ async fn invoke_tool(
         string_arg(args, "value"),
         decimal(string_arg(args, "version"), zero=true),
       )
-      let variable = @pipeline.list_variables(pool, actor, repo)
+      let variable = @runtime.list_variables(pool, actor, repo)
         .iter()
         .find_first(variable => variable.name == name)
       guard variable is Some(variable) else {
         raise @domain.NotFound(message="Variable changed. Reload its value.")
       }
-      @user_api.variable_json(variable)
+      @dto.variable_json(variable)
     }
     "moonhub_delete_variable" => {
-      @pipeline.delete_variable(
+      @runtime.delete_variable(
         pool,
         actor,
         repo,
@@ -992,16 +988,16 @@ async fn invoke_tool(
     }
     "moonhub_list_runs" =>
       {
-        "items": @pipeline.list_runs(pool, actor, repo)
+        "items": @runtime.list_runs(pool, actor, repo)
         .iter()
         .take(50)
-        .map(@user_api.run_json)
+        .map(@dto.run_json)
         .collect(),
       }
     "moonhub_get_run" =>
       {
-        "run": @user_api.run_json(@pipeline.get_run(pool, actor, repo, id)),
-        "jobs": @pipeline.list_jobs(pool, actor, repo, id).map(job => {
+        "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "jobs": @runtime.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
               "key": job.job_key,
@@ -1012,7 +1008,7 @@ async fn invoke_tool(
                 Running => "running"
                 Completed => "completed"
               },
-              "conclusion": @user_api.conclusion_json(job.conclusion),
+              "conclusion": @dto.conclusion_json(job.conclusion),
               "attempt": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
             } : Json)
         }),
@@ -1041,7 +1037,7 @@ async fn invoke_tool(
       }
     }
     "moonhub_create_run" =>
-      @user_api.run_json(
+      @dto.run_json(
         @pipeline.create_run(
           pool,
           root,
@@ -1063,10 +1059,10 @@ async fn invoke_tool(
         ),
       )
     "moonhub_rerun_run" =>
-      @user_api.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
+      @dto.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
     "moonhub_cancel_run" => {
       coordinator.cancel_run(actor, repo, id)
-      @user_api.run_json(@pipeline.get_run(pool, actor, repo, id))
+      @dto.run_json(@runtime.get_run(pool, actor, repo, id))
     }
     _ => raise @domain.BadRequest(message="Unsupported tool")
   }
