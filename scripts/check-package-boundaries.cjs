@@ -49,8 +49,9 @@ const allowed = {
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications', 'web/views/attachments',
   ],
   'web/views/releases': ['releases','domain','repository','web/context','web/ui'],
-  'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/context'],
-  'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/api', 'web/context'],
+  'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
+  'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
+  'web/dto': ['domain', 'collaboration', 'pipeline'],
   'web/assets': ['domain'],
   'web/context': ['releases', 'diff/protocol', 'webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
   'web/ui': ['diff/protocol', 'gitops', 'domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/spa'],
@@ -92,6 +93,14 @@ for (const edge of graph.edges) {
   const production = edge.kinds.includes('source');
   if (local.has(edge.to) && production && !allowed[from]?.includes(target.rel)) {
     failures.push(`${from || '(root)'} must not import ${target.rel || '(root)'} in production`);
+  }
+  if (from === 'web/dto' && (
+    target.module === 'moonbitlang/moonback' ||
+    (target.module === 'moonbitlang/async' && /^http(?:\/|$)/.test(target.rel)) ||
+    ['moonbitstack/moondb', 'moonbitstack/moonsqlite'].includes(target.module) ||
+    (local.has(edge.to) && target.rel === 'database')
+  )) {
+    failures.push('web/dto must not directly depend on Moonback, HTTP or database packages');
   }
   const fromWeb = from === 'web' || from.startsWith('web/');
   if (target.module === 'moonbitlang/moonback' && !fromWeb) {
