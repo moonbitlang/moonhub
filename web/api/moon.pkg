@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/web/dto",
   "hackwaly/moonhub/releases",
   "hackwaly/moonhub/domain",
   "hackwaly/moonhub/attachments",

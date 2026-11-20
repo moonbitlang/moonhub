@@ -7,7 +7,7 @@ import {
   "hackwaly/moonhub/identity",
   "hackwaly/moonhub/pipeline",
   "hackwaly/moonhub/repository",
-  "hackwaly/moonhub/web/api" @user_api,
+  "hackwaly/moonhub/web/dto",
   "hackwaly/moonhub/web/context" @web_context,
   "moonbitlang/async",
   "moonbitlang/core/encoding/base64",
