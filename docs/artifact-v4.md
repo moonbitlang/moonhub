@@ -128,7 +128,7 @@ producer and consumer separate attempts/workspaces:
 ```sh
 MOONHUB_ARTIFACT_UPSTREAM=1 \
 MOONHUB_ARTIFACT_NODE20=/absolute/path/to/node20 \
-moon test --strip -j 1 web/views/pipelines --filter '*Artifact*'
+moon test --strip -j 1 web/pipeline_api --filter '*Artifact*'
 ```
 
 The Node 20 override selects the upstream Action's declared runtime; without it

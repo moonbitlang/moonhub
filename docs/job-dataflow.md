@@ -121,7 +121,7 @@ Actions in that same chain:
 ```sh
 MOONHUB_DATAFLOW_UPSTREAM=1 \
 MOONHUB_ARTIFACT_NODE20=/absolute/path/to/node20 \
-moon test --strip -j 1 web/views/pipelines \
+moon test --strip -j 1 web/pipeline_api \
   --filter '*real runner carries version*'
 ```
 
