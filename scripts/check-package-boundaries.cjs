@@ -44,7 +44,7 @@ const allowed = {
   web: [
     'gitops', 'storage', 'releases', 'web/views/releases',
     'domain', 'config', 'database', 'identity', 'repository', 'collaboration', 'mail', 'pipeline', 'attachments', 'webhooks',
-    'web/assets', 'web/api', 'web/mcp', 'web/context', 'web/views/auth', 'web/views/account',
+    'web/assets', 'web/api', 'web/mcp', 'web/pipeline_api', 'web/context', 'web/views/auth', 'web/views/account',
     'web/views/namespaces', 'web/views/repositories', 'web/views/issues',
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications', 'web/views/attachments',
   ],
@@ -52,6 +52,7 @@ const allowed = {
   'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
   'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'attachments', 'web/dto', 'web/context'],
   'web/dto': ['domain', 'collaboration', 'pipeline'],
+  'web/pipeline_api': ['domain', 'identity', 'pipeline', 'pipeline/protocol', 'web/context'],
   'web/assets': ['domain'],
   'web/context': ['releases', 'diff/protocol', 'webhooks', 'domain', 'database', 'gitops', 'identity', 'repository', 'pipeline', 'web/ui'],
   'web/ui': ['diff/protocol', 'gitops', 'domain', 'identity', 'repository', 'collaboration', 'web/assets', 'web/spa'],

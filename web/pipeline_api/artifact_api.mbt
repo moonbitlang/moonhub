@@ -137,19 +137,6 @@ async fn[T] with_artifact_transfer(
 }
 
 ///|
-async fn stream_artifact(
-  read : async () -> Bytes?,
-  writer : &@io.Writer,
-  authorize : () -> Unit raise,
-  timeout_ms~ : Int32 = 30000,
-) -> Unit {
-  while read() is Some(chunk) {
-    authorize()
-    @async.with_timeout(timeout_ms, () => writer.write(chunk))
-  }
-}
-
-///|
 pub let artifact_blob_module : @moonback.Module = Module(ctx => {
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   let root = ctx.require(@web_context.config_root)
@@ -252,7 +239,7 @@ pub let artifact_blob_module : @moonback.Module = Module(ctx => {
             "Content-Disposition": "attachment; filename=artifact.zip",
           })
         })
-        stream_artifact(() => reader.read(), writer, authorize)
+        @web_context.stream_artifact(() => reader.read(), writer, authorize)
       })
     })
   })

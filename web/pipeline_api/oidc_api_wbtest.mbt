@@ -42,11 +42,16 @@ async test "OIDC HTTP discovery keys and scoped token exchange enforce execution
         execution_id: "e".repeat(32),
       }
       assert_eq(
-        post_json(port, path, ToJson::to_json(request).stringify(), token=lease).0,
+        @web_testkit.runner_post_json(
+          port,
+          path,
+          ToJson::to_json(request).stringify(),
+          token=lease,
+        ).0,
         401,
       )
       ignore(c.start(id, lease, 1, execution_id=request.execution_id))
-      let (status, json) = post_json(
+      let (status, json) = @web_testkit.runner_post_json(
         port,
         path,
         ToJson::to_json(request).stringify(),
