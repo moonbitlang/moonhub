@@ -175,7 +175,7 @@ remote protection. Backend errors never silently switch new writes to fs.
 Run the fs, cutover, migration and fault regressions with:
 
 ```sh
-moon test --strip -j 1 storage pipeline database web/views/pipelines
+moon test --strip -j 1 storage pipeline database web/views/pipelines web/pipeline_api
 node --test storage/s3/backend.test.mjs
 node scripts/check-package-boundaries.cjs
 ```

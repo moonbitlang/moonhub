@@ -121,7 +121,7 @@ in the next job, covering its embedded cache client. Run:
     npm run build --prefix js
     node --test runner/actions/runtime.test.mjs
     moon test --strip -j 1
-    MOONHUB_CACHE_UPSTREAM=1 moon test --strip -j 1 web/views/pipelines --filter '*Cache*'
+    MOONHUB_CACHE_UPSTREAM=1 moon test --strip -j 1 web/pipeline_api --filter '*Cache*'
 
 Use MOONHUB_CACHE_NODE20=/absolute/path/to/node for Node 20 upstream entry points.
 Legacy Cache Service v1 is not implemented; v1-only clients need newer Actions.

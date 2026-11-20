@@ -108,7 +108,7 @@ already pinned jobs continue to require a matching named environment.
 ```sh
 moon test --strip -j 1 pipeline/environment pipeline/protocol pipeline/workflow pipeline provider runner database
 npm run build --prefix js
-moon test --strip -j 1 web/views/pipelines web/api
+moon test --strip -j 1 web/views/pipelines web/pipeline_api web/api
 moon build --strip -j 1 . cmd/moonhub-runner cmd/moonhub-diff-worker
 node scripts/managed-runner-smoke.cjs --environments
 node scripts/provider-config-browser-smoke.cjs --environments
