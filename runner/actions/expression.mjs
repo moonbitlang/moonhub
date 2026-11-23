@@ -97,10 +97,19 @@ function* expression(source, context = {}, implicitSuccess = false) {
       if (a === 'hashfiles') return yield () => hashFiles(context.github?.workspace, args);
       if (a === 'tojson' && args.length === 1) return JSON.stringify(args[0]);
       if (a === 'fromjson' && args.length === 1) return JSON.parse(args[0]);
-      if (a === 'contains' && args.length === 2) return Array.isArray(args[0]) ? args[0].some(x => equal(x, args[1])) : String(args[0]).toLowerCase().includes(String(args[1]).toLowerCase());
-      if (a === 'startswith' && args.length === 2) return String(args[0]).toLowerCase().startsWith(String(args[1]).toLowerCase());
-      if (a === 'endswith' && args.length === 2) return String(args[0]).toLowerCase().endsWith(String(args[1]).toLowerCase());
-      if (a === 'format' && args.length) return String(args[0]).replace(/\{(\d+)\}/g, (_, i) => string(args[Number(i) + 1]));
+      if (a === 'contains' && args.length === 2) {
+        if (Array.isArray(args[0])) return args[0].some(x => equal(x, args[1]));
+        return stringArgument(args[0]).toLowerCase().includes(stringArgument(args[1]).toLowerCase());
+      }
+      if (a === 'startswith' && args.length === 2) {
+        return stringArgument(args[0]).toLowerCase().startsWith(stringArgument(args[1]).toLowerCase());
+      }
+      if (a === 'endswith' && args.length === 2) {
+        return stringArgument(args[0]).toLowerCase().endsWith(stringArgument(args[1]).toLowerCase());
+      }
+      if (a === 'format' && args.length) {
+        return stringArgument(args[0]).replace(/\{(\d+)\}/g, (_, i) => string(args[Number(i) + 1]));
+      }
       throw new Error(`Unsupported Actions function: ${a}`);
     }
     throw new Error('Unsupported Actions expression');
@@ -239,6 +248,7 @@ function equal(a, b) {
   const number = value => value === null || value === '' ? 0 : Number(value);
   return number(a) === number(b);
 }
+function stringArgument(value) { return String(value ?? ''); }
 export function string(value) { return value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
 function* interpolation(value, context) {
   if (typeof value !== 'string') return string(value);
