@@ -126,11 +126,12 @@ All other public templates are stored separately and evaluated once at runtime.
 A captured branch name or output containing `${{...}}` is never recursively parsed.
 
 The current expression interpreter supports string, number, boolean and null
-literals, field / string-key indexing, parentheses, `!`, `==`, `!=`, `&&`, `||`,
-and `success`, `failure`, `cancelled`, `always`, `fromJSON`, `toJSON`, `contains`,
-`startsWith`, `endsWith`, `format`. Boolean operators short circuit. Contexts are
-`github`, `runner`, `env`, `steps`, `needs`, `matrix`, `strategy`, workflow dispatch
-`inputs`, and repository `vars`. Composite Actions temporarily use their own `inputs`. See
+literals, field / string-key indexing, parentheses, `!`, `<`, `<=`, `>`, `>=`,
+`==`, `!=`, `&&`, `||`, and `success`, `failure`, `cancelled`, `always`,
+`fromJSON`, `toJSON`, `contains`, `startsWith`, `endsWith`, `format`.
+Boolean operators short circuit. Contexts are `github`, `runner`, `env`, `steps`,
+`needs`, `matrix`, `strategy`, workflow dispatch `inputs`, and repository `vars`.
+Composite Actions temporarily use their own `inputs`. See
 [dispatch inputs](dispatch-inputs.md) for typed values and the captured event file,
 and [repository variables](repository-variables.md) for public configuration snapshots.
 See [workflow scheduling](workflow-scheduling.md) for static matrix expansion and
