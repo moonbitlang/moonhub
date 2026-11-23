@@ -80,13 +80,10 @@ function* expression(source, context = {}, implicitSuccess = false) {
     if (type === 'call') {
       if (a === 'join' && (b.length === 1 || b.length === 2)) {
         const items = yield* visit(b[0]);
-        if (!Array.isArray(items)) return isPrimitive(items) ? string(items) : '';
+        if (!Array.isArray(items)) return isPrimitive(items) ? joinString(items) : '';
         const separator = items.length > 1 && b.length === 2 ? yield* visit(b[1]) : ',';
-        const delimiter = isPrimitive(separator) ? string(separator) : ',';
-        const values = items.map(item => {
-          if (isPrimitive(item)) return string(item);
-          return Array.isArray(item) ? 'Array' : 'Object';
-        });
+        const delimiter = isPrimitive(separator) ? joinString(separator) : ',';
+        const values = items.map(joinString);
         let bytes = Buffer.byteLength(delimiter) * Math.max(0, values.length - 1);
         for (const value of values) bytes += Buffer.byteLength(value);
         if (bytes > 1048576) throw new Error('join() output exceeds 1 MiB');
@@ -126,6 +123,61 @@ export function truthy(value) { return value !== false && value !== null && valu
 function isPrimitive(value) {
   return value == null || ['boolean', 'number', 'string'].includes(typeof value);
 }
+function joinString(value) {
+  if (typeof value === 'number') return formatJoinNumber(value);
+  if (isPrimitive(value)) return string(value);
+  return Array.isArray(value) ? 'Array' : 'Object';
+}
+
+const doubleBits = new DataView(new ArrayBuffer(8));
+const implicitSignificandBit = 1n << 52n;
+
+function isRoundingMidpoint(value, coefficient, decimalExponent) {
+  doubleBits.setFloat64(0, value);
+  const bits = doubleBits.getBigUint64(0);
+  const biasedExponent = Number(bits >> 52n);
+  const fraction = bits & (implicitSignificandBit - 1n);
+  const significand = biasedExponent === 0 ? fraction : implicitSignificandBit | fraction;
+  const binaryExponent = (biasedExponent || 1) - 1023 - 52;
+
+  // Compare 2 * value with (2 * coefficient - 1) * 10 ** decimalExponent.
+  // Clear the denominators so the comparison uses only exact integers.
+  let twiceValue = 2n * significand;
+  let twiceMidpoint = 2n * BigInt(coefficient) - 1n;
+  if (decimalExponent < 0) twiceValue *= 10n ** BigInt(-decimalExponent);
+  else twiceMidpoint *= 10n ** BigInt(decimalExponent);
+  if (binaryExponent < 0) twiceMidpoint <<= BigInt(-binaryExponent);
+  else twiceValue <<= BigInt(binaryExponent);
+  return twiceValue === twiceMidpoint;
+}
+
+function formatJoinNumber(value) {
+  if (Object.is(value, -0)) return '-0';
+  if (!Number.isFinite(value) || value === 0) return String(value);
+
+  const magnitude = Math.abs(value);
+  const [mantissa, exponentText] = magnitude.toExponential(14).split('e');
+  const exponent = Number(exponentText);
+  let digits = mantissa.replace('.', '');
+  const coefficient = Number(digits);
+  // toExponential rounds a tie up. G15 keeps the even coefficient.
+  if (coefficient % 2 !== 0 && isRoundingMidpoint(magnitude, coefficient, exponent - 14)) {
+    digits = String(coefficient - 1);
+  }
+  digits = digits.replace(/0+$/, '');
+  const sign = value < 0 ? '-' : '';
+  if (exponent < -4 || exponent >= 15) {
+    const fraction = digits.length > 1 ? '.' + digits.slice(1) : '';
+    const exponentSign = exponent < 0 ? '-' : '+';
+    const exponentDigits = String(Math.abs(exponent)).padStart(2, '0');
+    return `${sign}${digits[0]}${fraction}E${exponentSign}${exponentDigits}`;
+  }
+  const point = exponent + 1;
+  if (point <= 0) return `${sign}0.${'0'.repeat(-point)}${digits}`;
+  if (point >= digits.length) return sign + digits.padEnd(point, '0');
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
 function comparisonNumber(value) {
   if (typeof value !== 'string') return Number(value);
   const text = value.replace(/^\p{White_Space}+|(?<!\p{White_Space})\p{White_Space}+$/gu, '');

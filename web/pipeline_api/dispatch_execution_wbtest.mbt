@@ -35,13 +35,17 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|  consume:
     #|    needs: prepare
     #|    if: needs.prepare.outputs.version == inputs.version && github.event.inputs.count == '3.5'
-    #|    runs-on: self-hosted
+    #|    name: consume on ${{ matrix.node.labels['0'] }}
+    #|    runs-on: ${{ matrix.node.labels['0'] }}
     #|    strategy:
     #|      matrix:
-    #|        node: [{version: 20, flags: [strict, legacy]}]
+    #|        node: [{version: 20, labels: [self-hosted, linux], flags: [strict, legacy]}]
     #|    steps:
     #|      - id: bounds
     #|        run: printf 'min=2\nmax=4\n' >> "$GITHUB_OUTPUT"
+    #|      - id: missing_minimum
+    #|        if: matrix.node.minimum < '-1'
+    #|        run: exit 99
     #|      - id: verify
     #|        if: inputs.count > fromJSON(steps.bounds.outputs.min) && matrix.node.version >= 20
     #|        env:
@@ -49,7 +53,9 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|          COUNT_JSON: ${{ toJSON(inputs.count) }}
     #|          EVENT_PATH: ${{ github.event_path }}
     #|          IN_RANGE: ${{ fromJSON(steps.bounds.outputs.min) < inputs.count && inputs.count <= fromJSON(steps.bounds.outputs.max) }}
-    #|          JOINED: ${{ join(fromJSON('["a","b"]')) }}
+    #|          LABEL: ${{ matrix.node.labels['0'] }}
+    #|          MINIMUM: x${{ matrix.node.minimum }}y
+    #|          JOINED: ${{ join(fromJSON('[1e16,2]')) }}
     #|          FLAGS: ${{ join(matrix.node.flags, ' | ') }}
     #|          EMPTY: ${{ join(fromJSON('[]')) }}
     #|          SINGLE: ${{ join('abc', '|') }}
@@ -60,7 +66,9 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|          test "$EVENT_PATH" = "$GITHUB_EVENT_PATH"
     #|          grep -F '"version":"1.2.3"' "$GITHUB_EVENT_PATH"
     #|          test "$IN_RANGE" = true
-    #|          test "$JOINED" = a,b
+    #|          test "$LABEL" = self-hosted
+    #|          test "$MINIMUM" = xy
+    #|          test "$JOINED" = '1E+16,2'
     #|          test "$FLAGS" = 'strict | legacy'
     #|          test -z "$EMPTY"
     #|          test "$SINGLE" = abc
@@ -68,7 +76,10 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|          echo 'result=ok' >> "$GITHUB_OUTPUT"
     #|      - env:
     #|          RESULT: ${{ steps.verify.outputs.result }}
-    #|        run: test "$RESULT" = ok
+    #|          MISSING_CONCLUSION: ${{ steps.missing_minimum.conclusion }}
+    #|        run: |
+    #|          test "$RESULT" = ok
+    #|          test "$MISSING_CONCLUSION" = skipped
     #|  skipped:
     #|    if: '!inputs.enabled'
     #|    runs-on: self-hosted
@@ -138,9 +149,16 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
               })
               .unwrap()
             assert_eq(assignment.job.id, "consume")
+            assert_eq(assignment.job.name, "consume on self-hosted")
+            assert_eq(assignment.job.runs_on, ["self-hosted"])
             assert_eq(
               assignment.job.matrix["node"],
-              ({ "version": 20, "flags": ["strict", "legacy"] } : Json),
+              (
+                {
+                  "version": 20,
+                  "labels": ["self-hosted", "linux"],
+                  "flags": ["strict", "legacy"],
+                } : Json),
             )
           }
         }
