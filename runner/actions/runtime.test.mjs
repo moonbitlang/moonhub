@@ -78,6 +78,25 @@ test('missing matrix fields stay null until interpolation', () => {
   assert.equal(evaluate('env.MISSING', context), '');
 });
 
+test('string functions convert missing matrix fields and null to empty strings', () => {
+  const context = { matrix: { channel: 'stable' } };
+  for (const argument of ['matrix.release', 'null']) {
+    const cases = [
+      [`contains('stable', ${argument})`, true],
+      [`contains(${argument}, 'null')`, false],
+      [`startsWith('stable', ${argument})`, true],
+      [`startsWith(${argument}, 'null')`, false],
+      [`endsWith('stable', ${argument})`, true],
+      [`endsWith(${argument}, 'null')`, false],
+      [`format(${argument})`, ''],
+      [`format('x{0}y', ${argument})`, 'xy'],
+      [`contains(fromJSON('["stable"]'), ${argument})`, false],
+      [`contains(fromJSON('[null]'), ${argument})`, true],
+    ];
+    for (const [expression, expected] of cases) assert.equal(evaluate(expression, context), expected, expression);
+  }
+});
+
 test('join handles default and custom separators and Actions string conversion', () => {
   const cases = [
     [`join(fromJSON('["a","b"]'))`, 'a,b'],
@@ -397,6 +416,24 @@ test('typed matrix values reach scripts inputs and conditions without recursive 
   const result=await execute({...config,matrix,step:{id:'matrix',run:'test "$TARGET" = native; test "$LITERAL" = \'${{ secrets.NEVER }}\'',shell:'sh',working_directory:'.',templates:{'env:TARGET':'${{ matrix.target }}','env:LITERAL':'${{ matrix.literal }}',if:'matrix.enabled == true'},env:{}}});
   assert.equal(result.code,0);
   assert.equal(result.state.steps.matrix.conclusion,'success');
+});
+
+test('a step runs when contains searches for a missing matrix field', async t => {
+  const { config } = await fixture(t);
+  const result = await execute({
+    ...config,
+    matrix: { channel: 'stable' },
+    step: {
+      id: 'release',
+      run: 'echo selected=yes >> "$GITHUB_OUTPUT"',
+      shell: 'sh',
+      working_directory: '.',
+      templates: { if: "contains('stable', matrix.release)" },
+    },
+  });
+  assert.equal(result.code, 0);
+  assert.equal(result.conclusion, 'success');
+  assert.equal(result.state.steps.release.outputs.selected, 'yes');
 });
 
 test('Artifact bridge keeps runtime credentials private and canonicalizes upstream output URLs', async t => {
