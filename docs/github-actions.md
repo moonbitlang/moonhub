@@ -139,6 +139,21 @@ persisted workflow concurrency.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
 Unsupported public syntax is not passed literally to the shell.
 
+Missing `matrix` fields evaluate to `null` and interpolate as empty strings.
+Read matrix array elements with literal string indexes such as
+`matrix.node.labels['0']`.
+An array index must be zero or a positive decimal integer without leading zeros.
+Invalid and out-of-range indexes count as missing fields.
+
+The four relational operators compare strings by Unicode code point using
+case-insensitive ordinal comparison. Mixed primitive types are coerced to
+numbers. `null`, `false`, and empty or whitespace-only strings become `0`.
+`true` becomes `1`. Decimal text supports a sign, fraction and exponent.
+Lowercase `0x` and `0o` prefixes use signed 32-bit two's-complement values.
+Invalid numeric text such as `0b10` makes all four operators return false.
+An object or array reference compares to itself with `<=` and `>=`. Other
+comparisons involving objects or arrays return false.
+
 Step `if` has the implicit `success()` condition unless it explicitly calls a
 status function. Failed steps skip subsequent ordinary steps; `always()` / `failure()`
 can run cleanup. A failure still makes the job fail after cleanup. `continue-on-error`
