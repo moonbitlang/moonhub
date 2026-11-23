@@ -85,6 +85,7 @@ test('join handles default and custom separators and Actions string conversion',
     ["join(fromJSON('[]'))", ''],
     ["join('abc', '|')", 'abc'],
     ["join('abc', fromJSON('invalid'))", 'abc'],
+    ["join(fromJSON('[1]'), fromJSON('invalid'))", '1'],
     [`join(fromJSON('["a",2,true,null,[],{}]'), '|')`, 'a|2|true||Array|Object'],
     [`join(fromJSON('["a","b"]'), '')`, 'ab'],
     [`join(fromJSON('["a","b"]'), fromJSON('[]'))`, 'a,b'],
@@ -95,6 +96,23 @@ test('join handles default and custom separators and Actions string conversion',
   assert.throws(() => evaluate('join(inputs.items, inputs.separator)', {
     inputs: { items: Array(1500).fill(''), separator: '字'.repeat(256) },
   }), /join\(\) output exceeds 1 MiB/);
+});
+
+test('join formats numbers with 15 significant digits and rounds exact midpoints to even', () => {
+  const cases = [
+    ['join(1e16)', '1E+16'],
+    ["join(fromJSON('[1e16,2]'))", '1E+16,2'],
+    [`join(fromJSON('["a","b"]'), 1e-5)`, 'a1E-05b'],
+    ["join(fromJSON('[1e-4,1e14,1e15,1e-100,5e-324,1.7976931348623157e308]'))",
+      '0.0001,100000000000000,1E+15,1E-100,4.94065645841247E-324,1.79769313486232E+308'],
+    ["join(fromJSON('[100000000000000.5,100000000000001.5,-100000000000000.5]'))",
+      '100000000000000,100000000000002,-100000000000000'],
+    ["join(fromJSON('[1.000030517578125,1234567890123445,999999999999999.5]'))",
+      '1.00003051757812,1.23456789012344E+15,1E+15'],
+    ["join(fromJSON('[100000000000000.51,1.2345678901234567,-0,1e400,-1e400]'))",
+      '100000000000001,1.23456789012346,-0,Infinity,-Infinity'],
+  ];
+  for (const [expression, expected] of cases) assert.equal(evaluate(expression), expected, expression);
 });
 
 test('file commands retain multiline/CRLF values and reject malformed input', () => {

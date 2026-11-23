@@ -154,6 +154,12 @@ Invalid numeric text such as `0b10` makes all four operators return false.
 An object or array reference compares to itself with `<=` and `>=`. Other
 comparisons involving objects or arrays return false.
 
+`join()` uses `G15` for numbers in the input, array elements and separator. It
+keeps up to 15 significant digits and rounds exact midpoints to even. It uses
+fixed-point notation for exponents from `-4` through `14` and uppercase `E`
+with a signed exponent of at least two digits elsewhere. It evaluates the
+separator only when joining two or more elements.
+
 Step `if` has the implicit `success()` condition unless it explicitly calls a
 status function. Failed steps skip subsequent ordinary steps; `always()` / `failure()`
 can run cleanup. A failure still makes the job fail after cleanup. `continue-on-error`
