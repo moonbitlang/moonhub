@@ -76,9 +76,23 @@ function* expression(source, context = {}, implicitSuccess = false) {
       if (type === '!=') return !equal(left, right);
       return compare(type, left, right);
     }
-    const args = [];
-    for (const argument of b) args.push(yield* visit(argument));
     if (type === 'call') {
+      if (a === 'join' && (b.length === 1 || b.length === 2)) {
+        const items = yield* visit(b[0]);
+        if (!Array.isArray(items)) return isPrimitive(items) ? string(items) : '';
+        const separator = items.length > 1 && b.length === 2 ? yield* visit(b[1]) : ',';
+        const delimiter = isPrimitive(separator) ? string(separator) : ',';
+        const values = items.map(item => {
+          if (isPrimitive(item)) return string(item);
+          return Array.isArray(item) ? 'Array' : 'Object';
+        });
+        let bytes = Buffer.byteLength(delimiter) * Math.max(0, values.length - 1);
+        for (const value of values) bytes += Buffer.byteLength(value);
+        if (bytes > 1048576) throw new Error('join() output exceeds 1 MiB');
+        return values.join(delimiter);
+      }
+      const args = [];
+      for (const argument of b) args.push(yield* visit(argument));
       if (['success', 'failure', 'cancelled', 'always'].includes(a) && args.length === 0) {
         return a === 'always' || (a === 'success' ? !context.failure && !context.cancelled : Boolean(context[a]));
       }

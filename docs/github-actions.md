@@ -128,7 +128,7 @@ A captured branch name or output containing `${{...}}` is never recursively pars
 The current expression interpreter supports string, number, boolean and null
 literals, field / string-key indexing, parentheses, `!`, `<`, `<=`, `>`, `>=`,
 `==`, `!=`, `&&`, `||`, and `success`, `failure`, `cancelled`, `always`,
-`fromJSON`, `toJSON`, `contains`, `startsWith`, `endsWith`, `format`.
+`fromJSON`, `toJSON`, `contains`, `startsWith`, `endsWith`, `format`, `join`.
 Boolean operators short circuit. Contexts are `github`, `runner`, `env`, `steps`,
 `needs`, `matrix`, `strategy`, workflow dispatch `inputs`, and repository `vars`.
 Composite Actions temporarily use their own `inputs`. See

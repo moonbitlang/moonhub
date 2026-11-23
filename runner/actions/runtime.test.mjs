@@ -50,6 +50,25 @@ test('relational expressions use Actions coercion and precedence', () => {
   for (const [expression, expected] of cases) assert.equal(evaluate(expression), expected, expression);
 });
 
+test('join handles default and custom separators and Actions string conversion', () => {
+  const cases = [
+    [`join(fromJSON('["a","b"]'))`, 'a,b'],
+    [`JOIN(fromJSON('["a","b"]'), ' | ')`, 'a | b'],
+    ["join(fromJSON('[]'))", ''],
+    ["join('abc', '|')", 'abc'],
+    ["join('abc', fromJSON('invalid'))", 'abc'],
+    [`join(fromJSON('["a",2,true,null,[],{}]'), '|')`, 'a|2|true||Array|Object'],
+    [`join(fromJSON('["a","b"]'), '')`, 'ab'],
+    [`join(fromJSON('["a","b"]'), fromJSON('[]'))`, 'a,b'],
+  ];
+  for (const [expression, expected] of cases) assert.equal(evaluate(expression), expected, expression);
+  assert.throws(() => evaluate('join()'), /Unsupported Actions function/);
+  assert.throws(() => evaluate("join('a', ',', 'b')"), /Unsupported Actions function/);
+  assert.throws(() => evaluate('join(inputs.items, inputs.separator)', {
+    inputs: { items: Array(1500).fill(''), separator: '字'.repeat(256) },
+  }), /join\(\) output exceeds 1 MiB/);
+});
+
 test('file commands retain multiline/CRLF values and reject malformed input', () => {
   assert.deepEqual({ ...parseFileCommands('ONE=first=second\r\nMULTI<<END\r\na\r\nb\r\nEND\r\n') }, { ONE: 'first=second', MULTI: 'a\nb' });
   for (const text of ['X<<END\nvalue', 'X<<\n', '=bad', 'bare', 'X=\0']) assert.throws(() => parseFileCommands(text));
