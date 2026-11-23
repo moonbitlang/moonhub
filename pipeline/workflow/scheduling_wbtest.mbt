@@ -70,38 +70,67 @@ test "object matrix axes expand and match include and exclude by value" {
     #|jobs:
     #|  build:
     #|    name: node ${{ matrix.node.version }} ${{ matrix.variant }}
-    #|    runs-on: ${{ matrix.node.runner }}
+    #|    runs-on: ${{ matrix.node.labels['0'] }}
     #|    strategy:
     #|      matrix:
     #|        node:
-    #|          - {version: 18, runner: debian-12}
-    #|          - {version: 20, runner: ubuntu-24.04, options: {flags: [strict], stable: true}}
+    #|          - {Version: 18, version: 19, labels: [debian-12]}
+    #|          - {version: 20, labels: [ubuntu-24.04], options: {flags: [strict], stable: true}}
     #|        variant: [a, b]
     #|        exclude:
-    #|          - {variant: b, node: {options: {stable: true, flags: [strict]}, runner: ubuntu-24.04, version: 20}}
+    #|          - {variant: b, node: {options: {stable: true, flags: [strict]}, labels: [ubuntu-24.04], version: 20}}
     #|        include:
-    #|          - {node: {options: {stable: true, flags: [strict]}, version: 20, runner: ubuntu-24.04}, config: {debug: true}}
-    #|          - {variant: b, node: {version: 22, runner: ubuntu-24.04}}
+    #|          - {node: {labels: [debian-12], version: 19, Version: 18}, config: {debug: false}}
+    #|          - {node: {options: {stable: true, flags: [strict]}, version: 20, labels: [ubuntu-24.04]}, config: {debug: true}}
+    #|          - {variant: b, node: {version: 22, labels: [ubuntu-24.04]}}
     #|    steps:
-    #|      - {name: 'version ${{ matrix.node.version }}', run: echo build}
+    #|      - {name: "version ${{ matrix.node.version }} on ${{ matrix.node.labels['0'] }}", run: echo build}
   let jobs = parse(source).jobs
   assert_eq(jobs.map(job => job.name), [
     "node 18 a", "node 18 b", "node 20 a", "node 22 b",
   ])
   assert_eq(jobs[0].runs_on, ["self-hosted", "linux", "x64", "debian-12"])
-  assert_eq(jobs[2].steps[0].name, "version 20")
+  assert_eq(jobs[0].steps[0].name, "version 18 on debian-12")
+  assert_eq(jobs[2].steps[0].name, "version 20 on ubuntu-24.04")
   assert_eq(
     jobs[2].matrix["node"],
     (
       {
         "version": 20,
-        "runner": "ubuntu-24.04",
+        "labels": ["ubuntu-24.04"],
         "options": { "flags": ["strict"], "stable": true },
       } : Json),
   )
   assert_eq(jobs[2].matrix["config"], ({ "debug": true } : Json))
-  assert_true(jobs[0].matrix.get("config") is None)
+  assert_eq(jobs[0].matrix["config"], ({ "debug": false } : Json))
   assert_true(jobs[3].matrix.get("config") is None)
+  expect_invalid(
+    source.replace_all(
+      old="runs-on: ${{ matrix.node.labels['0'] }}",
+      new="runs-on: ${{ matrix.node.labels['1'] }}",
+    ),
+    "runs-on must be a nonempty string",
+  )
+}
+
+///|
+test "scheduling reads only canonical in-range array indexes" {
+  let context : Map[String, Json] = {
+    "matrix": { "node": { "labels": ["self-hosted", "linux"] } },
+  }
+  assert_eq(
+    scheduling_template("${{ matrix.node.labels['1'] }}", context),
+    "linux",
+  )
+  for
+    key in [
+      "", "2", "01", "-1", "+1", "1.0", "1e0", " 1", "999999999999999999999",
+    ] {
+    assert_eq(
+      scheduling_template("x${{ matrix.node.labels['\{key}'] }}y", context),
+      "xy",
+    )
+  }
 }
 
 ///|

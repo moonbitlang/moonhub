@@ -102,18 +102,21 @@ fn expand_matrix(
       entry.iter().all(field => row.get(field.0) == Some(field.1))
     })
   })
-  // Includes merge into compatible original combinations only. Standalone
-  // include entries must not become candidates for subsequent include merging.
-  let original = rows.map(row => row.copy())
+  // Includes only consider the original combinations. Preserve their axis
+  // values, including the field order of axis objects.
+  let original_count = rows.length()
   for entry in matrix_entries(fields.get("include"), "matrix.include") {
     let mut matched = false
-    for i, base in original {
+    for i in 0..<original_count {
+      let row = rows[i]
       if axis_names.all(key => {
-          entry.get(key) is None || entry.get(key) == base.get(key)
+          entry.get(key) is None || entry.get(key) == row.get(key)
         }) {
         matched = true
         for key, value in entry {
-          rows[i][key] = value
+          if !axis_names.contains(key) {
+            row[key] = value
+          }
         }
       }
     }
