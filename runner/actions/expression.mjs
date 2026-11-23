@@ -60,10 +60,11 @@ function* expression(source, context = {}, implicitSuccess = false) {
     if (type === 'path') {
       const root = Object.keys(context).find(key => key.toLowerCase() === a[0]);
       if (root === undefined) throw new Error(`Unsupported Actions context: ${a[0]}`);
+      const missing = a[0] === 'matrix' ? null : '';
       return a.slice(1).reduce((value, key) => {
-        if (value == null) return '';
+        if (value == null) return missing;
         const field = root === 'env' && !windows ? key : Object.keys(Object(value)).find(name => name.toLowerCase() === key.toLowerCase());
-        return field !== undefined && Object.hasOwn(Object(value), field) ? value[field] : '';
+        return field !== undefined && Object.hasOwn(Object(value), field) ? value[field] : missing;
       }, context[root]);
     }
     if (type === 'not') return !truthy(yield* visit(a));
@@ -125,13 +126,52 @@ export function truthy(value) { return value !== false && value !== null && valu
 function isPrimitive(value) {
   return value == null || ['boolean', 'number', 'string'].includes(typeof value);
 }
+function comparisonNumber(value) {
+  if (typeof value !== 'string') return Number(value);
+  const text = value.replace(/^\p{White_Space}+|(?<!\p{White_Space})\p{White_Space}+$/gu, '');
+  if (text === '') return 0;
+  // Double.TryParse accepts trailing NULs after the decimal number.
+  const decimal = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\0*$/.exec(text);
+  if (decimal) return Number(decimal[1]);
+  if (/^[+-]?infinity$/i.test(text)) return text.startsWith('-') ? -Infinity : Infinity;
+  if (/^(?:0x[0-9a-fA-F]+|0o[0-7]+)$/.test(text)) {
+    const integer = Number(text);
+    return integer <= 0xffffffff ? integer | 0 : NaN;
+  }
+  return NaN;
+}
+
+function ordinalUppercase(character) {
+  const codePoint = character.codePointAt(0);
+  // Ordinal casing excludes dotless i and long s from the ASCII mappings.
+  if (codePoint === 0x0131 || codePoint === 0x017f) return codePoint;
+  // The simple Greek iota-subscript mappings preserve a single code point.
+  if (codePoint >= 0x1f80 && codePoint <= 0x1fa7 && (codePoint & 0xf) < 8) return codePoint + 8;
+  if (codePoint === 0x1fb3 || codePoint === 0x1fc3 || codePoint === 0x1ff3) return codePoint + 9;
+  const uppercase = character.toUpperCase();
+  const mapped = uppercase.codePointAt(0);
+  return uppercase.length === (mapped > 0xffff ? 2 : 1) ? mapped : codePoint;
+}
+
+function compareOrdinalIgnoreCase(left, right) {
+  const rightCharacters = right[Symbol.iterator]();
+  for (const leftCharacter of left) {
+    const next = rightCharacters.next();
+    if (next.done) return 1;
+    if (leftCharacter === next.value) continue;
+    const difference = ordinalUppercase(leftCharacter) - ordinalUppercase(next.value);
+    if (difference !== 0) return difference;
+  }
+  return rightCharacters.next().done ? 0 : -1;
+}
+
 function compare(operator, left, right) {
   if (typeof left === 'string' && typeof right === 'string') {
-    left = left.toUpperCase();
-    right = right.toUpperCase();
+    left = compareOrdinalIgnoreCase(left, right);
+    right = 0;
   } else if (isPrimitive(left) && isPrimitive(right)) {
-    left = Number(left);
-    right = Number(right);
+    left = comparisonNumber(left);
+    right = comparisonNumber(right);
   } else {
     return left === right && (operator === '<=' || operator === '>=');
   }

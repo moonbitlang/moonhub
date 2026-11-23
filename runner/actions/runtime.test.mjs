@@ -34,20 +34,48 @@ test('expressions parse without JavaScript evaluation and interpolate once', () 
 });
 
 test('relational expressions use Actions coercion and precedence', () => {
+  const context = { matrix: { node: { labels: [] }, other: [] } };
   const cases = [
     ['-1.5e2 < 0', true],
     ['2 <= 2 && 5 > 2 && 5 >= 5', true],
     ['2 > 5 || 3 >= 4', false],
     ["'a' < 'B' && 'B' >= 'b' && 'a' < '_'", true],
     ["'10' < '2'", true],
+    ["'ß' <= 'ss'", false],
+    ["'ᾀ' <= 'ᾈ' && 'ᾀ' >= 'ᾈ' && 'ᾳ' >= 'ᾼ'", true],
+    ["'ı' > 'I' && 'ſ' > 'S'", true],
+    ["'\u{10428}' <= '\u{10400}' && '\u{10428}' >= '\u{10400}' && '\u{10428}' > '\uE000'", true],
     ["'1.5' > true && null <= '0' && '' <= false", true],
+    ["' +.25e+1 ' > 2 && '-2.' <= -2 && '1E2' >= 100", true],
+    ["'\u00851' >= 1 && '2\0' > 1", true],
+    ["'\uFEFF1' >= 1", false],
+    ["'+Infinity' > 1 && '-infinity' < -1", true],
+    ["'0b10' > 1", false],
+    ["'0x7fffffff' >= 2147483647 && '0x80000000' <= -2147483648 && '0xffffffff' < 0", true],
+    ["'0o17777777777' >= 2147483647 && '0o20000000000' <= -2147483648 && '0o37777777777' < 0", true],
+    ["'0x100000000' >= 0 || '0x100000000' <= 0 || '0o40000000000' >= 0 || '0o40000000000' <= 0", false],
+    ["'0X10' > 1 || '0O10' > 1 || '+0x10' > 1 || '0o8' > 1", false],
     ["'invalid' >= 0 || 'invalid' <= 0", false],
     ["fromJSON('[]') <= 0 || fromJSON('{}') > 0", false],
+    ['matrix.node <= matrix.node && matrix.node.labels >= matrix.node.labels', true],
+    ['matrix.node < matrix.node || matrix.node.labels > matrix.node.labels || matrix.node.labels <= matrix.other', false],
     ["2 < 3 == true && !0 < 2 || fromJSON('invalid')", true],
     ["false && fromJSON('invalid') < 0 || 3 > 2", true],
     ['2 < 1 < 1', true],
   ];
-  for (const [expression, expected] of cases) assert.equal(evaluate(expression), expected, expression);
+  for (const [expression, expected] of cases) assert.equal(evaluate(expression, context), expected, expression);
+});
+
+test('missing matrix fields stay null until interpolation', () => {
+  const context = { matrix: { node: { labels: ['self-hosted', 'linux'] } }, vars: {}, env: {} };
+  assert.equal(evaluate("matrix.node.minimum < '-1'", context), false);
+  assert.equal(evaluate("matrix.node.labels['1']", context), 'linux');
+  for (const expression of [
+    'matrix.node.minimum', 'matrix.unknown.child', "matrix.node.labels['2']", "matrix.node.labels['01']",
+  ]) assert.equal(evaluate(expression, context), null, expression);
+  assert.equal(interpolate('x${{ matrix.node.minimum }}y', context), 'xy');
+  assert.equal(evaluate('vars.missing', context), '');
+  assert.equal(evaluate('env.MISSING', context), '');
 });
 
 test('join handles default and custom separators and Actions string conversion', () => {
