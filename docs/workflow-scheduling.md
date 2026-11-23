@@ -43,11 +43,13 @@ bytes. Job-level concurrency is not supported.
 ## Static matrices
 
 A strategy requires a literal `matrix` mapping. Axis lists form a Cartesian
-product in YAML order. Values are scalar strings, numbers, booleans or null;
-object axes and dynamic `fromJSON` matrices remain rejected. Includes and excludes
-are lists of scalar mappings. Excludes remove combinations matching all supplied
-axis fields. Each include merges into compatible original combinations without
-overwriting an original axis; an incompatible include adds a standalone job.
+product in YAML order. Axis values can be strings, numbers, booleans, null or
+objects containing other literal values. For example, an axis named `node`
+with an entry `{version: 20}` exposes `matrix.node.version` for that job.
+Includes and excludes also accept objects as values. Excludes remove combinations
+matching all supplied axis fields by value. Each include merges into compatible
+original combinations without overwriting an original axis. An incompatible
+include adds a standalone job.
 Subsequent includes do not merge into standalone included jobs.
 
 Matrix jobs receive deterministic internal keys such as `build[1]`. Their public
@@ -74,8 +76,9 @@ Job-level `continue-on-error: false` retains the default failure behavior.
 Job-level failure tolerance (`true` or expressions) and experimental matrix
 policy remain unsupported.
 
-Limits are 16 logical jobs, 16 axes, 256 combinations per matrix, 256 expanded
-jobs per workflow, 4096 expanded steps and a 1-MiB normalized snapshot.
+Limits are 32 YAML nesting levels, 16 logical jobs, 16 axes, 256 combinations per
+matrix, 256 expanded jobs per workflow, 4096 expanded steps and a 1-MiB normalized
+snapshot.
 Template/format results are charged in UTF-8 bytes before appending, and matrix
 instances consume remaining job/step/plan budgets while they are constructed. The queue
 page distinguishes dependency, concurrency-group and matrix-capacity waits.

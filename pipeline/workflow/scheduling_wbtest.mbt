@@ -64,6 +64,69 @@ test "matrix axes include exclude types and downstream needs expand deterministi
 }
 
 ///|
+test "object matrix axes expand and match include and exclude by value" {
+  let source =
+    #|on: workflow_dispatch
+    #|jobs:
+    #|  build:
+    #|    name: node ${{ matrix.node.version }} ${{ matrix.variant }}
+    #|    runs-on: ${{ matrix.node.runner }}
+    #|    strategy:
+    #|      matrix:
+    #|        node:
+    #|          - {version: 18, runner: debian-12}
+    #|          - {version: 20, runner: ubuntu-24.04, options: {flags: [strict], stable: true}}
+    #|        variant: [a, b]
+    #|        exclude:
+    #|          - {variant: b, node: {options: {stable: true, flags: [strict]}, runner: ubuntu-24.04, version: 20}}
+    #|        include:
+    #|          - {node: {options: {stable: true, flags: [strict]}, version: 20, runner: ubuntu-24.04}, config: {debug: true}}
+    #|          - {variant: b, node: {version: 22, runner: ubuntu-24.04}}
+    #|    steps:
+    #|      - {name: 'version ${{ matrix.node.version }}', run: echo build}
+  let jobs = parse(source).jobs
+  assert_eq(jobs.map(job => job.name), [
+    "node 18 a", "node 18 b", "node 20 a", "node 22 b",
+  ])
+  assert_eq(jobs[0].runs_on, ["self-hosted", "linux", "x64", "debian-12"])
+  assert_eq(jobs[2].steps[0].name, "version 20")
+  assert_eq(
+    jobs[2].matrix["node"],
+    (
+      {
+        "version": 20,
+        "runner": "ubuntu-24.04",
+        "options": { "flags": ["strict"], "stable": true },
+      } : Json),
+  )
+  assert_eq(jobs[2].matrix["config"], ({ "debug": true } : Json))
+  assert_true(jobs[0].matrix.get("config") is None)
+  assert_true(jobs[3].matrix.get("config") is None)
+}
+
+///|
+test "object matrix values obey workflow nesting and expansion bounds" {
+  let prefix = basic_workflow + "\n    strategy:\n      matrix:\n        node: "
+  let axis = Array::makei(17, version => "{version: \{version}}").join(", ")
+  expect_invalid(
+    prefix + "[" + axis + "]\n        shard: [" + axis + "]",
+    "matrix exceeds 256 combinations",
+  )
+  let nested = "{field: ".repeat(32) + "value" + "}".repeat(32)
+  expect_invalid(prefix + "[" + nested + "]", "YAML nesting exceeds 32 levels")
+  let large_object = "[{options: {flag: '" + "字".repeat(6000) + "'}}]"
+  let shards = Array::makei(64, shard => shard.to_string()).join(", ")
+  expect_invalid(
+    prefix + large_object + "\n        shard: [" + shards + "]",
+    "normalized workflow exceeds 1 MiB",
+  )
+  expect_invalid(
+    prefix + "[{options: {flags: ['${{ github.ref }}']}}]",
+    "matrix values must be literal",
+  )
+}
+
+///|
 test "matrix include only does not merge standalone entries and preserves scalar types" {
   let rows = expand_matrix(
     @yaml.Yaml::load_from_string(
@@ -75,7 +138,7 @@ test "matrix include only does not merge standalone entries and preserves scalar
   assert_true(rows[1].get("enabled") is None)
   for
     source in [
-      "axis: []", "axis: [a]\nexclude: [{missing: a}]", "axis: [{object: value}]",
+      "axis: []", "axis: [a]\nexclude: [{missing: a}]", "axis: [[value]]",
     ] {
     try ignore(expand_matrix(@yaml.Yaml::load_from_string(source)[0])) catch {
       InvalidWorkflow(_) => ()

@@ -1,9 +1,12 @@
 ///|
-fn matrix_scalar(value : @yaml.Yaml) -> Json raise InvalidWorkflow {
+fn matrix_value(
+  value : @yaml.Yaml,
+  nested~ : Bool = false,
+) -> Json raise InvalidWorkflow {
   match value {
     String(text) => {
       guard !text.contains("${{") else {
-        raise InvalidWorkflow("matrix values must be literal scalars")
+        raise InvalidWorkflow("matrix values must be literal")
       }
       Json::string(text)
     }
@@ -14,7 +17,11 @@ fn matrix_scalar(value : @yaml.Yaml) -> Json raise InvalidWorkflow {
       }
     Boolean(b) => Json::boolean(b)
     Null => Json::null()
-    _ => raise InvalidWorkflow("matrix axes support scalar values only")
+    Map(fields) =>
+      Json::object(fields.map((_, field) => matrix_value(field, nested=true)))
+    Array(items) if nested =>
+      Json::array(items.map(item => matrix_value(item, nested=true)))
+    _ => raise InvalidWorkflow("matrix entries must be scalars or objects")
   }
 }
 
@@ -30,14 +37,14 @@ fn matrix_entries(
   items.map(item => {
     let fields = yaml_as_obj(item, ctx)
     guard !fields.is_empty() && fields.length() <= 16 else {
-      raise InvalidWorkflow(ctx + " requires 1 to 16 scalar fields")
+      raise InvalidWorkflow(ctx + " requires 1 to 16 fields")
     }
     let row : Map[String, Json] = Map([])
     for key, value in fields {
       guard valid_identifier(key) else {
         raise InvalidWorkflow("invalid matrix key")
       }
-      row[key] = matrix_scalar(value)
+      row[key] = matrix_value(value)
     }
     row
   })
@@ -73,11 +80,12 @@ fn expand_matrix(
     guard rows.length() * items.length() <= 256 else {
       raise InvalidWorkflow("matrix exceeds 256 combinations")
     }
+    let values = items.map(item => matrix_value(item))
     let next : Array[Map[String, Json]] = []
     for row in rows {
-      for item in items {
+      for value in values {
         let row = row.copy()
-        row[name] = matrix_scalar(item)
+        row[name] = value
         next.push(row)
       }
     }

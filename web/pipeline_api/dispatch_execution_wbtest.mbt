@@ -36,6 +36,9 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|    needs: prepare
     #|    if: needs.prepare.outputs.version == inputs.version && github.event.inputs.count == '3.5'
     #|    runs-on: self-hosted
+    #|    strategy:
+    #|      matrix:
+    #|        node: [{version: 20, flags: [strict, legacy]}]
     #|    steps:
     #|      - env:
     #|          VERSION: ${{ needs.prepare.outputs.version }}
@@ -115,6 +118,10 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
               })
               .unwrap()
             assert_eq(assignment.job.id, "consume")
+            assert_eq(
+              assignment.job.matrix["node"],
+              ({ "version": 20, "flags": ["strict", "legacy"] } : Json),
+            )
           }
         }
         let runs = @runtime.list_runs(pool, actor, repo)
