@@ -33,6 +33,23 @@ test('expressions parse without JavaScript evaluation and interpolate once', () 
   for (const expression of ['process.exit()', 'inputs.constructor', 'inputs[true]', 'true;process.exit()', 'unknown()']) assert.throws(() => evaluate(expression, context));
 });
 
+test('relational expressions use Actions coercion and precedence', () => {
+  const cases = [
+    ['-1.5e2 < 0', true],
+    ['2 <= 2 && 5 > 2 && 5 >= 5', true],
+    ['2 > 5 || 3 >= 4', false],
+    ["'a' < 'B' && 'B' >= 'b' && 'a' < '_'", true],
+    ["'10' < '2'", true],
+    ["'1.5' > true && null <= '0' && '' <= false", true],
+    ["'invalid' >= 0 || 'invalid' <= 0", false],
+    ["fromJSON('[]') <= 0 || fromJSON('{}') > 0", false],
+    ["2 < 3 == true && !0 < 2 || fromJSON('invalid')", true],
+    ["false && fromJSON('invalid') < 0 || 3 > 2", true],
+    ['2 < 1 < 1', true],
+  ];
+  for (const [expression, expected] of cases) assert.equal(evaluate(expression), expected, expression);
+});
+
 test('file commands retain multiline/CRLF values and reject malformed input', () => {
   assert.deepEqual({ ...parseFileCommands('ONE=first=second\r\nMULTI<<END\r\na\r\nb\r\nEND\r\n') }, { ONE: 'first=second', MULTI: 'a\nb' });
   for (const text of ['X<<END\nvalue', 'X<<\n', '=bad', 'bare', 'X=\0']) assert.throws(() => parseFileCommands(text));

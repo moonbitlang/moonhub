@@ -40,15 +40,25 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|      matrix:
     #|        node: [{version: 20, flags: [strict, legacy]}]
     #|    steps:
-    #|      - env:
+    #|      - id: bounds
+    #|        run: printf 'min=2\nmax=4\n' >> "$GITHUB_OUTPUT"
+    #|      - id: verify
+    #|        if: inputs.count > fromJSON(steps.bounds.outputs.min) && matrix.node.version >= 20
+    #|        env:
     #|          VERSION: ${{ needs.prepare.outputs.version }}
     #|          COUNT_JSON: ${{ toJSON(inputs.count) }}
     #|          EVENT_PATH: ${{ github.event_path }}
+    #|          IN_RANGE: ${{ fromJSON(steps.bounds.outputs.min) < inputs.count && inputs.count <= fromJSON(steps.bounds.outputs.max) }}
     #|        run: |
     #|          test "$VERSION" = 1.2.3
     #|          test "$COUNT_JSON" = 3.5
     #|          test "$EVENT_PATH" = "$GITHUB_EVENT_PATH"
     #|          grep -F '"version":"1.2.3"' "$GITHUB_EVENT_PATH"
+    #|          test "$IN_RANGE" = true
+    #|          echo 'result=ok' >> "$GITHUB_OUTPUT"
+    #|      - env:
+    #|          RESULT: ${{ steps.verify.outputs.result }}
+    #|        run: test "$RESULT" = ok
     #|  skipped:
     #|    if: '!inputs.enabled'
     #|    runs-on: self-hosted

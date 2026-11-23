@@ -6,7 +6,7 @@ function* expression(source, context = {}, implicitSuccess = false) {
   source = source.trim();
   if (source.startsWith('${{') && source.endsWith('}}')) source = source.slice(3, -2);
   const tokens = [];
-  const pattern = /\s*(?:('(?:[^']|'')*')|(\d+(?:\.\d+)?)|([a-zA-Z_][\w-]*)|(==|!=|&&|\|\||[!().,\[\]]))/gy;
+  const pattern = /\s*(?:('(?:[^']|'')*')|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([a-zA-Z_][\w-]*)|(==|!=|<=|>=|&&|\|\||[!<>().,\[\]]))/gy;
   let offset = 0;
   while (offset < source.length && source.slice(offset).trim()) {
     pattern.lastIndex = offset;
@@ -43,7 +43,7 @@ function* expression(source, context = {}, implicitSuccess = false) {
     if (path.some(part => forbidden.has(part.toLowerCase()))) throw new Error('Invalid context field');
     return ['path', path];
   };
-  const precedence = { '||': 1, '&&': 2, '==': 3, '!=': 3 };
+  const precedence = { '||': 1, '&&': 2, '==': 3, '!=': 3, '<': 4, '<=': 4, '>': 4, '>=': 4 };
   const binary = (minimum, depth = 0) => {
     let left = atom(depth);
     while (precedence[tokens[index]?.[0]] >= minimum && precedence[tokens[index]?.[0]]) {
@@ -69,7 +69,13 @@ function* expression(source, context = {}, implicitSuccess = false) {
     if (type === 'not') return !truthy(yield* visit(a));
     if (type === '&&') { const value = yield* visit(a); return truthy(value) ? yield* visit(b) : value; }
     if (type === '||') { const value = yield* visit(a); return truthy(value) ? value : yield* visit(b); }
-    if (type === '==' || type === '!=') { const same = equal(yield* visit(a), yield* visit(b)); return type === '==' ? same : !same; }
+    if (precedence[type]) {
+      const left = yield* visit(a);
+      const right = yield* visit(b);
+      if (type === '==') return equal(left, right);
+      if (type === '!=') return !equal(left, right);
+      return compare(type, left, right);
+    }
     const args = [];
     for (const argument of b) args.push(yield* visit(argument));
     if (type === 'call') {
@@ -102,6 +108,26 @@ export async function evaluateAsync(source, context = {}, implicitSuccess = fals
   return result.value;
 }
 export function truthy(value) { return value !== false && value !== null && value !== undefined && value !== '' && value !== 0 && !Number.isNaN(value); }
+function isPrimitive(value) {
+  return value == null || ['boolean', 'number', 'string'].includes(typeof value);
+}
+function compare(operator, left, right) {
+  if (typeof left === 'string' && typeof right === 'string') {
+    left = left.toUpperCase();
+    right = right.toUpperCase();
+  } else if (isPrimitive(left) && isPrimitive(right)) {
+    left = Number(left);
+    right = Number(right);
+  } else {
+    return left === right && (operator === '<=' || operator === '>=');
+  }
+  switch (operator) {
+    case '<': return left < right;
+    case '<=': return left <= right;
+    case '>': return left > right;
+    case '>=': return left >= right;
+  }
+}
 function equal(a, b) {
   if (typeof a === typeof b) return typeof a === 'string' ? a.toLowerCase() === b.toLowerCase() : a === b;
   const number = value => value === null || value === '' ? 0 : Number(value);
