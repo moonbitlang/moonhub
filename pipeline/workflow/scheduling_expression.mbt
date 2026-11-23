@@ -248,6 +248,21 @@ fn schedule_string(value : Json) -> String {
 }
 
 ///|
+fn schedule_array_field(items : Array[Json], key : String) -> Json? {
+  guard !key.is_empty() && (key == "0" || !key.has_prefix("0")) else {
+    return None
+  }
+  let length = items.length().to_int64()
+  let mut index = 0L
+  for digit in key {
+    guard digit.is_ascii_digit() else { return None }
+    index = index * 10L + (digit.to_int() - '0'.to_int()).to_int64()
+    guard index < length else { return None }
+  }
+  Some(items[index.to_int()])
+}
+
+///|
 fn ScheduleExpr::evaluate(
   self : ScheduleExpr,
   context : Map[String, Json],
@@ -260,15 +275,15 @@ fn ScheduleExpr::evaluate(
       }
       let mut value : Json = ToJson::to_json(context)
       for part in parts {
-        value = match value {
+        value = (match value {
           Object(fields) =>
             fields
             .iter()
             .find_first(entry => entry.0.to_lower() == part.to_lower())
             .map(entry => entry.1)
-            .unwrap_or(Json::string(""))
-          _ => Json::string("")
-        }
+          Array(items) => schedule_array_field(items, part)
+          _ => None
+        }).unwrap_or(Json::string(""))
       }
       value
     }

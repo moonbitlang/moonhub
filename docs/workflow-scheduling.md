@@ -46,11 +46,16 @@ A strategy requires a literal `matrix` mapping. Axis lists form a Cartesian
 product in YAML order. Axis values can be strings, numbers, booleans, null or
 objects containing other literal values. For example, an axis named `node`
 with an entry `{version: 20}` exposes `matrix.node.version` for that job.
+Arrays nested in an object support zero-based literal string indexes such as
+`matrix.node.labels['0']` in `runs-on`, job names and step display names. Use
+`'0'` or a positive decimal integer without leading zeros. Invalid and
+out-of-range indexes interpolate as empty strings.
 Includes and excludes also accept objects as values. Excludes remove combinations
-matching all supplied axis fields by value. Each include merges into compatible
-original combinations without overwriting an original axis. An incompatible
-include adds a standalone job.
-Subsequent includes do not merge into standalone included jobs.
+matching all supplied axis fields by value. Each matching include adds or updates
+extra fields on compatible original combinations. Original axis objects keep
+their YAML field order, so case-insensitive lookup still uses the first matching
+field. An incompatible include adds a standalone job. Only the original
+combinations are eligible for later includes.
 
 Matrix jobs receive deterministic internal keys such as `build[1]`. Their public
 `github.job` / `GITHUB_JOB` remains the logical key `build`. The snapshot and wire
