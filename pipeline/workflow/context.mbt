@@ -169,7 +169,14 @@ pub fn resolve_context(
       }
       { ..step, env, inputs, }
     })
-    { ..job, steps, }
+    {
+      ..job,
+      steps,
+      reusable_call: job.reusable_call.map(call => {
+        ..call,
+        definition: resolve_context(call.definition, context),
+      }),
+    }
   })
   let result = { ..workflow, jobs, }
   guard @utf8.encode(ToJson::to_json(result).stringify()).length() <= 1048576 else {

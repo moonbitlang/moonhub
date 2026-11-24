@@ -135,7 +135,8 @@ Composite Actions temporarily use their own `inputs`. See
 [dispatch inputs](dispatch-inputs.md) for typed values and the captured event file,
 and [repository variables](repository-variables.md) for public configuration snapshots.
 See [workflow scheduling](workflow-scheduling.md) for static and deferred matrix expansion, job failure policies, and
-persisted workflow/job concurrency.
+persisted workflow/job concurrency. [Local reusable workflows](reusable-workflows.md)
+run callees from the caller’s pinned commit with typed inputs and permission ceilings.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
 Unsupported public syntax is not passed literally to the shell.
 

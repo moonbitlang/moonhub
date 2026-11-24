@@ -13,6 +13,9 @@ pub struct Triggers {
   schedules : Array[Schedule]
   dispatch : Bool
   inputs : Array[DispatchInput]
+  reusable : Bool
+  call_inputs : Array[DispatchInput]
+  call_outputs : Map[String, String]
   push : Bool
   pull_request : Bool
   release : Bool
@@ -108,10 +111,17 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     fields,
     [
       "push", "pull_request", "workflow_dispatch", "schedule", "release", "repository_dispatch",
-      "workflow_run",
+      "workflow_run", "workflow_call",
     ],
     "on",
   )
+  let call_options = match fields.get("workflow_call") {
+    None | Some(Null) => Map([])
+    Some(value) => yaml_as_obj(value, "on.workflow_call")
+  }
+  check_fields(call_options, ["inputs", "outputs"], "on.workflow_call")
+  let call_inputs = parse_call_inputs(call_options.get("inputs"))
+  let call_outputs = parse_call_outputs(call_options.get("outputs"))
   let dispatch_options = match fields.get("workflow_dispatch") {
     None | Some(Null) => Map([])
     Some(value) => yaml_as_obj(value, "on.workflow_dispatch")
@@ -206,6 +216,9 @@ fn parse_trigger(value : @yaml.Yaml?) -> Triggers raise InvalidWorkflow {
     schedules: parse_schedules(fields.get("schedule")),
     dispatch: fields.contains("workflow_dispatch"),
     inputs,
+    reusable: fields.contains("workflow_call"),
+    call_inputs,
+    call_outputs,
     push: fields.contains("push"),
     pull_request: fields.contains("pull_request"),
     release: fields.contains("release"),
