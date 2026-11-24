@@ -1,5 +1,11 @@
 # Job outputs, needs and conditions
 
+Output templates are checked for syntax and allowed contexts during planning;
+their values are evaluated only after execution and post handlers. They support
+`join()`, `fromJSON()`, `toJSON()` and all four relational operators, including
+when the values depend on step outputs. Secret references and unavailable
+contexts remain forbidden. Existing output size limits and masking still apply.
+
 Definition version 4 adds job dataflow to the downloaded Actions runtime. The
 runner resolves declared job output templates after normal steps and Action post
 handlers. Its completion report carries the resulting string map. The coordinator

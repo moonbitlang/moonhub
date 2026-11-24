@@ -550,7 +550,12 @@ fn parse_job(
     permissions,
     "\{ctx}.permissions",
   )
+  let outputs = parse_job_outputs(fields.get("outputs"))
   {
+    // Require the updated runtime for literal numeric index expressions.
+    // Persist this decision; old snapshots decode it as false on rerun.
+    compatibility_runtime: outputs.values().any(needs_index_runtime) ||
+    steps.any(step => step.templates.values().any(needs_index_runtime)),
     id,
     name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
       id,
@@ -560,7 +565,7 @@ fn parse_job(
       fields.get("if"),
       yaml_as_string_list(fields.get("needs"), "\{ctx}.needs"),
     ),
-    outputs: parse_job_outputs(fields.get("outputs")),
+    outputs,
     runs_on,
     matrix: Map([]),
     strategy: Map([]),

@@ -36,7 +36,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|    needs: prepare
     #|    if: needs.prepare.outputs.version == inputs.version && github.event.inputs.count == '3.5'
     #|    name: consume on ${{ matrix.node.labels['0'] }}
-    #|    runs-on: ${{ matrix.node.labels['0'] }}
+    #|    runs-on: ${{ matrix.node.labels }}
     #|    strategy:
     #|      matrix:
     #|        node: [{version: 20, labels: [self-hosted, linux], flags: [strict, legacy]}]
@@ -53,7 +53,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
     #|          COUNT_JSON: ${{ toJSON(inputs.count) }}
     #|          EVENT_PATH: ${{ github.event_path }}
     #|          IN_RANGE: ${{ fromJSON(steps.bounds.outputs.min) < inputs.count && inputs.count <= fromJSON(steps.bounds.outputs.max) }}
-    #|          LABEL: ${{ matrix.node.labels['0'] }}
+    #|          LABEL: ${{ matrix.node.labels[0] }}
     #|          MINIMUM: x${{ matrix.node.minimum }}y
     #|          JOINED: ${{ join(fromJSON('[1e16,2]')) }}
     #|          FLAGS: ${{ join(matrix.node.flags, ' | ') }}
@@ -107,7 +107,14 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
         let mut assignment = first
         let mut token = lease
         for i = 0; i < 2; i = i + 1 {
-          assert_eq(assignment.version, @protocol.variable_assignment_version)
+          assert_eq(
+            assignment.version,
+            if i == 0 {
+              @protocol.variable_assignment_version
+            } else {
+              @protocol.compatibility_assignment_version
+            },
+          )
           let workspace = root + "/dispatch-" + i.to_string()
           @fs.mkdir(workspace)
           let report = @runner.run(
@@ -150,7 +157,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
               .unwrap()
             assert_eq(assignment.job.id, "consume")
             assert_eq(assignment.job.name, "consume on self-hosted")
-            assert_eq(assignment.job.runs_on, ["self-hosted"])
+            assert_eq(assignment.job.runs_on, ["self-hosted", "linux"])
             assert_eq(
               assignment.job.matrix["node"],
               (

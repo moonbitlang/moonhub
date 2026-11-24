@@ -69,6 +69,7 @@ pub struct EventFilters {
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct Job {
+  compatibility_runtime : Bool
   id : String
   name : String
   needs : Array[String]
