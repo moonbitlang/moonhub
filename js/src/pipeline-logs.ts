@@ -1,6 +1,6 @@
 export function mountPipelineLogs(signal: AbortSignal) {
   type StepUpdate = { step_id: string; state: string; exit_code: number };
-  type JobUpdate = { id: string; attempt_id: string; state: string; result: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
+  type JobUpdate = { id: string; attempt_id: string; state: string; result: string; actual_result?: string; scheduling_error?: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
   type RunUpdate = { state: string; result: string; jobs: JobUpdate[] };
   type LogChunk = { id: string; text: string; step_id: string };
   type LogPage = { chunks: LogChunk[]; next_cursor: string; has_more: boolean; complete: boolean };
@@ -187,6 +187,8 @@ export function mountPipelineLogs(signal: AbortSignal) {
     }
     function updateBadge(badge: HTMLElement, value: string) { if (badge.dataset.state !== value) { badge.dataset.state = value; badge.textContent = label(value); } }
     function updateStatus(update: RunUpdate) {
+      // Expansion adds durable job panels after the initial page was rendered.
+      if (update.jobs.some(job => !jobs.has(job.id))) { window.location.reload(); return; }
       run!.dataset.runPhase = update.state;
       updateBadge(run!.querySelector<HTMLElement>('[data-run-state]')!, update.result);
       const cancel = run!.querySelector<HTMLElement>('[data-run-cancel]'), rerun = run!.querySelector<HTMLElement>('[data-run-rerun]');
@@ -194,6 +196,10 @@ export function mountPipelineLogs(signal: AbortSignal) {
       for (const status of update.jobs) {
         const job = jobs.get(status.id); if (!job) continue;
         updateBadge(job.element.querySelector<HTMLElement>('[data-job-state]')!, status.result);
+        const diagnostic = job.element.querySelector<HTMLElement>('[data-scheduling-error]');
+        if (diagnostic) { diagnostic.textContent = status.scheduling_error ?? ''; diagnostic.hidden = !status.scheduling_error; }
+        const allowed = job.element.querySelector<HTMLElement>('[data-allowed-failure]');
+        if (allowed) allowed.hidden = !(status.actual_result === 'failure' && status.result === 'success');
         const nav = navigation.find(link => link.dataset.jobSelect === status.id)?.querySelector<HTMLElement>('[data-nav-job-state]'); if (nav) updateBadge(nav, status.result);
         const reason = job.element.querySelector<HTMLElement>('[data-queue-reason]')!; reason.textContent = status.reason; reason.hidden = !status.reason;
         const labels = job.element.querySelector<HTMLElement>('[data-required-labels]'); if (labels) labels.hidden = !status.reason;

@@ -1,4 +1,4 @@
-# Workflow concurrency and static matrices
+# Workflow and job scheduling
 
 This adds server-side scheduling for the two contracts used by openseek's Editor
 workflow. The original `editor.yml` at openseek commit
@@ -8,13 +8,15 @@ independent browser-correctness job, with the original workflow concurrency.
 
 ## Workflow concurrency
 
-Workflow-level `concurrency` accepts a string group or a mapping with `group`
-and `cancel-in-progress`. The latter is a boolean or a boolean expression;
+Workflow-level and job-level `concurrency` accept a string group or a mapping
+with `group`, `cancel-in-progress` and optional `queue: max`. The latter is a boolean or a boolean expression;
 omission defaults to false. Groups are case-insensitive and repository-scoped,
 including when multiple workflow files intentionally use the same group.
 
-The coordinator saves group admission in `pipeline_run_schedule` within the
-snapshot transaction. Each group has one admitted run and at most one pending
+The coordinator saves admission in `pipeline_concurrency_slot`; the historical
+`pipeline_run_schedule` query is preserved as a view. Workflow admission happens
+in the snapshot transaction; job admission happens after its dependencies and
+condition pass, and after its workflow is admitted. Each group has one admitted run and at most one pending
 run. New arrivals cancel and replace the previous pending run. With
 `cancel-in-progress: true`, the admitted run is cancelled too. Its slot remains
 occupied until active attempts complete or their leases expire, so a replacement
@@ -38,11 +40,19 @@ literal-string indexes, `!`, `==`, `!=`, `&&`, `||`, parentheses, `contains`,
 string comparisons ignore case, and booleans short-circuit. Templates interpolate
 once; values containing expression markers are not evaluated recursively.
 Unsupported functions/syntax fail explicitly. Group results require 1-256 UTF-8
-bytes. Job-level concurrency is not supported.
+bytes. Job groups additionally accept direct `needs`, `matrix` and `strategy`
+contexts. Workflow and job groups share the repository namespace. A job using its
+own workflow's group fails with a diagnostic instead of waiting for itself.
+
+`queue: max` preserves up to 100 pending entries in FIFO admission order. The
+101st waiter is cancelled without displacing existing work. It cannot be combined
+with `cancel-in-progress` other than literal false. The default remains one pending
+entry with replacement. Both modes retain a cancelled holder until execution is
+fenced; leases and restart recovery use the same durable admission records.
 
 ## Static matrices
 
-A strategy requires a literal `matrix` mapping. Axis lists form a Cartesian
+A static strategy uses a literal `matrix` mapping. Axis lists form a Cartesian
 product in YAML order. Axis values can be strings, numbers, booleans, null or
 objects containing other literal values. For example, an axis named `node`
 with an entry `{version: 20}` exposes `matrix.node.version` for that job.
@@ -50,7 +60,7 @@ Arrays nested in an object support zero-based literal string indexes such as
 `matrix.node.labels['0']` in `runs-on`, job names and step display names. Use
 `'0'` or a positive decimal integer without leading zeros. Invalid and
 out-of-range indexes interpolate as empty strings.
-Includes and excludes also accept objects as values. Excludes remove combinations
+Includes and excludes also accept objects and nested arrays as values. Excludes remove combinations
 matching all supplied axis fields by value. Each matching include adds or updates
 extra fields on compatible original combinations. Original axis objects keep
 their YAML field order, so case-insensitive lookup still uses the first matching
@@ -77,9 +87,37 @@ A downstream `needs: build` expands to every instance. It waits until the entire
 matrix finishes; if any instance failed/cancelled/skipped, the ordinary dependent
 job is skipped. Cycles and unknown logical dependencies remain rejected. Job-level
 conditions and outputs are described in [job dataflow](job-dataflow.md).
-Job-level `continue-on-error: false` retains the default failure behavior.
-Job-level failure tolerance (`true` or expressions) and experimental matrix
-policy remain unsupported.
+Job-level `continue-on-error` accepts a boolean or an expression using direct
+`needs`, `matrix`, `strategy`, captured `github`, `inputs` and `vars`. It resolves
+once before admission. A true policy records an actual `failure` and an effective
+`success`. Dependencies, fail-fast and run aggregation use the effective result;
+worker attempts, logs and the run page retain the failure. Timeouts, lost workers
+and cancellation are not converted to success. Failed-only reruns can rerun an
+allowed failure too.
+
+## Dynamic matrices
+
+A complete expression such as
+`strategy.matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}` defers expansion
+until dependencies complete and the job condition passes. The expression may use
+`needs`, captured `github`, typed `inputs` and saved `vars`. It must produce a
+matrix mapping with the same axes/include/exclude rules as a static matrix.
+JSON input is limited to 64 KiB, 32 levels and 8192 nodes. Empty matrices, malformed
+JSON, invalid runner selectors and budget overflows fail the consumer with a
+persisted diagnostic; producer completion remains committed.
+
+The original template remains in the immutable workflow snapshot. Schema 49 stores
+the evaluated matrix and generated job definitions separately in the same database
+transaction. A logical barrier waits for every instance before releasing downstream
+jobs. Generated instances share the static matrix limits, provider authorization,
+parallel cap, effective-result aggregation and output completion ordering. The run
+page refreshes when expansion adds new jobs.
+
+Restart and duplicate completion cannot expand a template twice. Failed-only reruns
+reuse unaffected children and their saved outputs, rebuild affected children from
+the original template and pinned inputs, and preserve the original event-resolved
+environment. Expansion adds to the existing snapshot byte budget; virtual barriers
+do not consume executable-job or step budgets.
 
 Limits are 32 YAML nesting levels, 16 logical jobs, 16 axes, 256 combinations per
 matrix, 256 expanded jobs per workflow, 4096 expanded steps and a 1-MiB normalized

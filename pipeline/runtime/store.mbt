@@ -68,6 +68,8 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  actual_conclusion : Conclusion?
+  scheduling_error : String
   reused_from : Int64?
 }
 
@@ -292,6 +294,13 @@ pub fn list_jobs(
         conclusion: decode_conclusion(row.get_name("conclusion")),
         attempt_id: row.get_name("attempt_id"),
         reused_from: row.get_name("reused_from"),
+        scheduling_error: row.get_name("scheduling_error"),
+        actual_conclusion: decode_conclusion(
+          match (row.get_name("actual_conclusion") : String?) {
+            Some(value) => Some(value)
+            None => row.get_name("conclusion")
+          },
+        ),
       }
     })
   })

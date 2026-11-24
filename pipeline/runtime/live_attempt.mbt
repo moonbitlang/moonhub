@@ -12,6 +12,7 @@ pub struct LiveAttempt {
   commit_sha : String
   job_key : String
   definition_version : Int32
+  priv job_definition_json : String?
   priv definition_json : String
 }
 
@@ -21,6 +22,9 @@ pub fn LiveAttempt::job(self : LiveAttempt) -> @workflow.Job raise {
     self.definition_version,
   ) else {
     raise InvalidRecord
+  }
+  if self.job_definition_json is Some(text) {
+    return @json.from_json(@json.parse(text))
   }
   let definition : @workflow.Workflow = @json.from_json(
     @json.parse(self.definition_json),
@@ -64,5 +68,6 @@ pub fn live_attempt(
     job_key: row.get_name("job_key"),
     definition_version: (row.get_name("definition_version") : Int64).to_int(),
     definition_json: row.get_name("definition_json"),
+    job_definition_json: row.get_name("job_definition_json"),
   }
 }

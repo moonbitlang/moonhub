@@ -9,12 +9,19 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
     is None {
     return
   }
+  if tx.query_opt(
+      "SELECT run_id FROM pipeline_run_schedule WHERE run_id=? AND admitted=0",
+      params=[run_id],
+    )
+    is Some(_) {
+    return
+  }
   let run = Run::from_row(
     tx.query_one("SELECT * FROM pipeline_run WHERE id=?", params=[run_id]),
   )
   // Expanded workflows are bounded to 256 jobs. A fixed point keeps
   // deeper branches from remaining waiting after an upstream failure.
-  for _ in 0..<256 {
+  for _ in 0..<512 {
     let mut changed = false
     let waiting = tx.query_all(
       "SELECT id, job_key FROM pipeline_job WHERE run_id = ? AND status = 'waiting' ORDER BY ordinal",
@@ -23,6 +30,7 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
     for row in waiting {
       let job_id : Int64 = row.get_name("id")
       let job_key : String = row.get_name("job_key")
+      let job = saved_job(tx, run, job_id, job_key)
       let needs = tx.query_all(
         "SELECT j.status, j.conclusion FROM pipeline_job_need n JOIN pipeline_job j ON j.run_id = n.run_id AND j.job_key = n.needs_job_key WHERE n.run_id = ? AND n.job_key = ?",
         params=[run_id, job_key],
@@ -30,11 +38,17 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
       if !needs.all(need => (need.get_name("status") : String) == "completed") {
         continue
       }
+      if job.dynamic_matrix is Some(_) &&
+        tx.query_opt(
+          "SELECT job_id FROM pipeline_matrix_expansion WHERE job_id=?",
+          params=[job_id],
+        )
+        is Some(_) {
+        complete_matrix_barrier(tx, run, job_id, job_key)
+        changed = true
+        continue
+      }
       let allowed = if run.definition_version >= 4 {
-        let job = run.definition.jobs
-          .iter()
-          .find_first(job => job.id == job_key)
-          .unwrap()
         let ancestors = tx.query_all(
           "WITH RECURSIVE ancestors(job_key) AS (SELECT needs_job_key FROM pipeline_job_need WHERE run_id=? AND job_key=? UNION SELECT n.needs_job_key FROM pipeline_job_need n JOIN ancestors a ON a.job_key=n.job_key WHERE n.run_id=?) SELECT j.conclusion FROM ancestors a JOIN pipeline_job j ON j.run_id=? AND j.job_key=a.job_key",
           params=[run_id, job_key, run_id, run_id],
@@ -76,6 +90,75 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             (need.get_name("conclusion") : String?) == Some("success")
           }),
         )
+      }
+      let allowed = if allowed == Some(true) {
+        try {
+          let context : Map[String, Json] = {
+            "github": ToJson::to_json(run_job_github(tx, run)),
+            "inputs": ToJson::to_json(
+              run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+            ),
+            "vars": ToJson::to_json(
+              run.context.map(ctx => ctx.variables).unwrap_or(Map([])),
+            ),
+            "needs": ToJson::to_json(job_needs_context(tx, run_id, job)),
+            "matrix": ToJson::to_json(job.matrix),
+            "strategy": ToJson::to_json(job.strategy),
+          }
+          if job.dynamic_matrix is Some(_) {
+            expand_run_matrix(tx, run, job_id, job, context)
+            changed = true
+            continue
+          }
+          let policy = @workflow.scheduling_expression(
+            job.continue_on_error,
+            context,
+            extended=true,
+          )
+          guard policy is True || policy is False else {
+            raise @domain.BadRequest(
+              message="job.continue-on-error must evaluate to boolean",
+            )
+          }
+          if job.concurrency is Some(concurrency) {
+            let (key, cancel) = concurrency.resolve(
+              run_job_github(tx, run),
+              inputs=run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+              variables=Some(
+                run.context.map(ctx => ctx.variables).unwrap_or(Map([])),
+              ),
+              job_context=Some(context),
+            )
+            reserve_concurrency(
+              tx,
+              run,
+              Some(job_id),
+              key,
+              cancel,
+              concurrency.queue_max,
+            )
+          }
+          ignore(
+            tx.execute(
+              "UPDATE pipeline_job SET allow_failure=? WHERE id=? AND status='waiting'",
+              params=[policy is True, job_id],
+            ),
+          )
+          allowed
+        } catch {
+          @workflow.InvalidWorkflow(message) | @domain.BadRequest(message~) => {
+            ignore(
+              tx.execute(
+                "UPDATE pipeline_job SET scheduling_error=? WHERE id=?",
+                params=[message, job_id],
+              ),
+            )
+            None
+          }
+          err => raise err
+        }
+      } else {
+        allowed
       }
       // Invalid data-dependent expressions fail this job, never roll back the
       // producer completion or wedge every claim/lease reconciliation.

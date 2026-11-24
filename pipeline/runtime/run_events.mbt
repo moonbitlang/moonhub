@@ -62,7 +62,7 @@ fn reuse_successful_jobs(
   source : Int64,
 ) -> Unit raise {
   let failed = tx.query_all(
-    "SELECT job_key FROM pipeline_job WHERE run_id=? AND conclusion IN ('failure','timed_out','lost','cancelled')",
+    "SELECT job_key FROM pipeline_job WHERE run_id=? AND COALESCE(actual_conclusion,conclusion) IN ('failure','timed_out','lost','cancelled')",
     params=[source],
   )
   guard !failed.is_empty() else {
@@ -89,7 +89,7 @@ fn reuse_successful_jobs(
   }
   for
     row in tx.query_all(
-      "SELECT current.id,old.job_key,old.conclusion,COALESCE(reuse.source_job_id,old.id) AS source FROM pipeline_job current JOIN pipeline_job old ON old.job_key=current.job_key LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=old.id WHERE current.run_id=? AND old.run_id=? AND old.status='completed'",
+      "SELECT current.id,old.job_key,old.conclusion,COALESCE(old.actual_conclusion,old.conclusion) AS actual_conclusion,COALESCE(reuse.source_job_id,old.id) AS source FROM pipeline_job current JOIN pipeline_job old ON old.job_key=current.job_key LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=old.id WHERE current.run_id=? AND old.run_id=? AND old.status='completed' AND current.status='waiting' AND NOT EXISTS (SELECT 1 FROM pipeline_matrix_expansion e WHERE e.job_id=old.id)",
       params=[run_id, source],
     ) {
     if !affected.contains(row.get_name("job_key")) {
@@ -102,8 +102,12 @@ fn reuse_successful_jobs(
       )
       ignore(
         tx.execute(
-          "UPDATE pipeline_job SET status='completed',conclusion=? WHERE id=?",
-          params=[(row.get_name("conclusion") : String), id],
+          "UPDATE pipeline_job SET status='completed',conclusion=?,actual_conclusion=? WHERE id=?",
+          params=[
+            (row.get_name("conclusion") : String),
+            (row.get_name("actual_conclusion") : String),
+            id,
+          ],
         ),
       )
     }

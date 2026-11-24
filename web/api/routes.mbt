@@ -886,6 +886,8 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 Completed => "completed"
               },
               "conclusion": @dto.conclusion_json(job.conclusion),
+              "actual_conclusion": @dto.conclusion_json(job.actual_conclusion),
+              "scheduling_error": job.scheduling_error,
               "reused_from": job.reused_from
               .map(id => id.to_string())
               .unwrap_or(""),

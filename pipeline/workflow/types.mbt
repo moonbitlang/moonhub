@@ -23,10 +23,45 @@ pub struct Workflow {
 }
 
 ///|
-#derive(Debug, ToJson, FromJson)
+#derive(Debug, ToJson)
 pub struct Concurrency {
   group : String
   cancel_in_progress : String
+  queue_max : Bool
+}
+
+///|
+pub impl @json.FromJson for Concurrency with fn from_json(json, path) {
+  guard json is Object(fields) else {
+    raise @json.JsonDecodeError((path, "invalid concurrency"))
+  }
+  {
+    group: @json.from_json(
+      fields.get("group").unwrap_or(Json::null()),
+      path=path.add_key("group"),
+    ),
+    cancel_in_progress: @json.from_json(
+      fields.get("cancel_in_progress").unwrap_or(Json::string("false")),
+      path=path.add_key("cancel_in_progress"),
+    ),
+    queue_max: @json.from_json(
+      fields.get("queue_max").unwrap_or(Json::boolean(false)),
+      path=path.add_key("queue_max"),
+    ),
+  }
+}
+
+///|
+#derive(Debug, ToJson, FromJson)
+pub struct DynamicMatrix {
+  expression : String
+  source : Json
+  env : Map[String, String]
+  shell : String?
+  directory : String?
+  contents_read : Bool
+  id_token_write : Bool
+  api_permissions : Int32
 }
 
 ///|
@@ -59,6 +94,9 @@ pub impl @json.FromJson for Workflow with fn from_json(json, path) {
 #derive(Debug, ToJson)
 pub struct Job {
   compatibility_runtime : Bool
+  continue_on_error : String
+  concurrency : Concurrency?
+  dynamic_matrix : DynamicMatrix?
   id : String
   name : String
   needs : Array[String]
@@ -84,6 +122,20 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job"))
   }
   {
+    continue_on_error: @json.from_json(
+      fields.get("continue_on_error").unwrap_or(Json::string("false")),
+      path=path.add_key("continue_on_error"),
+    ),
+    concurrency: match fields.get("concurrency") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("concurrency")))
+    },
+    dynamic_matrix: match fields.get("dynamic_matrix") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("dynamic_matrix")))
+    },
     compatibility_runtime: @json.from_json(
       fields.get("compatibility_runtime").unwrap_or(Json::boolean(false)),
       path=path.add_key("compatibility_runtime"),

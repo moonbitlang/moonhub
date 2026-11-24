@@ -134,8 +134,8 @@ Boolean operators short circuit. Contexts are `github`, `runner`, `env`, `steps`
 Composite Actions temporarily use their own `inputs`. See
 [dispatch inputs](dispatch-inputs.md) for typed values and the captured event file,
 and [repository variables](repository-variables.md) for public configuration snapshots.
-See [workflow scheduling](workflow-scheduling.md) for static matrix expansion and
-persisted workflow concurrency.
+See [workflow scheduling](workflow-scheduling.md) for static and deferred matrix expansion, job failure policies, and
+persisted workflow/job concurrency.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
 Unsupported public syntax is not passed literally to the shell.
 

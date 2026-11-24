@@ -207,9 +207,9 @@ fn validate_secret_policy(
   branch : String,
   workflow_path : String,
   context : @workflow.RunContext?,
-  definition : @workflow.Workflow,
+  jobs : Array[@workflow.Job],
 ) -> Unit raise {
-  for job in definition.jobs {
+  for job in jobs {
     for step in job.steps {
       for _, name in step.secret_env {
         require_secret_policy(

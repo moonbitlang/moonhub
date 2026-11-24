@@ -262,17 +262,10 @@ fn parse_job(
     fields,
     [
       "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
-      "permissions", "if", "outputs", "continue-on-error",
+      "permissions", "if", "outputs", "continue-on-error", "concurrency",
     ],
     ctx,
   )
-  match fields.get("continue-on-error") {
-    None | Some(Boolean(false)) => ()
-    _ =>
-      raise InvalidWorkflow(
-        "\{ctx}.continue-on-error supports only literal false",
-      )
-  }
   let (runner_group, selector) = match fields.get("runs-on") {
     Some(Map(selector)) => {
       check_fields(selector, ["group", "labels"], "\{ctx}.runs-on")
@@ -571,6 +564,12 @@ fn parse_job(
   )
   let outputs = parse_job_outputs(fields.get("outputs"))
   {
+    continue_on_error: parse_job_policy(
+      fields.get("continue-on-error"),
+      yaml_as_string_list(fields.get("needs"), "job.needs"),
+    ),
+    concurrency: parse_concurrency(fields.get("concurrency"), job=true),
+    dynamic_matrix: None,
     // Require the updated runtime for literal numeric index expressions.
     // Persist this decision; old snapshots decode it as false on rerun.
     compatibility_runtime: outputs.values().any(needs_index_runtime) ||

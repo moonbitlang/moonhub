@@ -130,6 +130,8 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  actual_conclusion : Conclusion?
+  scheduling_error : String
   reused_from : Int64?
 }
 pub fn JobRun::to_repr(Self) -> @debug.Repr

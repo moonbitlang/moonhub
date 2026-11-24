@@ -96,10 +96,11 @@ fn job_needs_context(
   )
   for row in rows {
     let key : String = row.get_name("job_key")
-    if !job.needs.contains(key) {
+    let group : String = row.get_name("matrix_group")
+    if !job.needs.contains(key) &&
+      (group.is_empty() || !job.needs.contains(group)) {
       continue
     }
-    let group : String = row.get_name("matrix_group")
     let logical = if group.is_empty() { key } else { group }
     let outputs : Map[String, String] = match result.get(logical) {
       Some({ "outputs": value, .. }) => @json.from_json(value)
