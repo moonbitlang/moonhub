@@ -5,6 +5,15 @@ async test "blob storage migration preserves legacy rows and journals cascade de
       client.batch_execute(
         (
           #|DROP VIEW pipeline_provider_job_routing;
+          #|ALTER TABLE pipeline_secret_delivery DROP COLUMN source_environment_id;
+          #|DROP TRIGGER pipeline_deployment_cancelled;
+          #|DROP VIEW pipeline_deployment_admission;
+          #|DROP TABLE pipeline_deployment_review;
+          #|DROP TABLE pipeline_job_deployment;
+          #|DROP TABLE pipeline_run_deployment_snapshot;
+          #|DROP TABLE deployment_environment_secret;
+          #|DROP TABLE deployment_environment_variable;
+          #|DROP TABLE repository_deployment_environment;
           #|DROP TABLE pipeline_call_secret_hash;
           #|DROP TABLE pipeline_call_output;
           #|DROP TABLE pipeline_call_expansion;

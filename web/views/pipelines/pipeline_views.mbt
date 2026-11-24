@@ -13,6 +13,7 @@ fn queue_reason_text(reason : @runtime.QueueReason) -> String {
       "Waiting for the previous run in this concurrency group to finish."
     @runtime.WaitingMatrixCapacity =>
       "Waiting for an available matrix parallel slot."
+    @runtime.WaitingApproval => "Waiting for deployment environment approval."
     @runtime.WaitingDependencies => "Waiting for dependency jobs to succeed."
     @runtime.RequesterUnavailable =>
       "The requester no longer has permission to run this job, or the repository is not ready."
@@ -480,6 +481,7 @@ fn render_pipeline_detail(
   manager : Bool,
   csrf : String,
   merge : @runtime.MergeCheckContext?,
+  deployments~ : Array[@runtime.JobDeployment] = [],
   attempts~ : Array[@runtime.Run] = [],
   environments~ : Map[String, @environment.Definition] = Map([]),
 ) -> @moonback.Html {
@@ -492,7 +494,7 @@ fn render_pipeline_detail(
     assets,
     Html(b => {
       b <+
-        "<section data-pipeline-run data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Actions</a> / #\{run.number.to_string()}</p><h1>\{pipeline_html(run.workflow_name)}</h1></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{pipeline_display_state(result)}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
+        "<section data-pipeline-run data-deployment-signature=\"\{ToJson::to_json(deployments).stringify()}\" data-run-url=\"\{base}\" data-run-phase=\"\{pipeline_run_state(run.state)}\"><div class=\"mr-page-heading\"><div><p class=\"muted\"><a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines\">Actions</a> / #\{run.number.to_string()}</p><h1>\{pipeline_html(run.workflow_name)}</h1></div><span class=\"mr-state\" data-run-state data-state=\"\{result}\">\{pipeline_display_state(result)}</span></div><p class=\"settings-notice\" data-update-error role=\"status\" hidden></p>"
       b <+
         "<p class=\"muted\">Branch \{pipeline_html(run.source_branch)} · commit <span class=\"path\">\{pipeline_html(run.commit_sha[:12].to_owned())}</span> · created \{@web_ui.timestamp(run.created_at)}</p>"
       b <+
@@ -537,6 +539,29 @@ fn render_pipeline_detail(
         let display = if conclusion.is_empty() { state } else { conclusion }
         b <+
           "<li id=\"job-\{page.job.id.to_string()}\" data-pipeline-job=\"\{page.job.id.to_string()}\" data-attempt-id=\"\{page.job.attempt_id.map(id => id.to_string()).unwrap_or("")}\"><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-job-state data-state=\"\{display}\">\{pipeline_display_state(display)}</span></div>"
+        if deployments.iter().find_first(item => item.job_id == page.job.id)
+          is Some(item) {
+          b <+
+            "<p>Deployment environment: <strong>\{item.name}</strong> · \{item.state}</p>"
+          if !item.url.is_empty() {
+            b <+
+              "<p><a href=\"\{item.url}\" rel=\"noreferrer\">View deployment</a></p>"
+          }
+          for review in item.reviews {
+            if review
+              is {
+                "decision": String(decision),
+                "created_at": String(created),
+                ..
+              } {
+              b <+ "<p class=\"muted\">\{decision} · \{created}</p>"
+            }
+          }
+          if item.can_review {
+            b <+
+              "<form method=\"post\" action=\"\{base}/deployments/\{item.job_id.to_string()}\"><input type=\"hidden\" name=\"csrf_token\" value=\"\{csrf}\"><input type=\"hidden\" name=\"environment_id\" value=\"\{item.environment_id.to_string()}\"><input type=\"hidden\" name=\"policy_version\" value=\"\{item.policy_version.to_string()}\"><button type=\"submit\" name=\"decision\" value=\"approved\">Approve deployment</button><button type=\"submit\" name=\"decision\" value=\"rejected\">Reject deployment</button></form>"
+          }
+        }
         b <+ "<p class=\"settings-notice\" data-queue-reason"
         if page.reason is None {
           b <+ " hidden"

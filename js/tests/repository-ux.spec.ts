@@ -722,3 +722,23 @@ test('Code and feature sidebars preserve SPA history, collapse preference and dr
   await expect(root).not.toHaveAttribute('data-sidebar-collapsed');
   expect(await page.evaluate(() => localStorage.getItem('moonhub.sidebar'))).toBe('collapsed');
 });
+
+
+test('deployment environment settings preserve reviewers and escape public configuration', async ({ page }) => {
+  await login(page);
+  await page.goto('/alice/demo/settings/environments');
+  const create = page.locator('form').filter({ has: page.getByRole('button', { name: 'Add environment', exact: true }) });
+  await create.getByLabel('Name', { exact: true }).fill('browser-deployment');
+  await create.getByLabel('Reviewers (usernames, separated by commas)').fill('alice');
+  await create.getByRole('button', { name: 'Add environment', exact: true }).click();
+  const target = page.locator('article').filter({ has: page.getByRole('heading', { name: 'browser-deployment', exact: true }) });
+  await expect(target).toContainText('Reviewers: alice');
+  const variable = target.locator('form').filter({ has: page.getByRole('button', { name: 'Add variable', exact: true }) });
+  await variable.getByLabel('Name', { exact: true }).fill('REGION');
+  await variable.getByLabel('Value', { exact: true }).fill('<script>window.badDeployment = true</script>');
+  await variable.getByRole('button', { name: 'Add variable', exact: true }).click();
+  await expect(target.getByRole('textbox', { name: 'REGION', exact: true })).toHaveValue('<script>window.badDeployment = true</script>');
+  expect(await page.evaluate(() => (window as any).badDeployment)).toBeUndefined();
+  await target.getByRole('button', { name: 'Delete environment', exact: true }).click();
+  await expect(target).toHaveCount(0);
+});
