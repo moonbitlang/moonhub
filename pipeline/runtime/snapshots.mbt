@@ -15,6 +15,8 @@ pub fn insert_run_snapshot(
   event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
   capture_variables~ : Bool = true,
+  rerun_source~ : Int64 = 0L,
+  failed_only~ : Bool = false,
 ) -> Run raise {
   let context = if definition_version >= 6 && capture_variables {
     context.map(context => {
@@ -23,6 +25,29 @@ pub fn insert_run_snapshot(
     })
   } else {
     context
+  }
+  let context = if definition_version >= 9 && capture_variables {
+    context.map(saved => {
+      capture_run_event(tx, saved, branch, event_id, merge_check_id)
+    })
+  } else {
+    context
+  }
+  let (public_id, run_attempt) = if rerun_source == 0L {
+    (0L, 1L)
+  } else {
+    let prior = tx.query_one(
+      "SELECT COALESCE(public_run_id,id) AS public_id FROM pipeline_run WHERE id=? AND repository_id=? AND commit_sha=? AND status='completed'",
+      params=[rerun_source, repository_id, sha],
+    )
+    let public_id : Int64 = prior.get_name("public_id")
+    let attempt : Int64 = tx
+      .query_one(
+        "SELECT MAX(run_attempt)+1 AS attempt FROM pipeline_run WHERE COALESCE(public_run_id,id)=?",
+        params=[public_id],
+      )
+      .get_name("attempt")
+    (public_id, attempt)
   }
   validate_secret_policy(
     tx, repository_id, branch, workflow_path, context, definition,
@@ -50,7 +75,7 @@ pub fn insert_run_snapshot(
         .get_name("name_key") : String),
       "workflow": workflow_name,
     }
-    if context is Some(saved) && saved.release_tag is Some(_) {
+    if context is Some(saved) {
       github["event"] = ToJson::to_json(run_event_context(saved, event_ref~))
     }
     let title = @workflow.scheduling_template(definition.run_name, {
@@ -67,7 +92,7 @@ pub fn insert_run_snapshot(
     title
   }
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, '')) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json, public_run_id, run_attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, 0), ?) RETURNING *",
     params=[
       repository_id,
       number,
@@ -84,6 +109,8 @@ pub fn insert_run_snapshot(
       event_id,
       merge_check_id,
       context.map(value => ToJson::to_json(value).stringify()).unwrap_or(""),
+      public_id,
+      run_attempt,
     ],
   )
   let run = Run::from_row(row)
@@ -140,6 +167,9 @@ pub fn insert_run_snapshot(
         params=[run.id, job.id, need],
       )
     }
+  }
+  if failed_only {
+    reuse_successful_jobs(tx, run.id, rerun_source)
   }
   schedule_run(tx, run)
   if definition_version >= 4 {

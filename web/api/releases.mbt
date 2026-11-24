@@ -232,7 +232,9 @@ pub let releases_api_module : @moonback.Module = Module(ctx => {
           "workflow_runs": runs.map(run => {
             (
               {
-                "id": run.id.to_double(),
+                "id": run.public_id.to_double(),
+                "run_attempt": run.run_attempt.to_double(),
+                "record_number": run.number.to_double(),
                 "name": run.workflow_name,
                 "display_title": run.display_title,
                 "head_sha": run.commit_sha,

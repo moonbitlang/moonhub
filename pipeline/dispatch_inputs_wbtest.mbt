@@ -180,7 +180,7 @@ test "legacy run context defaults omitted dispatch inputs" {
 }
 
 ///|
-async test "version four snapshots and reruns retain the version seven wire contract" {
+async test "version four reruns retain absent event semantics while upgrading run identity" {
   let workflow =
     #|on: workflow_dispatch
     #|concurrency: legacy-${{ github.event.ref }}-${{ !github.event }}
@@ -219,6 +219,7 @@ async test "version four snapshots and reruns retain the version seven wire cont
             inputs: Map([]),
             variables: Map([]),
             release_tag: None,
+            event: None,
           }),
         )
       })
@@ -240,7 +241,8 @@ async test "version four snapshots and reruns retain the version seven wire cont
     assert_eq(again.definition_version, 4)
     assert_true(again.context is Some(_))
     let (a, _) = claim_dag_attempt(c, provider_secret)
-    assert_eq(a.version, @protocol.dataflow_assignment_version)
+    assert_eq(a.version, @protocol.run_attempt_assignment_version)
+    assert_eq(a.job.context.get("dispatch_context"), Some("false"))
     assert_true(a.job.dispatch_inputs.is_empty())
     assert_true(a.job.event.is_empty())
   })

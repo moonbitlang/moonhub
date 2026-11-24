@@ -240,13 +240,36 @@ async test "write tokens cannot implicitly approve MR execution and cancelled ru
       Some({}),
     )
     assert_eq(cancelled, 200)
-    let (rerun, _) = api_test_request(
+    let (rerun, again) = api_test_request(
       port,
       "/repos/alice/demo/runs/\{number}/rerun",
       execute,
-      Some({}),
+      Some({ "failed_only": true }),
     )
     assert_eq(rerun, 200)
+    guard run is { "run_id": String(public_id), .. } else {
+      fail("public run ID missing")
+    }
+    assert_true(
+      again is { "run_id": String(id), "run_attempt": "2", .. } &&
+      id == public_id,
+    )
+    let (_, history) = api_test_request(
+      port,
+      "/repos/alice/demo/runs/" + number,
+      execute,
+      None,
+    )
+    assert_true(
+      history is { "attempts": Array(attempts), .. } && attempts.length() == 2,
+    )
+    let (invalid, _) = api_test_request(
+      port,
+      "/repos/alice/demo/runs/" + number + "/rerun",
+      execute,
+      Some({ "failed_only": "true" }),
+    )
+    assert_eq(invalid, 400)
   })
 }
 

@@ -229,7 +229,14 @@ fn command() -> @argparse.Command {
             options=action_options(group, action).map(name => {
               client_option(name, group~, action~)
             }),
-            flags=if group == "mr" && action == "create" {
+            flags=if group == "ci" && action == "rerun" {
+              [
+                @argparse.FlagArg(
+                  "failed",
+                  about="Rerun failed jobs and their dependents, reusing successful prerequisites.",
+                ),
+              ]
+            } else if group == "mr" && action == "create" {
               [
                 @argparse.FlagArg(
                   "draft",

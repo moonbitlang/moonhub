@@ -838,6 +838,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let environments = coordinator.job_environments(actor, repo, id)
       {
         "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "attempts": @runtime.run_attempts(pool, actor, repo, id).map(run => {
+          @dto.run_json(run)
+        }),
         "jobs": @runtime.list_jobs(pool, actor, repo, id).map(job => {
           (
             {
@@ -851,6 +854,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
                 Completed => "completed"
               },
               "conclusion": @dto.conclusion_json(job.conclusion),
+              "reused_from": job.reused_from
+              .map(id => id.to_string())
+              .unwrap_or(""),
               "attempt": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
             } : Json)
         }),
@@ -898,12 +904,28 @@ pub let api_module : @moonback.Module = Module(ctx => {
     "/repos/:owner/:repo/runs/:number/:action",
     api_handler(req => {
       let actor = api_actor(pool, req, "execute")
-      ignore(api_body(req, []))
+      let action = @web_context.required_param(req, "action", "action")
+      let body = api_body(
+        req,
+        if action == "rerun" {
+          ["failed_only"]
+        } else {
+          []
+        },
+      )
+      let failed_only = match body.get("failed_only") {
+        None => false
+        Some(True) => true
+        Some(False) => false
+        _ => raise @domain.BadRequest(message="failed_only must be a boolean")
+      }
       let repo = @web_context.repo_param(req)
       let id = number(@web_context.required_param(req, "number", "run"))
       match @web_context.required_param(req, "action", "action") {
         "rerun" =>
-          @dto.run_json(@pipeline.rerun_run(pool, root, actor, repo, id))
+          @dto.run_json(
+            @pipeline.rerun_run(pool, root, actor, repo, id, failed_only~),
+          )
         "cancel" => {
           coordinator.cancel_run(actor, repo, id)
           @dto.run_json(@runtime.get_run(pool, actor, repo, id))

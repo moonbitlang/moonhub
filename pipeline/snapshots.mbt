@@ -17,6 +17,7 @@ fn insert_run_snapshot(
   merge_check_id~ : Int64 = 0L,
   capture_variables~ : Bool = true,
   cache_scope_source~ : Int64 = 0L,
+  failed_only~ : Bool = false,
 ) -> @runtime.Run raise {
   let run = @runtime.insert_run_snapshot(
     tx,
@@ -34,6 +35,8 @@ fn insert_run_snapshot(
     event_id~,
     merge_check_id~,
     capture_variables~,
+    rerun_source=cache_scope_source,
+    failed_only~,
   )
   @results.snapshot_cache_scope(
     tx,

@@ -17,7 +17,7 @@ pub struct LiveAttempt {
 
 ///|
 pub fn LiveAttempt::job(self : LiveAttempt) -> @workflow.Job raise {
-  guard [1, 2, 3, 4, 5, 6, 7, @workflow.format_version].contains(
+  guard [1, 2, 3, 4, 5, 6, 7, 8, @workflow.format_version].contains(
     self.definition_version,
   ) else {
     raise InvalidRecord

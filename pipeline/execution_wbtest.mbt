@@ -1377,7 +1377,7 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
       ToJson::to_json(run.definition),
     )
     let (again, _) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(again.version, @protocol.variable_assignment_version)
+    assert_eq(again.version, @protocol.run_attempt_assignment_version)
     assert_eq(again.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
   })
 }

@@ -68,6 +68,8 @@ pub fn run_json(run : @runtime.Run) -> Json {
   let conclusion = conclusion_json(run.conclusion)
   {
     "number": run.number.to_string(),
+    "run_id": run.public_id.to_string(),
+    "run_attempt": run.run_attempt.to_string(),
     "workflow": run.workflow_path,
     "name": run.workflow_name,
     "branch": run.source_branch,

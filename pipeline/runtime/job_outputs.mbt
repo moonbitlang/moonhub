@@ -4,6 +4,10 @@ pub fn run_event_ref(
   branch : String,
   mr_number~ : Int64? = None,
 ) -> String {
+  if context is Some({ event: Some(event), .. }) &&
+    event.get("ref") is Some(String(value)) {
+    return value
+  }
   match (mr_number, context) {
     (Some(number), _) => "refs/pull/" + number.to_string() + "/merge"
     (_, Some({ release_tag: Some(tag), .. })) => "refs/tags/" + tag
@@ -16,6 +20,9 @@ fn run_event_context(
   context : @workflow.RunContext,
   event_ref~ : String,
 ) -> Map[String, Json] {
+  if context.event is Some(event) {
+    return event
+  }
   let event : Map[String, Json] = {
     "repository": { "full_name": context.repository },
     "ref": Json::string(event_ref),
@@ -66,7 +73,8 @@ fn run_job_github(
     ),
     "head_ref": Json::string(run.context.map(ctx => ctx.head_ref).unwrap_or("")),
     "base_ref": Json::string(run.context.map(ctx => ctx.base_ref).unwrap_or("")),
-    "run_id": Json::string(run.id.to_string()),
+    "run_id": Json::string(run.public_id.to_string()),
+    "run_attempt": Json::string(run.run_attempt.to_string()),
   }
   if run.definition_version >= 5 && run.context is Some(context) {
     github["event"] = ToJson::to_json(run_event_context(context, event_ref~))
@@ -83,7 +91,7 @@ fn job_needs_context(
   let result : Map[String, Json] = Map([])
   // Matrix output collisions follow completion order, not matrix ordinal.
   let rows = tx.query_all(
-    "SELECT j.job_key,j.matrix_group,j.conclusion,o.outputs_json FROM pipeline_job j LEFT JOIN pipeline_job_output o ON o.job_id=j.id WHERE j.run_id=? AND j.status='completed' ORDER BY COALESCE(o.id,0),j.ordinal",
+    "SELECT j.job_key,j.matrix_group,j.conclusion,o.outputs_json FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id LEFT JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=? AND j.status='completed' ORDER BY COALESCE(o.id,0),j.ordinal",
     params=[run_id],
   )
   for row in rows {
@@ -182,7 +190,7 @@ fn publish_job_outputs(
   let encoded = ToJson::to_json(outputs).stringify()
   let stored : Int64 = tx
     .query_one(
-      "SELECT COALESCE(SUM(LENGTH(CAST(o.outputs_json AS BLOB))),0) AS bytes FROM pipeline_job_output o JOIN pipeline_job j ON j.id=o.job_id WHERE j.run_id=?",
+      "SELECT COALESCE(SUM(LENGTH(CAST(o.outputs_json AS BLOB))),0) AS bytes FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=?",
       params=[(row.get_name("run_id") : Int64)],
     )
     .get_name("bytes")

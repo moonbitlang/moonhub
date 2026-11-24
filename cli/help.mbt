@@ -154,7 +154,9 @@ fn command_description(group : String, action : String) -> String {
     ("ci", "view") => "Show run status and attempt IDs for ci logs."
     ("ci", "logs") =>
       "Read logs for --attempt; paginate with the returned next_cursor and --after."
-    ("ci", "rerun" | "cancel") =>
+    ("ci", "rerun") =>
+      "Rerun the saved snapshot; --failed reuses successful jobs and reruns failed jobs and dependents."
+    ("ci", "cancel") =>
       "Control a workflow run; execute token and repository manager access required."
     ("inbox", "list") =>
       "List notifications; filters: unread, all, reviews, assigned."

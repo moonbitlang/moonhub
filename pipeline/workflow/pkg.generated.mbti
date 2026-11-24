@@ -103,6 +103,7 @@ pub(all) struct RunContext {
   inputs : Map[String, @json.Json]
   variables : Map[String, String]
   release_tag : String?
+  event : Map[String, @json.Json]?
 }
 pub fn RunContext::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
 pub fn RunContext::to_json(Self) -> @json.Json

@@ -8,6 +8,7 @@ let mr_context : RunContext = {
   inputs: Map([]),
   variables: Map([]),
   release_tag: None,
+  event: None,
 }
 
 ///|
@@ -18,6 +19,7 @@ test "release snapshots round trip a tag without changing older context JSON" {
     head_ref: "",
     base_ref: "",
     release_tag: Some("v1.2.3"),
+    event: None,
   }
   let encoded = ToJson::to_json(context)
   assert_true(encoded is { "release_tag": String("v1.2.3"), .. })
@@ -120,6 +122,7 @@ test "metadata interpolation is not recursive and missing MR fields are empty" {
       inputs: Map([]),
       variables: Map([]),
       release_tag: None,
+      event: None,
     })
     assert_eq(resolved.jobs[0].steps[0].env.get("HEAD"), Some(""))
     assert_eq(resolved.jobs[0].steps[0].env.get("BASE"), Some(""))

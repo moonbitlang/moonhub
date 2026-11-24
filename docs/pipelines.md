@@ -797,7 +797,21 @@ from multiple eligible workers/providers with matching labels and repository gra
 
 `rerun_run` accepts a completed Run under the normal repository-manager
 authorization. It creates a new Run number and Git pin for the original commit,
-copies the immutable workflow source/definition, and resets all Job states.
+copies the immutable workflow source/definition and event, and resets all Job states.
+A stable public `run_id` identifies the family; `run_attempt` starts at 1 and
+increments transactionally for each rerun. Historical run numbers and URLs still
+identify their original records, logs and artifacts. `ci view` and the run page
+link the attempts. The runner exposes these values as `github.run_id`,
+`github.run_attempt`, `GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`; workflow attempts
+are separate from worker leases/attempt IDs. Reruns require assignment v15.
+
+`moonhub ci rerun NUMBER --failed` (API `failed_only: true`, or **Rerun failed
+jobs** on the run page) reexecutes failed, timed-out, lost and cancelled jobs,
+plus their dependent closure. Unaffected completed jobs keep their saved
+conclusions and outputs through immutable result references. Reused jobs have no
+new worker attempt; their logs and artifacts remain available on the linked
+original record. Artifact RPC continues to enforce its current-attempt run scope.
+A completed run with no failures rejects failed-only rerun.
 It never reparses the current branch, so a force-push cannot change what the
 rerun executes. Active Runs cannot be implicitly rerun; cancellation and
 recovery remain explicit operations.
@@ -1007,3 +1021,13 @@ and lifecycle verification, see [Windows runner setup](standalone-runner.md#wind
 ## Release automation
 
 Repository releases, `contents: write`, `actions: read`, live job API tokens, `run-name` and opt-in UTC schedules are documented in [Releases](releases.md). Publishing uses independent durable assets rather than CI artifact retention. Schedule execution is disabled by default.
+
+
+## Saved event payloads
+
+Definition v9 captures the event before scheduling. PR payloads include action,
+number, title/body, state, draft status and head/base refs and SHAs. Push payloads
+include the original ref, before and after SHAs. Scheduling expressions, runner
+expressions and `GITHUB_EVENT_PATH` all read the same bounded payload; branch or
+MR changes cannot alter it. Older definitions retain their original synthesized
+event behavior when rerun. Public event snapshots never contain repository secrets.

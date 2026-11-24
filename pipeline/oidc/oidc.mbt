@@ -175,7 +175,10 @@ fn Service::oidc_claims(
           "repository_id": repository_id.to_string(),
           "ref": event_ref,
           "sha": row.commit_sha,
-          "run_id": row.run_id.to_string(),
+          "run_id": (run.get_name("public_run_id") : Int64?)
+          .unwrap_or(row.run_id)
+          .to_string(),
+          "run_attempt": (run.get_name("run_attempt") : Int64).to_string(),
           "job_id": row.job_key,
           "event_name": context.event_name,
           "workflow_ref": repo +

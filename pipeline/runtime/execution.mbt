@@ -5,7 +5,7 @@ let eligible_provider_jobs : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
-  #|AND r.definition_version IN (1, 2, 3, 4, 5, 6, 7, ?)
+  #|AND r.definition_version IN (1, 2, 3, 4, 5, 6, 7, 8, ?)
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_run_schedule s WHERE s.run_id=r.id AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
@@ -81,7 +81,7 @@ pub fn Coordinator::authenticate_attempt(
 
 ///|
 fn attempt_job(row : @database.DbRow) -> @workflow.Job raise {
-  guard [1L, 2L, 3L, 4L, 5L, 6L, 7L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, @workflow.format_version.to_int64()].contains(
     row.get_name("definition_version"),
   ) else {
     raise InvalidRecord
@@ -524,7 +524,7 @@ pub fn Coordinator::claim(
         let name : String = row.get_name("repo_name")
         let job = attempt_job(row)
         let captured = tx.query_one(
-          "SELECT r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
+          "SELECT COALESCE(r.public_run_id,r.id) AS public_id,r.run_attempt,r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
           params=[(row.get_name("run_id") : Int64)],
         )
         let saved : @workflow.RunContext? = (
@@ -541,6 +541,25 @@ pub fn Coordinator::claim(
         }
         if (row.get_name("definition_version") : Int64) >= 7L {
           context["actor"] = captured.get_name("actor_name")
+        }
+        let run_attempt : Int64 = captured.get_name("run_attempt")
+        if run_attempt > 1L {
+          context["run_id"] = (captured.get_name("public_id") : Int64).to_string()
+          context["run_attempt"] = run_attempt.to_string()
+          context["dispatch_context"] = if (
+              row.get_name("definition_version") : Int64) >=
+            5L {
+            "true"
+          } else {
+            "false"
+          }
+          context["variables_context"] = if (
+              row.get_name("definition_version") : Int64) >=
+            6L {
+            "true"
+          } else {
+            "false"
+          }
         }
         let mut variables : Map[String, String] = Map([])
         let mut dispatch_inputs : Map[String, Json] = Map([])
@@ -569,7 +588,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if job.compatibility_runtime {
+          version: if run_attempt > 1L {
+            @protocol.run_attempt_assignment_version
+          } else if job.compatibility_runtime {
             @protocol.compatibility_assignment_version
           } else if environment is Some(_) {
             @protocol.profile_assignment_version
