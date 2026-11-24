@@ -3,8 +3,9 @@ fn report_text(
   tx : @database.DbTransaction,
   attempt : Int64,
   text : String,
+  extra~ : Array[String] = [],
 ) -> String raise {
-  let masks : Array[String] = []
+  let masks : Array[String] = extra.copy()
   for
     row in tx.query_all(
       "SELECT value FROM pipeline_secret_delivery WHERE attempt_id=?",

@@ -1,3 +1,6 @@
+import { maskText } from './masking.mjs';
+export { maskText } from './masking.mjs';
+import { annotation } from './reports.mjs';
 import { StringDecoder } from 'node:string_decoder';
 export function parseFileCommands(text) {
   if (Buffer.byteLength(text) > 1048576 || text.includes('\0')) throw new Error('Action file command exceeds limits');
@@ -48,6 +51,11 @@ export class LogCommands {
           if (this.state.masks.length > 1024) throw new Error('Too many action masks');
           return;
         }
+        if (['notice', 'warning', 'error'].includes(name)) {
+          const items = this.result.annotations ||= [];
+          if (items.length < 201) items.push(annotation(name, value, props));
+          else this.state.report_truncated = true;
+        }
         if (['debug', 'add-matcher', 'remove-matcher'].includes(name)) return;
         if (name === 'stop-commands') { this.stop = value; return; }
         if (name === 'set-output') { if (props.name) this.result.outputs[props.name] = value; return; }
@@ -57,16 +65,4 @@ export class LogCommands {
     }
     this.output(maskText(line, this.state.masks) + (terminated ? '\n' : ''));
   }
-}
-
-export function maskText(text, masks) {
-  let masked = text;
-  // Union overlapping occurrences so partially overlapping masks cannot leak.
-  const spans = [];
-  for (const mask of masks) if (mask) for (let i = masked.indexOf(mask); i >= 0; i = masked.indexOf(mask, i + 1)) spans.push([i, i + mask.length]);
-  spans.sort((a, b) => a[0] - b[0]);
-  const merged = [];
-  for (const span of spans) { const last = merged.at(-1); if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]); else merged.push(span); }
-  for (const [start, end] of merged.reverse()) masked = masked.slice(0, start) + '***' + masked.slice(end);
-  return masked;
 }

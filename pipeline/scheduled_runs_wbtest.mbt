@@ -130,7 +130,7 @@ async test "job API grants are repository permission event and live attempt boun
       ),
     )
     let claimed = c.runtime.claim(provider_secret, claim_request()).unwrap()
-    assert_eq(claimed.version, @protocol.source_assignment_version)
+    assert_eq(claimed.version, @protocol.report_assignment_version)
     let id = @protocol.parse_decimal(claimed.attempt_id).unwrap()
     ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
     let grant = c.runtime.api_runtime(id, attempt_secret, {
@@ -203,7 +203,7 @@ async test "explicit contents read grants release reads without publication or l
       ),
     )
     let assignment = c.runtime.claim(provider_secret, claim_request()).unwrap()
-    assert_eq(assignment.version, @protocol.release_assignment_version)
+    assert_eq(assignment.version, @protocol.report_assignment_version)
     let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
     ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
     let grant = c.runtime.api_runtime(id, attempt_secret, {

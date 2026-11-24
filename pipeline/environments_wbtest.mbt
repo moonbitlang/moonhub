@@ -159,7 +159,7 @@ async test "profiles match one complete environment and share worker capacity" {
       .unwrap()
     assert_eq(first.job.id, "debian")
     assert_eq(first.environment, Some(debian))
-    assert_eq(first.version, @protocol.profile_assignment_version)
+    assert_eq(first.version, @protocol.report_assignment_version)
     assert_eq(
       c.runtime
       .claim("c".repeat(64), { ..claim, environments: Some([debian_id]), })

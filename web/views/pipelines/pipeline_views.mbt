@@ -2,6 +2,7 @@
 priv struct PipelineJobPage {
   job : @runtime.JobRun
   steps : Array[@protocol.StepState]
+  report : @protocol.JobReport
   logs : @runtime.LogPage?
   reason : @runtime.QueueReason?
 }
@@ -540,7 +541,7 @@ fn render_pipeline_detail(
         let conclusion = pipeline_conclusion(page.job.conclusion)
         let display = if conclusion.is_empty() { state } else { conclusion }
         b <+
-          "<li id=\"job-\{page.job.id.to_string()}\" data-pipeline-job=\"\{page.job.id.to_string()}\" data-attempt-id=\"\{page.job.attempt_id.map(id => id.to_string()).unwrap_or("")}\"><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-job-state data-state=\"\{display}\">\{pipeline_display_state(display)}</span></div>"
+          "<li id=\"job-\{page.job.id.to_string()}\" data-pipeline-job=\"\{page.job.id.to_string()}\" data-report-revision=\"\{page.report.revision.to_string()}\" data-attempt-id=\"\{page.job.attempt_id.map(id => id.to_string()).unwrap_or("")}\"><div class=\"mr-list-title\"><strong>\{pipeline_html(page.job.job_key)}</strong><span class=\"mr-state\" data-job-state data-state=\"\{display}\">\{pipeline_display_state(display)}</span></div>"
         if deployments.iter().find_first(item => item.job_id == page.job.id)
           is Some(item) {
           b <+
@@ -629,6 +630,50 @@ fn render_pipeline_detail(
             ">exit \{step.exit_code.to_string()}</span> <span class=\"mr-state\" data-step-state data-state=\"\{step.state}\">\{pipeline_display_state(step.state)}</span></li>"
         }
         b <+ "</ul>"
+        if page.report.truncated {
+          b <+
+            "<p class=\"settings-notice\">Some report content was omitted because the job report limit was reached.</p>"
+        }
+        if !page.report.entries.is_empty() {
+          b <+
+            "<section class=\"job-reports\" aria-label=\"Job reports\"><h3>Step summary</h3>"
+          for entry in page.report.entries {
+            if !entry.summary.is_empty() {
+              b <+
+                "<section data-summary-step=\"\{entry.step_id}\"><h4>\{entry.step_id}</h4><div class=\"markdown-body\">\{@web_ui.markdown(entry.summary,repo=Some(scope.repo))}</div></section>"
+            }
+          }
+          b <+ "<h3>Annotations</h3><ul class=\"job-annotations\">"
+          for entry in page.report.entries {
+            for annotation in entry.annotations {
+              b <+
+                "<li data-annotation-severity=\"\{annotation.severity}\"><strong>\{annotation.severity}</strong> · <span>\{entry.step_id}</span>"
+              if !annotation.title.is_empty() {
+                b <+ "<h4>\{annotation.title}</h4>"
+              }
+              if !annotation.file.is_empty() {
+                b <+ "<p><code>\{annotation.file}</code>"
+              } else {
+                b <+ "<p>"
+              }
+              if annotation.line > 0 {
+                b <+ " · line \{annotation.line.to_string()}"
+              }
+              if annotation.end_line > annotation.line {
+                b <+ "–\{annotation.end_line.to_string()}"
+              }
+              if annotation.column > 0 {
+                b <+ " · column \{annotation.column.to_string()}"
+              }
+              if annotation.end_column > 0 &&
+                annotation.end_column != annotation.column {
+                b <+ "–\{annotation.end_column.to_string()}"
+              }
+              b <+ "</p><pre>\{annotation.message}</pre></li>"
+            }
+          }
+          b <+ "</ul></section>"
+        }
         let chunks = page.logs.map(logs => logs.chunks).unwrap_or([])
         b <+
           "<section class=\"pipeline-logs\" aria-label=\"Job logs\" data-log-cursor=\"\{page.logs.map(logs => logs.next_cursor).unwrap_or("0")}\" data-log-complete=\"\{page.logs.map(logs => logs.complete).unwrap_or(true).to_string()}\" data-log-more=\"\{page.logs.map(logs => logs.has_more).unwrap_or(false).to_string()}\""

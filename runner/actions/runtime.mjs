@@ -1,3 +1,4 @@
+import { captureReport, reportSnapshot } from './reports.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -83,6 +84,7 @@ export async function metadata(directory) {
 export class ActionRuntime {
   constructor(config, state = {}, adapters = {}) {
     this.config = config;
+    this.reportStep = config.step?.id || "";
     this.state = Object.assign(state, { env: {}, path: [], steps: {}, posts: [], actions: {}, masks: [], ...state });
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
     this.containerSession = config.container_isolation === true && config.container_id ? new ContainerSession(config, this.state, adapters) : null;
@@ -216,14 +218,20 @@ export class ActionRuntime {
       if (this.state.path.length > 300) throw new Error('Too many action PATH entries');
       result.outputs = { ...result.outputs, ...parseFileCommands(await readBounded(files.OUTPUT)) };
       result.state = { ...result.state, ...parseFileCommands(await readBounded(files.STATE)) };
-      // Summaries remain a bounded local artifact until the server exposes them.
-      const summary = await readBounded(files.STEP_SUMMARY);
-      if (summary && ((await fs.stat(path.join(this.temp, "summary.md")).catch(() => ({size: 0}))).size + Buffer.byteLength(summary) > limit)) throw new Error("Action summaries exceed 1 MiB");
-      if (summary) await fs.appendFile(path.join(this.temp, 'summary.md'), summary, { mode: 0o600 });
+
+      if (!this.config.reports_enabled) {
+        const summary = await readBounded(files.STEP_SUMMARY);
+        if (summary && ((await fs.stat(path.join(this.temp, 'summary.md')).catch(() => ({size: 0}))).size + Buffer.byteLength(summary) > limit)) throw new Error('Action summaries exceed 1 MiB');
+        if (summary) await fs.appendFile(path.join(this.temp, 'summary.md'), summary, {mode:0o600});
+      }
       return code;
     } finally {
-      if (this.dispatchContext) await fs.rm(this.eventPath, { force: true });
-      await fs.rm(directory, { recursive: true, force: true });
+      try {
+        if (this.config.reports_enabled) captureReport(this.state, this.reportStep, await readBounded(files.STEP_SUMMARY), result.annotations || []);
+      } finally {
+        if (this.dispatchContext) await fs.rm(this.eventPath, { force: true });
+        await fs.rm(directory, { recursive: true, force: true });
+      }
     }
   }
   environment(extra = {}, context = this.context()) {
@@ -368,7 +376,7 @@ export class ActionRuntime {
     let saved = {};
     let post;
     if (value.runs.post) {
-      post = { action, value, inputs, env: supplied, saved, condition: value.runs['post-if'] || 'always()' };
+      post = { step_id: this.reportStep, action, value, inputs, env: supplied, saved, condition: value.runs['post-if'] || 'always()' };
       this.state.posts.push(post);
     }
     if (value.runs.pre && truthy(await evaluate(value.runs['pre-if'] || 'always()', context))) {
@@ -423,6 +431,7 @@ export class ActionRuntime {
     let code = 0;
     while (this.state.posts.length) {
       const post = this.state.posts.pop(), context = this.context();
+      this.reportStep = post.step_id || this.reportStep;
       try {
         if (!truthy(await evaluate(post.condition, context))) continue;
         const result = await this.javascript(post.action, post.value, post.inputs, post.env, context, post.saved, 'post');
@@ -518,8 +527,9 @@ async function main() {
     runtime.state.failure = true;
     result = { code: 1, state: runtime.state };
   }
+  const report = config.reports_enabled ? reportSnapshot(result.state) : null;
   await fs.writeFile(stateFile, encodeState(result.state, key), { mode: 0o600 });
-  if (config.result_file) await fs.writeFile(config.result_file, JSON.stringify({ conclusion: result.conclusion || 'failure', ...(config.phase === 'post' ? { outputs: result.outputs || {} } : {}) }), { mode: 0o600 });
+  if (config.result_file) await fs.writeFile(config.result_file, JSON.stringify({ ...(report ? {report} : {}), conclusion: result.conclusion || 'failure', ...(config.phase === 'post' ? { outputs: result.outputs || {} } : {}) }), { mode: 0o600 });
   process.exitCode = result.code;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

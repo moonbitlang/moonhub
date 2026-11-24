@@ -891,3 +891,49 @@ test('scheduler and runner share extended scheduling expression cases', async ()
   for (const [expression, expected] of fixture.valid) assert.deepEqual(JSON.parse(JSON.stringify(evaluate(expression, fixture.context))), expected, expression);
   for (const expression of fixture.invalid) assert.throws(() => evaluate(expression, fixture.context), undefined, expression);
 });
+
+test('step reports combine summaries and mask structured annotations without changing exit status', async t => {
+  const { config } = await fixture(t);
+  config.reports_enabled = true;
+  const first = await execute({ ...config, step: { id: 'one', run: `printf '::add-mask::report-secret\n'; printf '## First report-secret\n' >> "$GITHUB_STEP_SUMMARY"; printf '::error file=src/main.mbt,line=12,endLine=14,col=2,endColumn=5,title=Unsafe %%3Ctag%%3E::bad report-secret\n'` } });
+  assert.equal(first.code, 0);
+  const second = await execute({ ...config, step: { id: 'two', run: `printf '## Second\n<script>unsafe</script>\n' >> "$GITHUB_STEP_SUMMARY"; printf '::warning::later warning\n'` } }, first.state);
+  const { reportSnapshot } = await import('./reports.mjs');
+  const report = reportSnapshot(second.state);
+  assert.equal(report.revision, 1);
+  assert.deepEqual(report.entries.map(e => e.step_id), ['one', 'two']);
+  assert.equal(report.entries[0].summary, '## First ***\n');
+  assert.deepEqual(report.entries[0].annotations[0], { severity: 'error', message: 'bad ***', title: 'Unsafe %3Ctag%3E', file: 'src/main.mbt', line: 12, end_line: 14, column: 2, end_column: 5 });
+  assert.match(report.entries[1].summary, /<script>/); // Server applies the shared safe Markdown renderer.
+  assert.equal(report.entries[1].annotations[0].severity, 'warning');
+  assert.equal(reportSnapshot(second.state).revision, 2);
+});
+
+test('pre main and post reports retain the originating workflow step', async t => {
+  const { config } = await fixture(t);
+  config.reports_enabled = true;
+  const uses = await action(config, 'reporting', 'runs:\n  using: node20\n  pre: pre.cjs\n  main: main.cjs\n  post: post.cjs\n', Object.fromEntries(['pre', 'main', 'post'].map(phase => [phase + '.cjs', `require('node:fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, '${phase}\\n'); console.log('::notice::${phase}');`])));
+  const main = await execute({ ...config, step: { id: 'report-action', remote: true, uses, inputs: {}, env: {} } });
+  const post = await execute({ ...config, phase: 'post' }, main.state);
+  const { reportSnapshot } = await import('./reports.mjs');
+  const report = reportSnapshot(post.state);
+  assert.equal(post.code, 0);
+  assert.equal(report.entries.length, 1);
+  assert.equal(report.entries[0].step_id, 'report-action');
+  assert.equal(report.entries[0].summary, 'pre\nmain\npost\n');
+  assert.deepEqual(report.entries[0].annotations.map(a => a.message), ['pre', 'main', 'post']);
+});
+
+test('reports enforce aggregate byte count annotation count and source position bounds', async () => {
+  const { captureReport, reportSnapshot, annotation } = await import('./reports.mjs');
+  const state = { masks: [] };
+  captureReport(state, 'first', 'a'.repeat(1048575), []);
+  captureReport(state, 'second', '界'.repeat(20), Array.from({length:201}, () => annotation('notice', 'hello', {line:'1',col:'999999999999'})));
+  const report = reportSnapshot(state);
+  assert.equal(report.truncated, true);
+  assert.ok(report.entries.reduce((n,e) => n + Buffer.byteLength(e.summary), 0) <= 1048576);
+  assert.equal(report.entries.flatMap(e => e.annotations).length, 200);
+  assert.equal(report.entries[1].annotations[0].column, 0);
+  assert.equal(annotation('error', 'x', {line:'-4',col:'2'}).column, 0);
+  assert.equal(annotation('notice', 'x', {line:'1',endLine:'2',col:'10',endColumn:'2'}).end_column, 2);
+});

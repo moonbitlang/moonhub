@@ -731,3 +731,24 @@ test('deployment environment settings preserve reviewers and escape public confi
   await target.getByRole('button', { name: 'Delete environment', exact: true }).click();
   await expect(target).toHaveCount(0);
 });
+
+test('run reports display both summaries and escaped annotations independently of success', async ({ page }) => {
+  await login(page);
+  await page.goto('/alice/demo/pipelines/1');
+  const reports = page.getByRole('region', { name: 'Job reports' });
+  await expect(reports).toBeVisible();
+  await expect(reports.getByRole('heading', { name: 'First summary', exact: true })).toBeVisible();
+  await expect(reports.getByRole('heading', { name: 'Second summary', exact: true })).toBeVisible();
+  const error = reports.locator('[data-annotation-severity=error]');
+  await expect(error).toContainText('first');
+  await expect(error).toContainText('src/main.mbt');
+  await expect(error).toContainText('line 12–14');
+  await expect(error).toContainText('column 2–5');
+  await expect(error).toContainText('<img src=x onerror=alert(1)>');
+  await expect(error.locator('img,script')).toHaveCount(0);
+  await expect(reports.locator('a[href^="javascript:"]')).toHaveCount(0);
+  expect(await page.evaluate(() => (globalThis as any).reportUnsafe)).toBeUndefined();
+  await expect(page.locator('[data-job-state]')).toHaveText('Passed');
+  await page.reload();
+  await expect(reports.getByRole('heading', { name: 'Second summary', exact: true })).toBeVisible();
+});

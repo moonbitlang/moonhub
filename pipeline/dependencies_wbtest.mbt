@@ -15,7 +15,7 @@ async test "private action grants pin commits hide credentials and recheck revoc
       let assignment = c.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
-      assert_eq(assignment.version, @protocol.source_assignment_version)
+      assert_eq(assignment.version, @protocol.report_assignment_version)
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       let execution = "1".repeat(32)
       ignore(c.runtime.start(id, attempt_secret, 1, execution_id=execution))
