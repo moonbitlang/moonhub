@@ -42,6 +42,8 @@ pub let release_assignment_version : Int32
 
 pub let remote_assignment_version : Int32
 
+pub let run_attempt_assignment_version : Int32
+
 pub let scheduling_assignment_version : Int32
 
 pub let secret_assignment_version : Int32

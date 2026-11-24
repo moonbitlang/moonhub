@@ -44,6 +44,27 @@ scheduler, pipeline administration and Runner HTTP); JavaScript passed 47,
 with 7 Windows-only tests skipped on Linux. Required check/format/interface
 commands passed with the production compiler pin.
 
+## Events and run attempts
+
+- #70: definition v9 persists bounded event payloads with the immutable run.
+  PR concurrency uses the saved number and head/base SHAs; push events retain
+  before/after and ref. Conditions, runner expressions and event files share it.
+- #107: schema 50 adds stable public IDs and monotonically increasing workflow
+  attempts, separate from worker attempts and historical run record numbers.
+  Assignment v15 exposes the stable ID/attempt to runner context and environment.
+  API history and run pages link previous attempts; OIDC uses the public identity.
+- #108: failed-only reruns compute the failed/dependent closure transactionally,
+  reference unaffected saved outputs/conclusions, and retain pinned source/events.
+  CLI, API and forms expose the operation. Reused logs/artifacts stay with their
+  original attempt; same-run artifact RPC authorization is unchanged.
+
+Validation: the broad native run exercised 739 tests. Its five failures were
+four obsolete protocol expectations and a PR-number JSON typing bug; affected
+native files then passed 60 tests, and the corrected CLI flag passed 11/11.
+JavaScript passed 48, with 7 Windows-only tests skipped. Required check, format
+and interface commands passed. The final full-suite run remains required after
+all categories are implemented.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package

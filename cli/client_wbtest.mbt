@@ -162,3 +162,15 @@ test "CLI merge accepts the observed metadata version to confirm closures" {
   assert_eq(option(parsed, "version"), Some("2"))
   assert_eq(option(parsed, "edit-version"), Some("3"))
 }
+
+///|
+test "failed-only rerun flag is available on CI rerun" {
+  let parsed = command().parse(argv=["ci", "rerun", "9", "--failed"])
+  assert_eq(
+    parsed.subcommand.unwrap().1.subcommand.unwrap().1.flags.get("failed"),
+    Some(true),
+  )
+  assert_true(
+    command().parse_outcome(argv=["ci", "cancel", "9", "--failed"]) is Failed(_),
+  )
+}

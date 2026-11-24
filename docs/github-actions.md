@@ -212,7 +212,8 @@ Upgrade the server, provider/controller and task runner together. Definition
 version 2 always uses assignment version 5, including jobs containing only `run`
 steps, so environment/output files work without an explicit expression or
 action. Older definition version 1 remains readable and runnable; reruns
-preserve its saved definition version and legacy assignment selection.
+preserve its saved definition version. Reruns use assignment v15 for stable run
+identity while carrying the original snapshot's event/variable context gates.
 Historical definition-v3 snapshots use assignment version 6 for matrix/strategy
 contexts. Definition-v4 snapshots use assignment version 7 for job dataflow with
 attempt-bound output storage. Definition-v5 snapshots use assignment version 8

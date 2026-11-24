@@ -624,7 +624,12 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
       }
       ("\{base}/runs", Some(Json(fields)))
     }
-    ("ci", "rerun" | "cancel") => ("\{base}/runs/\{id}/\{action}", Some({}))
+    ("ci", "rerun") =>
+      (
+        "\{base}/runs/\{id}/rerun",
+        Some({ "failed_only": options.flags.get("failed").unwrap_or(false) }),
+      )
+    ("ci", "cancel") => ("\{base}/runs/\{id}/cancel", Some({}))
     ("inbox", "list") =>
       (
         "/inbox?filter=\{escape(required(matches, "filter"))}&page=\{decimal(required(matches, "page"))}",

@@ -33,6 +33,7 @@ async test "original Desktop Windows workflow packages uploads and restores with
       inputs: Map([]),
       variables: Map([]),
       release_tag: None,
+      event: None,
     }
     pool.with_client(client => {
       ignore(

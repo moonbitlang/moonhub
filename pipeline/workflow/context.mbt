@@ -10,6 +10,7 @@ pub(all) struct RunContext {
   inputs : Map[String, Json]
   variables : Map[String, String]
   release_tag : String?
+  event : Map[String, Json]?
 }
 
 ///|
@@ -22,6 +23,9 @@ pub impl ToJson for RunContext with fn to_json(self) {
     "base_ref": self.base_ref,
     "inputs": ToJson::to_json(self.inputs),
     "variables": ToJson::to_json(self.variables),
+  }
+  if self.event is Some(event) {
+    fields["event"] = ToJson::to_json(event)
   }
   if self.release_tag is Some(tag) {
     fields["release_tag"] = Json::string(tag)
@@ -77,6 +81,10 @@ pub impl @json.FromJson for RunContext with fn from_json(json, path) {
       path=path.add_key("inputs"),
     ),
     release_tag,
+    event: match fields.get("event") {
+      None | Some(Null) => None
+      Some(value) => Some(@json.from_json(value, path=path.add_key("event")))
+    },
   }
 }
 

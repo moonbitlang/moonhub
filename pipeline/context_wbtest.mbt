@@ -106,6 +106,10 @@ async test "push context is taken from durable event and retained on rerun" {
     let context = run.context.unwrap()
     assert_eq(context.sha, sha)
     assert_eq(context.event_name, "push")
+    let event = context.event.unwrap()
+    assert_eq(event.get("ref"), Some(Json::string("refs/heads/pushed")))
+    assert_eq(event.get("before"), Some(Json::string("0".repeat(40))))
+    assert_eq(event.get("after"), Some(Json::string(sha)))
     assert_eq(context.variables.get("PUSH_CONFIG"), Some("captured"))
     assert_true(context.inputs.is_empty())
     assert_eq(context.head_ref, "")
@@ -116,6 +120,7 @@ async test "push context is taken from durable event and retained on rerun" {
     finish_merge_check(coordinator)
     let again = rerun_run(pool, root, actor, repo, run.number)
     assert_eq(again.context.unwrap().event_name, "push")
+    assert_eq(again.context.unwrap().event, context.event)
     assert_eq(
       ToJson::to_json(again.definition),
       ToJson::to_json(run.definition),
@@ -131,6 +136,25 @@ async test "MR context uses merged candidate and reruns use saved context not li
       let run = @runtime.list_runs(pool, actor, protocol_repo)[0]
       let context = run.context.unwrap()
       assert_eq(context.event_name, "pull_request")
+      let revision = @collaboration.merge_revision(pool, mr)
+      assert_true(
+        context.event.unwrap().get("pull_request")
+        is Some(
+          {
+            "number": Number(number, ..),
+            "head": { "sha": String(head), .. },
+            "base": { "sha": String(base), .. },
+            ..
+          },
+        ) &&
+        number == mr.number.to_double() &&
+        head == revision.source_sha &&
+        base == revision.target_sha,
+      )
+      assert_eq(
+        context.event.unwrap().get("action"),
+        Some(Json::string("opened")),
+      )
       assert_true(context.inputs.is_empty())
       assert_eq(context.sha, run.commit_sha)
       assert_true(
@@ -244,8 +268,74 @@ async test "legacy contextless snapshot can still be read claimed and rerun" {
     assert_true(again.context is None)
     assert_eq(again.definition_version, 1)
     let (assignment, _) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(assignment.version, 1)
+    assert_eq(assignment.version, @protocol.run_attempt_assignment_version)
+    assert_eq(assignment.job.context.get("dispatch_context"), Some("false"))
     assert_eq(assignment.commit_sha, sha)
     assert_eq(assignment.job.steps[0].run, "echo fixture")
   })
+}
+
+///|
+async test "PR concurrency groups use the captured PR number across source pushes" {
+  with_merge_check_fixture(
+    (pool, root, scope, actor, mr) => {
+      poll_merge_checks(pool, root)
+      let original = @runtime.list_runs(pool, actor, protocol_repo)[0]
+      let old_event = original.context.unwrap().event.unwrap()
+      let key = pool.with_client(c => {
+        (
+          c
+          .query_one(
+            "SELECT group_key FROM pipeline_run_schedule WHERE run_id=?",
+            params=[original.id],
+          )
+          .get_name("group_key") : String)
+      })
+      assert_eq(key, "ci-" + mr.number.to_string())
+      let coordinator = merge_check_provider(pool)
+      let first = coordinator.runtime
+        .claim(provider_secret, claim_request())
+        .unwrap()
+      assert_eq(first.job.event, old_event)
+      let id = @protocol.parse_decimal(first.attempt_id).unwrap()
+      ignore(coordinator.runtime.start(id, attempt_secret, 1))
+      ignore(coordinator.runtime.complete(id, attempt_secret, completion()))
+      let dir = protocol_repo.git_dir(root)
+      let head = merge_check_commit(
+        dir,
+        "feature",
+        @gitops.branch_sha(dir, "feature"),
+        "changed head\n",
+      )
+      poll_merge_checks(pool, root)
+      let updated = @collaboration.require_merge_request(pool, scope, mr.number)
+      @collaboration.prepare_merge_checks(pool, scope, updated, actor~)
+      poll_merge_checks(pool, root)
+      let fresh = @runtime.list_runs(pool, actor, protocol_repo)[0]
+      assert_true(fresh.id != original.id)
+      assert_eq(
+        pool.with_client(c => {
+          (
+            c
+            .query_one(
+              "SELECT group_key FROM pipeline_run_schedule WHERE run_id=?",
+              params=[fresh.id],
+            )
+            .get_name("group_key") : String)
+        }),
+        key,
+      )
+      assert_true(
+        fresh.context.unwrap().event.unwrap().get("pull_request")
+        is Some({ "head": { "sha": String(sha), .. }, .. }) &&
+        sha == head,
+      )
+      assert_eq(
+        @runtime.get_run(pool, actor, protocol_repo, original.number).context.unwrap().event,
+        Some(old_event),
+      )
+    },
+    workflow=context_workflow +
+      "\nconcurrency: ci-${{ github.event.pull_request.number || github.run_id }}\n",
+  )
 }
