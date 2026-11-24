@@ -74,9 +74,15 @@ jobs:
         run: |
           docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
             --target environment -t moonhub-runner-tools:ubuntu .
+          docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
+            --build-arg UBUNTU_VERSION=22.04 --target runner -t moonhub-runner-tools:ubuntu-22.04 .
+          probe=$(docker run --rm --network none moonhub-runner-tools:ubuntu-22.04 --probe-environment)
+          jq -e '.architecture == "x64" and (.os_release | split("\n") |
+            index("ID=ubuntu") != null and index("VERSION_ID=\"22.04\"") != null)' <<< "$probe"
           docker build --platform linux/amd64 --target runner-environment \
             --build-arg MOONHUB_BASE_IMAGE=moonhub-base:local -t moonhub-runner-tools:debian .
-          bash scripts/linux-runner-tools-smoke.sh moonhub-runner-tools:ubuntu moonhub-runner-tools:debian
+          bash scripts/linux-runner-tools-smoke.sh \
+            moonhub-runner-tools:ubuntu moonhub-runner-tools:ubuntu-22.04 moonhub-runner-tools:debian
 
   windows-runner:
     name: Windows runner (${{ matrix.os }})
