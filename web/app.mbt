@@ -72,6 +72,7 @@ let app_main_module : @moonback.Module = Module(ctx => {
   ctx.use_(@release_views.releases_module)
   ctx.use_(@pipeline_views.repository_secrets_module)
   ctx.use_(@pipeline_views.repository_variables_module)
+  ctx.use_(@pipeline_views.deployment_environments_module)
   ctx.use_(@repository_views.repo_browser_module)
 })
 

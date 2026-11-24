@@ -174,21 +174,7 @@ fn require_secret_policy(
   workflow_path : String,
   context : @workflow.RunContext?,
 ) -> Unit raise {
-  guard context is Some(context) &&
-    (
-      [
-        "workflow_dispatch", "push", "schedule", "repository_dispatch", "workflow_run",
-      ].contains(context.event_name) ||
-      (context.event_name == "release" && context.release_tag is Some(_))
-    ) &&
-    !(context.event_name == "push" &&
-    context.event is Some(event) &&
-    event.get("ref") is Some(String(reference)) &&
-    reference.has_prefix("refs/tags/")) else {
-    raise @domain.Forbidden(
-      message="Repository secrets are available only to authorized branch, dispatch, completion, schedule and release workflows, never MR checks or tag pushes.",
-    )
-  }
+  require_secret_event(context)
   guard tx.query_opt(
       "SELECT name FROM repository_secret WHERE repository_id = ? AND name = ? AND branch = ? AND workflow_path = ?",
       params=[repository_id, name, branch, workflow_path],
@@ -210,6 +196,9 @@ fn validate_secret_policy(
   jobs : Array[@workflow.Job],
 ) -> Unit raise {
   for job in jobs {
+    if !job.deployment_environment.is_empty() {
+      continue
+    }
     for step in job.steps {
       for _, name in step.secret_env {
         require_secret_policy(
@@ -275,27 +264,47 @@ pub fn Coordinator::step_secrets(
         }
         let env : Map[String, String] = Map([])
         for variable, name in step.secret_env {
-          require_secret_policy(
-            tx,
-            row.get_name("repository_id"),
-            name,
-            run.get_name("source_branch"),
-            run.get_name("workflow_path"),
-            context,
+          require_secret_event(context)
+          let environment_secret = tx.query_opt(
+            "SELECT s.value,d.environment_id FROM pipeline_job_deployment d JOIN pipeline_deployment_admission allowed ON allowed.job_id=d.job_id JOIN deployment_environment_secret s ON s.environment_id=d.environment_id WHERE d.job_id=? AND s.name=?",
+            params=[(row.get_name("job_id") : Int64), name],
           )
+          if environment_secret is None {
+            require_secret_policy(
+              tx,
+              row.get_name("repository_id"),
+              name,
+              run.get_name("source_branch"),
+              run.get_name("workflow_path"),
+              context,
+            )
+          }
+          let source_environment_id = environment_secret
+            .map(secret => (secret.get_name("environment_id") : Int64))
+            .unwrap_or(0L)
           let existing = tx.query_opt(
-            "SELECT value FROM pipeline_secret_delivery WHERE attempt_id = ? AND step_id = ? AND env_name = ?",
+            "SELECT value,source_environment_id FROM pipeline_secret_delivery WHERE attempt_id = ? AND step_id = ? AND env_name = ?",
             params=[id, step.id, variable],
           )
           let value : String = if existing is Some(delivery) {
+            guard (delivery.get_name("source_environment_id") : Int64) ==
+              source_environment_id else {
+              raise @domain.Forbidden(
+                message="Secret scope changed during execution.",
+              )
+            }
             delivery.get_name("value")
           } else {
-            let value : String = tx
+            let value : String = if environment_secret is Some(secret) {
+              secret.get_name("value")
+            } else {
+              tx
               .query_one(
-                "SELECT value FROM repository_secret WHERE repository_id = ? AND name = ?",
+                "SELECT value FROM repository_secret WHERE repository_id=? AND name=?",
                 params=[(row.get_name("repository_id") : Int64), name],
               )
               .get_name("value")
+            }
             let bytes : Int64 = tx
               .query_one(
                 "SELECT COALESCE(SUM(length(CAST(value AS BLOB))), 0) AS total FROM pipeline_secret_delivery WHERE attempt_id = ?",
@@ -309,8 +318,8 @@ pub fn Coordinator::step_secrets(
             }
             ignore(
               tx.execute(
-                "INSERT INTO pipeline_secret_delivery (attempt_id, step_id, env_name, value) VALUES (?, ?, ?, ?)",
-                params=[id, step.id, variable, value],
+                "INSERT INTO pipeline_secret_delivery (attempt_id, step_id, env_name, value, source_environment_id) VALUES (?, ?, ?, ?, ?)",
+                params=[id, step.id, variable, value, source_environment_id],
               ),
             )
             value
@@ -322,4 +331,23 @@ pub fn Coordinator::step_secrets(
       immediate=true,
     )
   })
+}
+
+///|
+fn require_secret_event(context : @workflow.RunContext?) -> Unit raise {
+  guard context is Some(context) &&
+    (
+      [
+        "workflow_dispatch", "push", "schedule", "repository_dispatch", "workflow_run",
+      ].contains(context.event_name) ||
+      (context.event_name == "release" && context.release_tag is Some(_))
+    ) &&
+    !(context.event_name == "push" &&
+    context.event is Some(event) &&
+    event.get("ref") is Some(String(reference)) &&
+    reference.has_prefix("refs/tags/")) else {
+    raise @domain.Forbidden(
+      message="Repository secrets are available only to authorized branch, dispatch, completion, schedule and release workflows, never MR checks or tag pushes.",
+    )
+  }
 }

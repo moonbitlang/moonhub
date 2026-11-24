@@ -124,6 +124,31 @@ permission reduction, typed concurrency, duplicate completion and reconstructed
 secret suppression. The repository's unchanged CI workflow parses with its local
 frontend callee. Actual platform scripts and deployment were not executed here.
 
+## Deployment environments
+
+- #99/#100: schema 53 stores stable target identities, immutable public snapshots,
+  per-job admission and review history. Dependencies/conditions precede review;
+  job concurrency and runner assignment follow it. Reviews bind the workflow
+  attempt, environment and policy revision. Restart, stale decisions, deletion,
+  reviewer revocation, rejection and cancellation have regression coverage.
+- #101/#102: environment secrets and execution-time variables override repository
+  names. Reruns retain captured public values and recheck current approval and
+  secrets. Credentials stay out of assignments/read models; raw delivery cleanup
+  and log/output masking remain shared. Deleting an environment secret cannot
+  expose its cached value through a repository fallback.
+- Management/review APIs share both mounts; settings and run pages enforce CSRF
+  and business authorization. No administrator approval bypass is introduced.
+
+Validation: affected parser, scheduling, reusable-workflow, credential, migration
+and HTTP suites passed 150/150. TypeScript and browser asset builds passed;
+package boundaries passed for 56 packages. Native build and both browser checks
+passed (environment settings and Actions navigation). Required check, format
+and interface commands passed. The deployment environment declaration
+from the repository's `deploy.yml` is covered by an equivalent planning fixture.
+The complete GitHub script still uses intentionally reserved `MOONHUB_DEPLOY_*`
+variables; their namespace protection is retained. No cloud target was configured
+and no deployment was performed.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package

@@ -4,6 +4,110 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.get(
+    "/repos/:owner/:repo/environments",
+    api_handler(req => {
+      "items": ToJson::to_json(
+        @runtime.list_deployment_environments(
+          pool,
+          api_actor(pool, req, "read"),
+          @web_context.repo_param(req),
+        ),
+      ),
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/environments/:environment",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, ["version", "reviewers"])
+      let reviewers : Array[Int64] = match body.get("reviewers") {
+        Some(Array(values)) =>
+          values.map(value => {
+            match value {
+              String(value) => number(value)
+              Number(value, ..) if value > 0 &&
+                value <= 9007199254740991.0 &&
+                value.floor() == value => value.to_int64()
+              _ =>
+                raise @domain.BadRequest(
+                  message="Reviewer IDs must be positive integers.",
+                )
+            }
+          })
+        _ =>
+          raise @domain.BadRequest(
+            message="reviewers must be an array of user IDs.",
+          )
+      }
+      coordinator.save_deployment_environment(
+        actor,
+        @web_context.repo_param(req),
+        @web_context.required_param(req, "environment", "environment"),
+        number(field(body, "version"), zero=true),
+        reviewers,
+      )
+      { "ok": true }
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/environments/:environment/delete",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, ["version"])
+      coordinator.delete_deployment_environment(
+        actor,
+        @web_context.repo_param(req),
+        @web_context.required_param(req, "environment", "environment"),
+        number(field(body, "version")),
+      )
+      { "ok": true }
+    }),
+  )
+  for kind in ["variables", "secrets"] {
+    ctx.post(
+      "/repos/:owner/:repo/environments/:environment/" + kind + "/:name",
+      api_handler(req => {
+        let actor = api_actor(pool, req, "write")
+        let body = api_body(req, ["version", "value"], body_limit=327680)
+        @runtime.save_deployment_value(
+          pool,
+          actor,
+          @web_context.repo_param(req),
+          @web_context.required_param(req, "environment", "environment"),
+          @web_context.required_param(req, "name", "name"),
+          match body.get("value") {
+            Some(Null) => None
+            Some(String(value)) => Some(value)
+            _ =>
+              raise @domain.BadRequest(
+                message="value must be a string, or null to delete.",
+              )
+          },
+          number(field(body, "version"), zero=true),
+          secret=kind == "secrets",
+        )
+        { "ok": true }
+      }),
+    )
+  }
+  ctx.post(
+    "/repos/:owner/:repo/runs/:number/deployments/:job",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "execute")
+      let body = api_body(req, ["environment_id", "policy_version", "decision"])
+      coordinator.review_deployment(
+        actor,
+        @web_context.repo_param(req),
+        number(@web_context.required_param(req, "number", "run")),
+        number(@web_context.required_param(req, "job", "job")),
+        number(field(body, "environment_id")),
+        number(field(body, "policy_version")),
+        field(body, "decision"),
+      )
+      { "ok": true }
+    }),
+  )
   ctx.post(
     "/repos/:owner/:repo/dispatches",
     api_handler(req => {
@@ -870,6 +974,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let environments = coordinator.job_environments(actor, repo, id)
       {
         "run": @dto.run_json(@runtime.get_run(pool, actor, repo, id)),
+        "deployments": ToJson::to_json(
+          @runtime.job_deployments(pool, actor, repo, id),
+        ),
         "attempts": @runtime.run_attempts(pool, actor, repo, id).map(run => {
           @dto.run_json(run)
         }),

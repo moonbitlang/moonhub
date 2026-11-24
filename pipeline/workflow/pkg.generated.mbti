@@ -105,6 +105,8 @@ pub struct Job {
   reusable_call : ReusableCall?
   call_inputs : Map[String, @json.Json]?
   context_prefix : String
+  deployment_environment : String
+  deployment_url : String
   id : String
   name : String
   needs : Array[String]

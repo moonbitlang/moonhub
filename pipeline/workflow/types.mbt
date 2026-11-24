@@ -111,6 +111,8 @@ pub struct Job {
   reusable_call : ReusableCall?
   call_inputs : Map[String, Json]?
   context_prefix : String
+  deployment_environment : String
+  deployment_url : String
   id : String
   name : String
   needs : Array[String]
@@ -155,6 +157,14 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
       Some(value) =>
         Some(@json.from_json(value, path=path.add_key("call_inputs")))
     },
+    deployment_environment: @json.from_json(
+      fields.get("deployment_environment").unwrap_or(Json::string("")),
+      path=path.add_key("deployment_environment"),
+    ),
+    deployment_url: @json.from_json(
+      fields.get("deployment_url").unwrap_or(Json::string("")),
+      path=path.add_key("deployment_url"),
+    ),
     context_prefix: @json.from_json(
       fields.get("context_prefix").unwrap_or(Json::string("")),
       path=path.add_key("context_prefix"),
