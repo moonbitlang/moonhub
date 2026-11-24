@@ -176,7 +176,7 @@ fn ScheduleParser::atom(
   }
   guard [
     "github", "matrix", "strategy", "needs", "steps", "runner", "env", "inputs",
-    "vars",
+    "vars", "jobs",
   ].contains(token) else {
     raise InvalidWorkflow("unsupported scheduling context: " + token)
   }
@@ -509,8 +509,9 @@ fn whole_scheduling_expression(source : String) -> Bool {
 pub fn scheduling_template(
   source : String,
   context : Map[String, Json],
+  extended~ : Bool = false,
 ) -> String raise InvalidWorkflow {
-  schedule_template(source, context, validate_output=false)
+  schedule_template(source, context, validate_output=false, extended~)
 }
 
 ///|
@@ -518,6 +519,7 @@ fn schedule_template(
   source : String,
   context : Map[String, Json],
   validate_output~ : Bool,
+  extended~ : Bool = false,
 ) -> String raise InvalidWorkflow {
   guard @utf8.encode(source).length() <= max_source_bytes &&
     !source.contains("\u{0000}") else {
@@ -558,7 +560,7 @@ fn schedule_template(
       raise InvalidWorkflow("unterminated scheduling template")
     }
     let expr = schedule_parse(String::from_array(chars[:end].to_owned()))
-    expr.check_context(context, output=validate_output)
+    expr.check_context(context, output=validate_output || extended)
     if !validate_output {
       append(schedule_string(expr.evaluate(context)))
     }

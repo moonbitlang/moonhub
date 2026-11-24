@@ -107,7 +107,7 @@ async fn create_merge_check_run(
   ignore(@runtime.require_run_author(pool, actor, scope.repo))
   @runtime.validate_workflow_path(workflow_path)
   let source = read_workflow_source(git_dir, sha, workflow_path)
-  let definition = @workflow.parse(source)
+  let definition = read_workflow_definition(git_dir, sha, source)
   let context : @workflow.RunContext = {
     repository: scope.repo.owner + "/" + scope.repo.name,
     sha,

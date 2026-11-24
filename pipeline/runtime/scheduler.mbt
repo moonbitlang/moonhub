@@ -38,6 +38,16 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
       if !needs.all(need => (need.get_name("status") : String) == "completed") {
         continue
       }
+      if job.reusable_call is Some(_) &&
+        tx.query_opt(
+          "SELECT job_id FROM pipeline_call_expansion WHERE job_id=?",
+          params=[job_id],
+        )
+        is Some(_) {
+        complete_call_barrier(tx, run, job_id, job)
+        changed = true
+        continue
+      }
       if job.dynamic_matrix is Some(_) &&
         tx.query_opt(
           "SELECT job_id FROM pipeline_matrix_expansion WHERE job_id=?",
@@ -50,8 +60,15 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
       }
       let allowed = if run.definition_version >= 4 {
         let ancestors = tx.query_all(
-          "WITH RECURSIVE ancestors(job_key) AS (SELECT needs_job_key FROM pipeline_job_need WHERE run_id=? AND job_key=? UNION SELECT n.needs_job_key FROM pipeline_job_need n JOIN ancestors a ON a.job_key=n.job_key WHERE n.run_id=?) SELECT j.conclusion FROM ancestors a JOIN pipeline_job j ON j.run_id=? AND j.job_key=a.job_key",
-          params=[run_id, job_key, run_id, run_id],
+          "WITH RECURSIVE ancestors(job_key) AS (SELECT needs_job_key FROM pipeline_job_need WHERE run_id=? AND job_key=? UNION SELECT n.needs_job_key FROM pipeline_job_need n JOIN ancestors a ON a.job_key=n.job_key WHERE n.run_id=?) SELECT j.conclusion FROM ancestors a JOIN pipeline_job j ON j.run_id=? AND j.job_key=a.job_key WHERE substr(j.job_key,1,length(?))=?",
+          params=[
+            run_id,
+            job_key,
+            run_id,
+            run_id,
+            job.context_prefix,
+            job.context_prefix,
+          ],
         )
         let success = ancestors.all(row => {
           (row.get_name("conclusion") : String?) == Some("success")
@@ -71,7 +88,9 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             job.condition,
             github,
             context,
-            inputs=run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+            inputs=job.call_inputs.unwrap_or(
+              run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+            ),
             variables=if run.definition_version >= 6 {
               Some(run.context.map(ctx => ctx.variables).unwrap_or(Map([])))
             } else {
@@ -96,7 +115,9 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
           let context : Map[String, Json] = {
             "github": ToJson::to_json(run_job_github(tx, run)),
             "inputs": ToJson::to_json(
-              run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+              job.call_inputs.unwrap_or(
+                run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+              ),
             ),
             "vars": ToJson::to_json(
               run.context.map(ctx => ctx.variables).unwrap_or(Map([])),
@@ -120,10 +141,23 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
               message="job.continue-on-error must evaluate to boolean",
             )
           }
-          if job.concurrency is Some(concurrency) {
+          if job.concurrency is Some(concurrency) &&
+            tx.query_opt(
+              "SELECT id FROM pipeline_concurrency_slot WHERE job_id=?",
+              params=[job_id],
+            )
+            is None {
+            let inputs = if job.reusable_call is Some(call) &&
+              call.definition.concurrency is Some(_) {
+              @workflow.reusable_inputs(job, context)
+            } else {
+              job.call_inputs.unwrap_or(
+                run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+              )
+            }
             let (key, cancel) = concurrency.resolve(
               run_job_github(tx, run),
-              inputs=run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),
+              inputs~,
               variables=Some(
                 run.context.map(ctx => ctx.variables).unwrap_or(Map([])),
               ),
@@ -137,6 +171,29 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
               cancel,
               concurrency.queue_max,
             )
+          }
+          if job.reusable_call is Some(_) {
+            if tx.query_opt(
+                "SELECT id FROM pipeline_concurrency_slot WHERE job_id=? AND admitted=0",
+                params=[job_id],
+              )
+              is Some(_) {
+              continue
+            }
+            // Overflow or another holder may have cancelled this caller.
+            if (
+                tx
+                .query_one("SELECT status FROM pipeline_job WHERE id=?", params=[
+                  job_id,
+                ])
+                .get_name("status") : String) !=
+              "waiting" {
+              changed = true
+              continue
+            }
+            expand_reusable_call(tx, run, job_id, job, context)
+            changed = true
+            continue
           }
           ignore(
             tx.execute(

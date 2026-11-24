@@ -8,25 +8,35 @@ import {
 }
 
 // Values
+pub fn call_output_dependencies(Job) -> Job raise InvalidWorkflow
+
 pub fn cron_matches(String, Int32, Int32, Int32, Int32, Int32) -> Bool raise InvalidWorkflow
 
 pub fn expand_dynamic_matrix(Job, Map[String, @json.Json], remaining_jobs~ : Int32, remaining_steps~ : Int32, remaining_bytes~ : Int32, saved_matrix? : @json.Json?) -> (@json.Json, Array[Job]) raise InvalidWorkflow
 
 pub let format_version : Int32
 
+pub fn instantiate_reusable(Job, Map[String, @json.Json]) -> (Map[String, @json.Json], Array[Job]) raise InvalidWorkflow
+
 pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
 
 pub let max_source_bytes : Int32
 
-pub fn parse(String, jobs? : Array[String]) -> Workflow raise InvalidWorkflow
+pub fn parse(String, jobs? : Array[String], reusable? : Map[String, String]) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_dispatch_inputs(Array[DispatchInput], Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
 
+pub fn reusable_inputs(Job, Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
+
+pub fn reusable_outputs(Job, Map[String, @json.Json], Map[String, @json.Json], Map[String, @json.Json]) -> Map[String, String] raise InvalidWorkflow
+
+pub fn reusable_paths(String, jobs? : Array[String]) -> Array[String] raise InvalidWorkflow
+
 pub fn scheduling_expression(String, Map[String, @json.Json], extended? : Bool) -> @json.Json raise InvalidWorkflow
 
-pub fn scheduling_template(String, Map[String, @json.Json]) -> String raise InvalidWorkflow
+pub fn scheduling_template(String, Map[String, @json.Json], extended? : Bool) -> String raise InvalidWorkflow
 
 pub fn triggers(String) -> Triggers raise InvalidWorkflow
 
@@ -92,6 +102,9 @@ pub struct Job {
   continue_on_error : String
   concurrency : Concurrency?
   dynamic_matrix : DynamicMatrix?
+  reusable_call : ReusableCall?
+  call_inputs : Map[String, @json.Json]?
+  context_prefix : String
   id : String
   name : String
   needs : Array[String]
@@ -114,6 +127,16 @@ pub fn Job::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonD
 pub fn Job::to_json(Self) -> @json.Json
 pub fn Job::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Job
+
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub struct ReusableCall {
+  path : String
+  source : String
+  definition : Workflow
+  inputs : Array[DispatchInput]
+  supplied : Map[String, @json.Json]
+  outputs : Map[String, String]
+}
 
 #derive(@debug.Debug)
 pub(all) struct RunContext {
@@ -165,6 +188,9 @@ pub struct Triggers {
   schedules : Array[Schedule]
   dispatch : Bool
   inputs : Array[DispatchInput]
+  reusable : Bool
+  call_inputs : Array[DispatchInput]
+  call_outputs : Map[String, String]
   push : Bool
   pull_request : Bool
   release : Bool

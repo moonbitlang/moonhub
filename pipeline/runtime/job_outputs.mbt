@@ -91,7 +91,7 @@ fn job_needs_context(
   let result : Map[String, Json] = Map([])
   // Matrix output collisions follow completion order, not matrix ordinal.
   let rows = tx.query_all(
-    "SELECT j.job_key,j.matrix_group,j.conclusion,o.outputs_json FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id LEFT JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=? AND j.status='completed' ORDER BY COALESCE(o.id,0),j.ordinal",
+    "SELECT j.job_key,j.matrix_group,j.conclusion,COALESCE(o.outputs_json,call_output.outputs_json) AS outputs_json FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id LEFT JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) LEFT JOIN pipeline_call_output call_output ON call_output.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=? AND j.status='completed' ORDER BY COALESCE(o.id,0),j.ordinal",
     params=[run_id],
   )
   for row in rows {
@@ -101,7 +101,10 @@ fn job_needs_context(
       (group.is_empty() || !job.needs.contains(group)) {
       continue
     }
-    let logical = if group.is_empty() { key } else { group }
+    let logical = (if group.is_empty() { key } else { group })
+      .strip_prefix(job.context_prefix)
+      .unwrap_or(if group.is_empty() { key } else { group })
+      .to_owned()
     let outputs : Map[String, String] = match result.get(logical) {
       Some({ "outputs": value, .. }) => @json.from_json(value)
       _ => Map([])
@@ -189,12 +192,7 @@ fn publish_job_outputs(
     return
   }
   let encoded = ToJson::to_json(outputs).stringify()
-  let stored : Int64 = tx
-    .query_one(
-      "SELECT COALESCE(SUM(LENGTH(CAST(o.outputs_json AS BLOB))),0) AS bytes FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=?",
-      params=[(row.get_name("run_id") : Int64)],
-    )
-    .get_name("bytes")
+  let stored = stored_output_bytes(tx, row.get_name("run_id"))
   guard stored + @utf8.encode(encoded).length().to_int64() <= 262144L else {
     raise @domain.BadRequest(message="run job outputs exceed 256 KiB")
   }
@@ -204,4 +202,17 @@ fn publish_job_outputs(
       params=[(row.get_name("job_id") : Int64), id, encoded],
     ),
   )
+}
+
+///|
+fn stored_output_bytes(
+  tx : @database.DbTransaction,
+  run_id : Int64,
+) -> Int64 raise {
+  tx
+  .query_one(
+    "SELECT COALESCE(SUM(LENGTH(CAST(COALESCE(o.outputs_json,c.outputs_json) AS BLOB))),0) AS bytes FROM pipeline_job j LEFT JOIN pipeline_job_reuse reuse ON reuse.job_id=j.id LEFT JOIN pipeline_job_output o ON o.job_id=COALESCE(reuse.source_job_id,j.id) LEFT JOIN pipeline_call_output c ON c.job_id=COALESCE(reuse.source_job_id,j.id) WHERE j.run_id=?",
+    params=[run_id],
+  )
+  .get_name("bytes")
 }

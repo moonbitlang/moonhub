@@ -200,7 +200,7 @@ pub async fn run_next_ref_event(
             event: Some(event),
           }
           let definition = @workflow.resolve_context(
-            @workflow.parse(source),
+            read_workflow_definition(git_dir, sha, source),
             context,
           )
           let pin = "refs/moonhub/pipelines/" +

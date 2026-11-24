@@ -28,6 +28,16 @@ fn cancel_concurrency_holder(
     cancel_run_in_transaction(tx, run_id)
     return
   }
+  if tx.query_opt("SELECT job_id FROM pipeline_call_expansion WHERE job_id=?", params=[
+      job_id,
+    ])
+    is Some(_) {
+    let key : String = tx
+      .query_one("SELECT job_key FROM pipeline_job WHERE id=?", params=[job_id])
+      .get_name("job_key")
+    cancel_reusable_call(tx, run_id, job_id, key)
+    return
+  }
   ignore(
     tx.execute(
       "UPDATE pipeline_job SET status='completed',conclusion='cancelled' WHERE id=? AND status IN ('queued','waiting')",
