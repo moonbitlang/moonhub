@@ -44,7 +44,7 @@ fn matrix_entries(
       guard valid_identifier(key) else {
         raise InvalidWorkflow("invalid matrix key")
       }
-      row[key] = matrix_value(value)
+      row[key] = matrix_value(value, nested=true)
     }
     row
   })
@@ -143,6 +143,7 @@ fn expand_job(
   remaining_jobs~ : Int32 = 256,
   remaining_steps~ : Int32 = 4096,
   remaining_bytes~ : Int32 = 1048576,
+  base_context~ : Map[String, Json] = Map([]),
 ) -> Array[Job] raise InvalidWorkflow {
   let fields = yaml_as_obj(value, "jobs." + id)
   guard fields.get("strategy") is Some(strategy) else {
@@ -163,6 +164,32 @@ fn expand_job(
   guard strategy.get("matrix") is Some(matrix) else {
     raise InvalidWorkflow("strategy requires a static matrix")
   }
+  if matrix is String(expression) {
+    guard whole_scheduling_expression(expression) else {
+      raise InvalidWorkflow("dynamic matrix requires a complete expression")
+    }
+    let expr = schedule_parse(expression)
+    expr.check_context(
+      { "github": {}, "inputs": {}, "vars": {}, "needs": {} },
+      output=true,
+    )
+    expr.check_needs(yaml_as_string_list(fields.get("needs"), "job.needs"))
+    let template : DynamicMatrix = {
+      expression,
+      source: yaml_snapshot(value),
+      env,
+      shell: defaults.shell,
+      directory: defaults.working_directory,
+      contents_read: permissions.0,
+      id_token_write: permissions.1,
+      api_permissions: permissions.2,
+    }
+    let placeholder = fields.copy()
+    ignore(placeholder.remove("strategy"))
+    placeholder["runs-on"] = @yaml.String("self-hosted")
+    let job = parse_job(id, @yaml.Map(placeholder), env, defaults, permissions)
+    return [{ ..job, dynamic_matrix: Some(template), }]
+  }
   let rows = expand_matrix(matrix)
   let step_count = match fields.get("steps") {
     Some(Array(steps)) => steps.length()
@@ -176,14 +203,13 @@ fn expand_job(
   rows.mapi((index, matrix) => {
     let fields = fields.copy()
     ignore(fields.remove("strategy"))
-    let context : Map[String, Json] = {
-      "matrix": ToJson::to_json(matrix),
-      "strategy": {
-        "job-index": index,
-        "job-total": rows.length(),
-        "fail-fast": fail_fast,
-        "max-parallel": max_parallel,
-      },
+    let context = base_context.copy()
+    context["matrix"] = ToJson::to_json(matrix)
+    context["strategy"] = {
+      "job-index": index,
+      "job-total": rows.length(),
+      "fail-fast": fail_fast,
+      "max-parallel": max_parallel,
     }
     if fields.get("name") is Some(String(text)) {
       fields["name"] = @yaml.String(scheduling_template(text, context))

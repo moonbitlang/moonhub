@@ -84,6 +84,28 @@ and tag tests passed 5/5. Package boundaries passed for 56 packages, and the
 base-image cache/build regression passed. Required check/format/interface steps
 passed. No production image was built or deployed.
 
+## Dynamic matrices and scheduling
+
+- #81: deferred matrix templates retain the original workflow snapshot. Schema 51
+  stores evaluated matrices and child definitions transactionally; invalid data
+  fails the consumer with a visible diagnostic. Expanded jobs retain event-resolved
+  values, provider checks, output ordering and shared job/step/byte budgets.
+  Duplicate completion, restart and failed-only child reuse have regression tests.
+- #83: job failure policies preserve actual failures while dependencies, fail-fast
+  and run summaries use effective results. API and run pages expose both results.
+- #84/#85: workflow/job groups share durable repository-scoped admission. Default
+  pending replacement remains; `queue: max` admits 100 waiters in FIFO order and
+  cancels new overflow. Cancellation holds capacity until fencing. Job queues wait
+  for dependencies and workflow admission, leaving unrelated jobs eligible.
+
+Validation: native scheduling, workflow, outputs and migration tests passed
+128/128; the additional job FIFO/restart case passed 1/1, and final JSON bound
+cases passed 4/4. API/page tests passed 7/7; JavaScript runner tests passed 49/49.
+Browser assets, TypeScript checks and native builds passed. The Actions/run-detail
+browser regression passed 1/1 using installed Chromium 1234 and an isolated port;
+the initial attempts encountered an occupied default port and absent Chromium 1248.
+Required check/format/interface commands passed. No cloud execution was performed.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package

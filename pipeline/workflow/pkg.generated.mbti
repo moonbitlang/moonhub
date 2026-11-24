@@ -10,6 +10,8 @@ import {
 // Values
 pub fn cron_matches(String, Int32, Int32, Int32, Int32, Int32) -> Bool raise InvalidWorkflow
 
+pub fn expand_dynamic_matrix(Job, Map[String, @json.Json], remaining_jobs~ : Int32, remaining_steps~ : Int32, remaining_bytes~ : Int32, saved_matrix? : @json.Json?) -> (@json.Json, Array[Job]) raise InvalidWorkflow
+
 pub let format_version : Int32
 
 pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
@@ -22,7 +24,7 @@ pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_dispatch_inputs(Array[DispatchInput], Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
 
-pub fn scheduling_expression(String, Map[String, @json.Json]) -> @json.Json raise InvalidWorkflow
+pub fn scheduling_expression(String, Map[String, @json.Json], extended? : Bool) -> @json.Json raise InvalidWorkflow
 
 pub fn scheduling_template(String, Map[String, @json.Json]) -> String raise InvalidWorkflow
 
@@ -38,15 +40,17 @@ pub suberror InvalidWorkflow {
 pub fn InvalidWorkflow::to_repr(Self) -> @debug.Repr
 
 // Types and methods
-#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+#derive(@debug.Debug, @json.ToJson)
 pub struct Concurrency {
   group : String
   cancel_in_progress : String
+  queue_max : Bool
 }
 pub fn Concurrency::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.JsonDecodeError
-pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?) -> (String, Bool) raise InvalidWorkflow
+pub fn Concurrency::resolve(Self, Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, job_context? : Map[String, @json.Json]?) -> (String, Bool) raise InvalidWorkflow
 pub fn Concurrency::to_json(Self) -> @json.Json
 pub fn Concurrency::to_repr(Self) -> @debug.Repr
+pub impl @json.FromJson for Concurrency
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub struct DispatchInput {
@@ -61,6 +65,18 @@ pub fn DispatchInput::from_json(@json.Json, @json.DecodeContext) -> Self raise @
 pub fn DispatchInput::to_json(Self) -> @json.Json
 pub fn DispatchInput::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub struct DynamicMatrix {
+  expression : String
+  source : @json.Json
+  env : Map[String, String]
+  shell : String?
+  directory : String?
+  contents_read : Bool
+  id_token_write : Bool
+  api_permissions : Int32
+}
+
 pub struct EventFilters {
   branches : Array[String]
   branches_ignore : Array[String]
@@ -73,6 +89,9 @@ pub struct EventFilters {
 #derive(@debug.Debug, @json.ToJson)
 pub struct Job {
   compatibility_runtime : Bool
+  continue_on_error : String
+  concurrency : Concurrency?
+  dynamic_matrix : DynamicMatrix?
   id : String
   name : String
   needs : Array[String]

@@ -6,7 +6,7 @@ let eligible_provider_jobs : String =
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
   #|AND r.definition_version IN (1, 2, 3, 4, 5, 6, 7, 8, ?)
-  #|AND NOT EXISTS (SELECT 1 FROM pipeline_run_schedule s WHERE s.run_id=r.id AND s.admitted=0)
+  #|AND NOT EXISTS (SELECT 1 FROM pipeline_concurrency_slot s WHERE s.run_id=r.id AND (s.job_id IS NULL OR s.job_id=j.id) AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
   #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
@@ -23,11 +23,12 @@ let eligible_provider_jobs : String =
 let attempt_select : String =
   #|SELECT a.*, j.run_id, j.job_key, r.repository_id, r.requested_by_user_id,
   #|  r.cancel_requested, r.definition_json, r.definition_version, r.commit_sha,
-  #|  repo.name AS repo_name, t.name_key AS owner_name, pinned.environment_json
+  #|  repo.name AS repo_name, t.name_key AS owner_name, pinned.environment_json, expanded.definition_json AS job_definition_json
   #|FROM pipeline_job_attempt a JOIN pipeline_job j ON j.id = a.job_id
   #|JOIN pipeline_run r ON r.id = j.run_id
   #|JOIN repository repo ON repo.id = r.repository_id JOIN team t ON t.id = repo.team_id
   #|LEFT JOIN pipeline_job_environment pinned ON pinned.job_id=j.id
+  #|LEFT JOIN pipeline_job_definition expanded ON expanded.job_id=j.id
 
 ///|
 fn check_version(version : Int32) -> Unit raise {
@@ -85,6 +86,9 @@ fn attempt_job(row : @database.DbRow) -> @workflow.Job raise {
     row.get_name("definition_version"),
   ) else {
     raise InvalidRecord
+  }
+  if (row.get_name("job_definition_json") : String?) is Some(text) {
+    return @json.from_json(@json.parse(text))
   }
   let text : String = row.get_name("definition_json")
   let definition : @workflow.Workflow = @json.from_json(@json.parse(text))
@@ -267,11 +271,24 @@ fn finish_attempt(
     "UPDATE pipeline_job_attempt SET status = 'completed', conclusion = ?, finished_at = datetime('now') WHERE id = ? AND status <> 'completed'",
     params=[conclusion, id],
   )
-  let _ = tx.execute(
-    "UPDATE pipeline_job SET status = 'completed', conclusion = ? WHERE id = ? AND status <> 'completed'",
-    params=[conclusion, job_id],
+  let allowed : Bool = tx
+    .query_one("SELECT allow_failure FROM pipeline_job WHERE id=?", params=[
+      job_id,
+    ])
+    .get_name("allow_failure")
+  let effective = if allowed && conclusion == "failure" {
+    "success"
+  } else {
+    conclusion
+  }
+  ignore(
+    tx.execute(
+      "UPDATE pipeline_job SET status='completed',conclusion=?,actual_conclusion=? WHERE id=? AND status<>'completed'",
+      params=[effective, conclusion, job_id],
+    ),
   )
-  cancel_matrix_siblings(tx, job_id, conclusion, now)
+  cancel_matrix_siblings(tx, job_id, effective, now)
+  advance_concurrency(tx)
   advance_run_jobs(tx, run_id)
   finalize_run(tx, run_id)
 }
