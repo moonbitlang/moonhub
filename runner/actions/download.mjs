@@ -32,9 +32,12 @@ export async function resolveCommit(repository, ref, env, execute = exec) {
 export async function downloadArchive(repository, sha) {
   const response = await fetch(`https://codeload.github.com/${repository}/tar.gz/${sha}`, { signal: AbortSignal.timeout(30000), redirect: 'error' });
   if (!response.ok) throw new Error(`Action archive download failed (${response.status})`);
+  return readArchive(response.body);
+}
+export async function readArchive(body) {
   const chunks = []; let compressed = 0, total = 0;
   const limited = async function* () {
-    for await (const chunk of response.body) {
+    for await (const chunk of body) {
       compressed += chunk.length; if (compressed > 67108864) throw new Error('Action archive exceeds 64 MiB'); yield chunk;
     }
   };

@@ -222,6 +222,7 @@ async fn main {
     Some(
       "ssh-authorized-key"
       | "ssh-serve"
+      | "job-git-hook"
       | "ssh-pre-receive"
       | "ssh-ref-transaction"
       | "ssh-key-add"
@@ -244,7 +245,8 @@ async fn main {
             | @domain.NotFound(message~)
             | @gitops.Failure(message~) => message
             _ =>
-              if command == Some("ssh-serve") ||
+              if command == Some("job-git-hook") ||
+                command == Some("ssh-serve") ||
                 command == Some("ssh-pre-receive") ||
                 command == Some("ssh-ref-transaction") {
                 @domain.internal_error_message

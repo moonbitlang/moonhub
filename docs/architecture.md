@@ -29,8 +29,8 @@ unchanged.
 | `pipeline/actions` | Shared action-reference, path and input-name validation; no execution, database or Web dependency |
 | `pipeline/environment` | Shared Linux environment definitions, immutable-image validation and actual userspace checks; core packages only |
 | `pipeline/workflow` | Bounded GitHub Actions workflow subset, normalized definitions and validation; no database or Web dependency |
-| `pipeline` | Manual creation/reruns, workflow discovery, push/release/schedule trigger consumption and MR check orchestration; composes atomic Runtime and Results snapshots |
-| `pipeline/runtime` | Run records and queries, transactional snapshots, providers, scheduling, leases, steps, logs, source delivery, secrets/variables and live Job API authorization |
+| `pipeline` | Manual creation/reruns, workflow discovery, push/release/schedule trigger consumption and MR check orchestration, trusted job Git receive transport; composes atomic Runtime and Results snapshots |
+| `pipeline/runtime` | Run records and queries, transactional snapshots, providers, scheduling, leases, steps, logs, source delivery and dependency grants, secrets/variables and live Job API authorization |
 | `pipeline/results` | Artifact/Cache credentials, RPCs, capabilities, block/object storage, quotas, downloads and cleanup |
 | `pipeline/oidc` | Optional issuer configuration, live execution credentials, claims, bounded signing, discovery and JWKS |
 | `pipeline/protocol` | Versioned runner request/response types and limits; no database or HTTP dependency |

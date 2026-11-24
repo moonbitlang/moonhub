@@ -2,77 +2,88 @@
 pub async fn with_repository_test_app(
   f : async (Int32, @database.Database, String, @http.Cookie, @http.Cookie) -> Unit,
   moondiff~ : Bool = false,
+  persistent_db~ : Bool = false,
+  job_git_binary~ : String = "/usr/local/bin/moonhub",
   diff_executor? : @gitops.DiffExecutor,
   release_origin~ : String = "https://moonhub.test",
   body_read_started? : @async.Semaphore,
 ) -> Unit {
-  @test_support.with_ssh_test_db(pool => {
-    @test_support.with_git_test_repo((root, _) => {
-      let cookies = pool.with_client(client => {
-        client.with_transaction(tx => {
-          [1L, 2L].map(id => {
-            @web_context.session_cookie(@identity.create_session_token(tx, id))
+  @test_support.with_ssh_test_db(
+    pool => {
+      @test_support.with_git_test_repo((root, _) => {
+        let cookies = pool.with_client(client => {
+          client.with_transaction(tx => {
+            [1L, 2L].map(id => {
+              @web_context.session_cookie(
+                @identity.create_session_token(tx, id),
+              )
+            })
           })
         })
-      })
-      let app = @moonback.App(
-        @moonback.Module(ctx => {
-          if body_read_started is Some(started) {
-            ctx.add_middleware(
-              @moonback.Middleware(next => {
-                (req, res) => {
-                  if req.headers.get("X-Moonhub-Test-Partial-Body") == Some("1") {
-                    @async.with_task_group(group => {
-                      let handler = group.spawn(() => next(req, res))
-                      @async.pause()
-                      // These handlers do synchronous authorization before
-                      // claiming the stream. Verify that they reached the body
-                      // read before allowing the fixture to retire the repo.
-                      try ignore(req.body.reader()) catch {
-                        _ => started.release()
-                      } noraise {
-                        _ => fail("handler has not started reading the body")
-                      }
-                      handler.wait()
-                    })
-                  } else {
-                    next(req, res)
+        let app = @moonback.App(
+          @moonback.Module(ctx => {
+            if body_read_started is Some(started) {
+              ctx.add_middleware(
+                @moonback.Middleware(next => {
+                  (req, res) => {
+                    if req.headers.get("X-Moonhub-Test-Partial-Body") ==
+                      Some("1") {
+                      @async.with_task_group(group => {
+                        let handler = group.spawn(() => next(req, res))
+                        @async.pause()
+                        // These handlers do synchronous authorization before
+                        // claiming the stream. Verify that they reached the body
+                        // read before allowing the fixture to retire the repo.
+                        try ignore(req.body.reader()) catch {
+                          _ => started.release()
+                        } noraise {
+                          _ => fail("handler has not started reading the body")
+                        }
+                        handler.wait()
+                      })
+                    } else {
+                      next(req, res)
+                    }
                   }
-                }
-              }),
-            )
-          }
-          ctx.use_(@web.app_module)
-        }),
-        config=@moonback.Config(custom=[
-          @moonback.Config::custom(
-            @web_context.release_origin_key, release_origin,
-          ),
-          @moonback.Config::custom(@web_context.diff_enabled_key, moondiff),
-          @moonback.Config::custom(
-            @web_context.diff_executor_key,
-            diff_executor.unwrap_or_else(() => {
-              @gitops.DiffExecutor::new(
-                worker="_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe",
+                }),
               )
-            }),
-          ),
-          @moonback.Config::custom(@web_context.config_root, root),
-          @moonback.Config::custom(
-            @web_context.config_assets_root, test_assets_root,
-          ),
-          @moonback.Config::custom(@web_context.config_db_pool, pool),
-        ]),
-      )
-      defer app.close()
-      @async.with_task_group(group => {
-        let listener = @moonback.listen(port=0)
-        let server = group.spawn(() => app.serve(listener))
-        defer server.cancel()
-        f(listener.addr.port(), pool, root, cookies[0], cookies[1])
+            }
+            ctx.use_(@web.app_module)
+          }),
+          config=@moonback.Config(custom=[
+            @moonback.Config::custom(
+              @web_context.job_git_binary_key, job_git_binary,
+            ),
+            @moonback.Config::custom(
+              @web_context.release_origin_key, release_origin,
+            ),
+            @moonback.Config::custom(@web_context.diff_enabled_key, moondiff),
+            @moonback.Config::custom(
+              @web_context.diff_executor_key,
+              diff_executor.unwrap_or_else(() => {
+                @gitops.DiffExecutor::new(
+                  worker="_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe",
+                )
+              }),
+            ),
+            @moonback.Config::custom(@web_context.config_root, root),
+            @moonback.Config::custom(
+              @web_context.config_assets_root, test_assets_root,
+            ),
+            @moonback.Config::custom(@web_context.config_db_pool, pool),
+          ]),
+        )
+        defer app.close()
+        @async.with_task_group(group => {
+          let listener = @moonback.listen(port=0)
+          let server = group.spawn(() => app.serve(listener))
+          defer server.cancel()
+          f(listener.addr.port(), pool, root, cookies[0], cookies[1])
+        })
       })
-    })
-  })
+    },
+    persistent=persistent_db,
+  )
 }
 
 ///|

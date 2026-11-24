@@ -79,14 +79,14 @@ pub fn Coordinator::authenticate_job_api(
       let job = row.job()
       let allowed = match permission {
         "contents:read" => job.contents_read
-        "contents:write" => job.api_permissions.land(2) != 0
+        "contents:write" | "git:write" => job.api_permissions.land(2) != 0
         "actions:read" => job.api_permissions.land(4) != 0
         _ => false
       }
       guard allowed else {
         raise @domain.Forbidden(message="job API permission denied")
       }
-      if permission == "contents:write" {
+      if ["contents:write", "git:write"].contains(permission) {
         let run = tx.query_one(
           "SELECT merge_check_id,context_json FROM pipeline_run WHERE id=?",
           params=[row.run_id],
@@ -94,6 +94,9 @@ pub fn Coordinator::authenticate_job_api(
         let context : @workflow.RunContext = @json.from_json(
           @json.parse((run.get_name("context_json") : String?).unwrap_or("{}")),
         )
+        if permission == "git:write" {
+          require_secret_event(Some(context))
+        }
         guard (run.get_name("merge_check_id") : Int64?) is None &&
           ["push", "workflow_dispatch", "schedule"].contains(context.event_name) else {
           raise @domain.Forbidden(
