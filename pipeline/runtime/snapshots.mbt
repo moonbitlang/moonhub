@@ -51,7 +51,12 @@ pub fn insert_run_snapshot(
     (public_id, attempt)
   }
   validate_secret_policy(
-    tx, repository_id, branch, workflow_path, context, definition,
+    tx,
+    repository_id,
+    branch,
+    workflow_path,
+    context,
+    definition.jobs,
   )
   let number : Int64 = tx
     .query_one(
@@ -171,6 +176,12 @@ pub fn insert_run_snapshot(
     }
   }
   if failed_only {
+    ignore(
+      tx.execute(
+        "INSERT INTO pipeline_run_reuse_source(run_id,source_run_id) VALUES(?,?)",
+        params=[run.id, rerun_source],
+      ),
+    )
     reuse_successful_jobs(tx, run.id, rerun_source)
   }
   schedule_run(tx, run)

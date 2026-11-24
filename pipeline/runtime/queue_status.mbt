@@ -38,8 +38,8 @@ pub fn Coordinator::queue_reasons(
       ) {
       let key : String = job.get_name("job_key")
       if client.query_opt(
-          "SELECT run_id FROM pipeline_run_schedule WHERE run_id=? AND admitted=0",
-          params=[run.id],
+          "SELECT id FROM pipeline_concurrency_slot WHERE run_id=? AND (job_id IS NULL OR job_id=?) AND admitted=0",
+          params=[run.id, (job.get_name("id") : Int64)],
         )
         is Some(_) {
         result[key] = WaitingConcurrency

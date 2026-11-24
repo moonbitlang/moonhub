@@ -131,3 +131,33 @@ pub fn job_condition(
   expr.check_context(context)
   (expr.has_status() || success) && schedule_truth(expr.evaluate(context))
 }
+
+///|
+fn parse_job_policy(
+  value : @yaml.Yaml?,
+  needs : Array[String],
+) -> String raise InvalidWorkflow {
+  let source = match value {
+    None => "false"
+    Some(Boolean(value)) => value.to_string()
+    Some(String(value)) => value
+    _ =>
+      raise InvalidWorkflow(
+        "job.continue-on-error requires a boolean or expression",
+      )
+  }
+  let expr = schedule_parse(source)
+  expr.check_context(
+    {
+      "github": {},
+      "inputs": {},
+      "vars": {},
+      "needs": {},
+      "matrix": {},
+      "strategy": {},
+    },
+    output=true,
+  )
+  expr.check_needs(needs)
+  source
+}

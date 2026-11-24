@@ -22,6 +22,8 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
         "environment": ToJson::to_json(environments.get(job.job_key)),
         "attempt_id": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
         "state": state,
+        "actual_result": pipeline_conclusion(job.actual_conclusion),
+        "scheduling_error": job.scheduling_error,
         "result": if conclusion.is_empty() {
           state
         } else {

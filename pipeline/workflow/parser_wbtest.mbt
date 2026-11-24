@@ -182,11 +182,8 @@ test "job continue-on-error false preserves default plans for plain and matrix j
 }
 
 ///|
-test "job continue-on-error rejects failure tolerance expressions and nonbooleans" {
-  for
-    value in [
-      "true", "'false'", "'true'", "0", "null", "[]", "{}", "'${{ false }}'", "'${{ matrix.allowed }}'",
-    ] {
+test "job continue-on-error rejects nonboolean structures" {
+  for value in ["0", "null", "[]", "{}"] {
     for
       source in [
         basic_workflow,
@@ -194,7 +191,7 @@ test "job continue-on-error rejects failure tolerance expressions and nonboolean
       ] {
       expect_invalid(
         source + "\n    continue-on-error: " + value,
-        "jobs.build.continue-on-error supports only literal false",
+        "job.continue-on-error requires a boolean or expression",
       )
     }
   }
