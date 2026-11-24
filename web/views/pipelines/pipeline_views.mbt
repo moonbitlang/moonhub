@@ -13,6 +13,8 @@ fn queue_reason_text(reason : @runtime.QueueReason) -> String {
       "Waiting for the previous run in this concurrency group to finish."
     @runtime.WaitingMatrixCapacity =>
       "Waiting for an available matrix parallel slot."
+    @runtime.ContainerIsolationUnavailable =>
+      "Waiting for an authorized isolated Linux CI container provider."
     @runtime.WaitingApproval => "Waiting for deployment environment approval."
     @runtime.WaitingDependencies => "Waiting for dependency jobs to succeed."
     @runtime.RequesterUnavailable =>

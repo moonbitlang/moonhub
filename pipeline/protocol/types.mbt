@@ -59,6 +59,10 @@ pub let compatibility_assignment_version : Int32 = 14
 pub let run_attempt_assignment_version : Int32 = 15
 
 ///|
+// V16 requires explicitly isolated Linux container orchestration.
+pub let container_assignment_version : Int32 = 16
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct ApiRuntime {
   token : String
@@ -70,7 +74,7 @@ pub fn action_runtime_version(version : Int32) -> Bool {
     remote_assignment_version, scheduling_assignment_version, dataflow_assignment_version,
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
     environment_assignment_version, release_assignment_version, profile_assignment_version,
-    compatibility_assignment_version, run_attempt_assignment_version,
+    compatibility_assignment_version, run_attempt_assignment_version, container_assignment_version,
   ].contains(version)
 }
 

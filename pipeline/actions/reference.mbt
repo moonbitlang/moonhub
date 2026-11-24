@@ -37,6 +37,12 @@ fn valid_path(path : String) -> Bool {
 // Only public GitHub repositories and explicit refs. No URL, credentials,
 // shell fragment, ambiguous refspec or implicit default branch is accepted.
 pub fn parse_reference(value : String) -> Reference raise InvalidAction {
+  if value.strip_prefix("docker://") is Some(image) {
+    guard valid_container_image(image.to_owned()) else {
+      raise InvalidAction("invalid Docker action image")
+    }
+    return { repository: "", path: "", ref_: image.to_owned(), }
+  }
   if value.strip_prefix("./") is Some(path) {
     guard valid_path(path.to_owned()) else {
       raise InvalidAction("invalid local action path")

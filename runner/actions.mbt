@@ -80,6 +80,14 @@ async fn Runtime::execute_action_step(
 ) -> Int32 {
   let config : Json = {
     "node20": self.action_node20,
+    "container_isolation": self.options.linux_ci &&
+    self.assignment.version >= @protocol.container_assignment_version,
+    "container_id": self.execution_id,
+    "container_plan": self.assignment.job.context
+    .get("container_plan")
+    .map(value => @json.parse(value))
+    .unwrap_or(Json::null()),
+    "job_home": self.job_home,
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
@@ -92,9 +100,10 @@ async fn Runtime::execute_action_step(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+      @protocol.container_assignment_version,
     ].contains(self.assignment.version) &&
     (
-      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.version < @protocol.run_attempt_assignment_version ||
       self.assignment.job.context.get("variables_context") == Some("true")
     ),
     "variables": ToJson::to_json(self.assignment.job.variables),
@@ -103,9 +112,10 @@ async fn Runtime::execute_action_step(
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+      @protocol.container_assignment_version,
     ].contains(self.assignment.version) &&
     (
-      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.version < @protocol.run_attempt_assignment_version ||
       self.assignment.job.context.get("dispatch_context") == Some("true")
     ),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
@@ -251,6 +261,14 @@ async fn Runtime::execute_action_posts(
     "job_id": self.assignment.job.id,
     "context": ToJson::to_json(self.assignment.job.context),
     "node20": self.action_node20,
+    "container_isolation": self.options.linux_ci &&
+    self.assignment.version >= @protocol.container_assignment_version,
+    "container_id": self.execution_id,
+    "container_plan": self.assignment.job.context
+    .get("container_plan")
+    .map(value => @json.parse(value))
+    .unwrap_or(Json::null()),
+    "job_home": self.job_home,
     "workspace": self.options.workspace,
     "temp": self.action_temp,
     "repository": self.assignment.repository,
@@ -263,9 +281,10 @@ async fn Runtime::execute_action_posts(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+      @protocol.container_assignment_version,
     ].contains(self.assignment.version) &&
     (
-      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.version < @protocol.run_attempt_assignment_version ||
       self.assignment.job.context.get("variables_context") == Some("true")
     ),
     "variables": ToJson::to_json(self.assignment.job.variables),
@@ -274,9 +293,10 @@ async fn Runtime::execute_action_posts(
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+      @protocol.container_assignment_version,
     ].contains(self.assignment.version) &&
     (
-      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.version < @protocol.run_attempt_assignment_version ||
       self.assignment.job.context.get("dispatch_context") == Some("true")
     ),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
@@ -307,6 +327,7 @@ async fn Runtime::execute_action_posts(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+      @protocol.container_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }
@@ -315,4 +336,25 @@ async fn Runtime::execute_action_posts(
     self.job_outputs = @json.from_json(value)
   }
   code
+}
+
+///|
+// This runs outside the cancelled step group with no execution credentials.
+// If cleanup cannot be verified, report lost and retain the provider's fence.
+async fn Runtime::cleanup_containers(self : Runtime) -> Unit {
+  guard self.options.linux_ci &&
+    self.assignment.version == @protocol.container_assignment_version else {
+    return
+  }
+  let base = self.action_runtime.strip_suffix("runtime.mjs")
+  guard base is Some(base) else { raise Stopped("lost") }
+  let code = @async.with_timeout(15000, () => {
+    @process.run(
+      self.action_node,
+      [base.to_owned() + "containers.mjs", "cleanup", self.execution_id],
+      inherit_env=false,
+      extra_env=@platform.environment(),
+    )
+  })
+  guard code == 0 else { raise Stopped("lost") }
 }

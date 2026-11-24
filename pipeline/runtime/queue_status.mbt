@@ -3,6 +3,7 @@
 pub enum QueueReason {
   WaitingDependencies
   WaitingApproval
+  ContainerIsolationUnavailable
   WaitingConcurrency
   WaitingMatrixCapacity
   RequesterUnavailable
@@ -34,7 +35,7 @@ pub fn Coordinator::queue_reasons(
       is Some(_)
     for
       job in client.query_all(
-        "SELECT id, job_key, status FROM pipeline_job WHERE run_id = ? AND status IN ('waiting', 'queued') ORDER BY ordinal",
+        "SELECT id, job_key, status, requires_containers FROM pipeline_job WHERE run_id = ? AND status IN ('waiting', 'queued') ORDER BY ordinal",
         params=[run.id],
       ) {
       let key : String = job.get_name("job_key")
@@ -71,6 +72,15 @@ pub fn Coordinator::queue_reasons(
         continue
       }
       let job_id : Int64 = job.get_name("id")
+      if (job.get_name("requires_containers") : Bool) &&
+        client.query_opt(
+          "SELECT p.id FROM pipeline_provider p WHERE p.revoked=0 AND p.mode='asg' AND json_extract(p.config_json,'$.execution_mode')='linux-ci' AND (p.repository_scope='all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id=p.id AND g.repository_id=?))",
+          params=[run.repository_id],
+        )
+        is None {
+        result[key] = ContainerIsolationUnavailable
+        continue
+      }
       if client.query_opt(
           "SELECT job_id FROM pipeline_job_runner_group WHERE job_id=?",
           params=[job_id],
