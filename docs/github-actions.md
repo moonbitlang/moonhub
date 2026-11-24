@@ -22,7 +22,7 @@ GitHub Actions service compatibility. See [the migration inventory](openseek-mig
   `setup-node` can change PATH for workflow scripts without changing the binary
   used to execute another action's declared runtime.
 - Composite actions, including nested local/remote actions, `inputs`, `outputs`,
-  bash/sh/pwsh steps, per-step environment and conditions.
+  bash/sh/pwsh/cmd steps, per-step environment and conditions.
 - JavaScript `pre`, `pre-if`, `main`, `post`, `post-if`, state propagation and
   once-only reverse-order post execution. Normal failures run applicable cleanup;
   cancellation, deadline or lease loss immediately fence execution instead.
@@ -138,6 +138,13 @@ See [workflow scheduling](workflow-scheduling.md) for static matrix expansion an
 persisted workflow concurrency.
 Unknown contexts/functions and malformed expressions fail explicitly at execution.
 Unsupported public syntax is not passed literally to the shell.
+
+Shell names are validated during planning. Execution checks the platform and
+shell availability after evaluating a step's condition, so shared OS matrices
+can guard Windows `pwsh` or `cmd` steps with `if: runner.os == 'Windows'`.
+`cmd` supports step and run defaults, composite steps, batch exit codes and
+command files; the updated assignment v14 is required. A selected unsupported
+or unavailable shell fails with a diagnostic. Windows defaults remain PowerShell.
 
 Missing `matrix` fields evaluate to `null` and interpolate as empty strings.
 Read matrix array elements with literal indexes such as

@@ -250,7 +250,11 @@ async fn validate_options(
       !ids.contains(step.id) &&
       (
         ["", "sh", "bash"].contains(step.shell) ||
-        (@platform.windows() && step.shell == "pwsh")
+        (@platform.windows() && step.shell == "pwsh") ||
+        (
+          assignment.version == @protocol.compatibility_assignment_version &&
+          ["pwsh", "cmd"].contains(step.shell)
+        )
       ) &&
       !step.run.contains("\u{0000}") &&
       (

@@ -322,7 +322,7 @@ test "paths shell identifiers reserved variables and timeout types are validated
   }
   expect_invalid(
     basic_workflow + "\n        shell: 'bash {0}'",
-    "bash, sh and pwsh",
+    "bash, sh, pwsh and cmd",
   )
   expect_invalid(basic_workflow + "\n        id: 12", "string")
   expect_invalid(basic_workflow + "\n        id: invalid.id", "step id")
