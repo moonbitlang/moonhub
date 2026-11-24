@@ -6,6 +6,7 @@ let eligible_provider_jobs : String =
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
   #|AND (NOT EXISTS (SELECT 1 FROM pipeline_job_deployment d WHERE d.job_id=j.id) OR EXISTS (SELECT 1 FROM pipeline_deployment_admission d WHERE d.job_id=j.id))
+  #|AND (j.requires_containers=0 OR (provider.mode='asg' AND json_extract(provider.config_json,'$.execution_mode')='linux-ci'))
   #|AND r.definition_version IN (1, 2, 3, 4, 5, 6, 7, 8, ?)
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_concurrency_slot s WHERE s.run_id=r.id AND (s.job_id IS NULL OR s.job_id=j.id) AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
@@ -106,6 +107,16 @@ fn attempt_authorized(
   row : @database.DbRow,
 ) -> Bool raise {
   guard deployment_authorized(tx, row.get_name("job_id")) else { return false }
+  if tx.query_opt(
+      "SELECT j.id FROM pipeline_job j WHERE j.id=? AND j.requires_containers=1 AND NOT EXISTS (SELECT 1 FROM pipeline_provider p WHERE p.id=? AND p.mode='asg' AND json_extract(p.config_json,'$.execution_mode')='linux-ci')",
+      params=[
+        (row.get_name("job_id") : Int64),
+        (row.get_name("provider_id") : Int64?).unwrap_or(0L),
+      ],
+    )
+    is Some(_) {
+    return false
+  }
   let actor_id : Int64 = row.get_name("requested_by_user_id")
   let repository_id : Int64 = row.get_name("repository_id")
   let provider_id : Int64? = row.get_name("provider_id")
@@ -564,7 +575,7 @@ pub fn Coordinator::claim(
           context["actor"] = captured.get_name("actor_name")
         }
         let run_attempt : Int64 = captured.get_name("run_attempt")
-        if run_attempt > 1L {
+        if run_attempt > 1L || job.containers is Some(_) {
           context["run_id"] = (captured.get_name("public_id") : Int64).to_string()
           context["run_attempt"] = run_attempt.to_string()
           context["dispatch_context"] = if (
@@ -581,6 +592,9 @@ pub fn Coordinator::claim(
           } else {
             "false"
           }
+        }
+        if job.containers is Some(plan) {
+          context["container_plan"] = ToJson::to_json(plan).stringify()
         }
         let mut variables : Map[String, String] = Map([])
         let mut dispatch_inputs : Map[String, Json] = Map([])
@@ -613,7 +627,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if run_attempt > 1L {
+          version: if job.containers is Some(_) {
+            @protocol.container_assignment_version
+          } else if run_attempt > 1L {
             @protocol.run_attempt_assignment_version
           } else if job.compatibility_runtime {
             @protocol.compatibility_assignment_version

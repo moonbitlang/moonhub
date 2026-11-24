@@ -1,10 +1,21 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "hackwaly/moonhub/pipeline/actions"
 
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/json",
+}
+
 // Values
+pub fn docker_options(String) -> Array[String] raise InvalidAction
+
 pub fn input_env(String) -> String
 
 pub fn parse_reference(String) -> Reference raise InvalidAction
+
+pub fn valid_container_image(String) -> Bool
+
+pub fn valid_container_port(String) -> Bool
 
 pub fn valid_input_name(String) -> Bool
 
@@ -14,6 +25,21 @@ pub suberror InvalidAction {
 }
 
 // Types and methods
+#derive(@debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct Container {
+  image : String
+  env : Map[String, String]
+  ports : Array[String]
+  options : Array[String]
+}
+
+#derive(@debug.Debug, @json.ToJson)
+pub(all) struct ContainerPlan {
+  job : Container?
+  services : Map[String, Container]
+}
+pub impl @json.FromJson for ContainerPlan
+
 pub struct Reference {
   repository : String
   path : String

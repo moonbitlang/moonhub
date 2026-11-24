@@ -2,6 +2,7 @@
 package "hackwaly/moonhub/pipeline/workflow"
 
 import {
+  "hackwaly/moonhub/pipeline/actions",
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
   "moonbitlang/x/time",
@@ -107,6 +108,7 @@ pub struct Job {
   context_prefix : String
   deployment_environment : String
   deployment_url : String
+  containers : @actions.ContainerPlan?
   id : String
   name : String
   needs : Array[String]

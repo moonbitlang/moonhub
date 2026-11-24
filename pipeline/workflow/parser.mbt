@@ -263,9 +263,11 @@ fn parse_job(
     [
       "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
       "permissions", "if", "outputs", "continue-on-error", "concurrency", "environment",
+      "container", "services",
     ],
     ctx,
   )
+  let containers = parse_containers(fields)
   let (deployment_environment, deployment_url) = parse_deployment_environment(
     fields.get("environment"),
   )
@@ -578,6 +580,17 @@ fn parse_job(
     context_prefix: "",
     deployment_environment,
     deployment_url,
+    containers: if containers is None &&
+      (
+        runs_on.contains("linux-ci") ||
+        steps.any(step => {
+          step.uses is Some(uses) && uses.has_prefix("docker://")
+        })
+      ) {
+      Some({ job: None, services: Map([]), })
+    } else {
+      containers
+    },
     // Require the updated runtime for literal numeric index expressions.
     // Persist this decision; old snapshots decode it as false on rerun.
     compatibility_runtime: outputs.values().any(needs_index_runtime) ||

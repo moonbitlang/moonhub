@@ -136,7 +136,7 @@ fn persist_expanded_jobs(
   for index, child in children {
     let id : Int64 = tx
       .query_one(
-        "INSERT INTO pipeline_job(run_id,job_key,ordinal,status,matrix_group,max_parallel,matrix_fail_fast) VALUES(?,?,?,'waiting',?,?,?) RETURNING id",
+        "INSERT INTO pipeline_job(run_id,job_key,ordinal,status,matrix_group,max_parallel,matrix_fail_fast,requires_containers) VALUES(?,?,?,'waiting',?,?,?,?) RETURNING id",
         params=[
           run.id,
           child.id,
@@ -144,6 +144,7 @@ fn persist_expanded_jobs(
           child.matrix_group,
           child.max_parallel.to_int64(),
           child.fail_fast,
+          child.containers is Some(_),
         ],
       )
       .get_name("id")

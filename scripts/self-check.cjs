@@ -123,7 +123,7 @@ async function main() {
   await run('Storage SDK dependencies', 'npm', ['ci', '--prefix', 'storage/s3', '--ignore-scripts', '--no-audit', '--no-fund']);
   await run('Storage SDK tests', process.execPath, ['--test', 'storage/s3/backend.test.mjs']);
   await run('Action runtime dependencies', 'npm', ['ci', '--prefix', 'runner/actions', '--ignore-scripts', '--no-audit', '--no-fund']);
-  await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs']);
+  await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs', 'runner/actions/containers.test.mjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
   await run('Diff worker build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub-diff-worker']);
