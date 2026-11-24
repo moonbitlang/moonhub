@@ -33,6 +33,8 @@ pub async fn ArtifactBlob::with_reader(Self, async (@storage.Reader) -> Unit) ->
 pub struct Service {
   // private fields
 }
+pub fn Service::artifact_api_blob(Self, @runtime.Coordinator, String, @domain.RepoId, Int64, String) -> ArtifactBlob raise
+pub fn Service::artifact_api_download(Self, @runtime.Coordinator, String, @domain.RepoId, Int64) -> String raise
 pub fn Service::artifact_blob(Self, String, Int64, String) -> ArtifactBlob raise
 pub fn Service::artifact_block_limit(Self, Int64, String) -> Int32 raise
 pub fn Service::artifact_rpc(Self, String, String, @json.Json) -> @json.Json raise
@@ -41,6 +43,7 @@ pub fn Service::authorize_artifact_blob(Self, Int64, String, String) -> Unit rai
 pub fn Service::cache_rpc(Self, String, String, @json.Json) -> @json.Json raise
 pub async fn Service::cleanup_artifacts(Self, String) -> Unit
 pub async fn Service::commit_artifact_blocks(Self, String, Int64, String, Array[String]) -> Unit
+pub fn Service::list_run_artifacts(Self, @runtime.Coordinator, String, @domain.RepoId, Int64, String, name? : String, page? : Int64, per_page? : Int64) -> @json.Json raise
 pub fn Service::new(@database.Database, storage? : @storage.Config, clock? : () -> Int64) -> Self
 pub async fn Service::stage_artifact_block(Self, String, Int64, String, String, Bytes) -> Unit
 pub fn Service::user_artifact(Self, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> ArtifactBlob raise

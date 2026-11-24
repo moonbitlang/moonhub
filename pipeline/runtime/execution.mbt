@@ -627,7 +627,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if job.source_access {
+          version: if job.api_permissions.land(24) != 0 {
+            @protocol.job_api_assignment_version
+          } else if job.source_access {
             @protocol.source_assignment_version
           } else if job.containers is Some(_) {
             @protocol.container_assignment_version

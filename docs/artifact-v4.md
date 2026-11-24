@@ -99,14 +99,34 @@ downloads. Existing whole-data-volume backups include the fs
 artifact directory; S3 objects require the separate recovery policy described in
 [blob storage](blob-storage.md).
 
-This increment supports the v4 current-run protocol. Cross-run/cross-repository
-GitHub REST downloads using the Action's `github-token` input fail explicitly;
-GitHub API token compatibility is separate work. Cache v4 has its own Results
-service; see [Cache v4](cache-v4.md).
-Release/OIDC APIs remain separate work. An interrupted pending upload reserves
+Cross-run downloads use the separate repository API described below. Cross-repository
+job credentials remain denied. Cache v4 retains its own Results service; see
+[Cache v4](cache-v4.md). An interrupted pending upload reserves
 its name until cleanup; upstream overwrite can replace finalized artifacts, but does not
 list or remove incomplete uploads. This implementation does not expose arbitrary
 Azure Storage APIs, containers or accounts.
+
+## Cross-run downloads
+
+With `permissions: {actions: read}`, an updated runner can execute
+`actions/download-artifact@v4` with `github-token: ${{ github.token }}`,
+`run-id: <public run ID>` and an optional `name`. The REST adapter serves:
+
+- `GET /repos/OWNER/REPO/actions/runs/ID/artifacts` with `name`, `page`, `per_page`.
+- `GET /repos/OWNER/REPO/actions/artifacts/ID/zip`, which returns a download redirect.
+
+Both `/api/v3` and `/-/api/v1` mounts expose these routes. They require a live job
+token with Actions-read permission for that repository and current repository
+read access. The stable run ID selects its latest workflow attempt; names are
+restricted to that attempt. Only ready, unexpired artifacts are visible. The
+10-minute download capability binds the artifact and issuing API grant; streaming
+rechecks the job lease, cancellation, repository access and artifact expiry.
+Configure the public API origin as for releases so redirects reach the service.
+
+The existing Results token and Twirp RPCs remain restricted to their own run.
+A REST read grant cannot upload, delete, read another repository, or broaden those
+RPCs. Assignments before v17 retain their explicit cross-run rejection. The
+compatibility contract follows the [GitHub artifact endpoints](https://docs.github.com/en/rest/actions/artifacts).
 
 ## Validation
 

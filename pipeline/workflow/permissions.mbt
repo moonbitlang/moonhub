@@ -6,7 +6,11 @@ fn read_permissions(
 ) -> (Bool, Bool, Int32) raise InvalidWorkflow {
   guard value is Some(value) else { return inherited }
   let fields = yaml_as_obj(value, ctx)
-  check_fields(fields, ["contents", "id-token", "actions"], ctx)
+  check_fields(
+    fields,
+    ["contents", "id-token", "actions", "pull-requests", "checks"],
+    ctx,
+  )
   let contents = match fields.get("contents") {
     None | Some(String("none")) => false
     Some(String("read")) | Some(String("write")) => true
@@ -26,6 +30,20 @@ fn read_permissions(
       None | Some(String("none")) => 0
       Some(String("read")) => 4
       _ => raise InvalidWorkflow("\{ctx}.actions supports only read or none")
+    })
+  let api = api +
+    (match fields.get("pull-requests") {
+      None | Some(String("none")) => 0
+      Some(String("write")) => 8
+      _ =>
+        raise InvalidWorkflow(
+          "\{ctx}.pull-requests supports only write or none",
+        )
+    }) +
+    (match fields.get("checks") {
+      None | Some(String("none")) => 0
+      Some(String("write")) => 16
+      _ => raise InvalidWorkflow("\{ctx}.checks supports only write or none")
     })
   (contents, id_token, api)
 }

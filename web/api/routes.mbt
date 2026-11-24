@@ -1,5 +1,6 @@
 ///|
 pub let api_module : @moonback.Module = Module(ctx => {
+  ctx.use_(job_actions_api_module)
   let diff_executor = ctx.require(@web_context.diff_executor_key)
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)

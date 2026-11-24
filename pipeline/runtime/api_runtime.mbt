@@ -56,13 +56,34 @@ pub fn Coordinator::authenticate_job_api(
   repo : @domain.RepoId,
   permission : String,
 ) -> @domain.CurrentUser raise {
+  self.job_api_access(token, repo, permission).0
+}
+
+///|
+pub fn Coordinator::job_api_access(
+  self : Coordinator,
+  token : String,
+  repo : @domain.RepoId,
+  permission : String,
+) -> (@domain.CurrentUser, LiveAttempt) raise {
   check_token(token)
-  let username = self.pool.with_client(c => {
+  self.job_api_access_hash(@identity.hash_token(token), repo, permission)
+}
+
+///|
+// Internal capability consumers use the stored digest, never a user-supplied digest.
+pub fn Coordinator::job_api_access_hash(
+  self : Coordinator,
+  digest : String,
+  repo : @domain.RepoId,
+  permission : String,
+) -> (@domain.CurrentUser, LiveAttempt) raise {
+  let (username, attempt) = self.pool.with_client(c => {
     c.with_transaction(tx => {
       let now = (self.clock)()
       let grant = tx.query_opt(
         "SELECT * FROM pipeline_api_runtime WHERE token_hash=? AND expires_ms>?",
-        params=[@identity.hash_token(token), now],
+        params=[digest, now],
       )
       guard grant is Some(grant) else {
         raise @domain.Unauthorized(message="invalid job API credential")
@@ -81,6 +102,8 @@ pub fn Coordinator::authenticate_job_api(
         "contents:read" => job.contents_read
         "contents:write" | "git:write" => job.api_permissions.land(2) != 0
         "actions:read" => job.api_permissions.land(4) != 0
+        "pull-requests:write" => job.api_permissions.land(8) != 0
+        "checks:write" => job.api_permissions.land(16) != 0
         _ => false
       }
       guard allowed else {
@@ -104,13 +127,13 @@ pub fn Coordinator::authenticate_job_api(
           )
         }
       }
-      (
-        tx
+      let name : String = tx
         .query_one("SELECT name_key FROM user WHERE id=? AND status='active'", params=[
           row.requested_by_user_id,
         ])
-        .get_name("name_key") : String)
+        .get_name("name_key")
+      (name, row)
     })
   })
-  @identity.active_user_by_name(self.pool, username)
+  (@identity.active_user_by_name(self.pool, username), attempt)
 }

@@ -276,7 +276,7 @@ export class ActionRuntime {
       GITHUB_ACTION_REPOSITORY: action.repository, GITHUB_ACTION_REF: action.ref }, context);
     if (source) sourceEnvironment(env, source, this.config);
     const artifactAction = ['actions/upload-artifact', 'actions/download-artifact'].includes(action.repository.toLowerCase());
-    if (artifactAction && this.artifact && inputs['github-token']) throw new Error('Cross-run GitHub API artifact downloads are not supported by the MoonHub artifact runtime');
+    if (artifactAction && this.artifact && inputs['github-token'] && !this.dependency) throw new Error('Cross-run artifact downloads require assignment v17 or newer');
     if (this.artifact) {
       env.ACTIONS_RUNTIME_TOKEN = this.artifact.token;
       env.ACTIONS_RESULTS_URL = this.artifact.url;
