@@ -885,3 +885,9 @@ test('public run identity and workflow attempts reach expressions and child envi
     assert.equal(runtime.environment().GITHUB_RUN_ATTEMPT, attempt);
   }
 });
+
+test('scheduler and runner share extended scheduling expression cases', async () => {
+  const fixture = JSON.parse(await fs.readFile(new URL('../../pipeline/workflow/fixtures/expression-scheduling.json', import.meta.url), 'utf8'));
+  for (const [expression, expected] of fixture.valid) assert.deepEqual(JSON.parse(JSON.stringify(evaluate(expression, fixture.context))), expected, expression);
+  for (const expression of fixture.invalid) assert.throws(() => evaluate(expression, fixture.context), undefined, expression);
+});

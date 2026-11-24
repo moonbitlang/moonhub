@@ -542,6 +542,18 @@ fn render_pipeline_detail(
           b <+ " hidden"
         }
         b <+ ">\{page.reason.map(queue_reason_text).unwrap_or("")}</p>"
+        b <+ "<p class=\"settings-notice\" data-scheduling-error"
+        if page.job.scheduling_error.is_empty() {
+          b <+ " hidden"
+        }
+        b <+ ">\{pipeline_html(page.job.scheduling_error)}</p>"
+        b <+ "<p class=\"settings-notice\" data-allowed-failure"
+        if !(page.job.actual_conclusion is Some(Failure) &&
+          page.job.conclusion is Some(Success)) {
+          b <+ " hidden"
+        }
+        b <+
+          ">This job failed; continue-on-error allows dependent jobs and the run to succeed.</p>"
         if page.job.reused_from is Some(number) {
           b <+
             "<p>Reused result from <a href=\"\{@web_ui.repo_link(scope.repo)}/pipelines/\{number.to_string()}\">run record #\{number.to_string()}</a>; logs and artifacts remain with that attempt.</p>"

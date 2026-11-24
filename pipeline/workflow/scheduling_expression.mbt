@@ -317,8 +317,34 @@ fn ScheduleExpr::evaluate(
           }
         _ => {
           let right = right.evaluate(context)
-          let equal = schedule_equal(left, right)
-          Json::boolean(if op == "==" { equal } else { !equal })
+          Json::boolean(
+            match op {
+              "==" => schedule_equal(left, right)
+              "!=" => !schedule_equal(left, right)
+              _ => {
+                let order = match (left, right) {
+                  (String(a), String(b)) =>
+                    Some(a.to_lower().compare(b.to_lower()))
+                  _ =>
+                    match (schedule_number(left), schedule_number(right)) {
+                      (Some(a), Some(b)) if !a.is_nan() && !b.is_nan() =>
+                        Some(a.compare(b))
+                      _ => None
+                    }
+                }
+                match order {
+                  Some(n) =>
+                    match op {
+                      "<" => n < 0
+                      "<=" => n <= 0
+                      ">" => n > 0
+                      _ => n >= 0
+                    }
+                  None => false
+                }
+              }
+            },
+          )
         }
       }
     }
@@ -334,7 +360,41 @@ fn ScheduleExpr::evaluate(
         }
       }
       let args = args.map(arg => arg.evaluate(context))
-      if name == "format" && args.length() > 0 {
+      if name == "fromjson" && args.length() == 1 {
+        guard args[0] is String(text) &&
+          @utf8.encode(text).length() <= max_source_bytes else {
+          raise InvalidWorkflow("fromJSON requires a bounded string")
+        }
+        let value = @json.parse(text, max_nesting_depth=32) catch {
+          _ => raise InvalidWorkflow("invalid fromJSON input")
+        }
+        validate_expression_json(value, 0, [0])
+        value
+      } else if name == "tojson" && args.length() == 1 {
+        let text = args[0].stringify()
+        guard @utf8.encode(text).length() <= max_source_bytes else {
+          raise InvalidWorkflow("toJSON exceeds limits")
+        }
+        Json::string(text)
+      } else if name == "join" && (args.length() == 1 || args.length() == 2) {
+        let separator = if args.length() == 2 {
+          schedule_string(args[1])
+        } else {
+          ","
+        }
+        let values = match args[0] {
+          Array(items) => items.map(schedule_string)
+          value => [schedule_string(value)]
+        }
+        guard values.fold(init=0, (size, value) => {
+            size + @utf8.encode(value).length()
+          }) +
+          values.length() * @utf8.encode(separator).length() <=
+          max_source_bytes else {
+          raise InvalidWorkflow("join exceeds limits")
+        }
+        Json::string(values.join(separator))
+      } else if name == "format" && args.length() > 0 {
         Json::string(schedule_format(args))
       } else {
         guard args.length() == 2 else {
@@ -413,9 +473,10 @@ fn ScheduleExpr::check_context(
 pub fn scheduling_expression(
   source : String,
   context : Map[String, Json],
+  extended~ : Bool = false,
 ) -> Json raise InvalidWorkflow {
   let expr = schedule_parse(source)
-  expr.check_context(context)
+  expr.check_context(context, output=extended)
   expr.evaluate(context)
 }
 
@@ -602,4 +663,37 @@ fn schedule_format(args : Array[Json]) -> String raise InvalidWorkflow {
     }
   }
   out.to_string()
+}
+
+///|
+fn validate_expression_json(
+  value : Json,
+  depth : Int32,
+  count : Array[Int32],
+) -> Unit raise InvalidWorkflow {
+  count[0] += 1
+  guard depth <= 32 && count[0] <= 8192 else {
+    raise InvalidWorkflow("JSON expression exceeds limits")
+  }
+  match value {
+    Object(fields) =>
+      for key, value in fields {
+        guard !["__proto__", "constructor", "prototype"].contains(
+          key.to_lower(),
+        ) else {
+          raise InvalidWorkflow("unsafe JSON field")
+        }
+        validate_expression_json(value, depth + 1, count)
+      }
+    Array(items) =>
+      for item in items {
+        validate_expression_json(item, depth + 1, count)
+      }
+    Number(number, ..) => {
+      guard !number.is_nan() && !number.is_inf() else {
+        raise InvalidWorkflow("JSON expression requires finite numbers")
+      }
+    }
+    _ => ()
+  }
 }

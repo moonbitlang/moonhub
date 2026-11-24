@@ -1,0 +1,12 @@
+{
+  "context": {"needs":{"plan":{"outputs":{"matrix":"{\"include\":[{\"version\":1}]}"}}},"matrix":{"allowed":true}},
+  "valid": [
+    ["fromJSON(needs.plan.outputs.matrix)",{"include":[{"version":1}]}],
+    ["matrix.allowed",true],
+    ["join(fromJSON('[1,2]'), ':')","1:2"],
+    ["toJSON(fromJSON('[true,false]'))","[true,false]"],
+    ["'2' > 1 && 'a' < 'B'",true],
+    ["false && fromJSON('bad') || true",true]
+  ],
+  "invalid": ["fromJSON('bad')", "join('a','b','c')"]
+}
