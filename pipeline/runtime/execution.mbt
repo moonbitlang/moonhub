@@ -552,6 +552,8 @@ pub fn Coordinator::claim(
         let owner : String = row.get_name("owner_name")
         let name : String = row.get_name("repo_name")
         let job = attempt_job(row)
+        let reports = job.reports &&
+          (row.get_name("definition_version") : Int64) >= 9L
         let captured = tx.query_one(
           "SELECT COALESCE(r.public_run_id,r.id) AS public_id,r.run_attempt,r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
           params=[(row.get_name("run_id") : Int64)],
@@ -572,7 +574,10 @@ pub fn Coordinator::claim(
           context["actor"] = captured.get_name("actor_name")
         }
         let run_attempt : Int64 = captured.get_name("run_attempt")
-        if run_attempt > 1L || job.containers is Some(_) || job.source_access {
+        if run_attempt > 1L ||
+          job.containers is Some(_) ||
+          job.source_access ||
+          reports {
           context["run_id"] = (captured.get_name("public_id") : Int64).to_string()
           context["run_attempt"] = run_attempt.to_string()
           context["dispatch_context"] = if (
@@ -589,6 +594,9 @@ pub fn Coordinator::claim(
           } else {
             "false"
           }
+        }
+        if reports {
+          context["dependency_access"] = job.source_access.to_string()
         }
         if job.containers is Some(plan) {
           context["container_plan"] = ToJson::to_json(plan).stringify()
@@ -624,7 +632,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if job.api_permissions.land(24) != 0 {
+          version: if reports {
+            @protocol.report_assignment_version
+          } else if job.api_permissions.land(24) != 0 {
             @protocol.job_api_assignment_version
           } else if job.source_access {
             @protocol.source_assignment_version

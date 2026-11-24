@@ -73,6 +73,7 @@ pub fn expand_dynamic_matrix(
     matrix_group: job.context_prefix + child.matrix_group,
     context_prefix: job.context_prefix,
     call_inputs: job.call_inputs,
+    reports: job.reports,
     source_access: job.source_access,
     contents_read: child.contents_read && job.contents_read,
     id_token_write: child.id_token_write && job.id_token_write,

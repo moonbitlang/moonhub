@@ -108,6 +108,7 @@ pub struct Job {
   context_prefix : String
   deployment_environment : String
   deployment_url : String
+  reports : Bool
   source_access : Bool
   containers : @actions.ContainerPlan?
   id : String

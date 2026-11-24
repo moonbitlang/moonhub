@@ -9,7 +9,7 @@ registry of hard-coded implementations for `actions/*`. Newly parsed
 `moonhub/checkout@v1` and `moonhub/setup-moonbit@v1` remain available for old workflows.
 
 See [workflow entry compatibility](workflow-entry.md) for runner selectors,
-branch/path filters and enforced read-only contents permissions.
+branch/path filters and scoped workflow permissions.
 
 This implements the execution foundation for the openseek migration, not full
 GitHub Actions service compatibility. See [the migration inventory](openseek-migration.md).
@@ -30,9 +30,10 @@ GitHub Actions service compatibility. See [the migration inventory](openseek-mig
   GitHub/Runner environment, and scoped repository secrets in entire `env` or
   `with` values. Input names are case-insensitive for environment delivery.
 - `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_OUTPUT`, `GITHUB_STATE`, multiline file
-  commands, bounded local `GITHUB_STEP_SUMMARY`, masking and deprecated
+  commands, bounded `GITHUB_STEP_SUMMARY`, masking and deprecated
   `set-output` / `save-state` log commands. Unsafe `set-env` / `add-path` fail.
-  Log annotations are rendered in logs; there is no annotation UI yet.
+  Summaries and structured notice/warning/error annotations are stored per job
+  attempt and displayed on the run page; see [run reports](run-reports.md).
 
 Example:
 

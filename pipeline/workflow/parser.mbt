@@ -580,6 +580,7 @@ fn parse_job(
     context_prefix: "",
     deployment_environment,
     deployment_url,
+    reports: true,
     source_access: steps.any(step => {
       step.remote && !step.uses.unwrap_or("").has_prefix("docker://")
     }) ||

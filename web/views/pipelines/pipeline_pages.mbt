@@ -558,6 +558,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         pages.push({
           job,
           steps: coordinator.read_steps(actor, scope.repo, number, attempt_id),
+          report: coordinator.read_report(actor, scope.repo, number, attempt_id),
           logs: Some(
             coordinator.read_log_page(actor, scope.repo, number, attempt_id),
           ),
@@ -567,6 +568,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         pages.push({
           job,
           steps: [],
+          report: { revision: 0, entries: [], truncated: false, },
           logs: None,
           reason: reasons.get(job.job_key),
         })

@@ -64,14 +64,7 @@ async test "real runner consumes captured vars in env conditions Action inputs p
         let mut assignment = first
         let mut token = lease
         for i = 0; i < 2; i = i + 1 {
-          assert_eq(
-            assignment.version,
-            if i == 0 {
-              @protocol.source_assignment_version
-            } else {
-              @protocol.variable_assignment_version
-            },
-          )
+          assert_eq(assignment.version, @protocol.report_assignment_version)
           let workspace = root + "/vars-" + i.to_string()
           @fs.mkdir(workspace)
           let report = @runner.run(

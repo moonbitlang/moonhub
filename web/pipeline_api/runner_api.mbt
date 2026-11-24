@@ -17,7 +17,11 @@ fn bearer_token(req : @moonback.Request) -> String raise {
 }
 
 ///|
-async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json {
+async fn request_json(
+  req : @moonback.Request,
+  allowed : Array[String],
+  limit~ : Int32 = 65536,
+) -> Json {
   let content_type = req.headers.get("content-type").unwrap_or("")
   let mime = content_type
     .split_once(";")
@@ -31,7 +35,9 @@ async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json 
     let length = @string.parse_int64(length) catch {
       _ => raise @domain.BadRequest(message="invalid content length")
     }
-    guard length >= 0L && length <= 65536L else { raise PayloadTooLarge }
+    guard length >= 0L && length <= limit.to_int64() else {
+      raise PayloadTooLarge
+    }
   }
   let bytes : Array[Byte] = []
   let reader = req.body.reader()
@@ -39,7 +45,7 @@ async fn request_json(req : @moonback.Request, allowed : Array[String]) -> Json 
     10000,
     () => {
       while reader.read_some(max_len=4096) is Some(chunk) {
-        guard bytes.length() + chunk.length() <= 65536 else {
+        guard bytes.length() + chunk.length() <= limit else {
           raise PayloadTooLarge
         }
         for byte in chunk {
@@ -415,7 +421,8 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
       ToJson::to_json(coordinator.step_secrets(id, token, request))
     }),
   )
-  for operation in ["start", "heartbeat", "logs", "steps", "complete"] {
+  for
+    operation in ["start", "heartbeat", "logs", "steps", "reports", "complete"] {
     ctx.post(
       "/attempts/:id/\{operation}",
       json_handler(req => {
@@ -466,6 +473,17 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
               _ => raise @domain.BadRequest(message="invalid step request")
             }
             coordinator.update_step(id, token, request)
+          }
+          "reports" => {
+            let json = request_json(
+              req,
+              ["version", "execution_id", "report"],
+              limit=4259840,
+            )
+            let request : @protocol.ReportRequest = @json.from_json(json) catch {
+              _ => raise @domain.BadRequest(message="invalid report request")
+            }
+            coordinator.write_report(id, token, request)
           }
           "logs" => {
             let json = request_json(req, [

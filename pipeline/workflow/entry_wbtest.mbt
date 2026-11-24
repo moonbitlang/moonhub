@@ -206,3 +206,13 @@ test "job metadata check and actions scopes inherit replace and reject unsupport
     )
   }
 }
+
+///|
+test "older job snapshots do not acquire reporting on decode" {
+  let job = parse(basic_workflow).jobs[0]
+  assert_true(job.reports)
+  guard ToJson::to_json(job) is Object(fields) else { fail("job object") }
+  fields.remove("reports")
+  let old : Job = @json.from_json(Json::object(fields))
+  assert_false(old.reports)
+}

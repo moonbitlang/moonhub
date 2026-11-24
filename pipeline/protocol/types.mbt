@@ -71,6 +71,10 @@ pub let source_assignment_version : Int32 = 17
 pub let job_api_assignment_version : Int32 = 18
 
 ///|
+// V19 persists bounded step summaries and structured annotations.
+pub let report_assignment_version : Int32 = 19
+
+///|
 #derive(ToJson, FromJson)
 pub(all) struct ApiRuntime {
   token : String
@@ -83,7 +87,7 @@ pub fn action_runtime_version(version : Int32) -> Bool {
     dispatch_assignment_version, variable_assignment_version, oidc_assignment_version,
     environment_assignment_version, release_assignment_version, profile_assignment_version,
     compatibility_assignment_version, run_attempt_assignment_version, container_assignment_version,
-    source_assignment_version, job_api_assignment_version,
+    source_assignment_version, job_api_assignment_version, report_assignment_version,
   ].contains(version)
 }
 

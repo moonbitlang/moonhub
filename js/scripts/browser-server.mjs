@@ -192,6 +192,14 @@ try {
       insertRun.run(number, `.github/workflows/${file}.yml`, name, head,
         `refs/moonhub/pipelines/browser-${number}`, JSON.stringify({ name, jobs: [] }), conclusion);
     }
+    const reportJob = db.prepare("INSERT INTO pipeline_job(run_id,job_key,ordinal,status,conclusion) VALUES(1,'report',0,'completed','success') RETURNING id").get().id;
+    const reportAttempt = db.prepare("INSERT INTO pipeline_job_attempt(job_id,number,status,conclusion,finished_at) VALUES(?,1,'completed','success',datetime('now')) RETURNING id").get(reportJob).id;
+    for (const [ordinal, step] of ['first', 'second'].entries()) db.prepare("INSERT INTO pipeline_step(attempt_id,step_id,ordinal,state,exit_code) VALUES(?,?,?,'success',0)").run(reportAttempt,step,ordinal);
+    const report = {revision:1,truncated:false,entries:[
+      {step_id:'first',summary:'## First summary\n<script>globalThis.reportUnsafe=true</script>\n[unsafe](javascript:alert)',annotations:[{severity:'error',message:'<img src=x onerror=alert(1)>',title:'Compiler diagnostic',file:'src/main.mbt',line:12,end_line:14,column:2,end_column:5}]},
+      {step_id:'second',summary:'## Second summary\nAll done',annotations:[{severity:'notice',message:'completed successfully',title:'',file:'',line:0,end_line:0,column:0,end_column:0}]}
+    ]};
+    db.prepare('INSERT INTO pipeline_attempt_report(attempt_id,revision,payload_hash,content_json) VALUES(?,1,?,?)').run(reportAttempt,'browser-fixture',JSON.stringify(report));
   } finally { db.close(); }
   console.log('MoonHub browser fixture ready');
 } catch (error) {
