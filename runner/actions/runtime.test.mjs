@@ -33,6 +33,25 @@ test('expressions parse without JavaScript evaluation and interpolate once', () 
   for (const expression of ['process.exit()', 'inputs.constructor', 'inputs[true]', 'true;process.exit()', 'unknown()']) assert.throws(() => evaluate(expression, context));
 });
 
+test('scheduler and runner share literal index fixtures', async () => {
+  const fixture = JSON.parse(await fs.readFile(new URL('../../pipeline/workflow/fixtures/expression-indexes.json', import.meta.url), 'utf8'));
+  for (const [expression, expected] of fixture.valid) {
+    assert.equal(interpolate('${{ ' + expression + ' }}', fixture.context), expected, expression);
+  }
+  for (const expression of fixture.invalid) assert.throws(() => evaluate(expression, fixture.context), undefined, expression);
+});
+
+test('job outputs evaluate join and comparisons with real step results', async t => {
+  const { config } = await fixture(t);
+  config.matrix = { node: { flags: ['strict', 'legacy'] } };
+  config.job_outputs = { flags: "${{ join(matrix.node.flags, ' | ') }}", ready: '${{ steps.count.outputs.value >= 2 }}' };
+  config.step = { id: 'count', run: 'echo value=3 >> "$GITHUB_OUTPUT"' };
+  const step = await execute(config);
+  assert.equal(step.code, 0);
+  const result = await execute({ ...config, phase: 'post' }, step.state);
+  assert.deepEqual({ ...result.outputs }, { flags: 'strict | legacy', ready: 'true' });
+});
+
 test('relational expressions use Actions coercion and precedence', () => {
   const context = { matrix: { node: { labels: [] }, other: [] } };
   const cases = [

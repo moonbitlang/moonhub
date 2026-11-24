@@ -188,6 +188,20 @@ fn expand_job(
     for key in ["name", "runs-on"] {
       if fields.get(key) is Some(value) {
         fields[key] = match value {
+          String(text) if key == "runs-on" && whole_scheduling_expression(text) =>
+            match scheduling_expression(text, context) {
+              String(label) => @yaml.String(label)
+              Array(labels) =>
+                @yaml.Array(
+                  labels.map(label => {
+                    match label {
+                      String(label) => @yaml.String(label)
+                      _ => raise InvalidWorkflow("runs-on requires strings")
+                    }
+                  }),
+                )
+              _ => raise InvalidWorkflow("runs-on requires strings")
+            }
           String(text) => @yaml.String(scheduling_template(text, context))
           Array(items) if key == "runs-on" =>
             @yaml.Array(

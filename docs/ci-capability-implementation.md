@@ -1,0 +1,33 @@
+# CI capability implementation evidence
+
+This records implementation of the approved 39-issue plan. Each category is a
+separate commit on one development branch. Only completed acceptance qualifies
+an issue for a closing reference in the final PR.
+
+## Expression and YAML compatibility
+
+- #117: retained the existing missing-matrix string conversion fix and its
+  function and selected-step regression tests in `runner/actions/runtime.test.mjs`.
+- #118: output syntax/context validation is separate from runtime evaluation;
+  `join`, JSON conversion and relational operators are accepted. The HTTP dataflow
+  fixture checks output publication and consumption by dependent jobs.
+- #119: scheduler and runner consume the same literal-index fixture. Whole
+  `runs-on` expressions preserve arrays and reuse existing label validation.
+- #88: aliases share scalar, mapping and sequence values. The event guard rejects
+  recursive/undefined references and charges expanded nodes, depth and scalar
+  bytes before loading. Tests compare anchored and inline plans and reject bombs.
+
+Validation: workflow tests 68/68; Runner JavaScript tests 46/46; browser assets
+built; required check/format/interface sequence passed with the production pin.
+The HTTP suite passed 26/26 with Git 2.48.1, including real Runner output
+dataflow and merged checkout. The system Git 2.34.1 is too old for that suite.
+New indexed templates require assignment v14; old snapshots retain their saved
+runtime requirement. Providers and Runners must be upgraded together.
+
+## Scope retained from the approved plan
+
+#78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package
+publishing permissions retain their existing behavior. Live cloud configuration,
+production deployment and external publication are outside this implementation.
+Real ARM64/VM/container/platform acceptance must be reported separately from
+fixtures; no fixture is evidence of a deployment or external publication.

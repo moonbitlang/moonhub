@@ -558,7 +558,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if environment is Some(_) {
+          version: if job.compatibility_runtime {
+            @protocol.compatibility_assignment_version
+          } else if environment is Some(_) {
             @protocol.profile_assignment_version
           } else if api_permissions != 0 {
             @protocol.release_assignment_version
