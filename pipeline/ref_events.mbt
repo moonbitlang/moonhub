@@ -140,6 +140,7 @@ pub async fn run_next_ref_event(
             inputs: Map([]),
             variables: Map([]),
             release_tag,
+            event: None,
           }
           let definition = @workflow.resolve_context(
             @workflow.parse(source),

@@ -51,6 +51,7 @@ async fn with_signing_fixture(
             inputs: Map([]),
             variables: Map([]),
             release_tag: None,
+            event: None,
           }),
         )
       })

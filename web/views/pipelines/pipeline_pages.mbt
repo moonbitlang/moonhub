@@ -583,6 +583,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
         manager,
         @web_context.request_form_token(req, "pipelines:" + run.id.to_string()),
         @runtime.merge_check_context(pool, actor, scope.repo, number),
+        attempts=@runtime.run_attempts(pool, actor, scope.repo, number),
         environments=coordinator.job_environments(actor, scope.repo, number),
       ),
       headers=@web_context.private_page_headers(),
@@ -609,8 +610,18 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
     let scope = pipeline_scope(pool, actor, req)
     let number = pipeline_number(req)
     let run = @runtime.get_run(pool, actor, scope.repo, number)
-    ignore(@web_context.protected_form(req, "pipelines:" + run.id.to_string()))
-    let rerun = @pipeline.rerun_run(pool, root, actor, scope.repo, number)
+    let form = @web_context.protected_form(
+      req,
+      "pipelines:" + run.id.to_string(),
+    )
+    let rerun = @pipeline.rerun_run(
+      pool,
+      root,
+      actor,
+      scope.repo,
+      number,
+      failed_only=form.get("failed_only") == Some("true"),
+    )
     res.send_void(
       status=303,
       headers=@web_context.private_page_headers(

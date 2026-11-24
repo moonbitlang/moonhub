@@ -15,7 +15,7 @@ pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain
 
 pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
 
-pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64) -> @runtime.Run
+pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, failed_only? : Bool) -> @runtime.Run
 
 pub async fn run_due_schedules(@database.Database, String, now_ms? : Int64) -> Unit
 

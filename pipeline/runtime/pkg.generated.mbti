@@ -23,7 +23,7 @@ pub fn delete_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, 
 
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
 
-pub fn insert_run_snapshot(@database.DbTransaction, Int64, Int64, String, String, String, String, String, String, @workflow.Workflow, definition_version? : Int32, context? : @workflow.RunContext?, event_id? : Int64, merge_check_id? : Int64, capture_variables? : Bool) -> Run raise
+pub fn insert_run_snapshot(@database.DbTransaction, Int64, Int64, String, String, String, String, String, String, @workflow.Workflow, definition_version? : Int32, context? : @workflow.RunContext?, event_id? : Int64, merge_check_id? : Int64, capture_variables? : Bool, rerun_source? : Int64, failed_only? : Bool) -> Run raise
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 
@@ -40,6 +40,8 @@ pub fn live_attempt(@database.DbTransaction, Int64, String, Int64) -> LiveAttemp
 pub fn merge_check_context(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> MergeCheckContext? raise
 
 pub fn require_run_author(@database.Database, @domain.CurrentUser, @domain.RepoId) -> @repository.RepositoryScope raise
+
+pub fn run_attempts(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[Run] raise
 
 pub fn run_event_ref(@workflow.RunContext?, String, mr_number? : Int64?) -> String
 
@@ -128,6 +130,7 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  reused_from : Int64?
 }
 pub fn JobRun::to_repr(Self) -> @debug.Repr
 
@@ -252,6 +255,8 @@ pub fn RepositoryVariable::to_repr(Self) -> @debug.Repr
 #derive(@debug.Debug)
 pub struct Run {
   id : Int64
+  public_id : Int64
+  run_attempt : Int64
   repository_id : Int64
   number : Int64
   requested_by_user_id : Int64

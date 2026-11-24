@@ -179,6 +179,7 @@ async fn create_run_event(
       inputs,
       variables: Map([]),
       release_tag: None,
+      event: None,
     }
     let definition = @workflow.resolve_context(definition, context) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
@@ -238,6 +239,7 @@ pub async fn rerun_run(
   actor : @domain.CurrentUser,
   repo : @domain.RepoId,
   number : Int64,
+  failed_only~ : Bool = false,
 ) -> @runtime.Run {
   let scope = @runtime.require_run_author(pool, actor, repo)
   let previous = @runtime.get_run(pool, actor, repo, number)
@@ -308,6 +310,7 @@ pub async fn rerun_run(
           merge_check_id~,
           cache_scope_source=previous.id,
           capture_variables=false,
+          failed_only~,
         )
         ignore(
           tx.execute(
