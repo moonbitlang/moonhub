@@ -195,7 +195,9 @@ async test "original Desktop Windows workflow packages uploads and restores with
           assert_eq(assignment.job.id, job.id)
           assert_eq(
             assignment.version,
-            if job.api_permissions != 0 {
+            if job.source_access {
+              @protocol.source_assignment_version
+            } else if job.api_permissions != 0 {
               @protocol.release_assignment_version
             } else {
               @protocol.environment_assignment_version

@@ -60,13 +60,17 @@ jobs:
 
 The reference resolves once per action repository/ref within a job and the
 resolved SHA is logged. Prefer full commit SHAs for reproducible reruns: a tag
-can move between separate jobs or attempts. Private GitHub actions, implicit
-refs, arbitrary download hosts, Docker actions and services are not supported.
+can move between separate jobs or attempts for public actions. Private GitHub
+references use [administrator grants and server-side downloads](source-access.md)
+and retain their resolved SHA across the run family. Implicit refs and arbitrary
+download hosts remain unsupported. [Workflow containers](workflow-containers.md)
+cover Docker actions and services on explicitly isolated Linux CI providers.
 
 ## Source transport
 
-The authenticated attempt API exports a bounded Git bundle containing only the
-pinned source commit. The runner restores it outside the working checkout and
+By default, the authenticated attempt API exports a bounded Git bundle containing
+only the pinned source commit. Assignment v17 adds full-history export for an
+unchanged `actions/checkout` step with `fetch-depth: 0`. The runner restores it outside the working checkout and
 redirects Git fetches for this repository to that local source. Upstream
 `actions/checkout` itself performs checkout and cleanup; it receives no provider,
 runner or GitHub credential. The source API rechecks authorization and live lease
@@ -105,14 +109,19 @@ If source preparation is rejected because the source is unsupported or unavailab
 the runner logs the HTTP status and reports a failed job. Expired or invalid attempt
 credentials still fence execution as a lost runner.
 
-This transport supplies a shallow single-commit checkout. For a Release run the
-runner exposes its captured tag at that commit, but not other tags. It does not
-supply full history, submodule repository objects or credentials, LFS,
-alternate source repositories, arbitrary refs, push authentication, or a GitHub
-API token. `github.token` is a noncredential local source placeholder required
-by upstream checkout's input contract; it cannot
-access either host's authenticated APIs. Actions needing authenticated GitHub APIs
-must be treated as migration gaps, not assumed to work from this placeholder.
+The default remains shallow. A v17 `fetch-depth: 0` checkout includes the saved
+commit's complete ancestors and ancestral tags within the source budgets. An
+explicit repository/ref grant permits a second private MoonHub checkout into a
+separate path. The primary checkout always retains the run SHA. Authorized
+`contents: write` jobs can push through the HTTPS Git endpoint; temporary job
+credentials are removed after invocations and checkout disables persistence.
+See [source access](source-access.md) for configuration, limits and examples.
+Older saved definitions retain their original shallow source behavior.
+
+LFS, private submodule credential propagation and arbitrary ungranted refs are
+unsupported. A job with API permissions receives a live MoonHub-scoped
+`github.token`; other jobs retain the noncredential local source placeholder.
+Neither token authenticates arbitrary GitHub APIs.
 
 In versions 5–9, checkout is under `/workspace/repository`; the job HOME and temporary
 state are sibling directories, so checkout cleaning cannot delete action runtime

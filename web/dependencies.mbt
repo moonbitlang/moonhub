@@ -97,6 +97,15 @@ let services_module : @moonback.Module = Module(ctx => {
 
 ///|
 let user_api_dependencies_module : @moonback.Module = Module(ctx => {
+  ctx.provide(
+    @web_context.job_git_binary_key,
+    ctx
+    .config()
+    .get_custom(@web_context.job_git_binary_key)
+    .unwrap_or_else(() => {
+      @config.env_value("MOONHUB_BIN").unwrap_or("/usr/local/bin/moonhub")
+    }),
+  )
   ctx.use_(diff_dependencies_module)
   guard ctx.config().get_custom(@web_context.config_db_pool) is Some(pool) else {
     raise @domain.BadRequest(message="missing moonhub.db_pool")

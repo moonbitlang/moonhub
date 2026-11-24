@@ -123,12 +123,12 @@ async function main() {
   await run('Storage SDK dependencies', 'npm', ['ci', '--prefix', 'storage/s3', '--ignore-scripts', '--no-audit', '--no-fund']);
   await run('Storage SDK tests', process.execPath, ['--test', 'storage/s3/backend.test.mjs']);
   await run('Action runtime dependencies', 'npm', ['ci', '--prefix', 'runner/actions', '--ignore-scripts', '--no-audit', '--no-fund']);
-  await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs', 'runner/actions/containers.test.mjs']);
+  await run('Action runtime tests', process.execPath, ['--test', 'runner/actions/runtime.test.mjs', 'runner/actions/containers.test.mjs', 'runner/actions/dependencies.test.mjs']);
   await run('npm dependencies', 'npm', ['ci', '--prefix', 'js', '--no-audit', '--no-fund']);
   await run('Frontend build', 'npm', ['run', 'build', '--prefix', 'js']);
   await run('Diff worker build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn', 'cmd/moonhub-diff-worker']);
-  await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Native build', 'moon', ['build', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 600000);
+  await run('Native tests', 'moon', ['test', '--target', 'native', '--strip', '-j', '1', '--deny-warn'], 1200000);
   await run('Repository deletion concurrency', process.execPath, ['scripts/repository-deletion-smoke.cjs'], 120000);
   await run('S3 storage integration', process.execPath, ['scripts/storage-s3-smoke.mjs'], 300000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);

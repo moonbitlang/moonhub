@@ -4,6 +4,112 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  let git_binary = ctx.require(@web_context.job_git_binary_key)
+  for advertise in [true, false] {
+    let handler : @moonback.Handler = (req, res) => {
+      let bytes = try {
+        let token = release_token(req)
+        guard token is Some(token) else {
+          raise @domain.Unauthorized(
+            message="job Git bearer credential required",
+          )
+        }
+        ignore(
+          coordinator.authenticate_job_api(
+            token,
+            @web_context.repo_param(req),
+            "git:write",
+          ),
+        )
+        if advertise {
+          guard req.query().get("service") == Some("git-receive-pack") else {
+            raise @domain.BadRequest(message="only receive-pack is supported")
+          }
+        } else {
+          guard req.headers.get("content-type") ==
+            Some("application/x-git-receive-pack-request") &&
+            req.headers.get("content-encoding") is None else {
+            raise @domain.BadRequest(
+              message="Git receive-pack content required",
+            )
+          }
+        }
+        @pipeline.job_git_exchange(
+          pool,
+          coordinator,
+          root,
+          git_binary,
+          @web_context.repo_param(req),
+          token,
+          if advertise {
+            b""
+          } else {
+            @web_context.read_bounded_body(req, 67108864)
+          },
+          advertise,
+        )
+      } catch {
+        err => {
+          let (status, json) = api_error(err)
+          res.send_json(json, status~, headers={
+            "Cache-Control": "no-store",
+            "Connection": "close",
+          })
+          return
+        }
+      }
+      let writer = res.respond(status=200, headers={
+        "Content-Type": if advertise {
+          "application/x-git-receive-pack-advertisement"
+        } else {
+          "application/x-git-receive-pack-result"
+        },
+        "Cache-Control": "no-store",
+        "Content-Length": bytes.length().to_string(),
+      })
+      writer.write(bytes)
+    }
+    if advertise {
+      ctx.get("/repos/:owner/:repo/git/info/refs", handler)
+    } else {
+      ctx.post("/repos/:owner/:repo/git/git-receive-pack", handler)
+    }
+  }
+  ctx.get(
+    "/repos/:owner/:repo/dependency-grants",
+    api_handler(req => {
+      "items": @runtime.dependency_grants(
+        pool,
+        api_actor(pool, req, "read"),
+        @web_context.repo_param(req),
+      ),
+    }),
+  )
+  ctx.post(
+    "/repos/:owner/:repo/dependency-grants",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "write")
+      let body = api_body(req, [
+        "kind", "target", "ref", "credential", "version", "delete",
+      ])
+      @runtime.save_dependency_grant(
+        pool,
+        actor,
+        @web_context.repo_param(req),
+        field(body, "kind"),
+        field(body, "target"),
+        field(body, "ref"),
+        match body.get("credential") {
+          None | Some(Null) => None
+          Some(String(value)) => Some(value)
+          _ => raise @domain.BadRequest(message="credential must be a string")
+        },
+        number(field(body, "version"), zero=true),
+        delete=body.get("delete") == Some(Json::boolean(true)),
+      )
+      { "ok": true }
+    }),
+  )
   ctx.get(
     "/repos/:owner/:repo/environments",
     api_handler(req => {
