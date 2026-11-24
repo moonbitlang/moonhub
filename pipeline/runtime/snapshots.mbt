@@ -132,7 +132,7 @@ pub fn insert_run_snapshot(
   }
   for ordinal, job in definition.jobs {
     let _ = tx.execute(
-      "INSERT INTO pipeline_job (run_id, job_key, ordinal, status, matrix_group, max_parallel, matrix_fail_fast) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO pipeline_job (run_id, job_key, ordinal, status, matrix_group, max_parallel, matrix_fail_fast, requires_containers) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       params=[
         run.id,
         job.id,
@@ -145,6 +145,7 @@ pub fn insert_run_snapshot(
         job.matrix_group,
         job.max_parallel.to_int64(),
         job.fail_fast,
+        job.containers is Some(_),
       ],
     )
   }

@@ -8,6 +8,7 @@ import { reference, resolveCommit, downloadArchive, extractArchive } from './dow
 import { evaluateAsync as evaluate, interpolateAsync as interpolate, truthy, string } from './expression.mjs';
 import { LogCommands, parseFileCommands, validEnvName, maskText } from './commands.mjs';
 import { encodeState, decodeState } from './state.mjs';
+import { ContainerSession, imageName, argumentWords } from './containers.mjs';
 import { windows, runnerOS, nullDevice, validRelative, isWithin, environment, shellCommand, scriptSource } from './platform.mjs';
 
 const limit = 1048576;
@@ -61,11 +62,13 @@ export async function metadata(directory) {
   walk(document.contents);
   const value = mapping(document.toJS({ maxAliasCount: 0 }), 'action');
   const runs = mapping(value.runs, 'action.runs');
-  if (!['node20', 'node24', 'composite'].includes(runs.using)) throw new Error(`Unsupported action runtime: ${runs.using}; supported: node20, node24, composite`);
-  const allowed = runs.using === 'composite' ? ['using', 'steps'] : ['using', 'main', 'pre', 'pre-if', 'post', 'post-if'];
+  if (!['node20', 'node24', 'composite', 'docker'].includes(runs.using)) throw new Error(`Unsupported action runtime: ${runs.using}; supported: node20, node24, composite, docker`);
+  const allowed = runs.using === 'composite' ? ['using', 'steps'] : runs.using === 'docker' ? ['using', 'image', 'entrypoint', 'args'] : ['using', 'main', 'pre', 'pre-if', 'post', 'post-if'];
   for (const field of Object.keys(runs)) if (!allowed.includes(field)) throw new Error(`Unsupported action.runs.${field}`);
   if (runs.using === 'composite') {
     if (!Array.isArray(runs.steps) || !runs.steps.length || runs.steps.length > 64) throw new Error('Composite action requires 1 to 64 steps');
+  } else if (runs.using === 'docker') {
+    if (typeof runs.image !== 'string' || (runs.args !== undefined && (!Array.isArray(runs.args) || runs.args.length > 128 || runs.args.some(value => typeof value !== 'string')))) throw new Error('Invalid Docker action metadata');
   } else if (typeof runs.main !== 'string') throw new Error('JavaScript action requires runs.main');
   const inputNames = new Set();
   for (const [name, input] of Object.entries(value.inputs || {})) {
@@ -81,6 +84,8 @@ export class ActionRuntime {
     this.config = config;
     this.state = Object.assign(state, { env: {}, path: [], steps: {}, posts: [], actions: {}, masks: [], ...state });
     this.adapters = { resolveCommit, downloadArchive, ...adapters };
+    this.containerSession = config.container_isolation === true && config.container_id ? new ContainerSession(config, this.state, adapters) : null;
+    if (config.container_plan && !this.containerSession) throw new Error('Workflow containers require isolated Linux CI execution');
     this.artifact = process.env.MOONHUB_ACTION_ARTIFACT_TOKEN ? { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL } : undefined;
     if (this.artifact && !this.state.masks.includes(this.artifact.token)) this.state.masks.push(this.artifact.token);
     this.apiToken = process.env.MOONHUB_ACTION_API_TOKEN;
@@ -125,7 +130,7 @@ export class ActionRuntime {
       workflow: this.config.context?.workflow || '', actor: this.config.context?.actor || '', run_id: this.config.context?.run_id || this.config.run_id || '0', run_attempt: this.config.context?.run_attempt || '1', job: this.config.job_id || '',
       event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.apiToken || (this.config.contents_read === false ? '' : 'moonhub-local-source'),
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
-    return { github, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
+    return { github, job: this.containerSession?.jobContext() || { services: {}, container: {} }, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
       ...(this.variablesContext ? { vars: this.variables } : {}), ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
@@ -144,7 +149,8 @@ export class ActionRuntime {
     }
     return { ...action, root: action.directory, directory: requested.path ? await contained(action.directory, requested.path) : action.directory };
   }
-  async process(program, args, env, cwd, result) {
+  async process(program, args, env, cwd, result, native = false) {
+    if (this.containerSession && !native) ({ program, args, env, cwd } = await this.containerSession.command(program, args, env, cwd, this.context()));
     const publish = (stream, text) => {
       if (this.artifact && ['actions/upload-artifact', 'actions/download-artifact'].includes(env.GITHUB_ACTION_REPOSITORY?.toLowerCase()) && env.GITHUB_SERVER_URL === 'http://moonhub.localhost') {
         const suffix = `/${this.config.repository}/actions/runs/${this.config.run_id}/artifacts/`;
@@ -272,6 +278,10 @@ export class ActionRuntime {
     this.workspace = await fs.realpath(this.workspace);
     this.temp = await fs.realpath(this.temp);
     if (depth > 8 || ++this.count > 256) throw new Error('Action nesting or invocation count exceeds limits');
+    if (uses.startsWith('docker://')) {
+      imageName(uses.slice(9));
+      return this.dockerAction({ directory: this.workspace, repository: '', ref: '' }, { runs: { image: uses } }, provided, supplied, this.context(extra));
+    }
     const action = await this.resolve(uses), value = await metadata(action.directory);
     const context = this.context({ ...extra, env: environment(this.context().env, extra.env, supplied), github: { ...this.context().github, ...extra.github, action_path: action.directory } });
     const inputs = Object.create(null);
@@ -320,6 +330,7 @@ export class ActionRuntime {
       for (const [name, output] of Object.entries(value.outputs || {})) outputs[name] = await interpolate(output.value || '', { ...inputContext, steps });
       return { code: compositeFailure ? 1 : 0, outputs, state: {} };
     }
+    if (value.runs.using === 'docker') return this.dockerAction(action, value, inputs, supplied, inputContext);
     // Pre and main share private action state; post handlers run once, LIFO.
     let saved = {};
     let post;
@@ -336,7 +347,26 @@ export class ActionRuntime {
     if (post) post.saved = { ...saved, ...main.state };
     return main;
   }
+  async dockerAction(action, value, inputs, supplied, context) {
+    if (!this.containerSession) throw new Error('Docker actions require an isolated Linux CI provider and assignment v16');
+    let image = value.runs.image;
+    if (image.startsWith('docker://')) image = imageName(image.slice(9));
+    else image = await this.containerSession.build(action.directory, await contained(action.directory, image));
+    const inputEnv = {};
+    for (const [name, value] of Object.entries(inputs)) {
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(name) || typeof value !== 'string') throw new Error('Invalid Docker action input');
+      inputEnv[`INPUT_${name.toUpperCase()}`] = value;
+    }
+    const env = this.environment({ ...supplied, ...inputEnv, GITHUB_ACTION_PATH: action.directory }, context);
+    const result = { outputs: {}, state: {}, failed: false };
+    const args = value.runs.args ? await Promise.all(value.runs.args.map(value => interpolate(value, { ...context, inputs }))) : argumentWords(inputs.args || '');
+    const entrypoint = value.runs.entrypoint || inputs.entrypoint || '';
+    const code = await this.files(env, result, () => this.containerSession.action(image, args, entrypoint, env, this.workspace, context,
+      (program, args, environment, cwd) => this.process(program, args, environment, cwd, result, true)));
+    return { ...result, code };
+  }
   async script(run, shell = '', directory = '.', supplied = {}, context = this.context()) {
+    if (!shell && this.containerSession?.plan.job) shell = 'sh';
     const cwd = await contained(this.workspace, directory);
     const filename = path.join(this.temp, `script-${randomUUID()}${shell === 'cmd' ? '.cmd' : shell === 'pwsh' || (!shell && windows) ? '.ps1' : '.sh'}`);
     const [program, args] = shellCommand(shell, filename);
@@ -382,6 +412,7 @@ export async function execute(config, state = {}, adapters = {}) {
   const step = config.step, templates = step.templates || {};
   let result, tolerate = false;
   try {
+    if (runtime.containerSession) await runtime.containerSession.ensure(runtime.context());
     const overrides = new Set(step.env_overrides ?? Object.keys(step.env || {}));
     const inheritedExport = key => own(runtime.state.env, key) && !overrides.has(key);
     const supplied = Object.fromEntries(Object.entries(step.env || {}).filter(([key]) => !inheritedExport(key)));

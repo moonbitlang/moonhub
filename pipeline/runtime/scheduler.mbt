@@ -131,6 +131,12 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             changed = true
             continue
           }
+          if job.containers is Some(_) &&
+            job.runs_on.any(label => ["windows", "macos"].contains(label)) {
+            raise @domain.BadRequest(
+              message="Workflow containers require an isolated Linux CI provider.",
+            )
+          }
           if !admit_deployment(tx, run, job_id, job, context) {
             continue
           }

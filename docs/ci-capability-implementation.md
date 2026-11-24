@@ -149,6 +149,28 @@ The complete GitHub script still uses intentionally reserved `MOONHUB_DEPLOY_*`
 variables; their namespace protection is retained. No cloud target was configured
 and no deployment was performed.
 
+## Linux container execution
+
+- #90/#91/#92: assignment v16 carries bounded job/service plans. Schema 54 and
+  live authorization restrict claims to explicitly isolated, controller-armed,
+  one-use Linux CI workers. Labels and ordinary providers cannot enable Docker.
+- Job shells and JavaScript actions share workspace and command files; services
+  use a dedicated network, aliases, loopback ports and bounded health checks.
+  Docker metadata/actions support inputs, Dockerfiles, entrypoints and outputs.
+  Host-control options and workflow-selected Docker client settings are rejected.
+- Cleanup covers partial startup and every terminal path, runs outside cancelled
+  step groups, and preserves the provider's final isolation fence. Unverified
+  cleanup reports lost. See `docs/workflow-containers.md` for image requirements
+  and the explicit metadata-action capability selection.
+
+Validation: parser, provider isolation, runner and migration suites passed
+165/165; JavaScript runtime/container tests passed 55/55. Package boundaries
+passed for 56 packages. The existing real Docker CI script now covers PostgreSQL
+connectivity, Docker action inputs/outputs and cleanup before success, failure,
+cancellation, timeout and startup-failure completion. This local workspace has no
+Docker daemon; real-container acceptance remains pending that CI job and is not
+claimed by the mocked tests.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package
