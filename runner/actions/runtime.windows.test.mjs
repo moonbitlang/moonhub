@@ -33,6 +33,30 @@ test('Windows PowerShell defaults, exit codes and case-insensitive PATH exports'
   });
 });
 
+test('Windows cmd preserves spaced paths, batch syntax, command files and exit codes', { skip: !windows }, async () => {
+  await fixture(async runtime => {
+    const result = await runtime.script('set "VALUE=batch value"\necho answer=%VALUE%>> "%GITHUB_OUTPUT%"\necho EXPORTED=ready>> "%GITHUB_ENV%"\nif not exist "%GITHUB_WORKSPACE%" exit /b 9', 'cmd');
+    assert.equal(result.code, 0);
+    assert.equal(result.outputs.answer, 'batch value');
+    assert.equal(runtime.state.env.EXPORTED, 'ready');
+    assert.equal((await runtime.script('exit /b 7', 'cmd')).code, 7);
+    const directory = path.join(runtime.workspace, 'batch-action');
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'action.yml'), `outputs:
+  answer: {value: '\${{ steps.batch.outputs.answer }}'}
+runs:
+  using: composite
+  steps:
+    - id: batch
+      shell: cmd
+      run: echo answer=composite>> "%GITHUB_OUTPUT%"
+`);
+    const composite = await runtime.action('./batch-action');
+    assert.equal(composite.code, 0);
+    assert.equal(composite.outputs.answer, 'composite');
+  });
+});
+
 test('Windows composite actions execute PowerShell and Git Bash with command files', { skip: !windows }, async () => {
   await fixture(async runtime => {
     const directory = path.join(runtime.workspace, 'action');

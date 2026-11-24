@@ -65,6 +65,7 @@ pub struct Job {
   condition : String
   outputs : Map[String, String]
   runs_on : Array[String]
+  runner_group : String
   contents_read : Bool
   id_token_write : Bool
   api_permissions : Int32
@@ -110,6 +111,10 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     runs_on: @json.from_json(
       fields.get("runs_on").unwrap_or(Json::null()),
       path=path.add_key("runs_on"),
+    ),
+    runner_group: @json.from_json(
+      fields.get("runner_group").unwrap_or(Json::string("")),
+      path=path.add_key("runner_group"),
     ),
     timeout_minutes: @json.from_json(
       fields.get("timeout_minutes").unwrap_or(Json::null()),

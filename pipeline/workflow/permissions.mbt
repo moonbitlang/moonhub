@@ -47,6 +47,9 @@ fn runner_labels(
     if ["macos-latest", "macos-14", "macos-15"].contains(label) {
       return ["self-hosted", "macos", "arm64", label]
     }
+    if label == "ubuntu-22.04-arm" {
+      return ["self-hosted", "linux", "arm64", "ubuntu-22.04"]
+    }
     let os = match label {
       "ubuntu-latest" => "linux"
       "windows-2022" | "windows-2025" => "windows"

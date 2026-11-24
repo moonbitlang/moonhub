@@ -154,7 +154,8 @@ export class ActionRuntime {
     };
     const stdout = new LogCommands(this.state, text => publish(process.stdout, text), result);
     const stderr = new LogCommands(this.state, text => publish(process.stderr, text), result);
-    const child = spawn(program, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(program, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'],
+      windowsVerbatimArguments: windows && program.toLowerCase() === 'cmd.exe' });
     const closed = new Promise(resolve => child.once('close', resolve));
     let streamError;
     const write = (sink, chunk) => { try { sink.write(chunk); } catch (error) { streamError = error; child.kill('SIGKILL'); } };
@@ -289,6 +290,7 @@ export class ActionRuntime {
         if (own(steps, id)) throw new Error('Duplicate composite step id');
         let result, tolerate = false;
         try {
+          if (typeof step.run === 'string' && !['bash', 'sh', 'pwsh', 'cmd'].includes(step.shell)) throw new Error('Composite steps require a supported shell: bash, sh, pwsh or cmd');
           const condition = step.if === undefined ? !compositeFailure : truthy(await evaluate(string(step.if), ctx, true));
           if (!condition) { steps[id] = { outputs: {}, outcome: 'skipped', conclusion: 'skipped' }; continue; }
           const allowed = ['id', 'name', 'if', 'run', 'shell', 'working-directory', 'env', 'uses', 'with', 'continue-on-error'];
@@ -304,9 +306,9 @@ export class ActionRuntime {
             const with_ = {};
             for (const [key, item] of Object.entries(scalarMap(step.with, 'step.with'))) with_[key] = await interpolate(item, stepContext);
             result = await this.action(step.uses, with_, env, stepContext, depth + 1);
-          } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh', 'pwsh'].includes(step.shell)) {
+          } else if (typeof step.run === 'string' && step.uses === undefined && ['bash', 'sh', 'pwsh', 'cmd'].includes(step.shell)) {
             result = await this.script(await interpolate(step.run, stepContext), step.shell, await interpolate(step['working-directory'] || '.', stepContext), env, stepContext);
-          } else throw new Error('Composite steps require run with bash/sh/pwsh or uses');
+          } else throw new Error('Composite steps require run with bash/sh/pwsh/cmd or uses');
         } catch (error) {
           this.error(error);
           result = { code: 1, outputs: {} };
@@ -336,11 +338,15 @@ export class ActionRuntime {
   }
   async script(run, shell = '', directory = '.', supplied = {}, context = this.context()) {
     const cwd = await contained(this.workspace, directory);
-    const filename = path.join(this.temp, `script-${randomUUID()}${shell === 'pwsh' || (!shell && windows) ? '.ps1' : '.sh'}`);
+    const filename = path.join(this.temp, `script-${randomUUID()}${shell === 'cmd' ? '.cmd' : shell === 'pwsh' || (!shell && windows) ? '.ps1' : '.sh'}`);
+    const [program, args] = shellCommand(shell, filename);
     await fs.writeFile(filename, scriptSource(run, shell), { flag: 'wx', mode: 0o600 });
     const env = this.environment(supplied, context), result = { outputs: {}, state: {}, failed: false };
-    const [program, args] = shellCommand(shell, filename);
     try { const code = await this.files(env, result, () => this.process(program, args, env, cwd, result)); return { ...result, code }; }
+    catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`Shell ${shell || (windows ? 'pwsh' : 'bash')} is unavailable on this runner; install the shell or select another runner`);
+      throw error;
+    }
     finally { await fs.rm(filename, { force: true }); }
   }
   error(error) {

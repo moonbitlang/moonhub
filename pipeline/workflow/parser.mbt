@@ -192,8 +192,9 @@ fn parse_shell(
   guard shell is None ||
     shell == Some("bash") ||
     shell == Some("sh") ||
-    shell == Some("pwsh") else {
-    raise InvalidWorkflow("\{ctx} supports only bash, sh and pwsh")
+    shell == Some("pwsh") ||
+    shell == Some("cmd") else {
+    raise InvalidWorkflow("\{ctx} supports only bash, sh, pwsh and cmd")
   }
   shell
 }
@@ -272,7 +273,30 @@ fn parse_job(
         "\{ctx}.continue-on-error supports only literal false",
       )
   }
-  let runs_on = runner_labels(fields.get("runs-on"), "\{ctx}.runs-on")
+  let (runner_group, selector) = match fields.get("runs-on") {
+    Some(Map(selector)) => {
+      check_fields(selector, ["group", "labels"], "\{ctx}.runs-on")
+      let group = required_string(selector.get("group"), "\{ctx}.runs-on.group").to_lower()
+      guard valid_identifier(group) && group.length() <= 64 else {
+        raise InvalidWorkflow("invalid runner group name")
+      }
+      (group, selector.get("labels").unwrap_or(@yaml.String("self-hosted")))
+    }
+    Some(value) => ("", value)
+    None => ("", @yaml.Array([]))
+  }
+  let runs_on = if runner_group.is_empty() {
+    runner_labels(Some(selector), "\{ctx}.runs-on")
+  } else {
+    let labels = yaml_as_string_list(Some(selector), "\{ctx}.runs-on.labels").map(label => {
+        label.to_lower()
+      },
+    )
+    if !labels.contains("self-hosted") {
+      labels.push("self-hosted")
+    }
+    labels
+  }
   guard runs_on.contains("self-hosted") &&
     runs_on.length() <= 8 &&
     runs_on.all(label => {
@@ -464,11 +488,6 @@ fn parse_job(
         "\{ctx}.working-directory",
       ),
     })
-    guard uses is Some(_) ||
-      step_defaults.shell != Some("pwsh") ||
-      runs_on.contains("windows") else {
-      raise InvalidWorkflow("\{ctx}.shell: pwsh requires Windows runner labels")
-    }
     let explicit_env = if uses is Some(_) && !remote {
       Map([])
     } else {
@@ -555,7 +574,11 @@ fn parse_job(
     // Require the updated runtime for literal numeric index expressions.
     // Persist this decision; old snapshots decode it as false on rerun.
     compatibility_runtime: outputs.values().any(needs_index_runtime) ||
-    steps.any(step => step.templates.values().any(needs_index_runtime)),
+    steps.any(step => {
+      step.templates.values().any(needs_index_runtime) ||
+      step.shell == Some("cmd") ||
+      (step.shell == Some("pwsh") && !runs_on.contains("windows"))
+    }),
     id,
     name: yaml_as_optional_string(fields.get("name"), "\{ctx}.name").unwrap_or(
       id,
@@ -567,6 +590,7 @@ fn parse_job(
     ),
     outputs,
     runs_on,
+    runner_group,
     matrix: Map([]),
     strategy: Map([]),
     matrix_group: "",

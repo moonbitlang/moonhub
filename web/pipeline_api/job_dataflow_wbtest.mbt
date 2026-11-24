@@ -25,6 +25,9 @@ async test "real runner carries version outputs through conditional matrix build
     #|          echo count=3 >> "$GITHUB_OUTPUT"
     #|          echo secret=must-stay-private >> "$GITHUB_OUTPUT"
     #|          echo ::add-mask::must-stay-private
+    #|      - if: runner.os == 'Windows'
+    #|        shell: pwsh
+    #|        run: exit 99
     #|  build:
     #|    needs: prepare
     #|    if: needs.prepare.outputs.publish == 'true'

@@ -11,9 +11,11 @@ let eligible_provider_jobs : String =
   #|AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))
   #|AND u.status = 'active' AND (u.is_site_admin = 1 OR tm.role IN ('owner', 'admin'))
   #|AND (provider.repository_scope = 'all' OR EXISTS (SELECT 1 FROM pipeline_provider_repository g WHERE g.provider_id = provider.id AND g.repository_id = r.repository_id))
-  #|AND EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label=
+  #|AND ((EXISTS (SELECT 1 FROM pipeline_job_runner_group g WHERE g.job_id=j.id)
+  #|  AND NOT EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label IN ('linux','windows','macos')))
+  #|OR EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label=
   #|  CASE WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='windows') THEN 'windows'
-  #|  WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='macos') THEN 'macos' ELSE 'linux' END)
+  #|  WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='macos') THEN 'macos' ELSE 'linux' END))
   #|AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate
   #|  WHERE candidate.job_id=j.id AND candidate.provider_id=?)
 
@@ -103,6 +105,13 @@ fn attempt_authorized(
   let provider_id : Int64? = row.get_name("provider_id")
   guard provider_id is Some(provider_id) else { return false }
   let run_id : Int64 = row.get_name("run_id")
+  if tx.query_opt(
+      "SELECT 1 FROM pipeline_provider_job_group WHERE job_id=? AND provider_id=?",
+      params=[(row.get_name("job_id") : Int64), provider_id],
+    )
+    is None {
+    return false
+  }
   guard tx.query_opt(
       "SELECT r.id FROM pipeline_run r WHERE r.id = ? AND (r.merge_check_id IS NULL OR EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.id = r.merge_check_id AND m.status = 'open' AND m.draft = 0 AND c.version = m.current_version AND c.generation = m.check_generation AND c.run_number = r.number AND (c.automatic = 1 OR EXISTS (SELECT 1 FROM branch_required_check b WHERE b.repository_id = m.repository_id AND b.branch = m.target_branch AND b.workflow_path = c.workflow_path))))",
       params=[run_id],
@@ -628,7 +637,7 @@ pub fn Coordinator::claim(
               job.matrix_group
             },
             name: job.name,
-            runs_on: job.runs_on,
+            runs_on: runner_group_labels(tx, job, provider_id),
             timeout_minutes: job.timeout_minutes,
             steps: job.steps.map(step => {
               id: step.id,
