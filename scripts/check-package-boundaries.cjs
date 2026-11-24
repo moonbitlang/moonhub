@@ -17,6 +17,7 @@ const allowed = {
   domain: [],
   config: [],
   storage: [],
+  filelock: [],
   releases: ["domain", "database", "identity", "repository", "gitops", "storage"],
   database: ['domain'],
   gitops: ['domain', 'diff/protocol'],
@@ -100,6 +101,9 @@ for (const edge of graph.edges) {
   }
   if (production && local.has(edge.to) && ['test_support', 'web/testkit'].includes(target.rel) && from !== 'web/testkit') {
     failures.push(`${from || '(root)'} must not import test fixtures in production`);
+  }
+  if (from === 'filelock' && !['moonbitlang/async', 'moonbitlang/core'].includes(target.module)) {
+    failures.push('filelock must depend only on async and core packages, including in tests');
   }
   if (['pipeline/runtime', 'pipeline/results', 'pipeline/oidc'].includes(from) && local.has(edge.to) && target.rel === 'pipeline') {
     failures.push(`${from} must not depend on Pipeline orchestration, including in tests`);
