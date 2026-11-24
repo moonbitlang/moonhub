@@ -1,4 +1,46 @@
 ///|
+// New literal numeric indexes need the v14 runtime. Ignore brackets in script
+// text and quoted expression strings, including JSON passed to fromJSON.
+fn needs_index_runtime(source : String) -> Bool {
+  let mut rest = source
+  while rest.split_once("${{") is Some((_, expression)) {
+    let chars = expression.to_owned().to_array()
+    let mut quoted = false
+    let mut end = chars.length()
+    let mut i = 0
+    while i < chars.length() {
+      if chars[i] == '\'' {
+        if quoted && i + 1 < chars.length() && chars[i + 1] == '\'' {
+          i += 2
+          continue
+        }
+        quoted = !quoted
+      }
+      if !quoted && chars[i] == '[' {
+        let mut next = i + 1
+        while next < chars.length() &&
+              [' ', '\n', '\r', '\t'].contains(chars[next]) {
+          next += 1
+        }
+        if next < chars.length() && chars[next].is_ascii_digit() {
+          return true
+        }
+      }
+      if !quoted &&
+        chars[i] == '}' &&
+        i + 1 < chars.length() &&
+        chars[i + 1] == '}' {
+        end = i + 2
+        break
+      }
+      i += 1
+    }
+    rest = String::from_array(chars[end:].to_owned())
+  }
+  false
+}
+
+///|
 fn runtime_template(value : String) -> Bool {
   value.contains("${{") &&
   (try {

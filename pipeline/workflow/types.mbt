@@ -58,6 +58,7 @@ pub impl @json.FromJson for Workflow with fn from_json(json, path) {
 ///|
 #derive(Debug, ToJson)
 pub struct Job {
+  compatibility_runtime : Bool
   id : String
   name : String
   needs : Array[String]
@@ -82,6 +83,10 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
     raise @json.JsonDecodeError((path, "invalid job"))
   }
   {
+    compatibility_runtime: @json.from_json(
+      fields.get("compatibility_runtime").unwrap_or(Json::boolean(false)),
+      path=path.add_key("compatibility_runtime"),
+    ),
     id: @json.from_json(
       fields.get("id").unwrap_or(Json::null()),
       path=path.add_key("id"),

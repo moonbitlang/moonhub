@@ -82,18 +82,21 @@ fn parse_job_outputs(
       Real(_, repr~) => repr
       _ => raise InvalidWorkflow("job output requires a scalar template")
     }
-    validate_template(text, "job.outputs")
     ignore(
-      scheduling_template(text, {
-        "github": {},
-        "inputs": {},
-        "vars": {},
-        "needs": {},
-        "steps": {},
-        "matrix": {},
-        "strategy": {},
-        "runner": {},
-      }),
+      schedule_template(
+        text,
+        {
+          "github": {},
+          "inputs": {},
+          "vars": {},
+          "needs": {},
+          "steps": {},
+          "matrix": {},
+          "strategy": {},
+          "runner": {},
+        },
+        validate_output=true,
+      ),
     )
     result[name] = text
   }

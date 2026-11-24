@@ -13,7 +13,7 @@ function* expression(source, context = {}, implicitSuccess = false) {
     const match = pattern.exec(source);
     if (!match) throw new Error('Unsupported Actions expression');
     tokens.push(match[1] ? ['value', match[1].slice(1, -1).replaceAll("''", "'")] :
-      match[2] ? ['value', Number(match[2])] : match[3] ? ['name', match[3]] : [match[4], match[4]]);
+      match[2] ? ['value', Number(match[2]), match[2]] : match[3] ? ['name', match[3]] : [match[4], match[4]]);
     offset = pattern.lastIndex;
     if (tokens.length > 2048) throw new Error('Actions expression is too large');
   }
@@ -37,7 +37,14 @@ function* expression(source, context = {}, implicitSuccess = false) {
     const path = [name];
     while (true) {
       if (take('.')) { const part = take('name')?.[1]; if (!part) throw new Error('Invalid context field'); path.push(part); }
-      else if (take('[')) { const part = take('value')?.[1]; if (typeof part !== 'string') throw new Error('Only literal field indexes are supported'); path.push(part); expect(']'); }
+      else if (take('[')) {
+        const token = take('value');
+        const part = token?.[1];
+        if (typeof part === 'string') path.push(part);
+        else if (token?.[2] && /^(0|[1-9]\d*)$/.test(token[2])) path.push(token[2]);
+        else throw new Error('Only string or nonnegative integer literal field indexes are supported');
+        expect(']');
+      }
       else break;
     }
     if (path.some(part => forbidden.has(part.toLowerCase()))) throw new Error('Invalid context field');

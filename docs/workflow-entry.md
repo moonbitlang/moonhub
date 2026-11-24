@@ -1,5 +1,11 @@
 # Workflow entry compatibility
 
+Workflow YAML supports anchors and aliases for shared mappings, sequences and
+scalars. Undefined and recursive references are rejected. Expansion is bounded
+by 8192 nodes, 32 levels and 1 MiB of scalar data before loading; the 64 KiB source
+and normalized workflow limits still apply. Explicit tags and merge keys (`<<`)
+remain unsupported.
+
 The first openseek acceptance target is the unmodified Tools SDK workflow at
 `9e8b15a59b40b62b018e53b4b85a3bea971e1acf`. Its original YAML is retained in
 `pipeline/workflow/fixtures/openseek-tools-sdk.yml`.
@@ -21,6 +27,10 @@ Single environment selectors `ubuntu-22.04`, `ubuntu-24.04`, `ubuntu-latest` and
 exact environment label**. All labels must match a registered provider. A generic
 Linux provider or an ARM64 provider does not match an Ubuntu x64 request.
 Existing explicit self-hosted label arrays retain their behavior.
+
+A whole matrix expression in `runs-on` can return a string label array, such as
+`${{ matrix.node.labels }}`. Each matrix row may provide a different number of
+labels. These arrays use the same validation and provider matching as YAML lists.
 
 Environment labels are operator-declared image capabilities. Register them only
 when the configured runner image supplies that userspace and toolchain contract.

@@ -140,10 +140,14 @@ Unknown contexts/functions and malformed expressions fail explicitly at executio
 Unsupported public syntax is not passed literally to the shell.
 
 Missing `matrix` fields evaluate to `null` and interpolate as empty strings.
-Read matrix array elements with literal string indexes such as
-`matrix.node.labels['0']`.
+Read matrix array elements with literal indexes such as
+`matrix.node.labels[0]` or `matrix.node.labels['0']`.
 An array index must be zero or a positive decimal integer without leading zeros.
-Invalid and out-of-range indexes count as missing fields.
+Out-of-range indexes and noncanonical string keys count as missing fields.
+Negative, fractional, exponent-form and computed numeric indexes fail validation.
+New plans require assignment v14 for numeric-index runtime templates.
+Upgrade providers and Runners before executing them; saved older snapshots keep
+their existing assignment requirement.
 
 The four relational operators compare strings by Unicode code point using
 case-insensitive ordinal comparison. Mixed primitive types are coerced to

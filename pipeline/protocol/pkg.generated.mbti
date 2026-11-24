@@ -14,6 +14,8 @@ pub fn action_runtime_version(Int32) -> Bool
 
 pub let cancel_grace_ms : Int64
 
+pub let compatibility_assignment_version : Int32
+
 pub let dataflow_assignment_version : Int32
 
 pub let dispatch_assignment_version : Int32

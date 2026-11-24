@@ -1,0 +1,19 @@
+{
+  "context": {"matrix": {"node": {"labels": ["self-hosted", "linux"]}}},
+  "valid": [
+    ["matrix.node.labels[0]", "self-hosted"],
+    ["matrix.node.labels[1]", "linux"],
+    ["matrix.node.labels['0']", "self-hosted"],
+    ["matrix.node.labels['1']", "linux"],
+    ["matrix.node.labels[2]", ""],
+    ["matrix.node.labels[999999999999999999999999]", ""],
+    ["matrix.node.labels['01']", ""],
+    ["matrix.node.labels['-1']", ""]
+  ],
+  "invalid": [
+    "matrix.node.labels[-1]", "matrix.node.labels[-0]", "matrix.node.labels[1.5]",
+    "matrix.node.labels[1.0]", "matrix.node.labels[1e0]", "matrix.node.labels[true]",
+    "matrix.node.labels[matrix.index]", "matrix.node.labels[01]",
+    "matrix['constructor']", "matrix['__proto__']", "matrix['prototype']"
+  ]
+}
