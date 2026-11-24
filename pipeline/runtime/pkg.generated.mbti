@@ -13,7 +13,7 @@ import {
 }
 
 // Values
-pub fn cancel_run_in_transaction(@database.DbTransaction, Int64) -> Unit raise
+pub fn cancel_run_in_transaction(@database.DbTransaction, Int64, now? : Int64?) -> Unit raise
 
 pub fn commit_workflow_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, branch~ : String, sha~ : String) -> Array[CommitWorkflowRun] raise
 

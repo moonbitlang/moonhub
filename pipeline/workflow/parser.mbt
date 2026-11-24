@@ -570,6 +570,9 @@ fn parse_job(
     ),
     concurrency: parse_concurrency(fields.get("concurrency"), job=true),
     dynamic_matrix: None,
+    reusable_call: None,
+    call_inputs: None,
+    context_prefix: "",
     // Require the updated runtime for literal numeric index expressions.
     // Persist this decision; old snapshots decode it as false on rerun.
     compatibility_runtime: outputs.values().any(needs_index_runtime) ||
@@ -622,6 +625,18 @@ fn parse_job(
 pub fn parse(
   source : String,
   jobs~ : Array[String] = [],
+  reusable~ : Map[String, String] = Map([]),
+) -> Workflow raise InvalidWorkflow {
+  parse_definition(source, jobs, reusable, [], [0, 0])
+}
+
+///|
+fn parse_definition(
+  source : String,
+  jobs : Array[String],
+  reusable : Map[String, String],
+  stack : Array[String],
+  budget : Array[Int32],
 ) -> Workflow raise InvalidWorkflow {
   let fields = yaml_as_obj(read_yaml(source), "workflow")
   check_fields(
@@ -643,39 +658,7 @@ pub fn parse(
     raise InvalidWorkflow("jobs is required")
   }
   let fields_jobs = yaml_as_obj(value, "jobs")
-  guard !fields_jobs.is_empty() && fields_jobs.length() <= 16 else {
-    raise InvalidWorkflow("workflow requires between 1 and 16 jobs")
-  }
-  let selected : Map[String, Bool] = Map([])
-  guard jobs.length() <= 16 else {
-    raise InvalidWorkflow("select at most 16 jobs")
-  }
-  for id in jobs {
-    guard valid_identifier(id) &&
-      fields_jobs.contains(id) &&
-      !selected.contains(id) else {
-      raise InvalidWorkflow("selected jobs must be unique workflow job IDs")
-    }
-    selected[id] = true
-  }
-  // Include the complete dependency closure; selecting a job cannot turn its
-  // declared prerequisites into missing or implicitly successful results.
-  for _ in 0..<16 {
-    let before = selected.length()
-    for id in selected.keys().collect() {
-      let value = yaml_as_obj(fields_jobs[id], "jobs." + id)
-      for
-        need in yaml_as_string_list(value.get("needs"), "jobs." + id + ".needs") {
-        guard fields_jobs.contains(need) else {
-          raise InvalidWorkflow("selected job references an unknown dependency")
-        }
-        selected[need] = true
-      }
-    }
-    if before == selected.length() {
-      break
-    }
-  }
+  let selected = selected_job_closure(fields_jobs, jobs)
   let jobs : Array[Job] = []
   let mut step_count = 0
   let mut plan_bytes = 0
@@ -683,8 +666,10 @@ pub fn parse(
     if !selected.is_empty() && !selected.contains(id) {
       continue
     }
-    for
-      job in expand_job(
+    let expanded = if yaml_as_obj(value, "job").contains("uses") {
+      [parse_reusable_job(id, value, permissions, reusable, stack, budget)]
+    } else {
+      expand_job(
         id,
         value,
         env,
@@ -693,7 +678,18 @@ pub fn parse(
         remaining_jobs=256 - jobs.length(),
         remaining_steps=4096 - step_count,
         remaining_bytes=1048576 - plan_bytes,
-      ) {
+      )
+    }
+    for job in expanded {
+      if job.reusable_call is None && job.dynamic_matrix is None {
+        budget[0] += 1
+        budget[1] += job.steps.length()
+        guard budget[0] <= 256 && budget[1] <= 4096 else {
+          raise InvalidWorkflow(
+            "reusable workflow closure exceeds 256 jobs or 4096 steps",
+          )
+        }
+      }
       plan_bytes += @utf8.encode(ToJson::to_json(job).stringify()).length()
       guard plan_bytes <= 1048576 else {
         raise InvalidWorkflow("normalized workflow exceeds 1 MiB")

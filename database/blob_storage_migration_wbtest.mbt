@@ -5,6 +5,9 @@ async test "blob storage migration preserves legacy rows and journals cascade de
       client.batch_execute(
         (
           #|DROP VIEW pipeline_provider_job_routing;
+          #|DROP TABLE pipeline_call_secret_hash;
+          #|DROP TABLE pipeline_call_output;
+          #|DROP TABLE pipeline_call_expansion;
           #|DROP VIEW pipeline_concurrency_live;
           #|DROP VIEW pipeline_run_schedule;
           #|DROP TABLE pipeline_concurrency_slot;

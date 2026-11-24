@@ -28,24 +28,7 @@ fn expand_run_matrix(
   job : @workflow.Job,
   context : Map[String, Json],
 ) -> Unit raise {
-  let persisted = tx.query_all(
-    "SELECT d.definition_json FROM pipeline_job_definition d JOIN pipeline_job j ON j.id=d.job_id WHERE j.run_id=?",
-    params=[run.id],
-  )
-  let mut count = run.definition.jobs
-    .filter(job => job.dynamic_matrix is None)
-    .length()
-  let mut steps = run.definition.jobs.fold(init=0, (count, job) => {
-    count + (if job.dynamic_matrix is None { job.steps.length() } else { 0 })
-  })
-  let mut bytes = @utf8.encode(ToJson::to_json(run.definition).stringify()).length()
-  for row in persisted {
-    let text : String = row.get_name("definition_json")
-    let saved : @workflow.Job = @json.from_json(@json.parse(text))
-    count += 1
-    steps += saved.steps.length()
-    bytes += @utf8.encode(text).length()
-  }
+  let (count, steps, bytes) = expansion_budget(tx, run)
   // Failed-only attempts retain the previously expanded instance identities.
   // Evaluating again can associate an old successful ordinal with a new target
   // when the expression reads github.run_attempt or changed producer outputs.
@@ -65,6 +48,88 @@ fn expand_run_matrix(
     remaining_bytes=1048576 - bytes,
     saved_matrix~,
   )
+  persist_expanded_jobs(tx, run, job, children)
+  ignore(
+    tx.execute(
+      "INSERT INTO pipeline_matrix_expansion(job_id,matrix_json) VALUES(?,?)",
+      params=[job_id, matrix.stringify()],
+    ),
+  )
+  reuse_expanded_jobs(tx, run.id)
+}
+
+///|
+fn complete_matrix_barrier(
+  tx : @database.DbTransaction,
+  run : Run,
+  job_id : Int64,
+  key : String,
+) -> Unit raise {
+  let rows = tx.query_all(
+    "SELECT conclusion,actual_conclusion FROM pipeline_job WHERE run_id=? AND matrix_group=?",
+    params=[run.id, key],
+  )
+  let conclusion = if rows.any(row => {
+      ["failure", "timed_out", "lost"].contains(
+        (row.get_name("conclusion") : String?).unwrap_or(""),
+      )
+    }) {
+    "failure"
+  } else if rows.any(row => {
+      (row.get_name("conclusion") : String?) == Some("cancelled")
+    }) {
+    "cancelled"
+  } else {
+    "success"
+  }
+  ignore(
+    tx.execute(
+      "UPDATE pipeline_job SET status='completed',conclusion=? WHERE id=? AND status='waiting'",
+      params=[conclusion, job_id],
+    ),
+  )
+}
+
+///|
+fn expansion_budget(
+  tx : @database.DbTransaction,
+  run : Run,
+) -> (Int32, Int32, Int32) raise {
+  let persisted = tx.query_all(
+    "SELECT d.definition_json FROM pipeline_job_definition d JOIN pipeline_job j ON j.id=d.job_id WHERE j.run_id=?",
+    params=[run.id],
+  )
+  let mut count = run.definition.jobs
+    .filter(job => job.dynamic_matrix is None && job.reusable_call is None)
+    .length()
+  let mut steps = run.definition.jobs.fold(init=0, (count, job) => {
+    count +
+    (if job.dynamic_matrix is None && job.reusable_call is None {
+      job.steps.length()
+    } else {
+      0
+    })
+  })
+  let mut bytes = @utf8.encode(ToJson::to_json(run.definition).stringify()).length()
+  for row in persisted {
+    let text : String = row.get_name("definition_json")
+    let saved : @workflow.Job = @json.from_json(@json.parse(text))
+    if saved.dynamic_matrix is None && saved.reusable_call is None {
+      count += 1
+      steps += saved.steps.length()
+    }
+    bytes += @utf8.encode(text).length()
+  }
+  (count, steps, bytes)
+}
+
+///|
+fn persist_expanded_jobs(
+  tx : @database.DbTransaction,
+  run : Run,
+  job : @workflow.Job,
+  children : Array[@workflow.Job],
+) -> Unit raise {
   // Validate all generated definitions and budgets before writing any child.
   validate_secret_policy(
     tx,
@@ -115,7 +180,15 @@ fn expand_run_matrix(
         ),
       )
     }
-    for need in child.needs {
+  }
+  for child in children {
+    let needs = child.needs.copy()
+    for need in job.needs {
+      if !needs.contains(need) {
+        needs.push(need)
+      }
+    }
+    for need in needs {
       ignore(
         tx.execute(
           "INSERT INTO pipeline_job_need(run_id,job_key,needs_job_key) VALUES(?,?,?)",
@@ -130,49 +203,18 @@ fn expand_run_matrix(
       ),
     )
   }
-  ignore(
-    tx.execute(
-      "INSERT INTO pipeline_matrix_expansion(job_id,matrix_json) VALUES(?,?)",
-      params=[job_id, matrix.stringify()],
-    ),
-  )
-  if tx.query_opt(
-      "SELECT source_run_id FROM pipeline_run_reuse_source WHERE run_id=?",
-      params=[run.id],
-    )
-    is Some(row) {
-    reuse_successful_jobs(tx, run.id, row.get_name("source_run_id"))
-  }
 }
 
 ///|
-fn complete_matrix_barrier(
+fn reuse_expanded_jobs(
   tx : @database.DbTransaction,
-  run : Run,
-  job_id : Int64,
-  key : String,
+  run_id : Int64,
 ) -> Unit raise {
-  let rows = tx.query_all(
-    "SELECT conclusion,actual_conclusion FROM pipeline_job WHERE run_id=? AND matrix_group=?",
-    params=[run.id, key],
-  )
-  let conclusion = if rows.any(row => {
-      ["failure", "timed_out", "lost"].contains(
-        (row.get_name("conclusion") : String?).unwrap_or(""),
-      )
-    }) {
-    "failure"
-  } else if rows.any(row => {
-      (row.get_name("conclusion") : String?) == Some("cancelled")
-    }) {
-    "cancelled"
-  } else {
-    "success"
+  if tx.query_opt(
+      "SELECT source_run_id FROM pipeline_run_reuse_source WHERE run_id=?",
+      params=[run_id],
+    )
+    is Some(row) {
+    reuse_successful_jobs(tx, run_id, row.get_name("source_run_id"))
   }
-  ignore(
-    tx.execute(
-      "UPDATE pipeline_job SET status='completed',conclusion=? WHERE id=? AND status='waiting'",
-      params=[conclusion, job_id],
-    ),
-  )
 }

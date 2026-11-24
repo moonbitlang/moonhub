@@ -65,6 +65,17 @@ pub struct DynamicMatrix {
 }
 
 ///|
+#derive(Debug, ToJson, FromJson)
+pub struct ReusableCall {
+  path : String
+  source : String
+  definition : Workflow
+  inputs : Array[DispatchInput]
+  supplied : Map[String, Json]
+  outputs : Map[String, String]
+}
+
+///|
 pub impl @json.FromJson for Workflow with fn from_json(json, path) {
   guard json is Object(fields) else {
     raise @json.JsonDecodeError((path, "invalid workflow"))
@@ -97,6 +108,9 @@ pub struct Job {
   continue_on_error : String
   concurrency : Concurrency?
   dynamic_matrix : DynamicMatrix?
+  reusable_call : ReusableCall?
+  call_inputs : Map[String, Json]?
+  context_prefix : String
   id : String
   name : String
   needs : Array[String]
@@ -131,6 +145,20 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
       Some(value) =>
         Some(@json.from_json(value, path=path.add_key("concurrency")))
     },
+    reusable_call: match fields.get("reusable_call") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("reusable_call")))
+    },
+    call_inputs: match fields.get("call_inputs") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("call_inputs")))
+    },
+    context_prefix: @json.from_json(
+      fields.get("context_prefix").unwrap_or(Json::string("")),
+      path=path.add_key("context_prefix"),
+    ),
     dynamic_matrix: match fields.get("dynamic_matrix") {
       None | Some(Null) => None
       Some(value) =>
