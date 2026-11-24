@@ -40,7 +40,11 @@ priv struct LogMaskNode {
 // Aho-Corasick failure links make repeated-prefix matching linear in the log
 // length instead of restarting a potentially 16 KiB comparison at each unit.
 // Match spans are unioned so overlapping credentials are masked completely.
-fn mask_log(text : String, masks : Array[String]) -> (String, String) {
+fn mask_log(
+  text : String,
+  masks : Array[String],
+  complete~ : Bool = false,
+) -> (String, String) {
   let nodes : Array[LogMaskNode] = [
     { edges: Map([]), depth: 0, failure: 0, longest: 0, },
   ]
@@ -102,7 +106,11 @@ fn mask_log(text : String, masks : Array[String]) -> (String, String) {
   while state != 0 && nodes[state].edges.is_empty() {
     state = nodes[state].failure
   }
-  let pending_start = text.length() - nodes[state].depth
+  let pending_start = if complete {
+    text.length()
+  } else {
+    text.length() - nodes[state].depth
+  }
   let mut cut = pending_start
   for start = 0; start < pending_start; start = start + 1 {
     // Preserve one complete match across the original pending boundary. Do

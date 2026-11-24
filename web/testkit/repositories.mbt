@@ -20,6 +20,12 @@ pub async fn with_repository_test_app(
             })
           })
         })
+        let listener = @moonback.listen(port=0)
+        let release_origin = if release_origin.is_empty() {
+          "http://127.0.0.1:" + listener.addr.port().to_string()
+        } else {
+          release_origin
+        }
         let app = @moonback.App(
           @moonback.Module(ctx => {
             if body_read_started is Some(started) {
@@ -75,7 +81,6 @@ pub async fn with_repository_test_app(
         )
         defer app.close()
         @async.with_task_group(group => {
-          let listener = @moonback.listen(port=0)
           let server = group.spawn(() => app.serve(listener))
           defer server.cancel()
           f(listener.addr.port(), pool, root, cookies[0], cookies[1])

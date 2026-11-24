@@ -15,12 +15,7 @@ pub fn required_merge_checks(
   branch : String,
 ) -> Array[String] raise {
   pool.with_client(client => {
-    client
-    .query_all(
-      "SELECT workflow_path FROM branch_required_check WHERE repository_id = ? AND branch = ? ORDER BY workflow_path",
-      params=[scope.id, branch],
-    )
-    .map(row => row.get_name("workflow_path"))
+    client.with_transaction(tx => required_result_strings(tx, scope.id, branch))
   })
 }
 
@@ -217,14 +212,14 @@ fn merge_checks_blocker(
       return "Merge request version changed; reload before merging."
     }
     let missing = client.query_opt(
-      "SELECT b.workflow_path FROM branch_required_check b WHERE b.repository_id = ? AND b.branch = ? AND NOT EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.merge_request_id = ? AND c.version = m.current_version AND c.generation = m.check_generation AND c.workflow_path = b.workflow_path AND c.state = 'completed' AND c.conclusion = 'success') ORDER BY b.workflow_path LIMIT 1",
+      "SELECT b.workflow_path FROM branch_required_check b WHERE b.repository_id = ? AND b.branch = ? AND b.whole_workflow=1 AND NOT EXISTS (SELECT 1 FROM merge_check c JOIN merge_request m ON m.id = c.merge_request_id WHERE c.merge_request_id = ? AND c.version = m.current_version AND c.generation = m.check_generation AND c.workflow_path = b.workflow_path AND c.state = 'completed' AND c.conclusion = 'success') ORDER BY b.workflow_path LIMIT 1",
       params=[scope.id, mr.target, mr.id],
     )
     if missing is Some(row) {
       "Required check has not passed: " +
       (row.get_name("workflow_path") : String)
     } else {
-      ""
+      named_results_blocker(client, scope, mr)
     }
   })
 }

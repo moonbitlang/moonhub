@@ -17,8 +17,10 @@ independently of their trigger filters. No new provider credential is needed.
    branch rule requests MR checks independently of those trigger filters; the
    workflow must still pass the existing bounded parser.
 3. Open **Branch protection**, add or edit the exact target branch, and enter
-   required workflow paths, one per line. Up to 16 unique paths are supported.
-   For example: `.github/workflows/build.yml`. Save the rule.
+   required results, one per line. Up to 16 unique selectors are supported.
+   For example: `.github/workflows/build.yml`,
+   `.github/workflows/build.yml::job::Required tests`, or
+   `.github/workflows/build.yml::check::coverage`. Save the rule.
 4. Create an MR or mark an existing draft ready. **Pipeline checks** on the MR
    shows preparation, approval, execution, and terminal states with links to the
    run and its step logs. **Refresh checks** reloads the current comparison and
@@ -85,6 +87,25 @@ rechecks both refs and the merge tree before its atomic Git ref transaction.
 Changing either branch creates a new version that needs new successful checks.
 Old results remain visible on their historical version but cannot authorize
 the new version.
+
+## Named results
+
+A `::job::` selector matches the exact rendered job name (the job ID is the
+default name); a `::check::` selector matches the exact name published through
+the job Checks API. Names are case-sensitive and may contain spaces, but not
+`::` or control characters. Duplicate matrix job names and duplicate named checks
+are ambiguous and block merging; choose distinct names. Missing results also
+block with an explicit explanation.
+
+A named job must finish successfully. A named check must succeed and its producing
+attempt must finish without cancellation, timeout or loss; this prevents a live
+writer changing the result after admission. Only the latest run for the current
+MR version and policy generation can satisfy a rule, and checks must carry that
+run's candidate SHA. Other jobs failing in that workflow do not independently
+block a named requirement. A plain workflow-path requirement still requires the
+whole workflow to succeed, including when it is combined with named selectors.
+Reruns use their own check records; a publisher whose previous job was reused by
+a failed-only rerun must be rerun explicitly to publish a new check.
 
 ## Execution Permission
 

@@ -17,6 +17,7 @@ import {
   "moonbitlang/core/encoding/utf8",
   "hackwaly/moonhub/web/dto",
   "hackwaly/moonhub/pipeline/runtime",
+  "hackwaly/moonhub/pipeline/results",
 }
 
 import {

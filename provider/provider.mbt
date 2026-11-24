@@ -263,18 +263,25 @@ fn validate_assignment(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
     @platform.job_os(assignment.job.runs_on) == runner_os &&
     assignment.job.api_permissions >= 0 &&
-    assignment.job.api_permissions <= 7 &&
+    assignment.job.api_permissions <=
+    (if assignment.version >= @protocol.job_api_assignment_version {
+      31
+    } else {
+      7
+    }) &&
     (
       assignment.job.api_permissions == 0 ||
       [
         @protocol.release_assignment_version, @protocol.profile_assignment_version,
         @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
         @protocol.container_assignment_version, @protocol.source_assignment_version,
+        @protocol.job_api_assignment_version,
       ].contains(assignment.version)
     ) &&
     assignment.job.timeout_minutes >= 1 &&
@@ -287,7 +294,7 @@ fn validate_assignment(
     guard [
         @protocol.profile_assignment_version, @protocol.compatibility_assignment_version,
         @protocol.run_attempt_assignment_version, @protocol.container_assignment_version,
-        @protocol.source_assignment_version,
+        @protocol.source_assignment_version, @protocol.job_api_assignment_version,
       ].contains(assignment.version) &&
       runner_os == "linux" &&
       @environment.validate_definition(environment) is None else {
