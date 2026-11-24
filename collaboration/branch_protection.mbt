@@ -26,11 +26,14 @@ pub async fn save_branch_rule(
   }
   guard checks.length() <= 16 else {
     raise @domain.BadRequest(
-      message="at most 16 required workflows are supported",
+      message="at most 16 required results are supported",
     )
   }
   let unique : Map[String, Bool] = Map([])
-  for path in checks {
+  let selected : Array[(String, String, String)] = []
+  for selector in checks {
+    let (path, kind, name) = required_result_selector(selector)
+    selected.push((path, kind, name))
     let parts = path.split("/").collect()
     guard parts.length() == 3 &&
       parts[0] == ".github" &&
@@ -47,21 +50,16 @@ pub async fn save_branch_rule(
         ch.is_ascii_digit() ||
         ['_', '-', '.'].contains(ch)
       }) &&
-      !unique.contains(path) else {
+      !unique.contains(selector) else {
       raise @domain.BadRequest(
         message="required checks must be unique YAML paths directly under .github/workflows",
       )
     }
-    unique[path] = true
+    unique[selector] = true
   }
   pool.with_client(client => {
     client.with_transaction(tx => {
-      let previous : Array[String] = tx
-        .query_all(
-          "SELECT workflow_path FROM branch_required_check WHERE repository_id = ? AND branch = ? ORDER BY workflow_path",
-          params=[scope.id, branch],
-        )
-        .map(row => row.get_name("workflow_path"))
+      let previous = required_result_strings(tx, scope.id, branch)
       let changed = previous.length() != checks.length() ||
         previous.iter().any(path => !checks.contains(path))
       if protect {
@@ -82,13 +80,21 @@ pub async fn save_branch_rule(
         ),
       )
       if protect {
-        for path in checks {
+        for (path, kind, name) in selected {
           ignore(
             tx.execute(
-              "INSERT INTO branch_required_check (repository_id, branch, workflow_path) VALUES (?, ?, ?)",
-              params=[scope.id, branch, path],
+              "INSERT INTO branch_required_check(repository_id,branch,workflow_path,whole_workflow) VALUES(?,?,?,?) ON CONFLICT(repository_id,branch,workflow_path) DO UPDATE SET whole_workflow=MAX(whole_workflow,excluded.whole_workflow)",
+              params=[scope.id, branch, path, kind.is_empty()],
             ),
           )
+          if !kind.is_empty() {
+            ignore(
+              tx.execute(
+                "INSERT INTO branch_required_result(repository_id,branch,workflow_path,kind,name) VALUES(?,?,?,?,?)",
+                params=[scope.id, branch, path, kind, name],
+              ),
+            )
+          }
         }
       }
       ignore(

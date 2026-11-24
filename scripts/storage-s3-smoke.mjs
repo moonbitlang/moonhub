@@ -40,6 +40,7 @@ try {
   await tests(['pipeline', '--filter', 'S3 live*'], 1);
   await tests(['releases/s3_wbtest.mbt'], 1);
   await tests(['web/pipeline_api/artifact_api_wbtest.mbt'], 9);
+  await tests(['web/api/cross_artifact_wbtest.mbt'], 1);
   const objects = await client.send(new ListObjectsV2Command({ Bucket: 'moonhub-storage-test', Prefix: 'acceptance/' }));
   assert.ok(objects.KeyCount > 0, 'upstream Actions did not create any remote objects');
   const uploads = await client.send(new ListMultipartUploadsCommand({ Bucket: 'moonhub-storage-test', Prefix: 'acceptance/' }));

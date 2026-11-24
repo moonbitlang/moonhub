@@ -103,6 +103,7 @@ async fn Runtime::execute_action_step(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -115,6 +116,7 @@ async fn Runtime::execute_action_step(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -302,6 +304,7 @@ async fn Runtime::execute_action_posts(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -314,6 +317,7 @@ async fn Runtime::execute_action_posts(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -348,6 +352,7 @@ async fn Runtime::execute_action_posts(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
+      @protocol.job_api_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }

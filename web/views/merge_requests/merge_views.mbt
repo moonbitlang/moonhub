@@ -838,6 +838,6 @@ fn render_branch_rule_form(
       b <+ " checked"
     }
     b <+
-      "><span>Allow authors to approve their own pull requests</span></label><p class=\"muted\">Author approval counts toward required approvals for this branch. Disabled by default.</p><label class=\"field\"><span>Required workflows (one path per line)</span><textarea name=\"checks\" aria-label=\"Required workflows (one path per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Read from the target branch; run against the merged source and target.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
+      "><span>Allow authors to approve their own pull requests</span></label><p class=\"muted\">Author approval counts toward required approvals for this branch. Disabled by default.</p><label class=\"field\"><span>Required results (one per line)</span><textarea name=\"checks\" aria-label=\"Required results (one per line)\" rows=\"3\" maxlength=\"4096\" spellcheck=\"false\" placeholder=\".github/workflows/build.yml\">\{checks}</textarea><small>Use a workflow path, or append ::job::name or ::check::name. Results must pass on the current merge candidate.</small></label><button type=\"submit\">\{if rule is Some(_) { "Save rule" } else { "Protect branch" }}</button></form>"
   })
 }

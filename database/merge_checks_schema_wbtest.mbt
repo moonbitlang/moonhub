@@ -46,7 +46,7 @@ async test "baseline defaults MR checks and protects immutable pipeline snapshot
       )
       client.batch_execute(
         (
-          #|INSERT INTO branch_required_check VALUES (1, 'main', '.github/workflows/build.yml');
+          #|INSERT INTO branch_required_check(repository_id, branch, workflow_path) VALUES (1, 'main', '.github/workflows/build.yml');
           #|INSERT INTO merge_check (id, merge_request_id, version, generation, workflow_path) VALUES (1, 1, 1, 1, '.github/workflows/build.yml');
           #|INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, merge_check_id) VALUES (1, 2, 1, '.github/workflows/build.yml', 'MR check', 'feature', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'refs/moonhub/pipelines/mr-1', 1, 'target workflow', '{}', 1);
           #|UPDATE merge_check SET run_number = 2, state = 'queued' WHERE id = 1;
