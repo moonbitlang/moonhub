@@ -116,7 +116,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "$pwd/.tmp/windows-runner/bin;$pwd/.tmp/windows-runner/pwsh;$pwd/.tmp/windows-runner/git/cmd;$pwd/.tmp/windows-runner/git/usr/bin;$env:PATH"
-          moon test --target native --strip -j 1 --deny-warn runner/platform provider
+          moon test --target native --strip -j 1 --deny-warn filelock runner/platform provider
           if ($LASTEXITCODE -ne 0) { throw 'Platform tests failed' }
           node --test runner/actions/runtime.windows.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Action runtime tests failed' }
@@ -176,7 +176,7 @@ jobs:
       - name: Test native runtime and prepared-slot lifecycle
         run: |
           moon build --strip -j 1 --deny-warn cmd/moonhub-runner
-          moon test --strip -j 1 --deny-warn runner/platform provider pipeline/protocol
+          moon test --strip -j 1 --deny-warn filelock runner/platform provider pipeline/protocol
           node --test runner/actions/runtime.test.mjs scripts/macos-guest-test.mjs
           node --test scripts/macos-runner-lifecycle-test.cjs
           bash -n deploy/macos/install-guest.sh

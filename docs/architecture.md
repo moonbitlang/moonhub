@@ -15,7 +15,8 @@ unchanged.
 | `releases` | Repository versions, immutable published assets, fs/S3 locations and cleanup journals; no Pipeline or Web dependency |
 | `storage` | Backend-neutral object storage, filesystem and S3 adapters, bounded streams and integrity checks; no business, database or Web dependency |
 | `database` | SQLite connection/transaction adapter, schema initialization and migrations |
-| `gitops` | Git reads, bounded merge operations, revision parsing and shared/exclusive filesystem locks |
+| `filelock` | Ownership of open lock files, shared/exclusive acquisition, timeout/cancellation cleanup and explicit idempotent release; only async filesystem dependencies |
+| `gitops` | Git reads, bounded merge operations, revision parsing and safe lock paths with repository timeout policy |
 | `diff/protocol` | Versioned worker/data protocol and resource limits; no Git, Web or database dependency |
 | `diff/compute` | Pure MoonDiff calculation and original-file coordinate projection |
 | `cmd/moonhub-diff-worker` | One-request isolated diff executable; protocol IO and pure calculation only |
@@ -91,8 +92,9 @@ initialization](../db/README.md).
 
 ## Dependency Direction
 
-`domain` and `config` have no local package dependencies. `database` and `gitops`
-depend on `domain`. `identity` and `mail` use `database` and `domain`.
+`domain`, `config` and `filelock` have no local package dependencies. `database`
+and `gitops` depend on `domain`; `gitops` also uses `filelock`. `identity` and
+`mail` use `database` and `domain`.
 `repository` composes identity, database, Git and configuration services;
 `collaboration` builds on repository authorization. `ssh` uses repository and
 collaboration services. `web` is the outer application adapter.
@@ -301,6 +303,19 @@ database transaction, so reusing the old path cannot redirect stale writes.
 When locks nest, acquire the mirror lock, then the repository name lock, then
 the reader lifetime lock if needed, then a short database transaction.
 Filesystem operations stay outside database transactions.
+
+`filelock.acquire` and `filelock.try_acquire` take ownership of an already open
+file, including when acquisition fails, times out or is cancelled. Callers must
+not use the original file after handing it over. The opaque `FileLock` exposes
+only synchronous, idempotent `close()`, which explicitly unlocks before closing
+the file so inherited or duplicated descriptors cannot extend the lock lifetime.
+Callers retain path validation, permissions and business error mapping. Git
+locks wait up to 15 seconds; attachment uploads wait until acquired or cancelled;
+attachment cleanup and import workers skip contended locks; Tart waits one second.
+Attachments, repository workers and the standalone provider use `filelock`
+directly, without adding Git or business dependencies to the provider. Early
+close followed by deferred close is supported, including SSH reader admission.
+
 A mirror worker selects an ID, locks it, claims it with `BEGIN IMMEDIATE`, and
 only then creates its data directory. A failed claim creates no data directory.
 Deletion holds only the repository lock and rejects a syncing mirror through
@@ -319,6 +334,11 @@ Rendering functions retain explicit page data arguments. DI is confined to
 initialization, not used as a global service locator inside business code.
 
 ## Tests
+
+The `filelock` suite runs on Linux, macOS and Windows. Unix tests retain a libc
+`dup()` descriptor and require immediate independent acquisition after the lock
+handle closes. Other tests cover ownership on contention, timeout, cancellation
+and errors, plus repeated close through aliases.
 
 The Linux self-check runs `node scripts/repository-deletion-smoke.cjs` after
 the native build. It uses separate Web and SSH processes, pipe/FD barriers and
