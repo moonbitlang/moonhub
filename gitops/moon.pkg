@@ -1,4 +1,5 @@
 import {
+  "hackwaly/moonhub/filelock",
   "hackwaly/moonhub/diff/protocol" @diff_protocol,
   "moonbitlang/x/crypto",
   "moonbitlang/async",

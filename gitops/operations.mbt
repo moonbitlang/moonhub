@@ -146,32 +146,25 @@ pub async fn branch_sha(git_dir : String, branch : String) -> String {
 }
 
 ///|
-pub async fn file_lock(path : String, mode~ : @fs.Lock = Exclusive) -> @fs.File {
-  let lock = open_lock_file(path)
-  errdefer lock.close()
-  @async.with_timeout(
-    15000,
-    () => lock.lock(mode),
-    error=Failure(
-      message="repository is busy; retry after the current push or merge",
-    ),
-  )
-  lock
+pub async fn file_lock(
+  path : String,
+  mode~ : @fs.Lock = Exclusive,
+) -> @filelock.FileLock {
+  @filelock.acquire(open_lock_file(path), mode~, timeout_ms=15000) catch {
+    @async.TimeoutError =>
+      raise Failure(
+        message="repository is busy; retry after the current push or merge",
+      )
+    err => raise err
+  }
 }
 
 ///|
 pub async fn try_file_lock(
   path : String,
   mode~ : @fs.Lock = Exclusive,
-) -> @fs.File? {
-  let lock = open_lock_file(path)
-  errdefer lock.close()
-  if lock.try_lock(mode) {
-    Some(lock)
-  } else {
-    lock.close()
-    None
-  }
+) -> @filelock.FileLock? {
+  @filelock.try_acquire(open_lock_file(path), mode~)
 }
 
 ///|

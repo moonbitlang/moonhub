@@ -85,7 +85,7 @@ pub async fn open_repository_read(
   root : String,
   actor : @domain.CurrentUser?,
   scope : RepositoryScope,
-) -> (@fs.File, String) {
+) -> (@filelock.FileLock, String) {
   let admission = repository_read_lock(root, scope.repo)
   defer admission.close()
   let current = readable_repository_scope(pool, actor, scope.repo)

@@ -4,7 +4,9 @@ async test "nonblocking locks share safe opens and close contended handles" {
     let path = "\{root}/control.lock"
     let first = file_lock(path, mode=Shared)
     defer first.close()
-    let second = try_file_lock(path, mode=Shared).unwrap()
+    guard try_file_lock(path, mode=Shared) is Some(second) else {
+      fail("second shared lock was unexpectedly contended")
+    }
     defer second.close()
     for _ in 0..<100 {
       assert_true(try_file_lock(path) is None)
@@ -12,7 +14,9 @@ async test "nonblocking locks share safe opens and close contended handles" {
     first.close()
     assert_true(try_file_lock(path) is None)
     second.close()
-    let writer = try_file_lock(path).unwrap()
+    guard try_file_lock(path) is Some(writer) else {
+      fail("writer remained blocked after both shared handles closed")
+    }
     defer writer.close()
     assert_true(try_file_lock(path, mode=Shared) is None)
     writer.close()

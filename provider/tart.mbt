@@ -144,16 +144,16 @@ async fn run_tart_worker(
   }
   @platform.private_directory(macos.home)
   @fs.chmod(macos.home, 0o700)
-  let lock = @fs.open(
+  let file = @fs.open(
     macos.home + "/worker.lock",
     mode=ReadWrite,
     create_mode=OpenOrCreate,
     permission=0o600,
   )
-  defer lock.close()
-  @async.with_timeout(1000, () => lock.lock(Exclusive)) catch {
+  let lock = @filelock.acquire(file, timeout_ms=1000) catch {
     _ => raise InvalidConfiguration("Cannot acquire exclusive Tart home lock")
   }
+  defer lock.close()
   let slot = Ref("")
   let started = Ref(0L)
   let running : Ref[@async.Task[Int32]?] = Ref(None)

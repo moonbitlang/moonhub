@@ -23,7 +23,7 @@ async fn control_lock_path(
 pub async fn repository_write_lock(
   root : String,
   repo : @domain.RepoId,
-) -> @fs.File {
+) -> @filelock.FileLock {
   @gitops.file_lock(repository_lock_path(root, repo))
 }
 
@@ -31,7 +31,7 @@ pub async fn repository_write_lock(
 pub async fn repository_read_lock(
   root : String,
   repo : @domain.RepoId,
-) -> @fs.File {
+) -> @filelock.FileLock {
   @gitops.file_lock(repository_lock_path(root, repo), mode=Shared)
 }
 
@@ -49,7 +49,7 @@ async fn repository_lock_path(root : String, repo : @domain.RepoId) -> String {
 pub async fn repository_reader_lock(
   root : String,
   repository_id : Int64,
-) -> @fs.File {
+) -> @filelock.FileLock {
   @gitops.file_lock(
     repository_reader_lock_path(root, repository_id),
     mode=Shared,
@@ -65,7 +65,7 @@ async fn repository_reader_lock_path(root : String, id : Int64) -> String {
 }
 
 ///|
-async fn mirror_lock(root : String, id : Int64) -> @fs.File {
+async fn mirror_lock(root : String, id : Int64) -> @filelock.FileLock {
   @gitops.file_lock(mirror_lock_path(root, id))
 }
 
