@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "hackwaly/moonhub/filelock"
+
+import {
+  "moonbitlang/async/fs",
+}
+
+// Values
+pub async fn acquire(@fs.File, mode? : @fs.Lock, timeout_ms? : Int32) -> FileLock
+
+pub fn try_acquire(@fs.File, mode? : @fs.Lock) -> FileLock? raise
+
+// Errors
+
+// Types and methods
+type FileLock
+pub fn FileLock::close(Self) -> Unit
+
+// Type aliases
+
+// Traits
