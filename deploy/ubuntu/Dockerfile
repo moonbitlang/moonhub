@@ -49,13 +49,14 @@ COPY moon.mod ./
 RUN node -e 'const fs=require("fs"); const source=fs.readFileSync("moon.mod","utf8"); fs.writeFileSync("moon.mod",source.replace(/import \{[^}]*\}/,block => block.split("\n").filter(line => !line.includes("@") || /"moonbitlang\/(async|x)@/.test(line)).join("\n")));' \
     && moon update && moon tree --package > /dev/null
 COPY cmd/moonhub-runner/ cmd/moonhub-runner/
+COPY filelock/ filelock/
 COPY provider/ provider/
 COPY runner/ runner/
 COPY pipeline/protocol/ pipeline/protocol/
 COPY pipeline/environment/ pipeline/environment/
 COPY pipeline/actions/ pipeline/actions/
 # The standalone source slice intentionally excludes database/Web test fixtures.
-RUN node -e 'const fs=require("fs"),path=require("path"); function visit(dir){ for(const item of fs.readdirSync(dir,{withFileTypes:true})){ const file=path.join(dir,item.name); if(item.isDirectory()) visit(file); else if(item.name==="moon.pkg") fs.writeFileSync(file,fs.readFileSync(file,"utf8").replace(/import\s*\{[^}]*\}\s*for\s*"(?:wbtest|test)"/g,"")); }} for(const dir of ["cmd","provider","runner","pipeline"]) visit(dir);' \
+RUN node -e 'const fs=require("fs"),path=require("path"); function visit(dir){ for(const item of fs.readdirSync(dir,{withFileTypes:true})){ const file=path.join(dir,item.name); if(item.isDirectory()) visit(file); else if(item.name==="moon.pkg") fs.writeFileSync(file,fs.readFileSync(file,"utf8").replace(/import\s*\{[^}]*\}\s*for\s*"(?:wbtest|test)"/g,"")); }} for(const dir of ["cmd","filelock","provider","runner","pipeline"]) visit(dir);' \
     && moon build --strip -j 1 --deny-warn cmd/moonhub-runner \
     && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /src/step-launcher
 
