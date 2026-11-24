@@ -6,6 +6,7 @@ pub enum QueueReason {
   WaitingMatrixCapacity
   RequesterUnavailable
   NoAuthorizedProvider
+  RunnerGroupUnavailable
   NoMatchingLabels
   EnvironmentUnavailable
   ProvidersPaused
@@ -61,6 +62,19 @@ pub fn Coordinator::queue_reasons(
         continue
       }
       let job_id : Int64 = job.get_name("id")
+      if client.query_opt(
+          "SELECT job_id FROM pipeline_job_runner_group WHERE job_id=?",
+          params=[job_id],
+        )
+        is Some(_) &&
+        client.query_opt(
+          "SELECT job_id FROM pipeline_provider_job_group WHERE job_id=?",
+          params=[job_id],
+        )
+        is None {
+        result[key] = RunnerGroupUnavailable
+        continue
+      }
       // Expose aggregate blockers, never provider identities or other grants.
       let candidates = client.query_all(
         (

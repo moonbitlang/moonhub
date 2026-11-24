@@ -185,36 +185,24 @@ fn expand_job(
         "max-parallel": max_parallel,
       },
     }
-    for key in ["name", "runs-on"] {
-      if fields.get(key) is Some(value) {
-        fields[key] = match value {
-          String(text) if key == "runs-on" && whole_scheduling_expression(text) =>
-            match scheduling_expression(text, context) {
-              String(label) => @yaml.String(label)
-              Array(labels) =>
-                @yaml.Array(
-                  labels.map(label => {
-                    match label {
-                      String(label) => @yaml.String(label)
-                      _ => raise InvalidWorkflow("runs-on requires strings")
-                    }
-                  }),
-                )
-              _ => raise InvalidWorkflow("runs-on requires strings")
-            }
-          String(text) => @yaml.String(scheduling_template(text, context))
-          Array(items) if key == "runs-on" =>
-            @yaml.Array(
-              items.map(item => {
-                match item {
-                  String(text) =>
-                    @yaml.String(scheduling_template(text, context))
-                  _ => raise InvalidWorkflow("runs-on requires strings")
-                }
-              }),
+    if fields.get("name") is Some(String(text)) {
+      fields["name"] = @yaml.String(scheduling_template(text, context))
+    }
+    if fields.get("runs-on") is Some(value) {
+      fields["runs-on"] = match value {
+        Map(selector) => {
+          let selector = selector.copy()
+          if selector.get("group") is Some(String(group)) {
+            selector["group"] = @yaml.String(
+              scheduling_template(group, context),
             )
-          _ => value
+          }
+          if selector.get("labels") is Some(labels) {
+            selector["labels"] = expand_runner_labels(labels, context)
+          }
+          @yaml.Map(selector)
         }
+        _ => expand_runner_labels(value, context)
       }
     }
     // Step display names have scheduling context too; executable text remains
@@ -263,4 +251,38 @@ fn expand_job(
     }
     instance
   })
+}
+
+///|
+fn expand_runner_labels(
+  value : @yaml.Yaml,
+  context : Map[String, Json],
+) -> @yaml.Yaml raise InvalidWorkflow {
+  match value {
+    String(text) if whole_scheduling_expression(text) =>
+      match scheduling_expression(text, context) {
+        String(label) => @yaml.String(label)
+        Array(labels) =>
+          @yaml.Array(
+            labels.map(label => {
+              match label {
+                String(label) => @yaml.String(label)
+                _ => raise InvalidWorkflow("runs-on requires strings")
+              }
+            }),
+          )
+        _ => raise InvalidWorkflow("runs-on requires strings")
+      }
+    String(text) => @yaml.String(scheduling_template(text, context))
+    Array(items) =>
+      @yaml.Array(
+        items.map(item => {
+          match item {
+            String(text) => @yaml.String(scheduling_template(text, context))
+            _ => raise InvalidWorkflow("runs-on requires strings")
+          }
+        }),
+      )
+    _ => value
+  }
 }

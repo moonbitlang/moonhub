@@ -32,6 +32,19 @@ A whole matrix expression in `runs-on` can return a string label array, such as
 `${{ matrix.node.labels }}`. Each matrix row may provide a different number of
 labels. These arrays use the same validation and provider matching as YAML lists.
 
+`ubuntu-22.04-arm` resolves to `self-hosted,linux,arm64,ubuntu-22.04`. It needs
+an actual Ubuntu 22.04 ARM64 image; an x64 or Ubuntu 24.04 provider cannot match.
+
+Runner groups are managed by site administrators at `/-/admin/pipelines/groups`.
+Use `runs-on: {group: trusted}` or
+`runs-on: {group: trusted, labels: [linux, gpu]}`. Group names ignore case;
+matrix expressions can select the group and labels. A provider must belong to
+the group, the group must grant the repository access, the provider must retain
+its own repository grant, and every requested label must match. A group-only
+selector binds the selected provider's OS into the assignment. Removing a grant
+or provider membership cancels affected execution and revokes live credentials;
+worker capacity is retained until the normal cancellation fencing completes.
+
 Environment labels are operator-declared image capabilities. Register them only
 when the configured runner image supplies that userspace and toolchain contract.
 The runner independently verifies Ubuntu ID, explicit VERSION_ID and CPU

@@ -76,6 +76,7 @@ pub struct Job {
   condition : String
   outputs : Map[String, String]
   runs_on : Array[String]
+  runner_group : String
   contents_read : Bool
   id_token_write : Bool
   api_permissions : Int32

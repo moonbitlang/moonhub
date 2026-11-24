@@ -102,7 +102,7 @@ test "Windows environment precedence ignores case and Linux retains it" {
 }
 
 ///|
-test "PowerShell requires Windows after workflow job and step defaults resolve" {
+test "PowerShell syntax and defaults are validated before conditional platform selection" {
   let source =
     #|on: workflow_dispatch
     #|jobs:
@@ -124,7 +124,8 @@ test "PowerShell requires Windows after workflow job and step defaults resolve" 
       source.replace_all(old="[self-hosted, linux]", new="self-hosted") +
       "\n        shell: pwsh",
     ] {
-    expect_invalid(workflow, "pwsh requires Windows")
+    assert_eq(parse(workflow).jobs[0].steps[0].shell, Some("pwsh"))
+    assert_true(parse(workflow).jobs[0].compatibility_runtime)
     let windows = workflow
       .replace_all(old="[self-hosted, linux]", new="[self-hosted, windows]")
       .replace_all(
@@ -154,5 +155,8 @@ test "macOS selection is explicit and cannot mix operating systems" {
       "runner labels",
     )
   }
-  expect_invalid(source + "\n        shell: pwsh", "pwsh requires Windows")
+  assert_eq(
+    parse(source + "\n        shell: pwsh").jobs[0].steps[0].shell,
+    Some("pwsh"),
+  )
 }

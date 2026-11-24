@@ -20,6 +20,8 @@ fn render_provider_admin(
         b <+
           "<p class=\"flash-error\" role=\"alert\">\{pipeline_html(error)}</p>"
       }
+      b <+
+        "<p><a href=\"/-/admin/pipelines/groups\">Manage runner groups</a></p>"
       if labels_saved {
         b <+
           "<p class=\"settings-success\" role=\"status\">Provider labels saved.</p>"

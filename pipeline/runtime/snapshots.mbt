@@ -126,6 +126,14 @@ pub fn insert_run_snapshot(
         params=[job_id, label],
       )
     }
+    if !job.runner_group.is_empty() {
+      ignore(
+        tx.execute(
+          "INSERT INTO pipeline_job_runner_group(job_id,group_name) VALUES(?,?)",
+          params=[job_id, job.runner_group],
+        ),
+      )
+    }
     for need in job.needs {
       let _ = tx.execute(
         "INSERT INTO pipeline_job_need (run_id, job_key, needs_job_key) VALUES (?, ?, ?)",
