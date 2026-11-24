@@ -71,7 +71,7 @@ async test "job PR metadata and owned check writes enforce scopes commit identit
           execution_id: "d".repeat(32),
         }).token
       if i < 2 {
-        assert_eq(a.version, 18)
+        assert_eq(a.version, 19)
       }
       for prefix in ["/-/api/v1", "/api/v3"] {
         let (status, _) = api_test_request(

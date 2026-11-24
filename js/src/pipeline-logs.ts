@@ -1,6 +1,6 @@
 export function mountPipelineLogs(signal: AbortSignal) {
   type StepUpdate = { step_id: string; state: string; exit_code: number };
-  type JobUpdate = { id: string; attempt_id: string; state: string; result: string; actual_result?: string; scheduling_error?: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
+  type JobUpdate = { report_revision?: string; id: string; attempt_id: string; state: string; result: string; actual_result?: string; scheduling_error?: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
   type RunUpdate = { deployment_signature?: string; state: string; result: string; jobs: JobUpdate[] };
   type LogChunk = { id: string; text: string; step_id: string };
   type LogPage = { chunks: LogChunk[]; next_cursor: string; has_more: boolean; complete: boolean };
@@ -196,6 +196,7 @@ export function mountPipelineLogs(signal: AbortSignal) {
       if (cancel) cancel.hidden = update.state === 'completed'; if (rerun) rerun.hidden = update.state !== 'completed';
       for (const status of update.jobs) {
         const job = jobs.get(status.id); if (!job) continue;
+        if (status.report_revision !== undefined && job.element.dataset.reportRevision !== status.report_revision) { window.location.reload(); return; }
         updateBadge(job.element.querySelector<HTMLElement>('[data-job-state]')!, status.result);
         const diagnostic = job.element.querySelector<HTMLElement>('[data-scheduling-error]');
         if (diagnostic) { diagnostic.textContent = status.scheduling_error ?? ''; diagnostic.hidden = !status.scheduling_error; }

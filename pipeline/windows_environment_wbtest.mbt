@@ -18,7 +18,7 @@ async test "Windows latest snapshot claims only matching 2025 providers and requ
         "self-hosted", "windows", "x64", "windows-2025",
       ])
       let assignment = c.runtime.claim(provider_secret, request).unwrap()
-      assert_eq(assignment.version, @protocol.environment_assignment_version)
+      assert_eq(assignment.version, @protocol.report_assignment_version)
       assert_eq(assignment.job.runs_on, [
         "self-hosted", "windows", "x64", "windows-2025",
       ])
@@ -59,7 +59,7 @@ async test "Windows environment protocol retains OIDC dispatch and output contra
           runner_os: Some("windows"),
         })
         .unwrap()
-      assert_eq(assignment.version, @protocol.release_assignment_version)
+      assert_eq(assignment.version, @protocol.report_assignment_version)
       assert_true(assignment.job.id_token_write)
       assert_true(assignment.job.contents_read)
       assert_eq(

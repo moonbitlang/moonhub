@@ -20,6 +20,7 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
       let json : Json = {
         "id": job.id.to_string(),
         "environment": ToJson::to_json(environments.get(job.job_key)),
+        "report_revision": job.report_revision.to_string(),
         "attempt_id": job.attempt_id.map(id => id.to_string()).unwrap_or(""),
         "state": state,
         "actual_result": pipeline_conclusion(job.actual_conclusion),

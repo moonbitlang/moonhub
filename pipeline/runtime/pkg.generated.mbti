@@ -121,6 +121,7 @@ pub async fn Coordinator::private_action_archive(Self, String, String, String, d
 pub fn Coordinator::provider_control(Self, @domain.CurrentUser, Int64) -> ProviderControl raise
 pub fn Coordinator::queue_reasons(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Map[String, QueueReason] raise
 pub fn Coordinator::read_log_page(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64, after? : Int64) -> LogPage raise
+pub fn Coordinator::read_report(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> @protocol.JobReport raise
 pub async fn Coordinator::read_source(Self, String, Int64, String) -> Bytes
 pub async fn Coordinator::read_source_bundle(Self, String, Int64, String) -> Bytes
 pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64, Int64) -> Array[@protocol.StepState] raise
@@ -144,6 +145,7 @@ pub fn Coordinator::sync_provider(Self, String, @protocol.ProviderSyncRequest) -
 pub fn Coordinator::sync_worker(Self, String, @protocol.WorkerSyncRequest) -> @protocol.WorkerSnapshot raise
 pub fn Coordinator::update_step(Self, Int64, String, @protocol.StepRequest) -> @protocol.LeaseState raise
 pub fn Coordinator::write_check_run(Self, String, @domain.RepoId, Map[String, @json.Json], id? : Int64) -> @json.Json raise
+pub fn Coordinator::write_report(Self, Int64, String, @protocol.ReportRequest) -> @protocol.LeaseState raise
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct DeploymentEnvironment {
@@ -178,6 +180,7 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  report_revision : Int64
   actual_conclusion : Conclusion?
   scheduling_error : String
   reused_from : Int64?

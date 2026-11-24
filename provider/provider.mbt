@@ -263,7 +263,7 @@ fn validate_assignment(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(assignment.version) &&
     assignment.has_valid_numbers() &&
     assignment.state == "leased" &&
@@ -281,7 +281,7 @@ fn validate_assignment(
         @protocol.release_assignment_version, @protocol.profile_assignment_version,
         @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
         @protocol.container_assignment_version, @protocol.source_assignment_version,
-        @protocol.job_api_assignment_version,
+        @protocol.job_api_assignment_version, @protocol.report_assignment_version,
       ].contains(assignment.version)
     ) &&
     assignment.job.timeout_minutes >= 1 &&
@@ -295,6 +295,7 @@ fn validate_assignment(
         @protocol.profile_assignment_version, @protocol.compatibility_assignment_version,
         @protocol.run_attempt_assignment_version, @protocol.container_assignment_version,
         @protocol.source_assignment_version, @protocol.job_api_assignment_version,
+        @protocol.report_assignment_version,
       ].contains(assignment.version) &&
       runner_os == "linux" &&
       @environment.validate_definition(environment) is None else {

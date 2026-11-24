@@ -68,6 +68,7 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  report_revision : Int64
   actual_conclusion : Conclusion?
   scheduling_error : String
   reused_from : Int64?
@@ -274,7 +275,7 @@ pub fn list_jobs(
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT j.*, (SELECT original.number FROM pipeline_job_reuse reuse JOIN pipeline_job source ON source.id=reuse.source_job_id JOIN pipeline_run original ON original.id=source.run_id WHERE reuse.job_id=j.id) AS reused_from, (SELECT a.id FROM pipeline_job_attempt a WHERE a.job_id = j.id ORDER BY a.number DESC LIMIT 1) AS attempt_id FROM pipeline_job j WHERE j.run_id = ? ORDER BY j.ordinal",
+      "SELECT j.*, (SELECT original.number FROM pipeline_job_reuse reuse JOIN pipeline_job source ON source.id=reuse.source_job_id JOIN pipeline_run original ON original.id=source.run_id WHERE reuse.job_id=j.id) AS reused_from, a.id AS attempt_id, COALESCE(report.revision, 0) AS report_revision FROM pipeline_job j LEFT JOIN pipeline_job_attempt a ON a.id=(SELECT latest.id FROM pipeline_job_attempt latest WHERE latest.job_id=j.id ORDER BY latest.number DESC LIMIT 1) LEFT JOIN pipeline_attempt_report report ON report.attempt_id=a.id WHERE j.run_id = ? ORDER BY j.ordinal",
       params=[run.id],
     )
     .map(row => {
@@ -293,6 +294,7 @@ pub fn list_jobs(
         },
         conclusion: decode_conclusion(row.get_name("conclusion")),
         attempt_id: row.get_name("attempt_id"),
+        report_revision: row.get_name("report_revision"),
         reused_from: row.get_name("reused_from"),
         scheduling_error: row.get_name("scheduling_error"),
         actual_conclusion: decode_conclusion(

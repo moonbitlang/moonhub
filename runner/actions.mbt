@@ -80,6 +80,8 @@ async fn Runtime::execute_action_step(
 ) -> Int32 {
   let config : Json = {
     "node20": self.action_node20,
+    "reports_enabled": self.assignment.version >=
+    @protocol.report_assignment_version,
     "api_permissions": self.assignment.job.api_permissions,
     "container_isolation": self.options.linux_ci &&
     self.assignment.version >= @protocol.container_assignment_version &&
@@ -103,7 +105,7 @@ async fn Runtime::execute_action_step(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -116,7 +118,7 @@ async fn Runtime::execute_action_step(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -145,7 +147,9 @@ async fn Runtime::execute_action_step(
     create_mode=CreateNew,
     permission=0o600,
   )
-  self.execute_action_runtime(step, filename, timeout, secrets)
+  let code = self.execute_action_runtime(step, filename, timeout, secrets)
+  self.publish_action_report(scratch + "/result-\{index}.json")
+  code
 }
 
 ///|
@@ -210,7 +214,11 @@ async fn Runtime::execute_action_runtime(
     env["MOONHUB_ACTION_OIDC_TOKEN"] = grant.token
     env["MOONHUB_ACTION_OIDC_URL"] = grant.request_url
   }
-  if self.assignment.version >= @protocol.source_assignment_version {
+  if self.assignment.version >= @protocol.source_assignment_version &&
+    (
+      self.assignment.version < @protocol.report_assignment_version ||
+      self.assignment.job.context.get("dependency_access") == Some("true")
+    ) {
     guard self.dependencies is Some(fetch) else {
       raise InvalidConfiguration("dependency service unavailable")
     }
@@ -281,6 +289,8 @@ async fn Runtime::execute_action_posts(
     "job_id": self.assignment.job.id,
     "context": ToJson::to_json(self.assignment.job.context),
     "node20": self.action_node20,
+    "reports_enabled": self.assignment.version >=
+    @protocol.report_assignment_version,
     "api_permissions": self.assignment.job.api_permissions,
     "container_isolation": self.options.linux_ci &&
     self.assignment.version >= @protocol.container_assignment_version &&
@@ -304,7 +314,7 @@ async fn Runtime::execute_action_posts(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -317,7 +327,7 @@ async fn Runtime::execute_action_posts(
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -346,16 +356,24 @@ async fn Runtime::execute_action_posts(
     remote: self.assignment.job.steps.any(step => step.remote),
   }
   let code = self.execute_action_runtime(step, filename, timeout, Map([]))
+  self.publish_action_report(scratch + "/job-outputs.json")
   if [
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
       @protocol.container_assignment_version, @protocol.source_assignment_version,
-      @protocol.job_api_assignment_version,
+      @protocol.job_api_assignment_version, @protocol.report_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
-    guard bytes.binary().length() <= 65536 else { raise InvalidResponse }
+    guard bytes.binary().length() <=
+      (if self.assignment.version >= @protocol.report_assignment_version {
+        4259840
+      } else {
+        65536
+      }) else {
+      raise InvalidResponse
+    }
     let result = @json.parse(bytes.text())
     guard result is { "outputs": value, .. } else { raise InvalidResponse }
     self.job_outputs = @json.from_json(value)
@@ -383,4 +401,26 @@ async fn Runtime::cleanup_containers(self : Runtime) -> Unit {
     )
   })
   guard code == 0 else { raise Stopped("lost") }
+}
+
+///|
+async fn Runtime::publish_action_report(
+  self : Runtime,
+  filename : String,
+) -> Unit {
+  if self.assignment.version < @protocol.report_assignment_version ||
+    !@fs.exists(filename) {
+    return
+  }
+  let file = @fs.read_file(filename)
+  guard file.binary().length() <= 4259840 else { raise InvalidResponse }
+  if @json.parse(file.text()) is { "report": report, .. } {
+    ignore(
+      self.request("reports", {
+        "version": 1,
+        "execution_id": self.execution_id,
+        "report": report,
+      }),
+    )
+  }
 }

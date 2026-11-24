@@ -46,6 +46,8 @@ pub let release_assignment_version : Int32
 
 pub let remote_assignment_version : Int32
 
+pub let report_assignment_version : Int32
+
 pub let run_attempt_assignment_version : Int32
 
 pub let scheduling_assignment_version : Int32
@@ -67,6 +69,18 @@ pub let version : Int32
 // Errors
 
 // Types and methods
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct Annotation {
+  severity : String
+  message : String
+  title : String
+  file : String
+  line : Int32
+  end_line : Int32
+  column : Int32
+  end_column : Int32
+}
+
 #derive(@json.FromJson, @json.ToJson)
 pub(all) struct ApiRuntime {
   token : String
@@ -174,6 +188,13 @@ pub fn JobPlan::to_json(Self) -> @json.Json
 pub fn JobPlan::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for JobPlan
 
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct JobReport {
+  revision : Int32
+  entries : Array[StepReport]
+  truncated : Bool
+}
+
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct LeaseState {
   version : Int32
@@ -273,6 +294,13 @@ pub fn RegisterProviderRequest::from_json(@json.Json, @json.DecodeContext) -> Se
 pub fn RegisterProviderRequest::to_json(Self) -> @json.Json
 
 #derive(@json.FromJson, @json.ToJson)
+pub(all) struct ReportRequest {
+  version : Int32
+  execution_id : String
+  report : JobReport
+}
+
+#derive(@json.FromJson, @json.ToJson)
 pub(all) struct SecretRequest {
   version : Int32
   execution_id : String
@@ -318,6 +346,13 @@ pub fn StepPlan::from_json(@json.Json, @json.DecodeContext) -> Self raise @json.
 pub fn StepPlan::to_json(Self) -> @json.Json
 pub fn StepPlan::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for StepPlan
+
+#derive(Eq, @debug.Debug, @json.FromJson, @json.ToJson)
+pub(all) struct StepReport {
+  step_id : String
+  summary : String
+  annotations : Array[Annotation]
+}
 
 #derive(@debug.Debug, @json.FromJson, @json.ToJson)
 pub(all) struct StepRequest {
