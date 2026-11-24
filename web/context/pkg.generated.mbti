@@ -59,6 +59,8 @@ pub fn diff_selection(Map[String, String]) -> @gitops.DiffSelection? raise
 
 pub fn form_csrf_token(String, String) -> String
 
+pub let job_git_binary_key : @moonback.TypedKey[String]
+
 pub fn login_headers(String, String) -> @moonback.Headers
 
 pub fn logout_headers() -> @moonback.Headers

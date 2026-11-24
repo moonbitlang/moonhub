@@ -3,22 +3,7 @@ fn api_handler(
   handler : async (@moonback.Request) -> Json,
 ) -> @moonback.Handler {
   (req, res) => {
-    let (status, json) = (200, handler(req)) catch {
-      err => {
-        let (status, code, message) = match err {
-          @domain.Unauthorized(message~) => (401, "unauthorized", message)
-          @domain.Forbidden(message~) => (403, "forbidden", message)
-          @domain.NotFound(message~) => (404, "not_found", message)
-          @domain.BadRequest(message~) => (400, "invalid_request", message)
-          @gitops.DiffFailure(message) => (503, "diff_unavailable", message)
-          @runtime.Conflict(message) => (409, "conflict", message)
-          @gitops.Failure(message~) =>
-            (400, "git_error", @domain.public_merge_block_reason(message))
-          _ => (500, "internal_error", @domain.internal_error_message)
-        }
-        (status, { "error": { "code": code, "message": message } })
-      }
-    }
+    let (status, json) = (200, handler(req)) catch { err => api_error(err) }
     let headers = { "Cache-Control": "no-store", "Connection": "close" }
     if status == 503 {
       headers["Retry-After"] = "2"
@@ -148,4 +133,20 @@ fn page(req : @moonback.Request) -> Int64 raise {
     raise @domain.BadRequest(message="invalid page")
   }
   page
+}
+
+///|
+fn api_error(err : Error) -> (Int32, Json) {
+  let (status, code, message) = match err {
+    @domain.Unauthorized(message~) => (401, "unauthorized", message)
+    @domain.Forbidden(message~) => (403, "forbidden", message)
+    @domain.NotFound(message~) => (404, "not_found", message)
+    @domain.BadRequest(message~) => (400, "invalid_request", message)
+    @gitops.DiffFailure(message) => (503, "diff_unavailable", message)
+    @runtime.Conflict(message) => (409, "conflict", message)
+    @gitops.Failure(message~) =>
+      (400, "git_error", @domain.public_merge_block_reason(message))
+    _ => (500, "internal_error", @domain.internal_error_message)
+  }
+  (status, { "error": { "code": code, "message": message } })
 }

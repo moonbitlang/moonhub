@@ -59,6 +59,7 @@ priv struct Runtime {
   action_state_key : String
   action_temp : String
   job_home : String
+  dependencies : (async (@protocol.OidcRuntimeRequest) -> @protocol.ApiRuntime)?
   api : (async (@protocol.OidcRuntimeRequest) -> @protocol.ApiRuntime)?
   oidc : (async (@protocol.OidcRuntimeRequest) -> @protocol.OidcRuntime)?
   artifacts : (async (@protocol.ArtifactRuntimeRequest) -> @protocol.ArtifactRuntime)?

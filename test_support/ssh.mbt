@@ -8,11 +8,23 @@ pub let test_ssh_public_key : String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEB
 pub let database_test_slot : @async.Semaphore = @async.Semaphore(1)
 
 ///|
-pub async fn with_ssh_test_db(f : async (@database.Database) -> Unit) -> Unit {
+pub async fn with_ssh_test_db(
+  f : async (@database.Database) -> Unit,
+  persistent~ : Bool = false,
+) -> Unit {
+  let temporary = if persistent {
+    Some(@fs.tmpdir(prefix="moonhub-db-test-"))
+  } else {
+    None
+  }
+  defer (if temporary is Some(path) { @fs.rmdir(path, recursive=true) })
   database_test_slot.acquire()
   defer database_test_slot.release()
   @async.with_task_group(group => {
-    let pool = @database.new_db_pool({ path: ":memory:", }, group)
+    let pool = @database.new_db_pool(
+      { path: temporary.map(dir => dir + "/test.db").unwrap_or(":memory:"), },
+      group,
+    )
     defer pool.close()
     @database.initialize_db(pool)
     pool.with_client(client => {

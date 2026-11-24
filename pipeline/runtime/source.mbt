@@ -138,6 +138,19 @@ pub async fn Coordinator::read_source_bundle(
   token : String,
 ) -> Bytes {
   let (repo, sha) = self.source_snapshot(id, token)
+  let bytes = source_bundle(root, repo, sha)
+  ignore(self.source_snapshot(id, token))
+  bytes
+}
+
+///|
+async fn source_bundle(
+  root : String,
+  repo : @domain.RepoId,
+  sha : String,
+  full_history~ : Bool = false,
+  expanded_history_limit~ : Int64 = 268435456L,
+) -> Bytes {
   let bytes = @async.with_timeout(30000, () => {
     let git_dir = @repository.resolve_repository_dir(root, repo)
     let (code, tree) = @gitops.merge_git_command(
@@ -160,12 +173,78 @@ pub async fn Coordinator::read_source_bundle(
       "GIT_CONFIG_GLOBAL": "/dev/null",
       "GIT_TERMINAL_PROMPT": "0",
     }
+    let tags : Array[String] = []
+    if full_history {
+      let object_roots = [sha]
+      let (code, refs) = @gitops.merge_git_command(
+        git_dir,
+        [
+          "for-each-ref",
+          "--merged=" + sha,
+          "--format=%(objectname) %(refname)",
+          "refs/tags/",
+        ],
+        limit=1048576,
+      )
+      guard code == 0 else {
+        raise @domain.BadRequest(message="cannot enumerate source tags")
+      }
+      for line in @domain.split_lines(refs) {
+        guard line.split_once(" ") is Some((object, ref_)) &&
+          @gitops.valid_commit_sha(object.to_owned()) &&
+          ref_.has_prefix("refs/tags/") &&
+          tags.length() < 4096 else {
+          raise @domain.BadRequest(message="source tag limit exceeded")
+        }
+        tags.push(object.to_owned() + ":" + ref_.to_owned())
+        object_roots.push(object.to_owned())
+      }
+      let (code, objects) = @gitops.merge_git_command(
+        git_dir,
+        ["rev-list", "--objects", "--no-object-names", "--stdin"],
+        input=object_roots.join("\n") + "\n",
+        limit=4194304,
+      )
+      guard code == 0 else {
+        raise @domain.BadRequest(message="source history exceeds object limits")
+      }
+      let (code, sizes) = @gitops.merge_git_command(
+        git_dir,
+        ["cat-file", "--batch-check=%(objectsize)"],
+        input=objects,
+        limit=1048576,
+      )
+      guard code == 0 else {
+        raise @domain.BadRequest(message="cannot inspect source history")
+      }
+      let mut total = 0L
+      for size in @domain.split_lines(sizes) {
+        total += @string.parse_int64(size)
+        guard total <= expanded_history_limit else {
+          raise @domain.BadRequest(
+            message="source history exceeds 256 MiB expanded object budget",
+          )
+        }
+      }
+    }
     for
       args in [
         ["init", "--bare", "--quiet", repository],
         [
-          "--git-dir", repository, "fetch", "--quiet", "--no-tags", "--depth=1",
-          "--", git_dir, sha,
+          "--git-dir",
+          repository,
+          "fetch",
+          "--quiet",
+          "--no-tags",
+          ..if full_history {
+            []
+          } else {
+            ["--depth=1"]
+          },
+          "--",
+          git_dir,
+          sha,
+          ..tags,
         ],
         [
           "--git-dir", repository, "update-ref", "refs/heads/moonhub-source", sha,
@@ -191,8 +270,19 @@ pub async fn Coordinator::read_source_bundle(
         group,
         "git",
         [
-          "-c", "core.hooksPath=/dev/null", "--git-dir", repository, "bundle", "create",
-          "-", "refs/heads/moonhub-source",
+          "-c",
+          "core.hooksPath=/dev/null",
+          "--git-dir",
+          repository,
+          "bundle",
+          "create",
+          "-",
+          "refs/heads/moonhub-source",
+          ..if full_history {
+            ["--tags"]
+          } else {
+            []
+          },
         ],
         inherit_env=false,
         extra_env=env,
@@ -214,6 +304,5 @@ pub async fn Coordinator::read_source_bundle(
       Bytes::from_array(data)
     })
   })
-  ignore(self.source_snapshot(id, token))
   bytes
 }

@@ -32,7 +32,7 @@ const allowed = {
   attachments: ['filelock', 'domain', 'database', 'identity', 'repository'],
   collaboration: ['domain', 'database', 'identity', 'gitops', 'repository', 'attachments'],
   pipeline: ['domain', 'database', 'identity', 'gitops', 'repository', 'collaboration', 'pipeline/workflow', 'pipeline/runtime', 'pipeline/results'],
-  'pipeline/runtime': ['domain', 'database', 'identity', 'gitops', 'repository', 'pipeline/workflow', 'pipeline/protocol', 'pipeline/environment'],
+  'pipeline/runtime': ['pipeline/actions', 'domain', 'database', 'identity', 'gitops', 'repository', 'pipeline/workflow', 'pipeline/protocol', 'pipeline/environment'],
   'pipeline/results': ['domain', 'database', 'identity', 'repository', 'storage', 'pipeline/runtime', 'pipeline/protocol'],
   'pipeline/oidc': ['domain', 'database', 'identity', 'pipeline/runtime', 'pipeline/protocol', 'pipeline/workflow'],
   'pipeline/protocol': ['pipeline/environment'],

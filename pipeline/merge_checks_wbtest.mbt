@@ -144,7 +144,7 @@ async test "pull request workflows discover without branch rules deduplicate and
       assert_false(@collaboration.merge_checks(pool, mr)[0].required)
       let coordinator = merge_check_provider(pool)
       let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
-      assert_eq(assignment.version, @protocol.variable_assignment_version)
+      assert_eq(assignment.version, @protocol.source_assignment_version)
       assert_eq(assignment.job.steps[0].uses, "actions/checkout@v4")
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(coordinator.runtime.start(id, token, 1))

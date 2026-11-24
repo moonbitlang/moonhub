@@ -164,3 +164,47 @@ async test "scheduler and runner share extended scheduling expression cases" {
     }
   }
 }
+
+///|
+test "legacy dynamic checkout matrices retain the saved source capability" {
+  let workflow = parse(
+    (
+      #|on: workflow_dispatch
+      #|jobs:
+      #|  plan:
+      #|    runs-on: self-hosted
+      #|    steps: [{run: echo plan}]
+      #|  build:
+      #|    needs: plan
+      #|    runs-on: [self-hosted, linux]
+      #|    strategy: {matrix: '${{ fromJSON(needs.plan.outputs.matrix) }}'}
+      #|    steps: [{uses: actions/checkout@v4}]
+    ),
+  )
+  let template = workflow.jobs[1]
+  assert_true(template.source_access)
+  let context : Map[String, Json] = {
+    "needs": {
+      "plan": { "outputs": { "matrix": "{\"include\":[{\"name\":\"test\"}]}" } },
+    },
+    "github": {},
+    "vars": {},
+    "inputs": {},
+  }
+  let (_, current) = expand_dynamic_matrix(
+    template,
+    context,
+    remaining_jobs=1,
+    remaining_steps=1,
+    remaining_bytes=65536,
+  )
+  assert_true(current[0].source_access)
+  let (_, legacy) = expand_dynamic_matrix(
+    { ..template, source_access: false, },
+    context,
+    remaining_jobs=1,
+    remaining_steps=1,
+    remaining_bytes=65536,
+  )
+  assert_false(legacy[0].source_access)
+}

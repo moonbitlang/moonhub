@@ -20,6 +20,10 @@ fn management_command() -> @argparse.Command {
       ),
     ],
     subcommands=[
+      @argparse.Command("job-git-hook", hidden=true, positionals=[
+        PositionArg("context-file"),
+        PositionArg("phase"),
+      ]),
       @argparse.Command("ssh-authorized-key", hidden=true, positionals=[
         PositionArg("system-user"),
         PositionArg("type"),
@@ -236,6 +240,12 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
       )
     }
     match command {
+      "job-git-hook" =>
+        @pipeline.job_git_hook(
+          pool,
+          cli_value(options, "context-file"),
+          cli_value(options, "phase"),
+        )
       "ssh-authorized-key" => {
         guard cli_value(options, "system-user") == "git" else { return 0 }
         let key = @ssh.parse_ssh_public_key(
