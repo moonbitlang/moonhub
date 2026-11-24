@@ -11,8 +11,8 @@ ARG MOONBIT_VERSION=0.10.21+06da1ed44
 
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl wget git git-lfs gh openssh-client openssl rsync jq \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    bash ca-certificates tzdata curl wget git git-lfs gh openssh-client openssl rsync jq \
     build-essential clang clang-format clang-tidy lld llvm cmake ninja-build meson \
     pkg-config autoconf automake libtool libtool-bin bison flex ccache libssl-dev libssl3 zlib1g-dev \
     python3 python3-dev python3-pip python3-venv python-is-python3 \

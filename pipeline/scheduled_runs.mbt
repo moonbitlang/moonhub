@@ -43,12 +43,6 @@ pub async fn run_due_schedules(
   now_ms~ : Int64 = @env.now().reinterpret_as_int64(),
 ) -> Unit {
   let minute = now_ms / 60000L
-  let utc = pool.with_client(c => {
-    c.query_one(
-      "SELECT CAST(strftime('%M',?/1000,'unixepoch') AS INTEGER) minute,CAST(strftime('%H',?/1000,'unixepoch') AS INTEGER) hour,CAST(strftime('%d',?/1000,'unixepoch') AS INTEGER) day,CAST(strftime('%m',?/1000,'unixepoch') AS INTEGER) month,CAST(strftime('%w',?/1000,'unixepoch') AS INTEGER) weekday",
-      params=[now_ms, now_ms, now_ms, now_ms, now_ms],
-    )
-  })
   let rows = pool.with_client(c => {
     c.query_all(
       "SELECT s.*,r.default_branch,r.name,t.name_key owner,u.name_key actor FROM pipeline_schedule_config s JOIN repository r ON r.id=s.repository_id JOIN team t ON t.id=r.team_id JOIN user u ON u.id=s.actor_id WHERE s.enabled=1 AND r.ready=1 AND u.status='active' AND s.polled_minute<? ORDER BY s.polled_minute,s.repository_id LIMIT 20",
@@ -94,16 +88,7 @@ pub async fn run_due_schedules(
           try {
             let source = read_workflow_source(dir, sha, path)
             let triggers = @workflow.triggers(source)
-            if triggers.schedules.any(cron => {
-                @workflow.cron_matches(
-                  cron,
-                  (utc.get_name("minute") : Int64).to_int(),
-                  (utc.get_name("hour") : Int64).to_int(),
-                  (utc.get_name("day") : Int64).to_int(),
-                  (utc.get_name("month") : Int64).to_int(),
-                  (utc.get_name("weekday") : Int64).to_int(),
-                )
-              }) {
+            if schedules_due(triggers.schedules, now_ms) {
               workflows.push(path)
             }
           } catch {
@@ -150,4 +135,26 @@ pub async fn run_due_schedules(
       )
     })
   }
+}
+
+///|
+async fn schedules_due(
+  schedules : Array[@workflow.Schedule],
+  now_ms : Int64,
+) -> Bool {
+  for schedule in schedules {
+    let zone = if schedule.timezone == "UTC" {
+      @time.utc_zone
+    } else {
+      let bytes = @fs.read_file("/usr/share/zoneinfo/" + schedule.timezone).binary()
+      guard bytes.length() <= 1048576 else {
+        raise @domain.BadRequest(message="timezone data exceeds 1 MiB")
+      }
+      @time.Zone::from_tzif(schedule.timezone, bytes[:])
+    }
+    if schedule.matches(now_ms / 60000L * 60L, zone) {
+      return true
+    }
+  }
+  false
 }

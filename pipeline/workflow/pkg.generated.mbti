@@ -4,6 +4,7 @@ package "hackwaly/moonhub/pipeline/workflow"
 import {
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
+  "moonbitlang/x/time",
 }
 
 // Values
@@ -63,6 +64,8 @@ pub fn DispatchInput::to_repr(Self) -> @debug.Repr
 pub struct EventFilters {
   branches : Array[String]
   branches_ignore : Array[String]
+  tags : Array[String]
+  tags_ignore : Array[String]
   paths : Array[String]
   paths_ignore : Array[String]
 }
@@ -111,6 +114,12 @@ pub fn RunContext::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for RunContext
 pub impl @json.ToJson for RunContext
 
+pub struct Schedule {
+  cron : String
+  timezone : String
+}
+pub fn Schedule::matches(Self, Int64, @time.Zone) -> Bool raise
+
 #derive(@debug.Debug, @json.ToJson)
 pub struct Step {
   id : String
@@ -134,18 +143,26 @@ pub fn Step::to_repr(Self) -> @debug.Repr
 pub impl @json.FromJson for Step
 
 pub struct Triggers {
-  schedules : Array[String]
+  schedules : Array[Schedule]
   dispatch : Bool
   inputs : Array[DispatchInput]
   push : Bool
   pull_request : Bool
   release : Bool
+  release_types : Array[String]
+  repository_dispatch : Bool
+  dispatch_types : Array[String]
+  workflow_run : Bool
+  workflow_names : Array[String]
+  workflow_run_filters : EventFilters
   pull_request_types : Array[String]
   push_filters : EventFilters
   pull_request_filters : EventFilters
 }
 pub fn Triggers::matches_pull_request(Self, String, branch? : String, paths? : Array[String]?) -> Bool
-pub fn Triggers::matches_push(Self, String, paths? : Array[String]?) -> Bool
+pub fn Triggers::matches_push(Self, String, paths? : Array[String]?, tag? : Bool) -> Bool
+pub fn Triggers::matches_repository_dispatch(Self, String) -> Bool
+pub fn Triggers::matches_workflow_run(Self, String, String) -> Bool
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct Workflow {

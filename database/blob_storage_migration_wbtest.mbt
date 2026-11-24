@@ -5,6 +5,13 @@ async test "blob storage migration preserves legacy rows and journals cascade de
       client.batch_execute(
         (
           #|DROP VIEW pipeline_provider_job_routing;
+          #|DROP TRIGGER pipeline_completed_event;
+          #|DROP TRIGGER pipeline_mr_lifecycle_event;
+          #|DROP TRIGGER pipeline_run_workflow_event_immutable;
+          #|DROP INDEX pipeline_run_workflow_event_unique;
+          #|ALTER TABLE pipeline_run DROP COLUMN workflow_event_id;
+          #|DROP TABLE pipeline_workflow_event;
+          #|ALTER TABLE repository_ref_event DROP COLUMN release_payload;
           #|DROP TABLE pipeline_job_reuse;
           #|DROP TRIGGER pipeline_run_attempt_immutable;
           #|DROP INDEX pipeline_run_attempt_unique;
