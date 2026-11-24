@@ -131,6 +131,9 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             changed = true
             continue
           }
+          if !admit_deployment(tx, run, job_id, job, context) {
+            continue
+          }
           let policy = @workflow.scheduling_expression(
             job.continue_on_error,
             context,
@@ -243,6 +246,17 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
 
 ///|
 fn advance_all_runs(tx : @database.DbTransaction) -> Unit raise {
+  // Recheck queued approvals before they can consume a provider or a group slot.
+  ignore(
+    tx.execute(
+      "DELETE FROM pipeline_concurrency_slot WHERE job_id IN (SELECT j.id FROM pipeline_job j JOIN pipeline_job_deployment d ON d.job_id=j.id WHERE j.status='queued' AND NOT EXISTS (SELECT 1 FROM pipeline_deployment_admission a WHERE a.job_id=j.id))",
+    ),
+  )
+  ignore(
+    tx.execute(
+      "UPDATE pipeline_job SET status='waiting' WHERE status='queued' AND EXISTS (SELECT 1 FROM pipeline_job_deployment d WHERE d.job_id=pipeline_job.id) AND NOT EXISTS (SELECT 1 FROM pipeline_deployment_admission a WHERE a.job_id=pipeline_job.id)",
+    ),
+  )
   advance_concurrency(tx)
   let runs = tx.query_all(
     "SELECT id FROM pipeline_run WHERE status IN ('queued', 'running') ORDER BY id LIMIT 100",

@@ -273,3 +273,6 @@ isolation, limits and original Action acceptance.
 
 Definition-v7 jobs without `id-token: write` retain assignment v9 compatibility;
 only OIDC-enabled jobs require assignment v10.
+
+Deployment targets, required approvals and scoped configuration are described in
+[Deployment environments](deployment-environments.md).
