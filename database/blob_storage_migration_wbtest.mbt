@@ -9,6 +9,11 @@ async test "blob storage migration preserves legacy rows and journals cascade de
           #|DROP TRIGGER repository_transfer_name_guard;
           #|DROP TABLE repository_transfer;
           #|DROP VIEW pipeline_provider_job_environment;
+          #|DROP VIEW pipeline_provider_job_group;
+          #|DROP TABLE pipeline_job_runner_group;
+          #|DROP TABLE pipeline_runner_group_repository;
+          #|DROP TABLE pipeline_runner_group_provider;
+          #|DROP TABLE pipeline_runner_group;
           #|DROP TABLE pipeline_job_environment;
           #|DROP TABLE pipeline_provider_environment;
           #|ALTER TABLE pipeline_provider DROP COLUMN environment_protocol;

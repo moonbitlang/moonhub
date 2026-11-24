@@ -21,12 +21,15 @@ export function environment(...layers) {
 }
 export function shellCommand(shell, filename) {
   shell ||= windows ? 'pwsh' : 'bash-default';
-  if (shell === 'pwsh') return [windows ? 'pwsh.exe' : 'pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', filename]];
+  if ((shell === 'pwsh' || shell === 'cmd') && !windows) throw new Error(`Shell ${shell} requires a Windows runner; guard this step with if: runner.os == 'Windows'`);
+  if (shell === 'pwsh') return ['pwsh.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', filename]];
+  if (shell === 'cmd') return ['cmd.exe', ['/D', '/E:ON', '/V:OFF', '/S', '/C', `"CALL "${filename}""`]];
   if (shell === 'sh') return [windows ? 'sh.exe' : '/bin/sh', ['-e', filename]];
   if (shell === 'bash' || shell === 'bash-default') return [windows ? 'bash.exe' : '/bin/bash', ['--noprofile', '--norc', '-e', ...(shell === 'bash' ? ['-o', 'pipefail'] : []), filename]];
   throw new Error(`Unsupported shell: ${shell}`);
 }
 export function scriptSource(run, shell) {
+  if (shell === 'cmd') return `@echo off\r\n${run.replace(/\r?\n/g, '\r\n')}\r\nexit /b %errorlevel%\r\n`;
   return shell === 'pwsh' || (!shell && windows)
     ? `$ErrorActionPreference = 'Stop'\n$ProgressPreference = 'SilentlyContinue'\n${run}\nif (Test-Path variable:LASTEXITCODE) { exit $LASTEXITCODE }\n` : run;
 }

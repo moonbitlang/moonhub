@@ -52,6 +52,28 @@ test('job outputs evaluate join and comparisons with real step results', async t
   assert.deepEqual({ ...result.outputs }, { flags: 'strict | legacy', ready: 'true' });
 });
 
+test('step conditions skip incompatible shells before selection', { skip: process.platform === 'win32' }, async t => {
+  const { config, runtime } = await fixture(t);
+  for (const shell of ['pwsh', 'cmd']) {
+    const skipped = await execute({ ...config, step: { id: shell, shell, run: 'exit 99', templates: { if: "runner.os == 'Windows'" } } });
+    assert.equal(skipped.conclusion, 'skipped');
+    await assert.rejects(runtime.script('exit 99', shell), /requires a Windows runner/);
+  }
+  const uses = await action(config, 'conditional-shells', `runs:
+  using: composite
+  steps:
+    - if: runner.os == 'Windows'
+      shell: pwsh
+      run: exit 99
+    - if: runner.os == 'Windows'
+      shell: cmd
+      run: exit /b 99
+    - shell: bash
+      run: echo unix
+`);
+  assert.equal((await runtime.action(uses)).code, 0);
+});
+
 test('relational expressions use Actions coercion and precedence', () => {
   const context = { matrix: { node: { labels: [] }, other: [] } };
   const cases = [

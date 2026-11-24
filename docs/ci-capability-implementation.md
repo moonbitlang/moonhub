@@ -24,7 +24,27 @@ dataflow and merged checkout. The system Git 2.34.1 is too old for that suite.
 New indexed templates require assignment v14; old snapshots retain their saved
 runtime requirement. Providers and Runners must be upgraded together.
 
-## Scope retained from the approved plan
+## Shell and runner selection
+
+- #72: syntax validation stays in planning; OS compatibility follows step
+  conditions in the runtime and native assignment validation accepts those
+  conditional plans. The HTTP dataflow fixture includes a skipped PowerShell step.
+- #93: `cmd` works through step/workflow/job defaults and composite execution.
+  Windows tests cover spaced workspace paths, batch environment/output files and
+  nonzero exit codes. They require the Windows CI runner and are skipped locally.
+- #73: `ubuntu-22.04-arm` requires Linux ARM64 and Ubuntu 22.04. Scheduler tests
+  reject x64 providers. No real ARM64 compilation/packaging has been executed.
+- #89: schema 48 adds administrator-maintained groups, provider membership and
+  repository grants. Assignment intersects all group, provider and label rules;
+  live authorization rechecks grants. Administration forms enforce CSRF and
+  optimistic revisions; scheduler tests cover restart and revocation.
+
+Validation: affected MoonBit suites passed 313/313 (workflow, migrations,
+scheduler, pipeline administration and Runner HTTP); JavaScript passed 47,
+with 7 Windows-only tests skipped on Linux. Required check/format/interface
+commands passed with the production compiler pin.
+
+## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package
 publishing permissions retain their existing behavior. Live cloud configuration,

@@ -106,8 +106,10 @@ pub fn Coordinator::read_steps(Self, @domain.CurrentUser, @domain.RepoId, Int64,
 pub fn Coordinator::register_runner(Self, String, @protocol.RegisterProviderRequest) -> @protocol.ProviderSnapshot raise
 pub fn Coordinator::register_worker(Self, String, @protocol.WorkerRegistration) -> @protocol.WorkerView raise
 pub fn Coordinator::revoke_provider(Self, @domain.CurrentUser, Int64) -> Unit raise
+pub fn Coordinator::runner_groups(Self, @domain.CurrentUser) -> Array[RunnerGroup] raise
 pub fn Coordinator::save_provider_config(Self, @domain.CurrentUser, Int64, Int64, Map[String, String]) -> Unit raise
 pub fn Coordinator::save_provider_environments(Self, @domain.CurrentUser, Int64, Int64, Array[@environment.Definition], String) -> Unit raise
+pub fn Coordinator::save_runner_group(Self, @domain.CurrentUser, String, Int64, Array[Int64], Array[@domain.RepoId]) -> Unit raise
 pub fn Coordinator::set_provider_labels(Self, @domain.CurrentUser, Int64, Array[String]) -> Unit raise
 pub fn Coordinator::set_provider_paused(Self, @domain.CurrentUser, Int64, Bool) -> Unit raise
 pub fn Coordinator::set_provider_scope(Self, @domain.CurrentUser, Int64, ProviderScope, Array[@domain.RepoId]) -> Unit raise
@@ -214,6 +216,7 @@ pub enum QueueReason {
   WaitingMatrixCapacity
   RequesterUnavailable
   NoAuthorizedProvider
+  RunnerGroupUnavailable
   NoMatchingLabels
   EnvironmentUnavailable
   ProvidersPaused
@@ -277,6 +280,13 @@ pub enum RunState {
 pub fn RunState::equal(Self, Self) -> Bool
 pub fn RunState::not_equal(Self, Self) -> Bool
 pub fn RunState::to_repr(Self) -> @debug.Repr
+
+pub struct RunnerGroup {
+  name : String
+  revision : Int64
+  providers : Array[Int64]
+  repositories : Array[String]
+}
 
 pub struct TriggerEvent {
   id : Int64

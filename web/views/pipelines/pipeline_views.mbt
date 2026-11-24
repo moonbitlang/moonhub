@@ -18,6 +18,8 @@ fn queue_reason_text(reason : @runtime.QueueReason) -> String {
       "The requester no longer has permission to run this job, or the repository is not ready."
     @runtime.NoAuthorizedProvider =>
       "No provider is authorized for this repository."
+    @runtime.RunnerGroupUnavailable =>
+      "The requested runner group is unknown, has no providers, or is not authorized for this repository."
     @runtime.NoMatchingLabels =>
       "No authorized provider matches all required job labels."
     @runtime.EnvironmentUnavailable =>

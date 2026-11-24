@@ -53,6 +53,7 @@ pub let pipeline_pages_module : @moonback.Module = Module(ctx => {
   let results = ctx.require(@web_context.pipeline_results_key)
   ctx.use_(pipeline_updates_module)
   ctx.use_(provider_config_module)
+  ctx.use_(runner_groups_module)
   ctx.get("/:owner/:repo/actions/runs/:run/artifacts/:artifact", async fn(
     req,
     res,
