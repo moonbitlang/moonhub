@@ -53,7 +53,7 @@ pub fn expand_dynamic_matrix(
   let strategy = yaml_as_obj(fields.get("strategy").unwrap(), "strategy")
   strategy["matrix"] = snapshot_yaml(value)
   let jobs = expand_job(
-    job.id,
+    job.id.strip_prefix(job.context_prefix).unwrap_or(job.id).to_owned(),
     @yaml.Map(fields),
     template.env,
     { shell: template.shell, working_directory: template.directory, },
@@ -65,6 +65,13 @@ pub fn expand_dynamic_matrix(
   )
   let jobs = jobs.map(child => {
     ..child,
+    id: job.context_prefix + child.id,
+    matrix_group: job.context_prefix + child.matrix_group,
+    context_prefix: job.context_prefix,
+    call_inputs: job.call_inputs,
+    contents_read: child.contents_read && job.contents_read,
+    id_token_write: child.id_token_write && job.id_token_write,
+    api_permissions: child.api_permissions & job.api_permissions,
     needs: job.needs,
     condition: "always()",
     // These fields were resolved against the pinned event when the template

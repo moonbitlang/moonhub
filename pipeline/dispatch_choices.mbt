@@ -68,7 +68,7 @@ pub async fn dispatch_choices(
     let (name, reason, inputs, jobs, dispatch) = try {
       @runtime.validate_workflow_path(path)
       let source = read_workflow_source(git_dir, commit, path)
-      let definition = @workflow.parse(source)
+      let definition = read_workflow_definition(git_dir, commit, source)
       let trigger = @workflow.triggers(source)
       (
         if definition.name.is_empty() {

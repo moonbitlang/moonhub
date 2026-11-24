@@ -258,6 +258,7 @@ fn finish_attempt(
   let id : Int64 = row.get_name("id")
   let job_id : Int64 = row.get_name("job_id")
   let run_id : Int64 = row.get_name("run_id")
+  capture_call_masks(tx, run_id, id)
   flush_log_tails(tx, id)
   let _ = tx.execute(
     "UPDATE pipeline_step SET state = ?, exit_code = -1 WHERE attempt_id = ? AND state = 'running'",
@@ -590,7 +591,7 @@ pub fn Coordinator::claim(
             variables = saved.variables
           }
           if (row.get_name("definition_version") : Int64) >= 5L {
-            dispatch_inputs = saved.inputs
+            dispatch_inputs = job.call_inputs.unwrap_or(saved.inputs)
             event = run_event_context(saved, event_ref=context["ref"])
           }
         }
@@ -671,8 +672,14 @@ pub fn Coordinator::claim(
             strategy: job.strategy,
             id: if job.matrix_group.is_empty() {
               job.id
+              .strip_prefix(job.context_prefix)
+              .unwrap_or(job.id)
+              .to_owned()
             } else {
               job.matrix_group
+              .strip_prefix(job.context_prefix)
+              .unwrap_or(job.matrix_group)
+              .to_owned()
             },
             name: job.name,
             runs_on: runner_group_labels(tx, job, provider_id),
@@ -894,21 +901,7 @@ pub fn Coordinator::cancel_run(
   let now = (self.clock)()
   self.pool.with_client(client => {
     client.with_transaction(
-      tx => {
-        let _ = tx.execute(
-          "UPDATE pipeline_run SET cancel_requested = 1, updated_at = datetime('now') WHERE id = ? AND status <> 'completed'",
-          params=[run.id],
-        )
-        let _ = tx.execute(
-          "UPDATE pipeline_job SET status = 'completed', conclusion = 'cancelled' WHERE run_id = ? AND status IN ('queued', 'waiting')",
-          params=[run.id],
-        )
-        let _ = tx.execute(
-          "UPDATE pipeline_job_attempt SET cancel_at_ms = COALESCE(cancel_at_ms, ?) WHERE status <> 'completed' AND job_id IN (SELECT id FROM pipeline_job WHERE run_id = ?)",
-          params=[now, run.id],
-        )
-        finalize_run(tx, run.id)
-      },
+      tx => cancel_run_in_transaction(tx, run.id, now=Some(now)),
       immediate=true,
     )
   })

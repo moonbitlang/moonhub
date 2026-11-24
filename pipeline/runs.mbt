@@ -123,8 +123,9 @@ async fn create_run_event(
       }
     })
     let source = read_workflow_source(git_dir, sha, workflow_path)
-    let definition = @workflow.parse(source, jobs~) catch {
+    let definition = read_workflow_definition(git_dir, sha, source, jobs~) catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
+      err => raise err
     }
     let triggers = @workflow.triggers(source)
     guard scheduled_minute >= 0L || triggers.dispatch || !jobs.is_empty() else {

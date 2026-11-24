@@ -106,6 +106,24 @@ browser regression passed 1/1 using installed Chromium 1234 and an isolated port
 the initial attempts encountered an occupied default port and absent Chromium 1248.
 Required check/format/interface commands passed. No cloud execution was performed.
 
+## Local reusable workflows
+
+- #71: local callees are read from the caller's pinned commit and included in the
+  immutable definition. Declared string/number/boolean inputs, nested calls,
+  outputs and dependency closures retain the shared job, step and byte budgets.
+  Callee permissions intersect caller permissions; cycles and unsupported remote
+  refs fail before execution. Successful calls can be reused on failed-only reruns.
+- Schema 50 persists call expansion and outputs. Cancellation keeps group capacity
+  until active children are fenced. Output aggregation retains bounded secret
+  fingerprints after raw credential cleanup, including across reused attempts.
+
+Validation: reusable workflow and migration tests passed 40/40. Earlier workflow,
+output, scheduling and migration regressions passed 136/136; cancellation
+regressions passed 38/38. Fixtures cover nested/dynamic calls, moved branches,
+permission reduction, typed concurrency, duplicate completion and reconstructed
+secret suppression. The repository's unchanged CI workflow parses with its local
+frontend callee. Actual platform scripts and deployment were not executed here.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package
