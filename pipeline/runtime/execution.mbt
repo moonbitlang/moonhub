@@ -575,7 +575,7 @@ pub fn Coordinator::claim(
           context["actor"] = captured.get_name("actor_name")
         }
         let run_attempt : Int64 = captured.get_name("run_attempt")
-        if run_attempt > 1L || job.containers is Some(_) {
+        if run_attempt > 1L || job.containers is Some(_) || job.source_access {
           context["run_id"] = (captured.get_name("public_id") : Int64).to_string()
           context["run_attempt"] = run_attempt.to_string()
           context["dispatch_context"] = if (
@@ -627,7 +627,9 @@ pub fn Coordinator::claim(
         })
         Some({
           environment,
-          version: if job.containers is Some(_) {
+          version: if job.source_access {
+            @protocol.source_assignment_version
+          } else if job.containers is Some(_) {
             @protocol.container_assignment_version
           } else if run_attempt > 1L {
             @protocol.run_attempt_assignment_version

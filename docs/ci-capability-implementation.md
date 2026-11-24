@@ -171,6 +171,35 @@ cancellation, timeout and startup-failure completion. This local workspace has n
 Docker daemon; real-container acceptance remains pending that CI job and is not
 claimed by the mocked tests.
 
+## Source and private dependencies
+
+- #94: schema 53 adds administrator-managed consumer/repository grants and
+  immutable dependency resolutions. A bounded server downloader keeps the raw
+  GitHub credential in stdin and repository-specific API requests. Archive
+  redirects are confined to that repository on codeload and lose Authorization.
+  Jobs receive a separate live dependency capability. Revocation, scope,
+  restart, expiration, safe redirects and credential visibility have tests.
+- #95/#97: assignment v17 supports complete ancestor history and ancestral tags
+  for `fetch-depth: 0`, within retained transport/tree limits and new object/tag
+  budgets. Secondary checkouts require an exact repository/ref grant, pin their
+  first SHA across the run family and use a separate path. The primary checkout
+  remains the captured run SHA; old snapshots retain their shallow behavior.
+- #98: both REST mounts provide bounded smart-HTTP receive-pack. Trusted native
+  hooks recheck live job authorization and existing protected-ref rules. Writes
+  keep mirror/webhook bookkeeping without recursive workflow events. Credentials
+  are URL-scoped and temporary; checkout disables credential persistence.
+
+Validation: the broad native/HTTP run passed 316/320; all four failures were
+old protocol-version assertions. The affected follow-up run passed 34/35, with
+one mixed-job assertion requiring v9 for its script-only consumer; the final
+file then passed 1/1. JavaScript passed 60/60. Real local HTTP pushes
+passed on both mounts, including protected refs, cross-repository, read-only and
+completed-token denial. Unchanged upstream checkout v6 passed full history,
+prior-tag/changelog, secondary path and credential-removal checks. GitHub private
+credential behavior uses equivalent controlled-download fixtures; no external
+private credential was provisioned. Required check/format/interface commands and the 56-package boundary check
+passed.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package

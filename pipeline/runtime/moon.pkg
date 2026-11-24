@@ -1,4 +1,6 @@
 import {
+  "moonbitlang/core/string",
+  "hackwaly/moonhub/pipeline/actions",
   "moonbitlang/async",
   "hackwaly/moonhub/database",
   "moonbitlang/core/debug",

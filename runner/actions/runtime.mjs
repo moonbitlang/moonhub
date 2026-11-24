@@ -8,6 +8,7 @@ import { reference, resolveCommit, downloadArchive, extractArchive } from './dow
 import { evaluateAsync as evaluate, interpolateAsync as interpolate, truthy, string } from './expression.mjs';
 import { LogCommands, parseFileCommands, validEnvName, maskText } from './commands.mjs';
 import { encodeState, decodeState } from './state.mjs';
+import { DependencyClient, gitSetting, sourceEnvironment } from './dependencies.mjs';
 import { ContainerSession, imageName, argumentWords } from './containers.mjs';
 import { windows, runnerOS, nullDevice, validRelative, isWithin, environment, shellCommand, scriptSource } from './platform.mjs';
 
@@ -88,6 +89,8 @@ export class ActionRuntime {
     if (config.container_plan && !this.containerSession) throw new Error('Workflow containers require isolated Linux CI execution');
     this.artifact = process.env.MOONHUB_ACTION_ARTIFACT_TOKEN ? { token: process.env.MOONHUB_ACTION_ARTIFACT_TOKEN, url: process.env.MOONHUB_ACTION_ARTIFACT_URL } : undefined;
     if (this.artifact && !this.state.masks.includes(this.artifact.token)) this.state.masks.push(this.artifact.token);
+    this.dependency = process.env.MOONHUB_ACTION_DEPENDENCY_TOKEN ? new DependencyClient(config, process.env.MOONHUB_ACTION_DEPENDENCY_TOKEN, process.env.MOONHUB_ACTION_DEPENDENCY_URL, adapters.dependencyFetch) : null;
+    if (this.dependency && !this.state.masks.includes(this.dependency.token)) this.state.masks.push(this.dependency.token);
     this.apiToken = process.env.MOONHUB_ACTION_API_TOKEN;
     if (this.apiToken && !this.state.masks.includes(this.apiToken)) this.state.masks.push(this.apiToken);
     this.oidc = process.env.MOONHUB_ACTION_OIDC_TOKEN ? { token: process.env.MOONHUB_ACTION_OIDC_TOKEN, url: process.env.MOONHUB_ACTION_OIDC_URL } : undefined;
@@ -138,12 +141,14 @@ export class ActionRuntime {
     const requested = reference(uses);
     const key = createHash('sha256').update(requested.repository + '@' + requested.ref).digest('hex');
     let action = this.state.actions[key];
+    const privateCommit = this.dependency ? await this.dependency.resolve(requested.repository, requested.ref) : null;
+    if (action && (action.private || privateCommit) && privateCommit !== action.commit) throw new Error('Private action grant is no longer current');
     if (!action) {
       const gitEnv = environment(this.baseEnv, { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: nullDevice });
-      const commit = await this.adapters.resolveCommit(requested.repository, requested.ref, gitEnv);
+      const commit = privateCommit || await this.adapters.resolveCommit(requested.repository, requested.ref, gitEnv);
       const directory = path.join(this.temp, '_actions', key);
-      await extractArchive(await this.adapters.downloadArchive(requested.repository, commit), directory);
-      action = { directory, repository: requested.repository, ref: requested.ref, commit };
+      await extractArchive(privateCommit ? await this.dependency.archive(requested.repository, requested.ref) : await this.adapters.downloadArchive(requested.repository, commit), directory);
+      action = { directory, repository: requested.repository, ref: requested.ref, commit, private: Boolean(privateCommit) };
       this.state.actions[key] = action;
       process.stdout.write(`Resolved ${requested.repository}@${requested.ref} to ${commit}\n`);
     }
@@ -188,6 +193,11 @@ export class ActionRuntime {
       env.GH_HOST=host; env.GH_CONFIG_DIR=ghConfig; env.GH_PROMPT_DISABLED='1';
       if (env.GH_TOKEN === this.apiToken) delete env.GH_TOKEN;
       if (env.GITHUB_TOKEN === this.apiToken) delete env.GITHUB_TOKEN;
+    }
+    if (this.dependency && this.apiToken && (this.config.api_permissions & 2)) {
+      const url = `${this.config.server}/-/api/v1/repos/${this.config.repository}/git/`;
+      gitSetting(env, `http.${url}.extraheader`, 'Authorization: Bearer ' + this.apiToken);
+      gitSetting(env, 'http.followRedirects', 'false');
     }
     const names = ['ENV', 'PATH', 'OUTPUT', 'STATE', 'STEP_SUMMARY'];
     const files = Object.fromEntries(names.map(name => [name, path.join(directory, name)]));
@@ -244,11 +254,27 @@ export class ActionRuntime {
     return env;
   }
   async javascript(action, value, inputs, supplied, context, saved, phase) {
+    let source;
+    const checkout = this.dependency && action.repository.toLowerCase() === 'actions/checkout';
+    if (checkout) {
+      inputs = { ...inputs, 'persist-credentials': 'false' };
+      const repository = inputs.repository || this.config.repository;
+      if (repository === this.config.repository) {
+        const original = this.config.context?.ref || '';
+        if (inputs.ref && ![this.config.sha, original, original.replace(/^refs\/heads\//, ''), original.replace(/^refs\/tags\//, '')].includes(inputs.ref)) throw new Error('Primary checkout must retain the run commit');
+        inputs.ref = this.config.sha;
+      } else if (!inputs.ref || !inputs.path || inputs.path === '.' || !validRelative(inputs.path)) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
+      if (phase === 'main' && (repository !== this.config.repository || inputs['fetch-depth'] === '0')) {
+        source = await this.dependency.source(repository, inputs.ref, inputs['fetch-depth'] === '0', this.baseEnv);
+        inputs.ref = source.sha;
+      }
+    }
     const result = { outputs: {}, state: {}, failed: false };
     const inputEnv = Object.fromEntries(Object.entries(inputs).map(([name, value]) => [`INPUT_${name.toUpperCase()}`, value]));
     const stateEnv = Object.fromEntries(Object.entries(saved || {}).map(([name, value]) => [`STATE_${name}`, value]));
     const env = this.environment({ ...supplied, ...inputEnv, ...stateEnv, GITHUB_ACTION_PATH: action.directory,
       GITHUB_ACTION_REPOSITORY: action.repository, GITHUB_ACTION_REF: action.ref }, context);
+    if (source) sourceEnvironment(env, source, this.config);
     const artifactAction = ['actions/upload-artifact', 'actions/download-artifact'].includes(action.repository.toLowerCase());
     if (artifactAction && this.artifact && inputs['github-token']) throw new Error('Cross-run GitHub API artifact downloads are not supported by the MoonHub artifact runtime');
     if (this.artifact) {
@@ -268,7 +294,14 @@ export class ActionRuntime {
     const root = action.root || action.directory;
     const filename = await contained(root, path.relative(root, path.resolve(action.directory, value.runs[phase])).split(path.sep).join('/'));
     if (!(await fs.stat(filename)).isFile()) throw new Error('Action JavaScript entry is not a file');
-    const code = await this.files(env, result, () => this.process(node, [filename], env, this.workspace, result));
+    const code = await this.files(env, result, async () => {
+      const code = await this.process(node, [filename], env, this.workspace, result);
+      if (!code && checkout && phase === 'main' && (inputs.repository || this.config.repository) === this.config.repository && (this.config.api_permissions & 2)) {
+        const cwd = await contained(this.workspace, inputs.path || '.');
+        return this.process('git', ['remote', 'set-url', '--push', 'origin', `${this.config.server}/-/api/v1/repos/${this.config.repository}/git`], env, cwd, result);
+      }
+      return code;
+    });
     if (artifactAction && result.outputs['artifact-id']) result.outputs['artifact-url'] = `${this.config.server}/${this.config.repository}/actions/runs/${this.config.run_id}/artifacts/${result.outputs['artifact-id']}`;
     return { ...result, code };
   }

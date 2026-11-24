@@ -104,6 +104,85 @@ pub let runner_api_module : @moonback.Module = Module(ctx => {
   let oidc = ctx.require(@web_context.pipeline_oidc_key)
   let root = ctx.resolve(@web_context.config_root)
   ctx.post(
+    "/attempts/:id/dependency-runtime",
+    json_handler(req => {
+      let id = @web_context.positive_resource_number(
+        @web_context.required_param(req, "id", "attempt"),
+      )
+      let request : @protocol.OidcRuntimeRequest = @json.from_json(
+        request_json(req, ["version", "execution_id"]),
+      )
+      ToJson::to_json(
+        coordinator.dependency_runtime(id, bearer_token(req), request),
+      )
+    }),
+  )
+  ctx.post(
+    "/dependencies/resolve",
+    json_handler(req => {
+      let body = request_json(req, ["repository", "ref"])
+      guard body
+        is { "repository": String(repository), "ref": String(reference), .. } else {
+        raise @domain.BadRequest(message="repository and ref required")
+      }
+      match
+        coordinator.resolve_private_action(
+          bearer_token(req),
+          repository,
+          reference,
+        ) {
+        Some(sha) => { "private": true, "sha": sha }
+        None => { "private": false }
+      }
+    }),
+  )
+  for operation in ["archive", "source"] {
+    ctx.post("/dependencies/" + operation, async fn(req, res) {
+      let (sha, bytes) = try {
+        let body = request_json(req, ["repository", "ref", "full_history"])
+        guard body
+          is { "repository": String(repository), "ref": String(reference), .. } else {
+          raise @domain.BadRequest(message="repository and ref required")
+        }
+        let token = bearer_token(req)
+        if operation == "archive" {
+          ("", coordinator.private_action_archive(token, repository, reference))
+        } else {
+          guard root is Some(root) else {
+            raise @domain.NotFound(message="source unavailable")
+          }
+          coordinator.dependency_source(
+            root,
+            token,
+            repository,
+            reference,
+            body is { "full_history": True, .. },
+          )
+        }
+      } catch {
+        err => {
+          let (status, json) = runner_error(err)
+          res.send_json(json, status~, headers={
+            "Cache-Control": "no-store",
+            "Connection": "close",
+          })
+          return
+        }
+      }
+      let writer = res.respond(status=200, headers={
+        "Cache-Control": "no-store",
+        "Content-Type": if operation == "archive" {
+          "application/gzip"
+        } else {
+          "application/x-git-bundle"
+        },
+        "Content-Length": bytes.length().to_string(),
+        "X-MoonHub-Commit": sha,
+      })
+      writer.write(bytes)
+    })
+  }
+  ctx.post(
     "/providers/register",
     json_handler(req => {
       let token = bearer_token(req)

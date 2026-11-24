@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DependencyClient } from '../runner/actions/dependencies.mjs';
 import { ActionRuntime } from '../runner/actions/runtime.mjs';
 const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'moonhub-upstream-actions-'));
@@ -25,6 +26,39 @@ try {
   const runtime = new ActionRuntime(config);
   const checkout = await runtime.action('actions/checkout@v6', {'persist-credentials': 'false'});
   assert.equal(checkout.code, 0); assert.equal(git('-C', workspace, 'rev-parse', 'HEAD'), sha);
+  // Real, unchanged upstream checkout consumes the full-history and secondary
+  // source transport. Authorization/pinning are covered by the native service
+  // tests; this adapter returns the exact bundle response shape locally.
+  const history = path.join(root, 'history'); await fs.mkdir(history);
+  git('-C', history, 'init', '--quiet');
+  await fs.writeFile(path.join(history, 'release.txt'), 'one'); git('-C', history, 'add', '.');
+  const commit = message => git('-C', history, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qam', message);
+  commit('first release'); git('-C', history, 'tag', 'v1.0.0');
+  await fs.writeFile(path.join(history, 'release.txt'), 'two'); commit('release change');
+  const fullSha = git('-C', history, 'rev-parse', 'HEAD'); git('-C', history, 'update-ref', 'refs/heads/moonhub-source', fullSha);
+  const bundlePath = path.join(root, 'history.bundle'); git('-C', history, 'bundle', 'create', bundlePath, 'refs/heads/moonhub-source', '--tags');
+  const bundle = await fs.readFile(bundlePath), fullWorkspace = path.join(root, 'full-workspace'); await fs.mkdir(fullWorkspace);
+  const fullConfig = { ...config, workspace: fullWorkspace, sha: fullSha, source_git: undefined, api_permissions: 3 };
+  const fullRuntime = new ActionRuntime(fullConfig, { actions: runtime.state.actions });
+  fullRuntime.apiToken = 'd'.repeat(64); fullRuntime.state.masks.push(fullRuntime.apiToken);
+  fullRuntime.dependency = new DependencyClient(fullConfig, 'a'.repeat(64), config.server + '/-/runner-api/v1/dependencies', async (url, options) => {
+    if (url.endsWith('/resolve')) return new Response('{"private":false}');
+    const request = JSON.parse(options.body);
+    assert.ok(request.repository === config.repository && request.ref === fullSha || request.repository === 'private/dependency' && request.ref === 'refs/heads/main');
+    return new Response(bundle, { headers: { 'x-moonhub-commit': fullSha } });
+  });
+  assert.equal((await fullRuntime.action('actions/checkout@v6', { 'fetch-depth': '0' })).code, 0);
+  assert.equal(git('-C', fullWorkspace, 'rev-parse', 'HEAD'), fullSha);
+  assert.ok(!git('-C', fullWorkspace, 'config', '--local', '--list').includes(fullRuntime.apiToken));
+  assert.ok(!git('-C', fullWorkspace, 'config', '--local', '--list').includes(Buffer.from('x-access-token:' + fullRuntime.apiToken).toString('base64')));
+  assert.equal(git('-C', fullWorkspace, 'remote', 'get-url', '--push', 'origin'), config.server + '/-/api/v1/repos/' + config.repository + '/git');
+  assert.equal(git('-C', fullWorkspace, 'rev-list', '--count', 'HEAD'), '2');
+  assert.match(git('-C', fullWorkspace, 'describe', '--tags'), /^v1.0.0-1-g/);
+  assert.equal(git('-C', fullWorkspace, 'log', '--format=%s', 'v1.0.0..HEAD'), 'release change');
+  assert.equal((await fullRuntime.action('actions/checkout@v6', { repository: 'private/dependency', ref: 'refs/heads/main', path: 'vendor/dependency', 'fetch-depth': '0' })).code, 0);
+  assert.equal(git('-C', path.join(fullWorkspace, 'vendor/dependency'), 'rev-parse', 'HEAD'), fullSha);
+  assert.equal(git('-C', fullWorkspace, 'rev-parse', 'HEAD'), fullSha);
+  assert.equal(await fullRuntime.posts(), 0);
   // Avoid a second toolchain download; setup-node itself is the real upstream JS.
   const cache = path.join(home, '.tool-cache', 'node', process.versions.node, process.arch);
   await fs.mkdir(path.join(cache, 'bin'), {recursive: true});

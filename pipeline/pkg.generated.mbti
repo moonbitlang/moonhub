@@ -17,6 +17,10 @@ pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @
 
 pub async fn dispatch_repository_event(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, Map[String, @json.Json], request_id? : String) -> Int64
 
+pub async fn job_git_exchange(@database.Database, @runtime.Coordinator, String, String, @domain.RepoId, String, Bytes, Bool) -> Bytes
+
+pub async fn job_git_hook(@database.Database, String, String) -> Unit
+
 pub async fn rerun_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, failed_only? : Bool) -> @runtime.Run
 
 pub async fn run_due_schedules(@database.Database, String, now_ms? : Int64) -> Unit

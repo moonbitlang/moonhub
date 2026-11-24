@@ -80,8 +80,10 @@ async fn Runtime::execute_action_step(
 ) -> Int32 {
   let config : Json = {
     "node20": self.action_node20,
+    "api_permissions": self.assignment.job.api_permissions,
     "container_isolation": self.options.linux_ci &&
-    self.assignment.version >= @protocol.container_assignment_version,
+    self.assignment.version >= @protocol.container_assignment_version &&
+    self.assignment.job.context.contains("container_plan"),
     "container_id": self.execution_id,
     "container_plan": self.assignment.job.context
     .get("container_plan")
@@ -100,7 +102,7 @@ async fn Runtime::execute_action_step(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
-      @protocol.container_assignment_version,
+      @protocol.container_assignment_version, @protocol.source_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -112,7 +114,7 @@ async fn Runtime::execute_action_step(
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
-      @protocol.container_assignment_version,
+      @protocol.container_assignment_version, @protocol.source_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -206,6 +208,22 @@ async fn Runtime::execute_action_runtime(
     env["MOONHUB_ACTION_OIDC_TOKEN"] = grant.token
     env["MOONHUB_ACTION_OIDC_URL"] = grant.request_url
   }
+  if self.assignment.version >= @protocol.source_assignment_version {
+    guard self.dependencies is Some(fetch) else {
+      raise InvalidConfiguration("dependency service unavailable")
+    }
+    let grant = @async.with_timeout(Int32::min(timeout, 10000), () => {
+      fetch({ version: 1, execution_id: self.execution_id, })
+    })
+    self.check_live()
+    guard grant.token.length() == 64 &&
+      grant.token.iter().all(c => c.is_ascii_digit() || ('a' <= c && c <= 'f')) else {
+      raise InvalidResponse
+    }
+    env["MOONHUB_ACTION_DEPENDENCY_TOKEN"] = grant.token
+    env["MOONHUB_ACTION_DEPENDENCY_URL"] = self.options.server +
+      "/-/runner-api/v1/dependencies"
+  }
   if self.assignment.job.api_permissions != 0 {
     guard self.api is Some(fetch) else {
       raise InvalidConfiguration("job API service unavailable")
@@ -261,8 +279,10 @@ async fn Runtime::execute_action_posts(
     "job_id": self.assignment.job.id,
     "context": ToJson::to_json(self.assignment.job.context),
     "node20": self.action_node20,
+    "api_permissions": self.assignment.job.api_permissions,
     "container_isolation": self.options.linux_ci &&
-    self.assignment.version >= @protocol.container_assignment_version,
+    self.assignment.version >= @protocol.container_assignment_version &&
+    self.assignment.job.context.contains("container_plan"),
     "container_id": self.execution_id,
     "container_plan": self.assignment.job.context
     .get("container_plan")
@@ -281,7 +301,7 @@ async fn Runtime::execute_action_posts(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
-      @protocol.container_assignment_version,
+      @protocol.container_assignment_version, @protocol.source_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -293,7 +313,7 @@ async fn Runtime::execute_action_posts(
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
-      @protocol.container_assignment_version,
+      @protocol.container_assignment_version, @protocol.source_assignment_version,
     ].contains(self.assignment.version) &&
     (
       self.assignment.version < @protocol.run_attempt_assignment_version ||
@@ -327,7 +347,7 @@ async fn Runtime::execute_action_posts(
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
       @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
-      @protocol.container_assignment_version,
+      @protocol.container_assignment_version, @protocol.source_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }
@@ -343,7 +363,8 @@ async fn Runtime::execute_action_posts(
 // If cleanup cannot be verified, report lost and retain the provider's fence.
 async fn Runtime::cleanup_containers(self : Runtime) -> Unit {
   guard self.options.linux_ci &&
-    self.assignment.version == @protocol.container_assignment_version else {
+    self.assignment.version >= @protocol.container_assignment_version &&
+    self.assignment.job.context.contains("container_plan") else {
     return
   }
   let base = self.action_runtime.strip_suffix("runtime.mjs")

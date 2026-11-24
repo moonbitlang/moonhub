@@ -112,3 +112,20 @@ pub let config_mirror : @moonback.TypedKey[@repository.MirrorConfig] = TypedKey(
     }
   },
 )
+
+///|
+extenum @moonback.TypedBox += {
+  JobGitBinary(String)
+}
+
+///|
+pub let job_git_binary_key : @moonback.TypedKey[String] = TypedKey(
+  name="moonhub.job_git_binary",
+  box=value => JobGitBinary(value),
+  unbox=value => {
+    match value {
+      JobGitBinary(binary) => Some(binary)
+      _ => None
+    }
+  },
+)
