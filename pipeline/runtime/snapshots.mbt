@@ -121,6 +121,7 @@ pub fn insert_run_snapshot(
     ],
   )
   let run = Run::from_row(row)
+  snapshot_deployments(tx, repository_id, run.id, rerun_source)
   if merge_check_id != 0L {
     ignore(
       tx.execute(

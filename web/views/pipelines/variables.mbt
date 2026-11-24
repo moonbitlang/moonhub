@@ -173,6 +173,8 @@ fn render_variables(
       }
       b <+ "</div>"
       b <+ "\{@web_ui.render_secret_variable_tabs(repo, "variables", manager)}"
+      b <+
+        "<p><a href=\"\{@web_ui.repo_link(repo)}/settings/environments\">Deployment environments</a></p>"
       if saved {
         b <+ "<p class=\"flash-success\" role=\"status\">Variable saved.</p>"
       }

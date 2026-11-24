@@ -5,6 +5,7 @@ let eligible_provider_jobs : String =
   #|JOIN repository repo ON repo.id = r.repository_id JOIN "user" u ON u.id = r.requested_by_user_id
   #|LEFT JOIN team_member tm ON tm.user_id = u.id AND tm.team_id = repo.team_id
   #|WHERE j.status = 'queued' AND r.status IN ('queued', 'running') AND r.cancel_requested = 0 AND repo.ready = 1
+  #|AND (NOT EXISTS (SELECT 1 FROM pipeline_job_deployment d WHERE d.job_id=j.id) OR EXISTS (SELECT 1 FROM pipeline_deployment_admission d WHERE d.job_id=j.id))
   #|AND r.definition_version IN (1, 2, 3, 4, 5, 6, 7, 8, ?)
   #|AND NOT EXISTS (SELECT 1 FROM pipeline_concurrency_slot s WHERE s.run_id=r.id AND (s.job_id IS NULL OR s.job_id=j.id) AND s.admitted=0)
   #|AND (j.matrix_group='' OR (SELECT COUNT(*) FROM pipeline_job siblings WHERE siblings.run_id=j.run_id AND siblings.matrix_group=j.matrix_group AND siblings.status IN ('leased','running')) < j.max_parallel)
@@ -104,6 +105,7 @@ fn attempt_authorized(
   tx : @database.DbTransaction,
   row : @database.DbRow,
 ) -> Bool raise {
+  guard deployment_authorized(tx, row.get_name("job_id")) else { return false }
   let actor_id : Int64 = row.get_name("requested_by_user_id")
   let repository_id : Int64 = row.get_name("repository_id")
   let provider_id : Int64? = row.get_name("provider_id")
@@ -585,7 +587,11 @@ pub fn Coordinator::claim(
           context["head_ref"] = saved.head_ref
           context["base_ref"] = saved.base_ref
           if (row.get_name("definition_version") : Int64) >= 6L {
-            variables = saved.variables
+            variables = deployment_variables(
+              tx,
+              row.get_name("job_id"),
+              saved.variables,
+            )
           }
           if (row.get_name("definition_version") : Int64) >= 5L {
             dispatch_inputs = job.call_inputs.unwrap_or(saved.inputs)

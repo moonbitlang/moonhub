@@ -262,9 +262,12 @@ fn parse_job(
     fields,
     [
       "name", "runs-on", "needs", "env", "defaults", "timeout-minutes", "steps",
-      "permissions", "if", "outputs", "continue-on-error", "concurrency",
+      "permissions", "if", "outputs", "continue-on-error", "concurrency", "environment",
     ],
     ctx,
+  )
+  let (deployment_environment, deployment_url) = parse_deployment_environment(
+    fields.get("environment"),
   )
   let (runner_group, selector) = match fields.get("runs-on") {
     Some(Map(selector)) => {
@@ -573,6 +576,8 @@ fn parse_job(
     reusable_call: None,
     call_inputs: None,
     context_prefix: "",
+    deployment_environment,
+    deployment_url,
     // Require the updated runtime for literal numeric index expressions.
     // Persist this decision; old snapshots decode it as false on rerun.
     compatibility_runtime: outputs.values().any(needs_index_runtime) ||

@@ -1,7 +1,7 @@
 export function mountPipelineLogs(signal: AbortSignal) {
   type StepUpdate = { step_id: string; state: string; exit_code: number };
   type JobUpdate = { id: string; attempt_id: string; state: string; result: string; actual_result?: string; scheduling_error?: string; reason: string; steps: StepUpdate[]; environment?: { name: string; selector: string; architecture: string; image: string } | null };
-  type RunUpdate = { state: string; result: string; jobs: JobUpdate[] };
+  type RunUpdate = { deployment_signature?: string; state: string; result: string; jobs: JobUpdate[] };
   type LogChunk = { id: string; text: string; step_id: string };
   type LogPage = { chunks: LogChunk[]; next_cursor: string; has_more: boolean; complete: boolean };
   class PollError extends Error {
@@ -188,6 +188,7 @@ export function mountPipelineLogs(signal: AbortSignal) {
     function updateBadge(badge: HTMLElement, value: string) { if (badge.dataset.state !== value) { badge.dataset.state = value; badge.textContent = label(value); } }
     function updateStatus(update: RunUpdate) {
       // Expansion adds durable job panels after the initial page was rendered.
+      if (update.deployment_signature !== undefined && run!.dataset.deploymentSignature !== update.deployment_signature) { window.location.reload(); return; }
       if (update.jobs.some(job => !jobs.has(job.id))) { window.location.reload(); return; }
       run!.dataset.runPhase = update.state;
       updateBadge(run!.querySelector<HTMLElement>('[data-run-state]')!, update.result);

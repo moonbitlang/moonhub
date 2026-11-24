@@ -36,6 +36,9 @@ let pipeline_updates_module : @moonback.Module = Module(ctx => {
     })
     res.send_json(
       {
+        "deployment_signature": ToJson::to_json(
+          @runtime.job_deployments(pool, actor, repo, number),
+        ).stringify(),
         "state": pipeline_run_state(run.state),
         "result": pipeline_result(run.state, run.conclusion),
         "jobs": ToJson::to_json(jobs),
