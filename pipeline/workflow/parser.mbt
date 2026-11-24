@@ -583,7 +583,7 @@ fn parse_job(
     source_access: steps.any(step => {
       step.remote && !step.uses.unwrap_or("").has_prefix("docker://")
     }) ||
-    api_permissions.land(2) != 0,
+    api_permissions.land(26) != 0,
     containers: if containers is None &&
       (
         runs_on.contains("linux-ci") ||

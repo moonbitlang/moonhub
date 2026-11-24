@@ -186,3 +186,23 @@ test "repeated include patterns preserve ordered re-inclusion and huge diffs run
   let large = Array::make(10000, "unrelated/" + "x".repeat(1000))
   assert_true(trigger.matches_push("main", paths=Some(large)))
 }
+
+///|
+test "job metadata check and actions scopes inherit replace and reject unsupported levels" {
+  let source = "permissions: {pull-requests: write, checks: write, actions: read}\n" +
+    basic_workflow
+  let job = parse(source).jobs[0]
+  assert_eq(job.api_permissions, 28)
+  assert_false(job.contents_read)
+  assert_true(job.source_access)
+  assert_eq(
+    parse(source + "\n    permissions: {checks: write}").jobs[0].api_permissions,
+    16,
+  )
+  for key in ["pull-requests", "checks"] {
+    expect_invalid(
+      "permissions: {" + key + ": read}\n" + basic_workflow,
+      "permissions",
+    )
+  }
+}

@@ -9,6 +9,11 @@ import { ActionRuntime } from '../runner/actions/runtime.mjs';
 const config = JSON.parse(await fs.readFile(process.argv[2], 'utf8'));
 process.env.MOONHUB_ACTION_ARTIFACT_TOKEN = config.token;
 process.env.MOONHUB_ACTION_ARTIFACT_URL = config.server;
+if (config.api_token) process.env.MOONHUB_ACTION_API_TOKEN = config.api_token;
+if (config.dependency_token) {
+  process.env.MOONHUB_ACTION_DEPENDENCY_TOKEN = config.dependency_token;
+  process.env.MOONHUB_ACTION_DEPENDENCY_URL = config.server + '/-/runner-api/v1/dependencies';
+}
 const runtime = new ActionRuntime({ ...config, node20: process.env.MOONHUB_ARTIFACT_NODE20 || process.execPath });
 const upload = 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'; // v4.6.2
 const download = 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093'; // v4.3.0
@@ -34,6 +39,11 @@ if (config.phase === 'produce') {
   await run(upload, { name: 'bin-macos', path: 'mac.txt', 'retention-days': '7' });
   const missing = await run(upload, { name: 'must-not-exist', path: 'missing-file', 'if-no-files-found': 'ignore' });
   assert.equal(missing['artifact-id'], undefined);
+} else if (config.phase === 'consume-cross') {
+  const output = path.join(config.workspace, 'cross-run');
+  await run(download, { name: 'bin-linux', path: output, 'run-id': config.producer_run_id, 'github-token': config.api_token, repository: config.repository });
+  assert.equal(await fs.readFile(path.join(output, 'overwritten.txt'), 'utf8'), 'replacement');
+  assert.equal(createHash('sha256').update(await fs.readFile(path.join(output, 'large.bin'))).digest('hex'), createHash('sha256').update(large).digest('hex'));
 } else {
   const output = path.join(config.workspace, 'merged');
   await run(download, { pattern: 'bin-*', path: output, 'merge-multiple': 'true' });

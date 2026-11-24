@@ -53,7 +53,7 @@ const allowed = {
     'web/views/merge_requests', 'web/views/settings', 'web/views/pipelines', 'web/views/notifications', 'web/views/attachments',
   ],
   'web/views/releases': ['releases','domain','repository','web/context','web/ui'],
-  'web/api': ['releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'pipeline/runtime', 'attachments', 'web/dto', 'web/context'],
+  'web/api': ['pipeline/results', 'releases', 'webhooks', 'domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'pipeline/runtime', 'attachments', 'web/dto', 'web/context'],
   'web/mcp': ['domain', 'database', 'identity', 'repository', 'gitops', 'collaboration', 'pipeline', 'pipeline/runtime', 'attachments', 'web/dto', 'web/context'],
   'web/dto': ['domain', 'collaboration', 'pipeline/runtime'],
   'web/pipeline_api': ['domain', 'identity', 'pipeline/protocol', 'pipeline/runtime', 'pipeline/results', 'pipeline/oidc', 'web/context'],

@@ -205,3 +205,31 @@ inventory, cold Windows preparation, Apple signing/notarization, external OSS/S3
 release credentials and openseek's public API deployment must each be configured
 and verified. The pinned application repository and original workflows remain
 unchanged.
+
+### Job PR metadata and named checks
+
+`pull-requests: write` grants `PATCH /repos/OWNER/REPO/pulls/NUMBER` for `title`
+and `body`. The existing PR editor and optimistic-version policy still applies;
+this endpoint does not merge, retarget or close a PR. `checks: write` grants
+`POST /repos/OWNER/REPO/check-runs` and `PATCH /repos/OWNER/REPO/check-runs/ID`.
+Both scopes require assignment v18. Explicit job permissions replace inherited
+permissions; reusable callees can only reduce them. Neither scope grants contents
+or Actions access.
+
+Checks require `name` and the job's exact `head_sha`. The server binds repository,
+run, worker attempt and writer identity. Updates cannot change identity or rename
+a check, and another job or rerun cannot update it. Supported statuses are
+`queued`, `in_progress`, and `completed`; a conclusion completes the check.
+Conclusions are `success`, `failure`, `neutral`, `cancelled`, `skipped`,
+`timed_out`, and `action_required`. `output` supports required `title` and `summary`
+and optional `text`; outputs use the same delivered-secret masking as logs.
+A job can publish at most 100 checks; names/titles have 200-character limits,
+and summary/text each allow 65,535 characters. Unsupported fields are rejected.
+
+`GET /repos/OWNER/REPO/commits/SHA/check-runs` lists checks with pagination and
+writer provenance for repository readers (a read PAT or a live checks-write job
+token). Both existing REST mounts expose all routes. Tokens stop working on
+completion, cancellation, lease expiry or access revocation. External App
+credentials are outside this implementation. See the
+[GitHub check-run contract](https://docs.github.com/en/rest/checks/runs) and
+[MoonHub named merge requirements](merge-checks.md#named-results).

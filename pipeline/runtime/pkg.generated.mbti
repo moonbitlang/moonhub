@@ -16,6 +16,8 @@ import {
 // Values
 pub fn cancel_run_in_transaction(@database.DbTransaction, Int64, now? : Int64?) -> Unit raise
 
+pub fn check_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, String, page? : Int64, per_page? : Int64) -> @json.Json raise
+
 pub fn commit_workflow_runs(@database.Database, @domain.CurrentUser, @domain.RepoId, branch~ : String, sha~ : String) -> Array[CommitWorkflowRun] raise
 
 pub fn delete_secret(@database.Database, @domain.CurrentUser, @domain.RepoId, String, Int64) -> Unit raise
@@ -110,6 +112,8 @@ pub fn Coordinator::drain_worker(Self, String, Int64) -> Unit raise
 pub fn Coordinator::ensure_provider(Self, @domain.CurrentUser, String, String, Array[String], Array[@domain.RepoId], scope? : ProviderScope?, preserve_existing? : Bool) -> Provider raise
 pub fn Coordinator::expire_attempts(Self) -> Int32 raise
 pub fn Coordinator::heartbeat(Self, Int64, String, Int32) -> @protocol.LeaseState raise
+pub fn Coordinator::job_api_access(Self, String, @domain.RepoId, String) -> (@domain.CurrentUser, LiveAttempt) raise
+pub fn Coordinator::job_api_access_hash(Self, String, @domain.RepoId, String) -> (@domain.CurrentUser, LiveAttempt) raise
 pub fn Coordinator::job_environments(Self, @domain.CurrentUser, @domain.RepoId, Int64) -> Map[String, @environment.Definition] raise
 pub fn Coordinator::list_providers(Self, @domain.CurrentUser) -> Array[Provider] raise
 pub fn Coordinator::new(@database.Database, clock? : () -> Int64) -> Self
@@ -139,6 +143,7 @@ pub fn Coordinator::step_secrets(Self, Int64, String, @protocol.SecretRequest) -
 pub fn Coordinator::sync_provider(Self, String, @protocol.ProviderSyncRequest) -> @protocol.ProviderSnapshot raise
 pub fn Coordinator::sync_worker(Self, String, @protocol.WorkerSyncRequest) -> @protocol.WorkerSnapshot raise
 pub fn Coordinator::update_step(Self, Int64, String, @protocol.StepRequest) -> @protocol.LeaseState raise
+pub fn Coordinator::write_check_run(Self, String, @domain.RepoId, Map[String, @json.Json], id? : Int64) -> @json.Json raise
 
 #derive(@debug.Debug, @json.ToJson)
 pub struct DeploymentEnvironment {

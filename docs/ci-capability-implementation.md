@@ -200,6 +200,28 @@ credential behavior uses equivalent controlled-download fixtures; no external
 private credential was provisioned. Required check/format/interface commands and the 56-package boundary check
 passed.
 
+## Job APIs and named merge gates
+
+- #103/#104: assignment v18 adds explicit PR-metadata and Checks-write scopes.
+  Both API mounts enforce live grants and repository/editor authorization. Check
+  identities bind the current job, attempt and SHA; immutable identity, ownership,
+  bounded output and delivered-secret masking prevent impersonation or leakage.
+- #106: a separate Actions-read REST adapter lists the selected run's artifacts
+  and grants bounded, live-authorized downloads. Twirp retains its same-run scope.
+  Expired artifacts, capabilities, jobs and cross-repository requests are denied.
+- #111: branch settings/API accept workflow, named-job and named-check selectors.
+  Current candidate/version/generation and latest producer identity are required.
+  Missing and duplicate names block explicitly; optional failures do not block
+  a selected successful job/check. Whole-workflow rules retain their old meaning.
+
+Validation: the native/HTTP regression set passed 52/53 initially; the only failure
+was an assertion expecting 400 instead of the Checks API's existing 422 adapter
+status. The corrected API test and real upstream Artifact v4 cross-run fixture
+then passed 2/2. Named gates cover moved candidates, missing/duplicate job and
+check names, and optional failures. JavaScript tests passed 60/60; package
+boundaries passed for 56 packages. The CI storage acceptance script also runs
+that upstream cross-run fixture. No external App or cloud resources were created.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package
