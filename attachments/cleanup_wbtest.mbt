@@ -22,8 +22,8 @@ async test "repository deletion journals attachments and retries partial cleanup
         1,
       )
     })
-    let uploader = attachment_storage_lock(root)
-    assert_true(uploader.try_lock(Exclusive))
+    let uploader = @filelock.acquire(open_attachment_storage_lock(root))
+    defer uploader.close()
     cleanup_pending(pool, root)
     assert_true(@fs.exists(path))
     uploader.close()
@@ -63,7 +63,7 @@ async test "attachment cleanup survives restart and refuses traversal and storag
       let pool = @database.new_db_pool({ path, }, group)
       @database.initialize_db(pool)
       let id = "a".repeat(64)
-      let lock = attachment_storage_lock(root)
+      let lock = open_attachment_storage_lock(root)
       lock.close()
       @fs.write_file(storage_path(root, id), "persisted")
       pool.with_client(client => {

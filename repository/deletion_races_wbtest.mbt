@@ -5,16 +5,18 @@ async test "repository control handles remain exclusive across deletion cleanup 
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let old = repository_write_lock(root, repo)
     defer old.close()
-    old.unlock()
+    let retained = @fs.open(repository_lock_path(root, repo), mode=ReadWrite)
+    defer retained.close()
+    old.close()
     delete_repository(pool, root, actor, repo, 1L, repo.path())
     cleanup_deleted_repositories(pool, root)
     create_managed_repository(pool, root, repo, "private", false)
     let current = repository_write_lock(root, repo)
     defer current.close()
-    assert_false(old.try_lock(Exclusive))
-    current.unlock()
-    assert_true(old.try_lock(Exclusive))
-    assert_false(current.try_lock(Exclusive))
+    assert_false(retained.try_lock(Exclusive))
+    current.close()
+    assert_true(retained.try_lock(Exclusive))
+    assert_true(@gitops.try_file_lock(repository_lock_path(root, repo)) is None)
     assert_true(repository_scope(pool, actor, repo).id != 1L)
   })
 }
@@ -75,7 +77,7 @@ async test "a waiting writer rejects a replacement identity and leaves its refs 
       assert_eq(code, 0, msg=output.text())
       @fs.write_file("\{repo.git_dir(root)}/keep", "replacement")
       let refs = @gitops.run_git(repo.git_dir(root), ["show-ref"])
-      lock.unlock()
+      lock.close()
       writer.wait()
       assert_eq(@gitops.run_git(repo.git_dir(root), ["show-ref"]), refs)
       assert_eq(
@@ -105,6 +107,8 @@ async test "mirror candidate selected before deletion cannot claim or recreate a
     )
     let lock = mirror_lock(root, id)
     defer lock.close()
+    let retained = @fs.open(mirror_lock_path(root, id), mode=ReadWrite)
+    defer retained.close()
     assert_false(@fs.exists("\{root}/.mirrors/\{id}"))
     let selected = @async.Semaphore(1, initial_value=0)
     @async.with_task_group(group => {
@@ -114,7 +118,7 @@ async test "mirror candidate selected before deletion cannot claim or recreate a
       })
       selected.acquire()
       delete_repository(pool, root, actor, repo, 1L, repo.path())
-      lock.unlock()
+      lock.close()
       assert_true(worker.wait())
     })
     assert_false(@fs.exists("\{root}/.mirrors/\{id}"))
@@ -125,7 +129,7 @@ async test "mirror candidate selected before deletion cannot claim or recreate a
     cleanup_deleted_repositories(pool, root)
     let current = mirror_lock(root, id)
     defer current.close()
-    assert_false(lock.try_lock(Exclusive))
+    assert_false(retained.try_lock(Exclusive))
   })
 }
 
@@ -244,7 +248,7 @@ async test "import publication rejects a replaced staging token without marking 
           ),
         )
       })
-      lock.unlock()
+      lock.close()
       assert_true(worker.wait())
       let current = require_repository_job(pool, team, repo.name)
       assert_eq(current.stage_token, replacement)

@@ -11,17 +11,18 @@ async test "shared repository admission excludes writers until admission closes"
       "repositories",
       @identity.hash_token(repo.path()),
     )
-    let writer = @fs.open(path, mode=ReadWrite)
-    defer writer.close()
-    assert_false(writer.try_lock(Exclusive))
+    assert_true(@gitops.try_file_lock(path) is None)
     first.close()
-    assert_false(writer.try_lock(Exclusive))
+    assert_true(@gitops.try_file_lock(path) is None)
     second.close()
-    assert_true(writer.try_lock(Exclusive))
-    writer.unlock()
+    guard @gitops.try_file_lock(path) is Some(writer) else {
+      fail("writer remained blocked after repository admission closed")
+    }
+    defer writer.close()
+    writer.close()
     let current = repository_write_lock(root, repo)
     defer current.close()
-    assert_false(writer.try_lock(Shared))
+    assert_true(@gitops.try_file_lock(path, mode=Shared) is None)
   })
 }
 

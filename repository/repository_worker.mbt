@@ -284,16 +284,16 @@ pub async fn run_next_repository_job(
   })
   guard exists is Some(_) else { return false }
   let work = repository_work_directory(root)
-  let lock = @fs.open(
+  let file = @fs.open(
     "\{work}/worker.lock",
     mode=ReadWrite,
     create_mode=OpenOrCreate,
     permission=0o600,
   )
+  // A shared-volume lock serializes workers; a remaining running row belongs
+  // to an interrupted operation once this worker owns the lock.
+  guard @filelock.try_acquire(file) is Some(lock) else { return false }
   defer lock.close()
-  // A shared-volume lock serializes workers and releases automatically on exit,
-  // so a remaining 'running' row belongs to an interrupted operation.
-  guard lock.try_lock(Exclusive) else { return false }
   let row = pool.with_client(client => {
     client.query_opt(
       "\{repository_job_select} WHERE j.status IN ('pending', 'running') ORDER BY r.id LIMIT 1",

@@ -1,7 +1,7 @@
 ///|
 async test "busy cleanup beyond a full batch cannot starve later Git and mirror tasks" {
   @test_support.with_repository_test_data((pool, root) => {
-    let readers : Array[@fs.File] = []
+    let readers : Array[@filelock.FileLock] = []
     defer (for reader in readers {
       reader.close()
     })
@@ -217,7 +217,7 @@ async test "cleanup journals survive reopening and validate paths and missing fi
       })
       defer control.close()
       @fs.rmdir("\{root}/alice/demo.git", recursive=true)
-      control.unlock()
+      control.close()
       pool.close()
       let reopened = @database.new_db_pool({ path, }, group)
       defer reopened.close()
@@ -254,12 +254,14 @@ async test "cleanup serializes workers and removes mirror directories after a sa
     })
     delete_repository(pool, root, alice, repo, 1L, repo.path())
     @fs.mkdir("\{root}/.repository-cleanup")
-    let worker = @fs.open(
-      "\{root}/.repository-cleanup/worker.lock",
-      mode=ReadWrite,
-      create_mode=OpenOrCreate,
+    let worker = @filelock.acquire(
+      @fs.open(
+        "\{root}/.repository-cleanup/worker.lock",
+        mode=ReadWrite,
+        create_mode=OpenOrCreate,
+      ),
     )
-    assert_true(worker.try_lock(Exclusive))
+    defer worker.close()
     cleanup_deleted_repositories(pool, root)
     assert_true(@fs.exists(repo.git_dir(root)))
     worker.close()

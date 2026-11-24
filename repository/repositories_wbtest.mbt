@@ -108,12 +108,10 @@ async test "interrupted repository jobs recover publication and honor the worker
     )
     let job = require_repository_job(pool, team, repo.name)
     let work = repository_work_directory(root)
-    let lock = @fs.open(
-      "\{work}/worker.lock",
-      mode=ReadWrite,
-      create_mode=OpenOrCreate,
+    let lock = @filelock.acquire(
+      @fs.open("\{work}/worker.lock", mode=ReadWrite, create_mode=OpenOrCreate),
     )
-    assert_true(lock.try_lock(Exclusive))
+    defer lock.close()
     assert_true(!run_next_repository_job(pool, root, None))
     lock.close()
     let (code, _) = @process.collect_output_merged("git", [

@@ -4,6 +4,7 @@ package "hackwaly/moonhub/gitops"
 import {
   "hackwaly/moonhub/diff/protocol",
   "hackwaly/moonhub/domain",
+  "hackwaly/moonhub/filelock",
   "moonbitlang/async/fs",
   "moonbitlang/async/semaphore",
   "moonbitlang/core/json",
@@ -20,7 +21,7 @@ pub async fn default_ref(String) -> String
 
 pub fn diff_options(mode? : String, ignore_comments? : String, ignore_tests? : String) -> @protocol.Options raise
 
-pub async fn file_lock(String, mode? : @fs.Lock) -> @fs.File
+pub async fn file_lock(String, mode? : @fs.Lock) -> @filelock.FileLock
 
 pub fn git_args(String, Array[String]) -> Array[String]
 
@@ -54,7 +55,7 @@ pub async fn revision_comparison(String, Revision, String?) -> RevisionCompariso
 
 pub async fn run_git(String, Array[String]) -> String
 
-pub async fn try_file_lock(String, mode? : @fs.Lock) -> @fs.File?
+pub async fn try_file_lock(String, mode? : @fs.Lock) -> @filelock.FileLock?
 
 pub fn valid_commit_sha(String) -> Bool
 

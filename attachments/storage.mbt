@@ -81,9 +81,8 @@ pub async fn upload(
   let id = @identity.random_hex(32)
   let digest = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
   let byte_size = bytes.length().to_int64()
-  let lock = attachment_storage_lock(root)
+  let lock = @filelock.acquire(open_attachment_storage_lock(root))
   defer lock.close()
-  lock.lock(Exclusive)
   @repository.authorize_repository(pool, actor, scope.repo, Write)
   // Reserve metadata first so a process crash leaves an expirable upload.
   pool.with_client(client => {
@@ -192,9 +191,10 @@ pub async fn read(
 // Previously linked images are retained through edits and soft deletes.
 pub async fn cleanup_pending(pool : @database.Database, root : String) -> Unit {
   let root = @domain.trim_trailing_slash(@fs.realpath(root))
-  let lock = attachment_storage_lock(root)
+  guard @filelock.try_acquire(open_attachment_storage_lock(root)) is Some(lock) else {
+    return
+  }
   defer lock.close()
-  guard lock.try_lock(Exclusive) else { return }
   pool.with_client(client => {
     client.with_transaction(
       tx => {

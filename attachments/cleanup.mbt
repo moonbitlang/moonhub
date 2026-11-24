@@ -1,7 +1,7 @@
 ///|
 // Uploads and garbage collection share a volume lock. A cascade may delete
 // metadata during an upload, but cleanup cannot finish before its final write.
-async fn attachment_storage_lock(root : String) -> @fs.File {
+async fn open_attachment_storage_lock(root : String) -> @fs.File {
   let root = @domain.trim_trailing_slash(@fs.realpath(root))
   let directory = "\{root}/.attachments"
   @fs.mkdir(directory, recursive=true, permission=0o700) catch {
