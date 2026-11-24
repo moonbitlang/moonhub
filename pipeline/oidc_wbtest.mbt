@@ -31,7 +31,7 @@ async fn with_oidc_fixture(
 async test "OIDC signs verifiable JWTs from immutable snapshots with separate masked credentials" {
   with_oidc_fixture((c, pool, _, run, _, clock) => {
     let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
-    assert_eq(a.version, @protocol.release_assignment_version)
+    assert_eq(a.version, @protocol.report_assignment_version)
     assert_true(a.job.id_token_write)
     let id = @protocol.parse_decimal(a.attempt_id).unwrap()
     ignore(c.runtime.start(id, attempt_secret, 1, execution_id="e".repeat(32)))
@@ -406,12 +406,12 @@ async test "OIDC legacy definition six keeps assignment nine and cannot gain ide
 }
 
 ///|
-async test "OIDC definition seven ordinary jobs retain the complete v9 execution contract" {
+async test "ordinary jobs without OIDC retain the current report execution contract" {
   with_oidc_fixture(
     (c, _, _, run, _, _) => {
       assert_eq(run.definition_version, @workflow.format_version)
       let a = c.runtime.claim(provider_secret, claim_request()).unwrap()
-      assert_eq(a.version, @protocol.variable_assignment_version)
+      assert_eq(a.version, @protocol.report_assignment_version)
       assert_false(a.job.id_token_write)
       assert_eq(a.job.contents_read, run.definition.jobs[0].contents_read)
       assert_eq(a.job.context.get("actor"), Some("alice"))

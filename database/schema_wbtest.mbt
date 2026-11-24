@@ -14,7 +14,7 @@ async test "empty database initializes the complete baseline and repeats safely"
       )
       for
         (kind, count) in [
-          ("table", 110L),
+          ("table", 111L),
           ("index", 81L),
           ("view", 8L),
           ("trigger", 67L),

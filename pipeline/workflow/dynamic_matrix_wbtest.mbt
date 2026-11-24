@@ -37,6 +37,15 @@ test "dynamic matrix templates round trip and enforce global expansion budgets" 
     remaining_steps=1,
     remaining_bytes=65536,
   )
+  let (_, legacy_jobs) = expand_dynamic_matrix(
+    { ..template, reports: false, source_access: false, },
+    context,
+    remaining_jobs=1,
+    remaining_steps=1,
+    remaining_bytes=65536,
+  )
+  assert_false(legacy_jobs[0].reports)
+  assert_false(legacy_jobs[0].source_access)
   assert_eq(jobs.length(), 1)
   assert_eq(jobs[0].id, "build[1]")
   assert_eq(jobs[0].runs_on, ["self-hosted", "linux"])

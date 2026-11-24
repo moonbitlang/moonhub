@@ -1355,7 +1355,7 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
     )
     let coordinator = merge_check_provider(pool)
     let (assignment, token) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(assignment.version, @protocol.variable_assignment_version)
+    assert_eq(assignment.version, @protocol.report_assignment_version)
     assert_eq(assignment.commit_sha, sha)
     assert_eq(assignment.job.steps[0].uses, "moonhub/checkout@v1")
     assert_eq(assignment.job.steps[0].moonbit_version, "")
@@ -1377,7 +1377,7 @@ async test "MoonBit setup assignments and reruns retain the snapshotted toolchai
       ToJson::to_json(run.definition),
     )
     let (again, _) = claim_dag_attempt(coordinator, provider_secret)
-    assert_eq(again.version, @protocol.run_attempt_assignment_version)
+    assert_eq(again.version, @protocol.report_assignment_version)
     assert_eq(again.job.steps[1].moonbit_version, "0.10.17+093cb8f9c")
   })
 }
@@ -1396,7 +1396,7 @@ async test "action assignments preserve templates and allow cleanup after failur
       let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
-      assert_eq(assignment.version, @protocol.variable_assignment_version)
+      assert_eq(assignment.version, @protocol.report_assignment_version)
       assert_eq(assignment.job.steps[1].templates.get("if"), Some("always()"))
       let id = @protocol.parse_decimal(assignment.attempt_id).unwrap()
       ignore(
@@ -1504,7 +1504,7 @@ async test "new run-only workflows receive action runtime assignments" {
       let assignment = coordinator.runtime
         .claim(provider_secret, claim_request())
         .unwrap()
-      assert_eq(assignment.version, @protocol.variable_assignment_version)
+      assert_eq(assignment.version, @protocol.report_assignment_version)
       assert_true(
         assignment.job.steps.all(step => {
           !step.remote && step.templates.is_empty()

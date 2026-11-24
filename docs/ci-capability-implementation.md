@@ -168,7 +168,7 @@ Validation: parser, provider isolation, runner and migration suites passed
 passed for 56 packages. The existing real Docker CI script now covers PostgreSQL
 connectivity, Docker action inputs/outputs and cleanup before success, failure,
 cancellation, timeout and startup-failure completion. This local workspace has no
-Docker daemon; real-container acceptance remains pending that CI job and is not
+Docker daemon; real-container acceptance is performed by that CI job and is not
 claimed by the mocked tests.
 
 ## Source and private dependencies
@@ -221,6 +221,66 @@ then passed 2/2. Named gates cover moved candidates, missing/duplicate job and
 check names, and optional failures. JavaScript tests passed 60/60; package
 boundaries passed for 56 packages. The CI storage acceptance script also runs
 that upstream cross-run fixture. No external App or cloud resources were created.
+
+## Run reports
+
+- #109/#110: schema 57 persists bounded per-attempt summaries and structured
+  notice/warning/error annotations. Assignment v19 enables capture after each
+  invocation, including failed commands and pre/main/post handlers. Revisions
+  are monotonic and idempotent; live execution, known steps and repository read
+  authorization retain the existing lease and visibility boundaries.
+- Runner masks and server-side delivered-secret/lease masking protect stored
+  text. Safe Markdown and escaped annotation fields preserve step and source
+  positions. Error annotations alone do not change the process conclusion.
+  Limits, truncation, cancellation and historical reports are documented in
+  `docs/run-reports.md`.
+- Older snapshots default reporting to disabled. Dynamic expansion preserves
+  saved capability flags instead of acquiring the current parser's defaults.
+  The native build precedes native tests because the real job Git HTTP fixture
+  executes the built server's trusted receive-pack hook.
+
+Validation: report HTTP/real-runner and migration tests passed 10/10; JavaScript
+runtime/container/dependency tests passed 63/63. Browser reports, Actions
+navigation and environment settings passed 3/3. TypeScript and all 56 package
+boundaries passed. Final local regression results are recorded below; required
+platform acceptance is tracked on the PR.
+
+## Original feature-branch validation
+
+The pinned production compiler passed `moon build --strip -j 1` and the complete
+`moon test --strip -j 1` suite: **899/899 tests**. Runner JavaScript passed 63/63;
+CI orchestration and deployment-script regressions passed 51/51. TypeScript,
+browser asset generation, the three affected browser flows and the final report
+rendering check passed. The package-boundary check passed for all 56 packages.
+The required check/format/interface sequence passed without warnings.
+
+Native Git fixtures used Git 2.48.1; HTTP push clients used the system Git with
+HTTP transport support. Script regressions used Python 3.13 because the system
+Python 3.10 lacks the existing fixtures' `TestCase.enterContext` API. The local
+workspace has no Docker daemon. GitHub's required Linux/Docker, Windows matrix,
+macOS, frontend, build/deployment and aggregate checks remain the platform gate.
+
+## Stacked review and regression fixes
+
+Three independent reviews covered workflow planning and scheduling, server/Web
+authorization, and runner/platform execution. A second pass checked the routing,
+configuration revision, lifecycle filtering, and report masking fixes.
+
+The stack now includes regressions for bare indexed step conditions, group-only
+Windows VM routing with grant revocation and explicit VM opt-in, lifecycle path
+filters against captured merge bases after branch movement, and stable dynamic
+matrix identities on failed-only retries. Dependency grant revisions cannot be
+reused after deletion/recreation. Old dynamic checkout snapshots retain their
+saved source capability. Build-order and schema-fixture prerequisites live in the
+first layer that needs them.
+
+Report tests cover masking before normalization/truncation, later mask expansion,
+multiline and decoded JSON credentials, repeated carriage returns, UTF-8 cuts,
+and client/server field and aggregate budgets. Registered masks must be applied
+before writing sensitive content; later masks cannot recall already published
+reports. The fixes passed independent before/after regressions and the pinned
+check/format/interface sequence. Each stacked PR tracks its own platform CI;
+Docker and OS-specific acceptance remains distinct from local fixtures.
 
 ## Deferred and reporting-only work
 

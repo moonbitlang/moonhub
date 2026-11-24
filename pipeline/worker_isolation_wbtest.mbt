@@ -104,7 +104,7 @@ async test "single-use CI claims require the outside controller and remain consu
     assert_true(c.runtime.claim("c".repeat(64), claim) is None)
     c.runtime.arm_ci_worker("b".repeat(64), "manager", wid, 2L)
     let assignment = c.runtime.claim("c".repeat(64), claim).unwrap()
-    assert_eq(assignment.version, @protocol.container_assignment_version)
+    assert_eq(assignment.version, @protocol.report_assignment_version)
     assert_true(
       assignment.job.context["container_plan"].contains("debian:bookworm"),
     )
