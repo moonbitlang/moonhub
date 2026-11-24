@@ -133,25 +133,7 @@ async fn create_run_event(
       )
     }
     if scheduled_minute >= 0L {
-      let utc = pool.with_client(c => {
-        c.query_one(
-          "SELECT CAST(strftime('%M',?*60,'unixepoch') AS INTEGER) minute,CAST(strftime('%H',?*60,'unixepoch') AS INTEGER) hour,CAST(strftime('%d',?*60,'unixepoch') AS INTEGER) day,CAST(strftime('%m',?*60,'unixepoch') AS INTEGER) month,CAST(strftime('%w',?*60,'unixepoch') AS INTEGER) weekday",
-          params=[
-            scheduled_minute, scheduled_minute, scheduled_minute, scheduled_minute,
-            scheduled_minute,
-          ],
-        )
-      })
-      guard triggers.schedules.any(cron => {
-        @workflow.cron_matches(
-          cron,
-          (utc.get_name("minute") : Int64).to_int(),
-          (utc.get_name("hour") : Int64).to_int(),
-          (utc.get_name("day") : Int64).to_int(),
-          (utc.get_name("month") : Int64).to_int(),
-          (utc.get_name("weekday") : Int64).to_int(),
-        )
-      }) else {
+      guard schedules_due(triggers.schedules, scheduled_minute * 60000L) else {
         raise @domain.BadRequest(
           message="workflow schedule changed before snapshot",
         )

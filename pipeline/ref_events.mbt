@@ -48,6 +48,18 @@ pub async fn run_next_ref_event(
       )
       ignore(@runtime.require_run_author(pool, actor, scope.repo))
       let sha : String = row.get_name("new_sha")
+      let (commit_code, commit) = @gitops.merge_git_command(git_dir, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        sha + "^{commit}",
+      ])
+      guard commit_code == 0 else {
+        raise @domain.BadRequest(
+          message="trigger ref does not point to a commit",
+        )
+      }
+      let sha = commit.trim().to_owned()
       let reference : String = row.get_name("reference")
       let (branch, release_tag) = match release_branch {
         Some(branch) =>
@@ -56,7 +68,13 @@ pub async fn run_next_ref_event(
             Some(reference.strip_prefix("refs/tags/").unwrap().to_owned()),
           )
         None =>
-          (reference.strip_prefix("refs/heads/").unwrap().to_owned(), None)
+          (
+            reference
+            .strip_prefix("refs/heads/")
+            .unwrap_or_else(() => reference.strip_prefix("refs/tags/").unwrap())
+            .to_owned(),
+            None,
+          )
       }
       let output = @gitops.merge_git(git_dir, [
         "ls-tree", sha, ".github/workflows/",
@@ -107,15 +125,42 @@ pub async fn run_next_ref_event(
           @runtime.validate_workflow_path(path)
           let source = read_workflow_source(git_dir, sha, path)
           let trigger = @workflow.triggers(source)
-          if release_tag is Some(_) {
-            if !trigger.release {
+          let event : Map[String, Json] = match
+            (row.get_name("release_payload") : String?) {
+            Some(text) => @json.from_json(@json.parse(text))
+            None => Map([])
+          }
+          if release_tag is Some(tag) {
+            let prerelease = event.get("release")
+              is Some({ "prerelease": true, .. })
+            if !trigger.release ||
+              (prerelease && !trigger.release_types.contains("published")) {
               continue
+            }
+            event["action"] = Json::string(
+              if trigger.release_types.contains("published") {
+                "published"
+              } else {
+                "released"
+              },
+            )
+            if event.get("release") is None {
+              event["release"] = {
+                "tag_name": tag,
+                "target_commitish": sha,
+                "draft": false,
+                "prerelease": false,
+              }
             }
           } else {
-            if !trigger.matches_push(branch) {
+            if !trigger.matches_push(
+                branch,
+                tag=reference.has_prefix("refs/tags/"),
+              ) {
               continue
             }
-            if !changes_loaded &&
+            if !reference.has_prefix("refs/tags/") &&
+              !changes_loaded &&
               (
                 !trigger.push_filters.paths.is_empty() ||
                 !trigger.push_filters.paths_ignore.is_empty()
@@ -123,9 +168,21 @@ pub async fn run_next_ref_event(
               changes = changed_paths(git_dir, old, sha)
               changes_loaded = true
             }
-            if !trigger.matches_push(branch, paths=changes) {
+            if !trigger.matches_push(
+                branch,
+                paths=changes,
+                tag=reference.has_prefix("refs/tags/"),
+              ) {
               continue
             }
+          }
+          event["repository"] = {
+            "full_name": scope.repo.owner + "/" + scope.repo.name,
+          }
+          event["ref"] = Json::string(reference)
+          if release_tag is None {
+            event["before"] = Json::string(row.get_name("old_sha"))
+            event["after"] = Json::string(row.get_name("new_sha"))
           }
           let context : @workflow.RunContext = {
             repository: scope.repo.owner + "/" + scope.repo.name,
@@ -140,7 +197,7 @@ pub async fn run_next_ref_event(
             inputs: Map([]),
             variables: Map([]),
             release_tag,
-            event: None,
+            event: Some(event),
           }
           let definition = @workflow.resolve_context(
             @workflow.parse(source),
@@ -222,7 +279,13 @@ pub fn start_ref_event_worker(
           false
         }
       }
-      if !processed {
+      let workflow_processed = run_next_workflow_event(pool, root) catch {
+        _ => {
+          println("workflow event failed; will retry")
+          false
+        }
+      }
+      if !processed && !workflow_processed {
         @async.sleep(1000)
       }
     }

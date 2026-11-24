@@ -23,7 +23,7 @@ pub fn delete_variable(@database.Database, @domain.CurrentUser, @domain.RepoId, 
 
 pub fn get_run(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Run raise
 
-pub fn insert_run_snapshot(@database.DbTransaction, Int64, Int64, String, String, String, String, String, String, @workflow.Workflow, definition_version? : Int32, context? : @workflow.RunContext?, event_id? : Int64, merge_check_id? : Int64, capture_variables? : Bool, rerun_source? : Int64, failed_only? : Bool) -> Run raise
+pub fn insert_run_snapshot(@database.DbTransaction, Int64, Int64, String, String, String, String, String, String, @workflow.Workflow, definition_version? : Int32, context? : @workflow.RunContext?, event_id? : Int64, workflow_event_id? : Int64, merge_check_id? : Int64, capture_variables? : Bool, rerun_source? : Int64, failed_only? : Bool) -> Run raise
 
 pub fn list_jobs(@database.Database, @domain.CurrentUser, @domain.RepoId, Int64) -> Array[JobRun] raise
 

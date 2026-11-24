@@ -65,7 +65,7 @@ pub fn record_deploy_key_webhook_transaction(@database.Database, RepositoryScope
 
 pub fn record_merged_ref(@database.DbTransaction, Int64, Int64, Int64, String, String) -> Unit raise
 
-pub fn record_received_transaction(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, String) -> Unit raise
+pub fn record_received_transaction(@database.Database, @domain.CurrentUser, @domain.RepoId, String, String, String, workflow_events? : Bool) -> Unit raise
 
 pub async fn recover_ref_events_locked(@database.Database, RepositoryScope, String) -> Unit
 

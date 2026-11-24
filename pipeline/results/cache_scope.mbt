@@ -40,11 +40,24 @@ pub fn snapshot_cache_scope(
       "/merge",
       "refs/heads/" + context.base_ref,
     )
-  } else {
-    guard ["push", "workflow_dispatch", "schedule"].contains(context.event_name) else {
+  } else if context.event_name == "pull_request" {
+    guard context.event is Some(event) &&
+      event.get("pull_request") is Some({ "id": Number(id, ..), .. }) &&
+      id > 0.0 &&
+      id <= 9007199254740991.0 else {
       return
     }
-    ("refs/heads/" + run.source_branch, "")
+    (
+      "refs/pull/" + id.to_int64().to_string() + "/merge",
+      "refs/heads/" + context.base_ref,
+    )
+  } else {
+    guard [
+      "push", "workflow_dispatch", "schedule", "repository_dispatch", "workflow_run",
+    ].contains(context.event_name) else {
+      return
+    }
+    (@runtime.run_event_ref(Some(context), run.source_branch), "")
   }
   ignore(
     tx.execute(

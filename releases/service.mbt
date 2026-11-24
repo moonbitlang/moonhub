@@ -528,6 +528,7 @@ pub async fn Service::publish(
           txid,
           "prepared",
           updates,
+          workflow_events=false,
         )
         ignore(
           @gitops.merge_git(dir, [
@@ -544,11 +545,11 @@ pub async fn Service::publish(
           txid,
           "committed",
           updates,
+          workflow_events=false,
         )
       }
       // Only a manager publishing with execution authority may start CI.
       let trigger = if before.draft &&
-        !before.prerelease &&
         @identity.can_manage_team(self.pool, actor, scope.team_id) &&
         (access.can_trigger_workflows)() {
         Some(release_workflow_branch(dir, before.commit_sha))
@@ -594,7 +595,7 @@ pub async fn Service::publish(
             if trigger is Some((branch, diagnostic)) {
               ignore(
                 tx.execute(
-                  "INSERT INTO repository_ref_event(repository_id,actor_id,source_key,reference,old_sha,new_sha,state,last_error,release_branch) VALUES(?,?,?,?,'',?,?,?,?)",
+                  "INSERT INTO repository_ref_event(repository_id,actor_id,source_key,reference,old_sha,new_sha,state,last_error,release_branch,release_payload) VALUES(?,?,?,?,'',?,?,?,?,?)",
                   params=[
                     scope.id,
                     actor.id,
@@ -608,6 +609,16 @@ pub async fn Service::publish(
                     },
                     diagnostic,
                     branch,
+                    (
+                      {
+                        "action": "published",
+                        "release": {
+                          "tag_name": before.tag,
+                          "target_commitish": before.commit_sha,
+                          "draft": false,
+                          "prerelease": before.prerelease,
+                        },
+                      } : Json).stringify(),
                   ],
                 ),
               )

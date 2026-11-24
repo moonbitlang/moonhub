@@ -176,11 +176,17 @@ fn require_secret_policy(
 ) -> Unit raise {
   guard context is Some(context) &&
     (
-      ["workflow_dispatch", "push", "schedule"].contains(context.event_name) ||
+      [
+        "workflow_dispatch", "push", "schedule", "repository_dispatch", "workflow_run",
+      ].contains(context.event_name) ||
       (context.event_name == "release" && context.release_tag is Some(_))
-    ) else {
+    ) &&
+    !(context.event_name == "push" &&
+    context.event is Some(event) &&
+    event.get("ref") is Some(String(reference)) &&
+    reference.has_prefix("refs/tags/")) else {
     raise @domain.Forbidden(
-      message="Repository secrets are available only to authorized manual, push, schedule and release workflows, never MR checks.",
+      message="Repository secrets are available only to authorized branch, dispatch, completion, schedule and release workflows, never MR checks or tag pushes.",
     )
   }
   guard tx.query_opt(

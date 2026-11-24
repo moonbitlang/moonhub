@@ -243,9 +243,10 @@ async test "prereleases and untrusted release publishers do not create runs" {
         201,
       )
     }
+    assert_true(@pipeline.run_next_ref_event(pool, root))
     assert_false(@pipeline.run_next_ref_event(pool, root))
     let events = @runtime.list_trigger_events(pool, actor, repo)
-    assert_eq(events.length(), 1)
+    assert_eq(events.length(), 2)
     assert_eq(events[0].reference, "refs/tags/v1.0.2")
     assert_eq(events[0].error, "Release commit is not on the default branch.")
     assert_true(events[0].runs.is_empty())
@@ -270,5 +271,59 @@ async test "prereleases and untrusted release publishers do not create runs" {
     assert_eq(revoked.reference, "refs/tags/v1.0.3")
     assert_true(revoked.error.contains("repository owner or admin required"))
     assert_true(@runtime.list_runs(pool, actor, repo).is_empty())
+  })
+}
+
+///|
+async test "published subscribes to stable and prerelease publication exactly once" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let source = @test_support.single_job_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: {release: {types: [published]}}",
+    )
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    ignore(
+      @gitops.merge_git(repo.git_dir(root), [
+        "update-ref", "refs/heads/master", sha,
+      ]),
+    )
+    let token = @identity.create_access_token(
+      pool, actor, "publisher", "execute", 1,
+    )
+    for (tag, prerelease) in [("v1", false), ("v2-rc", true)] {
+      let (status, release) = api_test_request(
+        port,
+        "/repos/alice/demo/releases",
+        token,
+        Some({ "tag_name": tag, "prerelease": prerelease }),
+      )
+      assert_eq(status, 201)
+      guard release is { "id": id, .. } else { fail("release missing") }
+      assert_eq(
+        api_test_request(
+          port,
+          "/repos/alice/demo/releases/" + id.stringify(),
+          token,
+          Some({ "draft": false }),
+          verb=Patch,
+        ).0,
+        200,
+      )
+      assert_true(@pipeline.run_next_ref_event(pool, root))
+      assert_false(@pipeline.run_next_ref_event(pool, root))
+      let run = @runtime.list_runs(pool, actor, repo)[0]
+      assert_eq(run.commit_sha, sha)
+      let event = run.context.unwrap().event.unwrap()
+      assert_eq(event.get("action"), Some(Json::string("published")))
+      assert_true(
+        event.get("release")
+        is Some({ "prerelease": flag, "tag_name": String(name), .. }) &&
+        flag == ToJson::to_json(prerelease) &&
+        name == tag,
+      )
+    }
+    assert_eq(@runtime.list_runs(pool, actor, repo).length(), 2)
   })
 }

@@ -56,6 +56,7 @@ pub fn record_received_transaction(
   source_key : String,
   phase : String,
   updates : String,
+  workflow_events~ : Bool = true,
 ) -> Unit raise {
   let scope = repository_scope(pool, actor, repo)
   guard source_key.length() == 32 &&
@@ -87,7 +88,8 @@ pub fn record_received_transaction(
           raise @domain.BadRequest(message="invalid ref update")
         }
         let reference = fields[2]
-        if !reference.has_prefix("refs/heads/") {
+        if !reference.has_prefix("refs/heads/") &&
+          !reference.has_prefix("refs/tags/") {
           continue
         }
         guard @gitops.valid_commit_sha(fields[0]) &&
@@ -98,7 +100,7 @@ pub fn record_received_transaction(
           continue
         }
         if phase == "prepared" {
-          if !enabled {
+          if !enabled || !workflow_events {
             continue
           }
           // Automatic execution does not broaden the existing manager-only run policy.
