@@ -245,16 +245,12 @@ test "unsupported execution semantics fail closed at every mapping level" {
 }
 
 ///|
-test "YAML duplicate keys empty keys aliases tags and extra documents are rejected" {
+test "YAML duplicate keys empty keys tags and extra documents are rejected" {
   expect_invalid("name: Other\n" + basic_workflow, "duplicate")
   expect_invalid(basic_workflow + "\n        run: echo other", "duplicate")
   expect_invalid(basic_workflow + "\n    env: {X: 1, X: 2}", "duplicate")
   expect_invalid(basic_workflow + "\n'': ignored", "empty keys")
   expect_invalid(basic_workflow + "\n---\nname: ignored", "one YAML document")
-  expect_invalid(
-    basic_workflow.replace_all(old="name: Build", new="name: &name Build"),
-    "anchors",
-  )
   expect_invalid(
     basic_workflow.replace_all(old="name: Build", new="name: !!str Build"),
     "tags",

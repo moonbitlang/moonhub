@@ -69,17 +69,24 @@ fn schedule_tokens(source : String) -> Array[String] raise InvalidWorkflow {
         i += 1
       }
       tokens.push(String::from_array(chars[start:i].to_owned()).to_lower())
-    } else if ch.is_ascii_digit() {
-      while i < chars.length() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+    } else if ch.is_ascii_digit() || ch == '-' {
+      while i < chars.length() &&
+            (
+              chars[i].is_ascii_digit() ||
+              ['.', 'e', 'E', '+', '-'].contains(chars[i])
+            ) {
         i += 1
       }
       tokens.push(String::from_array(chars[start:i].to_owned()))
-    } else if ['=', '!', '&', '|'].contains(ch) &&
+    } else if ['=', '!', '<', '>', '&', '|'].contains(ch) &&
       i < chars.length() &&
-      ((chars[i] == '=' && (ch == '=' || ch == '!')) || chars[i] == ch) {
+      (
+        (chars[i] == '=' && ['=', '!', '<', '>'].contains(ch)) ||
+        (chars[i] == ch && ['&', '|'].contains(ch))
+      ) {
       tokens.push(ch.to_string() + chars[i].to_string())
       i += 1
-    } else if ['!', '(', ')', '.', '[', ']', ','].contains(ch) {
+    } else if ['!', '<', '>', '(', ')', '.', '[', ']', ','].contains(ch) {
       tokens.push(ch.to_string())
     } else {
       raise InvalidWorkflow("unsupported scheduling expression syntax")
@@ -141,7 +148,7 @@ fn ScheduleParser::atom(
   if token == "null" {
     return Value(Json::null())
   }
-  if token.get_char(0) is Some(ch) && ch.is_ascii_digit() {
+  if token.get_char(0) is Some(ch) && (ch.is_ascii_digit() || ch == '-') {
     return Value(
       @json.parse(token) catch {
         _ => raise InvalidWorkflow("invalid scheduling number")
@@ -161,7 +168,7 @@ fn ScheduleParser::atom(
     }
     guard [
       "contains", "startswith", "endswith", "format", "success", "failure", "cancelled",
-      "always",
+      "always", "join", "fromjson", "tojson",
     ].contains(token) else {
       raise InvalidWorkflow("unsupported scheduling function: " + token)
     }
@@ -181,12 +188,16 @@ fn ScheduleParser::atom(
     }
     let part = self.tokens[self.index]
     self.index += 1
-    guard (if bracket { part.has_prefix("'") } else { valid_identifier(part) }) &&
-      part != "constructor" &&
-      part != "__proto__" else {
+    let quoted = part.has_prefix("'")
+    let numeric = !part.is_empty() &&
+      (part == "0" || !part.has_prefix("0")) &&
+      part.to_array().all(ch => ch.is_ascii_digit())
+    let field = if bracket && quoted { part[1:].to_owned() } else { part }
+    guard (if bracket { quoted || numeric } else { valid_identifier(part) }) &&
+      !["constructor", "__proto__", "prototype"].contains(field.to_lower()) else {
       raise InvalidWorkflow("invalid scheduling field")
     }
-    fields.push(if bracket { part[1:].to_owned() } else { part })
+    fields.push(field)
     if bracket {
       self.expect("]")
     }
@@ -207,6 +218,7 @@ fn ScheduleParser::binary(
       "||" => 1
       "&&" => 2
       "==" | "!=" => 3
+      "<" | "<=" | ">" | ">=" => 4
       _ => 0
     }
     if precedence == 0 || precedence < minimum {
@@ -351,6 +363,7 @@ fn ScheduleExpr::evaluate(
 fn ScheduleExpr::check_context(
   self : ScheduleExpr,
   context : Map[String, Json],
+  output~ : Bool = false,
 ) -> Unit raise InvalidWorkflow {
   match self {
     Field(parts) => {
@@ -358,18 +371,28 @@ fn ScheduleExpr::check_context(
         raise InvalidWorkflow("unavailable scheduling context: " + parts[0])
       }
     }
-    Unary(expr) => expr.check_context(context)
-    Binary(_, left, right) => {
-      left.check_context(context)
-      right.check_context(context)
+    Unary(expr) => expr.check_context(context, output~)
+    Binary(op, left, right) => {
+      guard output || !["<", "<=", ">", ">="].contains(op) else {
+        raise InvalidWorkflow("unsupported scheduling operator: " + op)
+      }
+      left.check_context(context, output~)
+      right.check_context(context, output~)
     }
     Call(name, args) => {
+      guard output || !["join", "fromjson", "tojson"].contains(name) else {
+        raise InvalidWorkflow("unsupported scheduling function: " + name)
+      }
       if ["success", "failure", "cancelled", "always"].contains(name) {
         guard args.is_empty() && context.contains("__status") else {
           raise InvalidWorkflow("status function unavailable in this context")
         }
       }
-      guard (if name == "format" {
+      guard (if name == "join" {
+        args.length() == 1 || args.length() == 2
+      } else if name == "fromjson" || name == "tojson" {
+        args.length() == 1
+      } else if name == "format" {
         !args.is_empty()
       } else if ["success", "failure", "cancelled", "always"].contains(name) {
         true
@@ -379,7 +402,7 @@ fn ScheduleExpr::check_context(
         raise InvalidWorkflow("invalid scheduling function arity")
       }
       for arg in args {
-        arg.check_context(context)
+        arg.check_context(context, output~)
       }
     }
     Value(_) => ()
@@ -397,9 +420,43 @@ pub fn scheduling_expression(
 }
 
 ///|
+fn whole_scheduling_expression(source : String) -> Bool {
+  let text = source.trim().to_owned()
+  if !text.has_prefix("${{") || !text.has_suffix("}}") {
+    return false
+  }
+  let chars = text.to_array()
+  let mut quoted = false
+  let mut i = 3
+  while i + 1 < chars.length() {
+    if chars[i] == '\'' {
+      if quoted && chars[i + 1] == '\'' {
+        i += 2
+        continue
+      }
+      quoted = !quoted
+    }
+    if !quoted && chars[i] == '}' && chars[i + 1] == '}' {
+      return i + 2 == chars.length()
+    }
+    i += 1
+  }
+  false
+}
+
+///|
 pub fn scheduling_template(
   source : String,
   context : Map[String, Json],
+) -> String raise InvalidWorkflow {
+  schedule_template(source, context, validate_output=false)
+}
+
+///|
+fn schedule_template(
+  source : String,
+  context : Map[String, Json],
+  validate_output~ : Bool,
 ) -> String raise InvalidWorkflow {
   guard @utf8.encode(source).length() <= max_source_bytes &&
     !source.contains("\u{0000}") else {
@@ -439,14 +496,11 @@ pub fn scheduling_template(
     guard end >= 0 else {
       raise InvalidWorkflow("unterminated scheduling template")
     }
-    append(
-      schedule_string(
-        scheduling_expression(
-          String::from_array(chars[:end].to_owned()),
-          context,
-        ),
-      ),
-    )
+    let expr = schedule_parse(String::from_array(chars[:end].to_owned()))
+    expr.check_context(context, output=validate_output)
+    if !validate_output {
+      append(schedule_string(expr.evaluate(context)))
+    }
     rest = String::from_array(chars[end + 2:].to_owned())
   }
   append(rest)

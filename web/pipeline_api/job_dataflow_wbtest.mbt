@@ -15,11 +15,14 @@ async test "real runner carries version outputs through conditional matrix build
     #|      version: ${{ steps.version.outputs.version }}
     #|      publish: ${{ steps.version.outputs.publish }}
     #|      secret: ${{ steps.version.outputs.secret }}
+    #|      flags: ${{ join(fromJSON('["strict","legacy"]'), ' | ') }}
+    #|      ready: ${{ steps.version.outputs.count >= 2 }}
     #|    steps:
     #|      - id: version
     #|        run: |
     #|          echo version=1.2.3 >> "$GITHUB_OUTPUT"
     #|          echo publish=true >> "$GITHUB_OUTPUT"
+    #|          echo count=3 >> "$GITHUB_OUTPUT"
     #|          echo secret=must-stay-private >> "$GITHUB_OUTPUT"
     #|          echo ::add-mask::must-stay-private
     #|  build:
@@ -29,6 +32,8 @@ async test "real runner carries version outputs through conditional matrix build
     #|    runs-on: self-hosted
     #|    env:
     #|      VERSION: ${{ needs.prepare.outputs.version }}
+    #|      FLAGS: ${{ needs.prepare.outputs.flags }}
+    #|      READY: ${{ needs.prepare.outputs.ready }}
     #|    outputs:
     #|      artifact: ${{ steps.build.outputs.name }}
     #|    steps:
@@ -37,6 +42,8 @@ async test "real runner carries version outputs through conditional matrix build
     #|          TARGET: ${{ matrix.target }}
     #|        run: |
     #|          test "$VERSION" = 1.2.3
+    #|          test "$FLAGS" = 'strict | legacy'
+    #|          test "$READY" = true
     #|          printf '%s\n' "$VERSION-$TARGET" > artifact.txt
     #|          echo "name=$VERSION-$TARGET" >> "$GITHUB_OUTPUT"
     #|      # UPLOAD

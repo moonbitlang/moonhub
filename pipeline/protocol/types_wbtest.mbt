@@ -301,7 +301,8 @@ test "dataflow wire messages retain legacy defaults and exact string outputs" {
   assert_true(action_runtime_version(environment_assignment_version))
   assert_true(action_runtime_version(release_assignment_version))
   assert_true(action_runtime_version(profile_assignment_version))
-  assert_false(action_runtime_version(14))
+  assert_true(action_runtime_version(compatibility_assignment_version))
+  assert_false(action_runtime_version(15))
 }
 
 ///|

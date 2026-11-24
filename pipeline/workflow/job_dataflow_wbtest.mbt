@@ -120,6 +120,7 @@ test "job outputs reject secret references unknown contexts and invalid output n
     ),
   )
   assert_eq(old.condition, "success()")
+  assert_false(old.compatibility_runtime)
   assert_true(old.outputs.is_empty())
 }
 
