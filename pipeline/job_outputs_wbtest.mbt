@@ -596,3 +596,113 @@ async test "legacy definition 3 assignments keep their wire version empty datafl
     }
   })
 }
+
+///|
+async test "failed job reruns retain public identity event outputs and immutable attempt history" {
+  let source = output_workflow +
+    "\n  publish:\n    needs: build\n    runs-on: self-hosted\n    steps: [{run: echo publish}]\n"
+  with_protocol_fixture(
+    (c, pool, root, run, _, clock) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let prepare = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      ignore(
+        complete_output_job(c, prepare, attempt_secret, { "version": "1.2.3" }),
+      )
+      let build = c.runtime
+        .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
+        .unwrap()
+      ignore(
+        complete_output_job(
+          c,
+          build,
+          "c".repeat(64),
+          Map([]),
+          conclusion="failure",
+        ),
+      )
+      assert_true(
+        @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+        is Some(Failure),
+      )
+      let again = rerun_run(
+        pool,
+        root,
+        actor,
+        protocol_repo,
+        run.number,
+        failed_only=true,
+      )
+      assert_eq(again.public_id, run.public_id)
+      assert_eq(again.run_attempt, 2L)
+      assert_eq(again.context.unwrap().event, run.context.unwrap().event)
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, again.number)
+      assert_eq(jobs[0].reused_from, Some(run.number))
+      assert_true(jobs[0].conclusion is Some(Success))
+      // A new coordinator must recover reused outputs without in-memory state.
+      let restarted = @runtime.Coordinator::new(pool, clock=() => clock.val)
+      let retry = restarted
+        .claim(provider_secret, claim_request(id="3", secret="d".repeat(64)))
+        .unwrap()
+      assert_eq(retry.job.id, "build")
+      assert_eq(retry.version, @protocol.run_attempt_assignment_version)
+      assert_eq(
+        retry.job.context.get("run_id"),
+        Some(run.public_id.to_string()),
+      )
+      assert_eq(retry.job.context.get("run_attempt"), Some("2"))
+      assert_true(
+        retry.job.needs.get("prepare")
+        is Some(
+          { "outputs": { "version": "1.2.3", .. }, "result": "success", .. },
+        ),
+      )
+      ignore(complete_output_job(c, retry, "d".repeat(64), Map([])))
+      let publish = c.runtime
+        .claim(provider_secret, claim_request(id="4", secret="e".repeat(64)))
+        .unwrap()
+      assert_eq(publish.job.id, "publish")
+      ignore(complete_output_job(c, publish, "e".repeat(64), Map([])))
+      assert_true(
+        @runtime.get_run(pool, actor, protocol_repo, again.number).conclusion
+        is Some(Success),
+      )
+      assert_true(
+        @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+        is Some(Failure),
+      )
+      try
+        ignore(
+          rerun_run(
+            pool,
+            root,
+            actor,
+            protocol_repo,
+            again.number,
+            failed_only=true,
+          ),
+        )
+      catch {
+        @domain.BadRequest(_) => ()
+        err => raise err
+      } noraise {
+        _ => fail("successful run accepted failed-only rerun")
+      }
+      let third = rerun_run(pool, root, actor, protocol_repo, again.number)
+      assert_eq(third.public_id, run.public_id)
+      assert_eq(third.run_attempt, 3L)
+      assert_eq(third.commit_sha, run.commit_sha)
+      let assignments = c.runtime
+        .claim(provider_secret, claim_request(id="5", secret="f".repeat(64)))
+        .unwrap()
+      assert_eq(assignments.job.id, "prepare")
+      assert_eq(assignments.job.context.get("run_attempt"), Some("3"))
+      assert_eq(
+        @runtime.run_attempts(pool, actor, protocol_repo, third.number).map(r => {
+          r.run_attempt
+        }),
+        [3L, 2L, 1L],
+      )
+    },
+    workflow=source,
+  )
+}

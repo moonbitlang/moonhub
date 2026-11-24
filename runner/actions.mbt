@@ -91,15 +91,23 @@ async fn Runtime::execute_action_step(
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
-      @protocol.compatibility_assignment_version,
-    ].contains(self.assignment.version),
+      @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+    ].contains(self.assignment.version) &&
+    (
+      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.job.context.get("variables_context") == Some("true")
+    ),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
-      @protocol.compatibility_assignment_version,
-    ].contains(self.assignment.version),
+      @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+    ].contains(self.assignment.version) &&
+    (
+      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.job.context.get("dispatch_context") == Some("true")
+    ),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
     "sha": self.assignment.commit_sha,
@@ -254,15 +262,23 @@ async fn Runtime::execute_action_posts(
     "variables_context": [
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
-      @protocol.compatibility_assignment_version,
-    ].contains(self.assignment.version),
+      @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+    ].contains(self.assignment.version) &&
+    (
+      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.job.context.get("variables_context") == Some("true")
+    ),
     "variables": ToJson::to_json(self.assignment.job.variables),
     "dispatch_context": [
       @protocol.dispatch_assignment_version, @protocol.variable_assignment_version,
       @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
-      @protocol.compatibility_assignment_version,
-    ].contains(self.assignment.version),
+      @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
+    ].contains(self.assignment.version) &&
+    (
+      self.assignment.version != @protocol.run_attempt_assignment_version ||
+      self.assignment.job.context.get("dispatch_context") == Some("true")
+    ),
     "dispatch_inputs": ToJson::to_json(self.assignment.job.dispatch_inputs),
     "event": ToJson::to_json(self.assignment.job.event),
     "sha": self.assignment.commit_sha,
@@ -290,7 +306,7 @@ async fn Runtime::execute_action_posts(
       @protocol.dataflow_assignment_version, @protocol.dispatch_assignment_version,
       @protocol.variable_assignment_version, @protocol.oidc_assignment_version, @protocol.environment_assignment_version,
       @protocol.release_assignment_version, @protocol.profile_assignment_version,
-      @protocol.compatibility_assignment_version,
+      @protocol.compatibility_assignment_version, @protocol.run_attempt_assignment_version,
     ].contains(self.assignment.version) {
     let bytes = @fs.read_file(scratch + "/job-outputs.json")
     guard bytes.binary().length() <= 65536 else { raise InvalidResponse }

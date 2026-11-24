@@ -11,7 +11,7 @@ pub suberror InvalidWorkflow {
 pub let max_source_bytes : Int32 = 65536
 
 ///|
-pub let format_version : Int32 = 8
+pub let format_version : Int32 = 9
 
 ///|
 #derive(Debug, ToJson)

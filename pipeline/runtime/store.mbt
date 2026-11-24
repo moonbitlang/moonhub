@@ -31,6 +31,8 @@ pub enum Conclusion {
 #derive(Debug)
 pub struct Run {
   id : Int64
+  public_id : Int64
+  run_attempt : Int64
   repository_id : Int64
   number : Int64
   requested_by_user_id : Int64
@@ -66,6 +68,7 @@ pub struct JobRun {
   state : JobState
   conclusion : Conclusion?
   attempt_id : Int64?
+  reused_from : Int64?
 }
 
 ///|
@@ -131,7 +134,7 @@ fn decode_conclusion(value : String?) -> Conclusion? raise {
 ///|
 fn Run::from_row(row : @database.DbRow) -> Run raise {
   let version : Int64 = row.get_name("definition_version")
-  guard [1L, 2L, 3L, 4L, 5L, 6L, 7L, @workflow.format_version.to_int64()].contains(
+  guard [1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, @workflow.format_version.to_int64()].contains(
     version,
   ) else {
     raise InvalidRecord
@@ -140,6 +143,10 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
   let definition : @workflow.Workflow = @json.from_json(@json.parse(text))
   {
     id: row.get_name("id"),
+    public_id: (row.get_name("public_run_id") : Int64?).unwrap_or(
+      row.get_name("id"),
+    ),
+    run_attempt: row.get_name("run_attempt"),
     repository_id: row.get_name("repository_id"),
     number: row.get_name("number"),
     requested_by_user_id: row.get_name("requested_by_user_id"),
@@ -265,7 +272,7 @@ pub fn list_jobs(
   pool.with_client(client => {
     client
     .query_all(
-      "SELECT j.*, (SELECT a.id FROM pipeline_job_attempt a WHERE a.job_id = j.id ORDER BY a.number DESC LIMIT 1) AS attempt_id FROM pipeline_job j WHERE j.run_id = ? ORDER BY j.ordinal",
+      "SELECT j.*, (SELECT original.number FROM pipeline_job_reuse reuse JOIN pipeline_job source ON source.id=reuse.source_job_id JOIN pipeline_run original ON original.id=source.run_id WHERE reuse.job_id=j.id) AS reused_from, (SELECT a.id FROM pipeline_job_attempt a WHERE a.job_id = j.id ORDER BY a.number DESC LIMIT 1) AS attempt_id FROM pipeline_job j WHERE j.run_id = ? ORDER BY j.ordinal",
       params=[run.id],
     )
     .map(row => {
@@ -284,6 +291,7 @@ pub fn list_jobs(
         },
         conclusion: decode_conclusion(row.get_name("conclusion")),
         attempt_id: row.get_name("attempt_id"),
+        reused_from: row.get_name("reused_from"),
       }
     })
   })
@@ -344,5 +352,23 @@ pub fn workflow_run_history(
       )
       .map(Run::from_row)
     (count, rows)
+  })
+}
+
+///|
+pub fn run_attempts(
+  pool : @database.Database,
+  actor : @domain.CurrentUser,
+  repo : @domain.RepoId,
+  number : Int64,
+) -> Array[Run] raise {
+  let run = get_run(pool, actor, repo, number)
+  pool.with_client(c => {
+    c
+    .query_all(
+      "SELECT * FROM pipeline_run WHERE repository_id=? AND COALESCE(public_run_id,id)=? ORDER BY run_attempt DESC LIMIT 100",
+      params=[run.repository_id, run.public_id],
+    )
+    .map(row => Run::from_row(row))
   })
 }

@@ -161,7 +161,8 @@ async test "legacy definition five reruns do not capture newly configured reposi
     assert_eq(again.definition_version, 5)
     assert_true(again.context.unwrap().variables.is_empty())
     let (a, _) = claim_dag_attempt(c, provider_secret)
-    assert_eq(a.version, @protocol.dispatch_assignment_version)
+    assert_eq(a.version, @protocol.run_attempt_assignment_version)
+    assert_eq(a.job.context.get("variables_context"), Some("false"))
     assert_true(a.job.variables.is_empty())
   })
 }
