@@ -207,8 +207,7 @@ test "unsupported execution semantics fail closed at every mapping level" {
     ] {
     expect_invalid(field + basic_workflow, fragment)
   }
-  for
-    field in ["container: alpine", "services: {}", "strategy: {unknown: true}"] {
+  for field in ["strategy: {unknown: true}"] {
     expect_invalid(basic_workflow + "\n    " + field, "not supported")
   }
   for field in ["with: {}", "unknown: 1"] {

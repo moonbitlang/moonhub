@@ -6,7 +6,10 @@ async test "single-use CI claims require the outside controller and remain consu
     ignore(
       @test_support.workflow_commit(
         protocol_repo.git_dir(root),
-        @test_support.single_job_workflow,
+        @test_support.single_job_workflow.replace_all(
+          old="    steps:",
+          new="    container: debian:bookworm\n    steps:",
+        ),
       ),
     )
     let c = test_services(pool)
@@ -101,6 +104,10 @@ async test "single-use CI claims require the outside controller and remain consu
     assert_true(c.runtime.claim("c".repeat(64), claim) is None)
     c.runtime.arm_ci_worker("b".repeat(64), "manager", wid, 2L)
     let assignment = c.runtime.claim("c".repeat(64), claim).unwrap()
+    assert_eq(assignment.version, @protocol.container_assignment_version)
+    assert_true(
+      assignment.job.context["container_plan"].contains("debian:bookworm"),
+    )
     assert_eq(
       c.runtime.claim("c".repeat(64), claim).unwrap().attempt_id,
       assignment.attempt_id,

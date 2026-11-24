@@ -266,7 +266,7 @@ test('failed main still registers cleanup and post-if sees job failure', async t
 
 test('unsafe metadata, runtime and file command paths fail explicitly', async t => {
   const { config, runtime } = await fixture(t);
-  for (const [name, yaml] of Object.entries({ docker: 'runs: {using: docker, image: Dockerfile}', duplicate: 'runs: {using: node24, main: main.cjs, main: other.cjs}', alias: 'runs: &a {using: node24, main: main.cjs}', unknown: 'runs: {using: node24, main: main.cjs, unknown: yes}', deep: 'extra: ' + '['.repeat(1000) + '0' + ']'.repeat(1000) + '\nruns: {using: node24, main: main.cjs}' })) {
+  for (const [name, yaml] of Object.entries({ docker: 'runs: {using: docker, image: Dockerfile, privileged: true}', duplicate: 'runs: {using: node24, main: main.cjs, main: other.cjs}', alias: 'runs: &a {using: node24, main: main.cjs}', unknown: 'runs: {using: node24, main: main.cjs, unknown: yes}', deep: 'extra: ' + '['.repeat(1000) + '0' + ']'.repeat(1000) + '\nruns: {using: node24, main: main.cjs}' })) {
     const uses = await action(config, name, yaml); await assert.rejects(runtime.action(uses));
   }
   const unsafe = await action(config, 'unsafe', 'runs: {using: node24, main: main.cjs}', { 'main.cjs': `require('fs').appendFileSync(process.env.GITHUB_ENV,'NODE_OPTIONS=--require=evil\\n');` });

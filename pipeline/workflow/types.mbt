@@ -113,6 +113,7 @@ pub struct Job {
   context_prefix : String
   deployment_environment : String
   deployment_url : String
+  containers : @actions.ContainerPlan?
   id : String
   name : String
   needs : Array[String]
@@ -156,6 +157,11 @@ pub impl @json.FromJson for Job with fn from_json(json, path) {
       None | Some(Null) => None
       Some(value) =>
         Some(@json.from_json(value, path=path.add_key("call_inputs")))
+    },
+    containers: match fields.get("containers") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("containers")))
     },
     deployment_environment: @json.from_json(
       fields.get("deployment_environment").unwrap_or(Json::string("")),

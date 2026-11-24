@@ -253,6 +253,7 @@ pub fn ProviderScope::value(Self) -> String
 pub enum QueueReason {
   WaitingDependencies
   WaitingApproval
+  ContainerIsolationUnavailable
   WaitingConcurrency
   WaitingMatrixCapacity
   RequesterUnavailable
