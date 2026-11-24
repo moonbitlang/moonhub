@@ -128,8 +128,9 @@ remain distinct and do not become MoonHub job credentials.
 
 ## Release-triggered workflows
 
-MoonHub supports `on.release.types: [released]`. The bare `release` trigger
-also means `released` here; other activity types are not supported. Use it
+MoonHub supports `released` and `published` activity types. The bare `release`
+trigger defaults to stable-only `released`. Use `published` for both stable and
+prerelease publications, or combine the types. Use it
 alongside `workflow_dispatch` to retain the manual entry:
 
 ```yaml
@@ -139,9 +140,10 @@ on:
   workflow_dispatch:
 ```
 
-Only the first publication of a stable Release starts this trigger. Drafts,
-prereleases, publishing retries, changing which Release is latest, and pushing
-a Git tag alone do not trigger workflows. The publisher must be a repository
+Only the first qualifying publication starts a release workflow. Draft saves,
+publishing retries, and changing which Release is latest do not trigger it.
+Pushing a Git tag can independently select a `push.tags` workflow; tags created
+by release publication do not generate a second push workflow. The publisher must be a repository
 owner or admin using a browser session or an execute-scoped user token.
 Write-only tokens and job credentials can still publish when otherwise
 authorized, but cannot start another workflow. The push-workflow setting is
@@ -156,12 +158,13 @@ captured default branch and the exact workflow path. The worker rechecks the
 publisher's repository execution authority before creating the run.
 
 Runs and reruns expose `github.event_name` as `release`, `github.ref` as
-`refs/tags/<tag>`, and `github.event.action` as `released`. The event payload
+`refs/tags/<tag>`, and `github.event.action` as the selected `released` or
+`published` activity. The event payload
 includes `release.tag_name`, `release.target_commitish` (the pinned SHA),
 `release.draft` and `release.prerelease` and is available through `GITHUB_EVENT_PATH`.
 The runner provides a lightweight tag for this commit to checkout without
 exporting other tags or history. Upgrade Web, SSH and the runner images together
-before using this trigger; it uses database schema 045.
+before using publication activities; their captured payload uses schema 048.
 
 The native runner regression normally uses an offline tag fetch. Set
 `MOONHUB_TEST_RELEASE_CHECKOUT=1` when running the `release source exposes`
@@ -170,8 +173,10 @@ The test uses local fixture source and does not publish a package.
 
 ## Schedules and run history
 
-`on.schedule` supports five-field numeric UTC cron expressions with ranges,
-lists and steps. No aliases or named weekdays are accepted. Schedules are off by
+`on.schedule` supports five-field numeric cron expressions with ranges, lists
+and steps. Entries may specify an IANA `timezone`; the default is UTC. Missing
+clock minutes advance to the next valid minute; repeated minutes fire once at
+their first occurrence. No cron aliases or named weekdays are accepted. Schedules are off by
 default even when workflow source declares them. A repository manager enables
 execution with an execute-scoped API token:
 

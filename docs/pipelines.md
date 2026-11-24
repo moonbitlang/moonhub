@@ -34,12 +34,13 @@ instead use the published tag's pinned commit.
 Supported configuration:
 
 - `name`; `on` accepts `workflow_dispatch`, `push`, `pull_request`, `schedule`
-  and `release` with their supported options. Pull request triggers default to
+  `release`, `workflow_run` and `repository_dispatch` with their supported options. Pull request triggers default to
   `opened`, `reopened` and `synchronize`; a nonempty `types` list can select a
-  subset. Push and PR triggers support bounded branch/path pattern filters,
+  subset or explicitly add `ready_for_review`, `edited`, and `closed`. Push and PR triggers support bounded branch/path pattern filters,
   ordered exclusions and ignore lists. PR branch filters match the target branch.
-  Tag pushes do not trigger runs; see [Release triggers](releases.md#release-triggered-workflows)
-  for stable publication and [workflow entry compatibility](workflow-entry.md)
+  Push supports `tags`/`tags-ignore`; path filters apply only to branches. See
+  [Release triggers](releases.md#release-triggered-workflows) for publication and
+  [workflow entry compatibility](workflow-entry.md)
   for diff semantics, conservative fallback and repository-required checks.
 - `jobs`, `name`, `needs`, `runs-on`, `env`, `defaults.run`,
   `timeout-minutes`, and `steps`.
@@ -622,8 +623,8 @@ on:
     branches: [master]
 ```
 
-SSH branch updates and successful in-app merges create durable repository events.
-Tag pushes, branch deletion and unchanged refs do not create jobs. Workflow files
+SSH branch/tag updates and successful in-app merges create durable repository
+events. Branch deletion and unchanged refs do not create jobs. Workflow files
 and sources are read from the event's exact new commit, never the branch's later
 tip. At most 64 workflow files are inspected for an event; each matching workflow
 gets an independent immutable run. Unsupported workflow files are reported in
@@ -1020,7 +1021,7 @@ and lifecycle verification, see [Windows runner setup](standalone-runner.md#wind
 
 ## Release automation
 
-Repository releases, `contents: write`, `actions: read`, live job API tokens, `run-name` and opt-in UTC schedules are documented in [Releases](releases.md). Publishing uses independent durable assets rather than CI artifact retention. Schedule execution is disabled by default.
+Repository releases, `contents: write`, `actions: read`, live job API tokens, `run-name` and opt-in timezone-aware schedules are documented in [Releases](releases.md). Publishing uses independent durable assets rather than CI artifact retention. Schedule execution is disabled by default.
 
 
 ## Saved event payloads
@@ -1031,3 +1032,46 @@ include the original ref, before and after SHAs. Scheduling expressions, runner
 expressions and `GITHUB_EVENT_PATH` all read the same bounded payload; branch or
 MR changes cannot alter it. Older definitions retain their original synthesized
 event behavior when rerun. Public event snapshots never contain repository secrets.
+
+
+## Additional event triggers
+
+Tag pushes resolve annotated tags to commits, preserve the original tag ref and
+transaction SHAs, and apply ordered tag filters. Specifying only branch filters
+excludes tags; specifying only tag filters excludes branches. Tag pushes cannot
+borrow branch-scoped secrets, including when a tag and branch share a name.
+Their writable cache scope is the tag ref.
+
+`release.types: [published]` handles first stable and prerelease publication.
+`released` remains the default and selects stable releases. Events capture the
+prerelease flag and tag SHA. Publication retries and rejected edits do not emit
+another event. Release-created tag refs do not also enqueue push workflows.
+
+`workflow_run` requires `workflows: [Name]`, supports only `types: [completed]`,
+and accepts branch filters against the upstream head branch. Each completion
+attempt emits once. The event includes upstream public ID, attempt, conclusion,
+head branch and head SHA. The downstream definition comes from the configured
+default branch, pinned when the event is admitted. Its own permissions and current
+manager authorization apply; automatic completion chains stop after three levels.
+
+An execute-authorized repository manager can POST to
+`/repos/OWNER/REPO/dispatches` under either API mount. The JSON body contains
+`event_type`, optional `client_payload` (an object with at most 10 fields and
+65535 UTF-8 bytes), and optional `request_id` for idempotent retries. Reusing that
+ID with different data returns 409. The default branch commit and payload are
+saved before returning the event ID; matching `repository_dispatch.types`
+workflows are processed by the event worker.
+
+Explicit PR lifecycle subscriptions run separately from merge checks and retain
+captured metadata and head/base SHAs. A closed unmerged PR uses its captured
+source commit; a merged PR uses its merge commit and `pull_request.merged: true`.
+These runs require the event actor's current execution authority. They neither
+become merge prerequisites nor get cancelled merely because the PR closed.
+Existing default PR activity types remain opened, reopened and synchronize.
+
+Schedule entries accept `timezone: America/New_York` (IANA names); omitted zones
+use UTC. The server needs installed TZIF files in `/usr/share/zoneinfo`; the base
+image installs `tzdata`. A scheduled minute skipped by a forward clock change
+fires at the next valid minute. A repeated minute fires only at its first
+occurrence. Existing UTC tick deduplication also prevents repeated polling from
+creating duplicate runs.

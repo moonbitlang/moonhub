@@ -63,7 +63,7 @@ pub fn cron_matches(
 ) -> Bool raise InvalidWorkflow {
   let fields = source.split(" ").filter(s => !s.is_empty()).collect()
   guard fields.length() == 5 && source.length() <= 128 else {
-    raise InvalidWorkflow("schedule requires five UTC cron fields")
+    raise InvalidWorkflow("schedule requires five cron fields")
   }
   let minutes = cron_field(fields[0].to_owned(), 0, 59)
   let hours = cron_field(fields[1].to_owned(), 0, 23)
@@ -85,16 +85,93 @@ pub fn cron_matches(
 }
 
 ///|
-fn parse_schedules(value : @yaml.Yaml?) -> Array[String] raise InvalidWorkflow {
+fn parse_schedules(
+  value : @yaml.Yaml?,
+) -> Array[Schedule] raise InvalidWorkflow {
   guard value is Some(value) else { return [] }
   guard value is Array(items) && !items.is_empty() && items.length() <= 16 else {
     raise InvalidWorkflow("schedule requires 1 to 16 cron entries")
   }
   items.map(item => {
     let fields = yaml_as_obj(item, "on.schedule")
-    check_fields(fields, ["cron"], "on.schedule")
+    check_fields(fields, ["cron", "timezone"], "on.schedule")
     let cron = required_string(fields.get("cron"), "on.schedule.cron")
     ignore(cron_matches(cron, 0, 0, 1, 1, 0))
-    cron
+    let timezone = match fields.get("timezone") {
+      None => "UTC"
+      Some(value) => required_string(Some(value), "on.schedule.timezone")
+    }
+    guard timezone.length() <= 100 &&
+      !timezone.has_prefix("/") &&
+      !timezone.contains("..") &&
+      timezone
+      .iter()
+      .all(c => {
+        c.is_ascii_alphabetic() ||
+        c.is_ascii_digit() ||
+        ['/', '_', '-', '+'].contains(c)
+      }) else {
+      raise InvalidWorkflow("on.schedule.timezone requires an IANA zone name")
+    }
+    { cron, timezone, }
   })
+}
+
+///|
+pub struct Schedule {
+  cron : String
+  timezone : String
+}
+
+///|
+fn cron_at(
+  cron : String,
+  wall : @time.PlainDateTime,
+) -> Bool raise InvalidWorkflow {
+  let weekday = match wall.weekday() {
+    Monday => 1
+    Tuesday => 2
+    Wednesday => 3
+    Thursday => 4
+    Friday => 5
+    Saturday => 6
+    Sunday => 0
+  }
+  cron_matches(
+    cron,
+    wall.minute(),
+    wall.hour(),
+    wall.day(),
+    wall.month(),
+    weekday,
+  )
+}
+
+///|
+// Compare wall-clock minutes, choosing the first occurrence of an overlap.
+// At a forward transition, all skipped matching minutes fire once at its end.
+pub fn Schedule::matches(
+  self : Schedule,
+  second : Int64,
+  zone : @time.Zone,
+) -> Bool raise {
+  let now = @time.ZonedDateTime::from_unix_second(second, zone~)
+  let wall = now.to_plain_date_time()
+  if @time.ZonedDateTime::from_plain(wall, zone~, disambiguation=Earlier).to_unix_second() !=
+    second {
+    return false
+  }
+  if cron_at(self.cron, wall) {
+    return true
+  }
+  let before = @time.ZonedDateTime::from_unix_second(second - 60L, zone~).to_plain_date_time()
+  let gap = (wall.to_unix_second() - before.to_unix_second()) / 60L
+  if gap > 1L && gap <= 1441L {
+    for offset in 1L..<gap {
+      if cron_at(self.cron, before.add_minutes(offset)) {
+        return true
+      }
+    }
+  }
+  false
 }

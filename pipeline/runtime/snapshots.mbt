@@ -13,6 +13,7 @@ pub fn insert_run_snapshot(
   definition_version~ : Int32 = @workflow.format_version,
   context~ : @workflow.RunContext? = None,
   event_id~ : Int64 = 0L,
+  workflow_event_id~ : Int64 = 0L,
   merge_check_id~ : Int64 = 0L,
   capture_variables~ : Bool = true,
   rerun_source~ : Int64 = 0L,
@@ -92,7 +93,7 @@ pub fn insert_run_snapshot(
     title
   }
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json, public_run_id, run_attempt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, 0), ?) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json, public_run_id, run_attempt, workflow_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, 0), ?, NULLIF(?, 0)) RETURNING *",
     params=[
       repository_id,
       number,
@@ -111,6 +112,7 @@ pub fn insert_run_snapshot(
       context.map(value => ToJson::to_json(value).stringify()).unwrap_or(""),
       public_id,
       run_attempt,
+      workflow_event_id,
     ],
   )
   let run = Run::from_row(row)
