@@ -65,6 +65,25 @@ JavaScript passed 48, with 7 Windows-only tests skipped. Required check, format
 and interface commands passed. The final full-suite run remains required after
 all categories are implemented.
 
+## Trigger extensions
+
+- #74: pushed tags, including annotated tags, select workflows through tag filters
+  and retain tagged commit/ref snapshots. Branch/path semantics remain distinct.
+- #75: first stable/prerelease publication supports `published`; `released`
+  defaults remain stable-only. Retry/draft/authorization behavior stays bounded.
+- #76/#77/#79: schema 48 persists completion, repository dispatch and explicit PR
+  lifecycle events. Per-workflow deduplication survives restart; completion chains
+  stop after three levels. Dispatch requires execute authority on both API mounts.
+  Lifecycle runs are independent of merge gates and retain closed/merged metadata.
+- #80: schedules use installed IANA TZIF data. Deterministic fixtures verify UTC,
+  UTC+08:00, spring-gap advancement and first-only autumn overlaps.
+
+Validation: parser/timezone/migration tests passed 100/100; trigger, HTTP,
+secret-policy and migration integration tests passed 44/44; the final lifecycle
+and tag tests passed 5/5. Package boundaries passed for 56 packages, and the
+base-image cache/build regression passed. Required check/format/interface steps
+passed. No production image was built or deployed.
+
 ## Deferred and reporting-only work
 
 #78, #96, #112 and #113 are deferred. #105 is a reporting-only TODO: package

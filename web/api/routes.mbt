@@ -4,6 +4,38 @@ pub let api_module : @moonback.Module = Module(ctx => {
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
+  ctx.post(
+    "/repos/:owner/:repo/dispatches",
+    api_handler(req => {
+      let actor = api_actor(pool, req, "execute")
+      let body = api_body(
+        req,
+        ["event_type", "client_payload", "request_id"],
+        body_limit=73728,
+      )
+      let payload = match body.get("client_payload") {
+        None => Map([])
+        Some(Object(values)) => values
+        _ =>
+          raise @domain.BadRequest(message="client_payload must be an object")
+      }
+      {
+        "event_id": @pipeline.dispatch_repository_event(
+          pool,
+          root,
+          actor,
+          @web_context.repo_param(req),
+          field(body, "event_type"),
+          payload,
+          request_id=match body.get("request_id") {
+            None => ""
+            Some(String(value)) => value
+            _ => raise @domain.BadRequest(message="request_id must be a string")
+          },
+        ).to_string(),
+      }
+    }),
+  )
   ctx.get(
     "/repos/:owner/:repo/variables",
     api_handler(req => {

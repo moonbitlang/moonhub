@@ -14,10 +14,10 @@ async test "empty database initializes the complete baseline and repeats safely"
       )
       for
         (kind, count) in [
-          ("table", 91L),
-          ("index", 73L),
+          ("table", 92L),
+          ("index", 75L),
           ("view", 4L),
-          ("trigger", 49L),
+          ("trigger", 54L),
         ] {
         assert_eq(
           (
