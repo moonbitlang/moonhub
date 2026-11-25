@@ -63,8 +63,16 @@ async function runGuestJob(administrator) {
       '$principal = [Security.Principal.WindowsPrincipal]::new($identity)',
       "$admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
       (administrator ? "if (!$admin)" : "if ($admin)") + " { throw 'Unexpected administrator state' }",
-      'Set-Content -NoNewline target.txt moonhub; New-Item -ItemType SymbolicLink alias.txt -Target target.txt | Out-Null',
-      "if ((Get-Content alias.txt -Raw) -ne 'moonhub') { throw 'File symlink failed' }",
+      "$target = Join-Path (Get-Location) 'target.txt'",
+      "$alias = Join-Path (Get-Location) 'alias.txt'",
+      "[IO.File]::WriteAllText($target, 'moonhub')",
+      "Add-Type -Namespace MoonHub -Name Win32 -MemberDefinition @'",
+      '[DllImport("kernel32.dll", EntryPoint = "CreateSymbolicLinkW", CharSet = CharSet.Unicode, SetLastError = true)]',
+      '[return: MarshalAs(UnmanagedType.I1)]',
+      'public static extern bool CreateSymbolicLink(string link, string target, uint flags);',
+      "'@",
+      'if (![MoonHub.Win32]::CreateSymbolicLink($alias, $target, 0)) { throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error()) }',
+      "if ([IO.File]::ReadAllText($alias) -ne 'moonhub') { throw 'File symlink failed' }",
       "Write-Output 'VM_JOB_ACCOUNT_AND_SYMLINK_OK'",
     ].join('\n');
     const labels = ['self-hosted', 'windows', 'x64', 'windows-2025'];
