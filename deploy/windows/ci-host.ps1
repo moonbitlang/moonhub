@@ -132,7 +132,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot grant access to the job directory' }
 New-Item -ItemType Directory -Path "$job\job" | Out-Null
 $action = New-ScheduledTaskAction -Execute $shell -Argument "-NoProfile -NonInteractive -File $script -RunJob $StartJob"
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $task -Action $action -User ".\MoonHubJob" -Password $password -RunLevel $runLevel -Settings $settings | Out-Null
+Register-ScheduledTask -TaskName $task -Action $action -User "$env:COMPUTERNAME\$($user.Name)" -Password $password -RunLevel $runLevel -Settings $settings | Out-Null
 $password = $null
 $initial = (Get-ScheduledTaskInfo -TaskName $task).LastRunTime
 Start-ScheduledTask -TaskName $task
