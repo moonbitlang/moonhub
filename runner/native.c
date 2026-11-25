@@ -14,14 +14,14 @@ int32_t moonhub_runner_prepare(int32_t mode) {
   LONG container = RegGetValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control", L"ContainerType", RRF_RT_REG_DWORD, NULL, &type, &size);
   if (mode == 0) {
     if (container != ERROR_SUCCESS) return -1;
-  } else if (mode == 3 || mode == 4) {
+  } else if (mode == 3) {
     if (container != ERROR_FILE_NOT_FOUND) return -1;
     DWORD marker = GetFileAttributesW(L"C:\\ProgramData\\MoonHub\\vm\\isolated");
     if (marker == INVALID_FILE_ATTRIBUTES || (marker & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) return -1;
   } else return -1;
   BYTE sid[SECURITY_MAX_SID_SIZE]; DWORD sid_size = sizeof(sid); BOOL admin = TRUE;
   if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, sid, &sid_size) ||
-      !CheckTokenMembership(NULL, sid, &admin) || (admin != (mode == 4))) return -1;
+      !CheckTokenMembership(NULL, sid, &admin) || (admin != (mode == 3))) return -1;
   sid_size = sizeof(sid); BOOL system = TRUE;
   if (!CreateWellKnownSid(WinLocalSystemSid, NULL, sid, &sid_size) ||
       !CheckTokenMembership(NULL, sid, &system) || system) return -1;

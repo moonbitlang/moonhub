@@ -90,29 +90,7 @@ if ($Isolate -or $PrepareJobAccount) {
   }
   $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) + 'a!A9'
   $user = New-LocalUser -Name 'MoonHubJob' -Password (ConvertTo-SecureString $password -AsPlainText -Force)
-  $sid = $user.SID.Value
-  if (!(Get-LocalGroupMember -SID 'S-1-5-32-545' | Where-Object { $_.SID.Value -eq $sid })) {
-    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
-  }
-  # Set the rights before readiness. secedit and account creation can otherwise
-  # consume the short attempt start lease on a newly booted Windows instance.
-  $policy = @'
-[Unicode]
-Unicode=yes
-[Version]
-signature="$CHICAGO$"
-Revision=1
-[Privilege Rights]
-'@
-  $policy = ($policy -split '\r?\n') + @(
-    "SeBatchLogonRight = *S-1-5-32-544,*$sid",
-    "SeCreateSymbolicLinkPrivilege = *S-1-5-32-544,*$sid",
-    ''
-  )
-  $policy = $policy -join [Environment]::NewLine
-  [IO.File]::WriteAllText("$root\private\job-rights.inf", $policy, [Text.Encoding]::Unicode)
-  & secedit.exe /configure /db "$root\private\job-rights.sdb" /cfg "$root\private\job-rights.inf" /areas USER_RIGHTS /quiet
-  if ($LASTEXITCODE -ne 0) { throw 'Cannot apply the job account rights' }
+  Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $user
   [IO.File]::WriteAllText($jobPassword, $password)
   if ($PrepareJobAccount) { return }
   New-Item -ItemType Directory -Path "$root\vm" -Force | Out-Null
@@ -126,34 +104,25 @@ if (!(Test-Path $marker -PathType Leaf) -or (Get-ScheduledTask -TaskName $task -
   throw 'Expected an isolated guest which has never executed a job'
 }
 $job = "$root\workspace\$StartJob"
-$dispatch = Get-Content "$job\dispatch.json" -Raw | ConvertFrom-Json
 $password = [IO.File]::ReadAllText($jobPassword)
 Remove-Item $jobPassword -Force
-$user = Get-LocalUser -Name 'MoonHubJob'
-$sid = $user.SID.Value
-$runLevel = 'Limited'
-if ($dispatch.administrator) {
-  Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $user
-  $runLevel = 'Highest'
-}
-# The worker state root has a private DACL. Give the account traversal only.
-& icacls.exe "$root\workspace" /grant ("*{0}:(X)" -f $sid) | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Cannot grant workspace traversal' }
-& icacls.exe $job /grant ("*{0}:(OI)(CI)M" -f $sid) | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Cannot grant access to the job directory' }
 New-Item -ItemType Directory -Path "$job\job" | Out-Null
 $action = New-ScheduledTaskAction -Execute $shell -Argument "-NoProfile -NonInteractive -File $script -RunJob $StartJob"
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $task -Action $action -User "$env:COMPUTERNAME\$($user.Name)" -Password $password -RunLevel $runLevel -Settings $settings | Out-Null
+Register-ScheduledTask -TaskName $task -Action $action -User "$env:COMPUTERNAME\MoonHubJob" -Password $password -RunLevel Highest -Settings $settings | Out-Null
 $password = $null
 $initial = (Get-ScheduledTaskInfo -TaskName $task).LastRunTime
 Start-ScheduledTask -TaskName $task
 while ($true) {
   Start-Sleep -Milliseconds 500
-  $info = Get-ScheduledTaskInfo -TaskName $task
   $state = (Get-ScheduledTask -TaskName $task).State
-  if ($info.LastRunTime -ne $initial -and $state -notin 'Running','Queued') {
-    if ($info.LastTaskResult -notin 0,1) { throw 'The Windows VM executor did not report completion' }
-    return
+  if ($state -in 'Running','Queued') { continue }
+  $info = Get-ScheduledTaskInfo -TaskName $task
+  # State and last result are separate queries. Ignore the scheduler's
+  # SCHED_S_TASK_RUNNING and SCHED_S_TASK_QUEUED status codes here.
+  if ($info.LastRunTime -eq $initial -or $info.LastTaskResult -in 0x41301,0x41325) { continue }
+  if ($info.LastTaskResult -notin 0,1) {
+    throw ('Windows VM executor returned scheduled task result 0x{0:X8}' -f $info.LastTaskResult)
   }
+  return
 }

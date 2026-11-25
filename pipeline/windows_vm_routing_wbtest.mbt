@@ -1,5 +1,5 @@
 ///|
-async test "Windows VM claims fence the guest and keep existing Windows selectors at ordinary privilege" {
+async test "Windows VM claims require isolation and route standard labels when enabled" {
   @test_support.with_repository_test_data((pool, root) => {
     let admin = @identity.active_user_by_name(pool, "admin")
     let actor = @identity.active_user_by_name(pool, "alice")
@@ -95,29 +95,29 @@ async test "Windows VM claims fence the guest and keep existing Windows selector
       runner_os: Some("windows"),
     }
     assert_true(c.claim(vm_worker, request) is None)
-    let ordinary = { ..request, attempt_token: "5".repeat(64), }
-    let taken = c.claim("1".repeat(64), ordinary).unwrap()
+    let standard = { ..request, attempt_token: "5".repeat(64), }
+    let taken = c.claim("1".repeat(64), standard).unwrap()
     assert_false(taken.job.runs_on.contains("windows-vm"))
     let attempt = @protocol.parse_decimal(taken.attempt_id).unwrap()
-    ignore(c.start(attempt, ordinary.attempt_token, 1))
-    ignore(c.complete(attempt, ordinary.attempt_token, completion()))
+    ignore(c.start(attempt, standard.attempt_token, 1))
+    ignore(c.complete(attempt, standard.attempt_token, completion()))
     assert_true(
       c.claim("1".repeat(64), {
-        ..ordinary,
+        ..standard,
         request_id: "a".repeat(32),
         attempt_token: "a".repeat(64),
       })
       is None,
     )
     c.arm_ci_worker(token, "manager", worker_id, 1L)
-    let privileged = c.claim(vm_worker, request).unwrap()
-    assert_true(privileged.job.runs_on.contains("windows-vm"))
+    let explicit = c.claim(vm_worker, request).unwrap()
+    assert_true(explicit.job.runs_on.contains("windows-vm"))
     assert_eq(
       c.claim(vm_worker, request).unwrap().attempt_id,
-      privileged.attempt_id,
+      explicit.attempt_id,
     )
     assert_true(c.sync_worker(vm_worker, { ..ready, state: "busy", }).draining)
-    let attempt = @protocol.parse_decimal(privileged.attempt_id).unwrap()
+    let attempt = @protocol.parse_decimal(explicit.attempt_id).unwrap()
     ignore(c.start(attempt, request.attempt_token, 1))
     ignore(c.complete(attempt, request.attempt_token, completion()))
 

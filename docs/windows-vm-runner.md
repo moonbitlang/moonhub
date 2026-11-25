@@ -5,12 +5,11 @@ Enroll a dedicated On-Demand ASG provider using `moonhub-runner run --mode asg
 controller, ASG and provider identity are dedicated to this mode. A registered
 provider cannot change into or out of this execution mode.
 
-Use `runs-on: [self-hosted, windows, x64, windows-2025, windows-vm]` for a guest
-administrator. The server accepts that selector only on a Windows VM provider
-authorized for the repository. **Accept standard Windows jobs** lets the provider
-also match its existing Windows labels, including the `windows-latest` alias
-for `windows-2025`. Those jobs use an ordinary local account. Both accounts can
-create file symlinks on the guest's local disk.
+Every job that runs on a Windows VM uses an elevated local administrator and can
+create file symlinks. Use `runs-on: [self-hosted, windows, x64, windows-2025,
+windows-vm]` to explicitly select a Windows VM for an authorized repository.
+**Accept standard Windows jobs** lets the provider also match its existing Windows
+labels, including the `windows-latest` alias for `windows-2025`.
 
 ## Image and AWS resources
 
@@ -25,10 +24,11 @@ an enrolled worker or its job state.
 
 Deploy `deploy/windows/vm-pool.yml` with the approved AMI and the required
 instance capacity. It creates a separate VPC without connections to production
-private networks, an HTTPS-only egress security group with no inbound rules, an
-instance-scoped bootstrap role, an explicit launch template and a zero-capacity
-On-Demand ASG. Keep the launch template's encrypted EBS volumes set to delete on
-termination. The template and runtime enforce IMDSv2 and an initial hop limit
+private networks, an HTTP and HTTPS egress security group with no inbound rules,
+an instance-scoped bootstrap role, an explicit launch template and a zero-capacity
+On-Demand ASG. Windows uses HTTP to fetch certificate revocation lists for some
+HTTPS connections. Keep the launch template's encrypted EBS volumes set to delete
+on termination. The template and runtime enforce IMDSv2 and an initial hop limit
 of one. Reserve at least two vCPUs and 8 GiB per guest.
 
 The external controller runs under a trusted cloud identity. In addition to
@@ -56,11 +56,11 @@ settings. Zero standby permits the ASG to scale to zero.
    and removes the bootstrap parameter. Only an active controller can arm a
    worker for the current configuration revision. The worker stops SSM Agent
    and removes local cloud caches before preparing the local job account and
-   advertising readiness. Windows account creation and security policy setup
-   finish before the attempt's startup lease begins.
+   advertising readiness. The elevated local account is created before the
+   attempt's startup lease begins.
 2. MoonHub marks the worker consumed together with its first successful claim.
    Retrying that claim can recover the same attempt. A different attempt needs
-   a fresh VM. A dedicated local account runs the job, and the runner reports
+   a fresh VM. A dedicated local administrator runs the job, and the runner reports
    through the existing attempt API. Treat every credential sent into an
    administrator guest as visible to that job. The controller and cloud
    management identity stay outside the guest.
@@ -68,9 +68,9 @@ settings. Zero standby permits the ASG to scale to zero.
    controller retires the instance independently of the worker. It checks the
    recorded disks disappear and retains the retirement record if verification
    is incomplete. Restarting the controller preserves that cleanup work.
-4. Verify a job using `windows-vm` has administrator rights and can create a
-   symlink. Verify a standard Windows workflow still runs with an ordinary
-   account and that the two attempts use different, terminated EC2 instances.
+4. Verify a standard Windows workflow runs with an elevated administrator token,
+   creates a symlink and loads a public GitHub action from an HTTPS tag. Verify
+   that retrying the job uses a different EC2 instance and both are terminated.
    Check the desired/observed/applied provider revisions and the associated
    EBS volumes and bootstrap parameters. Retry and cancellation should each
    leave the instance retired.
