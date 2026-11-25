@@ -85,20 +85,25 @@ async function runGuestJob(administrator) {
         steps: [{id: 'check', name: 'Check account', run, shell: '', working_directory: '.', env: {}, timeout_minutes: 0}]},
     }));
     const testScript = state + '/dispatch-test.ps1';
+    const donePath = state + '/dispatch-test-' + attemptId + '-done';
     fs.writeFileSync(testScript, [
       "$ErrorActionPreference = 'Stop'",
-      "try { & 'C:/moonhub/ci-host.ps1' -PrepareJobAccount; & 'C:/moonhub/ci-host.ps1' -StartJob " + attemptId + " }",
+      "try { & 'C:/moonhub/ci-host.ps1' -PrepareJobAccount; & 'C:/moonhub/ci-host.ps1' -StartJob " + attemptId +
+        "; New-Item -ItemType File -Path '" + donePath + "' | Out-Null }",
       "catch { $_ | Out-String | Set-Content 'C:/ProgramData/MoonHub/dispatch-test-error'; exit 1 }",
     ].join('\r\n'));
     powershell("$action=New-ScheduledTaskAction -Execute '" + shell + "' -Argument '-NoProfile -NonInteractive -File " + testScript +
       "'; Register-ScheduledTask -TaskName '" + testTask + "' -Action $action -User SYSTEM -RunLevel Highest | Out-Null; Start-ScheduledTask -TaskName '" + testTask + "'");
     const errorPath = state + '/dispatch-test-error';
     const until = Date.now() + 65000;
-    while (!conclusion && !failure && !fs.existsSync(errorPath) && Date.now() < until) await sleep(200);
+    while ((!conclusion || !fs.existsSync(donePath)) && !failure && !fs.existsSync(errorPath) && Date.now() < until) {
+      await sleep(200);
+    }
     if (failure) throw failure;
     if (fs.existsSync(errorPath)) throw Error(fs.readFileSync(errorPath, 'utf8'));
     assert.ok(receivedStart, 'VM executor did not contact the server');
     assert.equal(conclusion, 'success', logs);
+    assert.ok(fs.existsSync(donePath), 'Guest dispatch did not finish');
     assert.match(logs, /VM_JOB_ACCOUNT_AND_SYMLINK_OK/);
     assert.ok(!fs.existsSync(directory + '/dispatch.json'), 'Attempt credential file was retained');
     assert.ok(!fs.existsSync(state + '/private/job-account'), 'The prepared account password file was retained');

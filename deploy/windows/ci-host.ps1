@@ -150,10 +150,14 @@ $initial = (Get-ScheduledTaskInfo -TaskName $task).LastRunTime
 Start-ScheduledTask -TaskName $task
 while ($true) {
   Start-Sleep -Milliseconds 500
-  $info = Get-ScheduledTaskInfo -TaskName $task
   $state = (Get-ScheduledTask -TaskName $task).State
-  if ($info.LastRunTime -ne $initial -and $state -notin 'Running','Queued') {
-    if ($info.LastTaskResult -notin 0,1) { throw 'The Windows VM executor did not report completion' }
-    return
+  if ($state -in 'Running','Queued') { continue }
+  $info = Get-ScheduledTaskInfo -TaskName $task
+  # State and last result are separate queries. Ignore the scheduler's
+  # SCHED_S_TASK_RUNNING and SCHED_S_TASK_QUEUED status codes here.
+  if ($info.LastRunTime -eq $initial -or $info.LastTaskResult -in 0x41301,0x41325) { continue }
+  if ($info.LastTaskResult -notin 0,1) {
+    throw ('Windows VM executor returned scheduled task result 0x{0:X8}' -f $info.LastTaskResult)
   }
+  return
 }
