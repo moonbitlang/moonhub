@@ -15,7 +15,7 @@ def unit_quote(value):
 
 def render(env):
     args = ['/usr/local/bin/moonhub-runner', 'run', '--server', env['MOONHUB_SERVER'],
-            '--name', env.get('MOONHUB_PROVIDER_NAME', 'asg'), '--mode', 'asg',
+            '--name', env.get('MOONHUB_PROVIDER_NAME', 'asg'), '--mode', 'asg', '--linux-ci',
             '--registration-token-file', env['MOONHUB_REGISTRATION_TOKEN_FILE'],
             '--state-dir', env['MOONHUB_CONTROLLER_STATE_DIR'],
             '--aws', env.get('MOONHUB_AWS_CLI', '/usr/local/bin/aws'),
@@ -23,7 +23,7 @@ def render(env):
             '--launch-template', env['MOONHUB_LAUNCH_TEMPLATE'],
             '--instance-types', env['MOONHUB_INSTANCE_TYPES'],
             '--parameter-prefix', env['MOONHUB_PARAMETER_PREFIX'],
-            '--runner-image', env['MOONHUB_TASK_IMAGE']]
+            '--runner-image', env['MOONHUB_ASG_RUNNER_IMAGE']]
     if env.get('MOONHUB_SPOT_ASG'):
         args += ['--spot-asg', env['MOONHUB_SPOT_ASG']]
     return '''[Unit]

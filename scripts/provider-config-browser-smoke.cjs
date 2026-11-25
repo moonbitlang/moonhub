@@ -133,7 +133,7 @@ const args = process.argv.slice(2), file = ${JSON.stringify(cloudState)};
 const state = JSON.parse(fs.readFileSync(file));
 let result = null;
 if (args[0] === 'ec2' && args[1] === 'describe-instance-types') result = [{cpus:2,memory_mib:8192,architectures:['x86_64']}];
-else if (args[0] === 'ec2' && args[1] === 'describe-launch-template-versions') result = [{image:'ami-local',tokens:'required',hop:1}];
+else if (args[0] === 'ec2' && args[1] === 'describe-launch-template-versions') result = [{image:'ami-local',tokens:'required',hop:1,disks:[{Encrypted:true,DeleteOnTermination:true}]}];
 else if (args[0] === 'ec2' && args[1] === 'describe-images') result = [{ architecture: 'x86_64', platform: null }];
 else if (args[0] === 'autoscaling' && args[1] === 'describe-auto-scaling-groups') {
   result = [{name:args[args.indexOf('--auto-scaling-group-names')+1],min:0,max:3,desired:0,instances:[]}];
@@ -152,7 +152,7 @@ if (result !== null) console.log(JSON.stringify(result));
   const runnerBinary = process.env.MOONHUB_RUNNER_BINARY || path.join(root, '_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe');
   const controllerState = path.join(temp, 'controller');
   controller = spawn(runnerBinary, [
-    'run', '--server', base, '--allow-http', '--name', 'dind', '--mode', 'asg',
+    'run', '--server', base, '--allow-http', '--name', 'dind', '--mode', 'asg', '--linux-ci',
     '--registration-token-file', tokenFile, '--state-dir', controllerState,
     '--aws', adapter, '--asg', 'local-on-demand', '--spot-asg', 'local-spot',
     '--launch-template', 'lt-local', '--instance-types', 'm6a.large,c6a.large',
@@ -174,7 +174,7 @@ if (result !== null) console.log(JSON.stringify(result));
   await page.getByRole('link',{name:'Configure dind',exact:true}).click();
   await page.getByRole('heading',{name:'Execution settings',exact:true}).waitFor();
   assert.equal(await configuration.getByLabel('Runner image',{exact:true}).inputValue(),'moonhub:runner');
-  assert.equal(await configuration.locator('.field').count(), 10);
+  assert.equal(await configuration.locator('.field').count(), 11);
   assert.equal(await page.getByLabel('Standby workers', { exact: true }).inputValue(), '0');
   assert.equal(await page.getByLabel('Memory limit per task (MiB)', { exact: true }).inputValue(), '4096');
   await capture(page,'settings');
@@ -249,7 +249,29 @@ db.commit()
   await page.getByRole('alert').waitFor();
   assert.equal(await page.locator('invalid').count(),0);
   assert.equal(await configuration.getByLabel('Runner image', { exact: true }).getAttribute('value'), '<invalid>'+String.fromCharCode(10));
-  await page.goto(base+route);
+  const localRegistration = randomBytes(32).toString('hex');
+  const localToken = randomBytes(32).toString('hex');
+  const localTokenFile = path.join(temp, 'local-registration');
+  fs.writeFileSync(localTokenFile, localRegistration, {mode: 0o600});
+  execFileSync(binary, ['pipeline-provider-create', '--name', 'local-linux', '--token-file', localTokenFile, '--admin', 'root'], {cwd: temp, env, stdio: 'pipe'});
+  async function providerRequest(endpoint, credential, body) {
+    const response = await fetch(base + '/-/runner-api/v1/providers/' + endpoint, {
+      method: 'POST', headers: {Authorization: 'Bearer ' + credential, 'Content-Type': 'application/json'},
+      body: JSON.stringify({version: 1, ...body}),
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  const local = await providerRequest('register', localRegistration, {
+    name: 'local-linux', mode: 'docker', provider_token: localToken,
+    schema: [{name: 'runner_image', title: 'Runner image', kind: 'text', help: '', required: true, choices: [], minimum: 0, maximum: 0}],
+    defaults: {runner_image: 'moonhub:runner'},
+  });
+  await providerRequest('sync', localToken, {
+    controller_id: 'browser-fixture', observed_revision: '1', applied_revision: '1', status: 'applied', environment_protocol: 1,
+  });
+  const localRoute = '/-/admin/pipelines/providers/' + local.id + '/configuration';
+  await page.goto(base+localRoute);
   const environmentSection=page.locator('#linux-environments');
   await environmentSection.getByRole('heading',{name:'Linux environments',exact:true}).waitFor();
   const add=environmentSection.locator('.environment-add form');
@@ -282,11 +304,11 @@ db.commit()
   assert.ok((await environmentSection.getByRole('alert').innerText()).includes('@sha256:'));
   assert.equal(await environmentSection.locator('[data-environment="debian"] form.environment-form').getByLabel('Runner image',{exact:true}).inputValue(),'runner:mutable');
   const failedProfile=await environmentSection.locator('[data-environment="debian"] form.environment-form').evaluate(form=>Object.fromEntries(new FormData(form)));
-  const stale=await context.request.post(base+route.replace('/configuration','/environments'),{form:{...failedProfile,revision:'1'}});
+  const stale=await context.request.post(base+localRoute.replace('/configuration','/environments'),{form:{...failedProfile,revision:'1'}});
   assert.equal(stale.status(),409);
-  const noCsrf=await context.request.post(base+route.replace('/configuration','/environments'),{form:{...failedProfile,csrf_token:''}});
+  const noCsrf=await context.request.post(base+localRoute.replace('/configuration','/environments'),{form:{...failedProfile,csrf_token:''}});
   assert.equal(noCsrf.status(),403);
-  await page.goto(base+route);
+  await page.goto(base+localRoute);
   await environmentSection.getByRole('button',{name:'Remove debian',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('[data-environment]').length===1);
   assert.ok((await environmentSection.locator('[data-environment="ubuntu"]').innerText()).includes('Default'));

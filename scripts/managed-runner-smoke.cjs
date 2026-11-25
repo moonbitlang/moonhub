@@ -15,7 +15,7 @@ async function scenario(mode, failCleanup = false, stale = false, terminal = fal
     fs.writeFileSync(path.join(root, directory, '.existing'), 'preserved', {mode:0o600});
   }
   const stateFile = path.join(root, 'state.json');
-  fs.writeFileSync(stateFile, JSON.stringify({calls: [], volumes: [], groups: {on: {desired:0, instances:[]}, spot: {desired:0, instances:[]}}}));
+  fs.writeFileSync(stateFile, JSON.stringify({calls: [], volumes: [], groups: {on: {desired:0, instances:[]}, spot: {desired:0, instances:[]}}, parameter:false}));
   if (stale) { const initial = JSON.parse(fs.readFileSync(stateFile)); initial.groups.on = {desired:1,instances:[{id:'i-test',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'0'}]}; fs.writeFileSync(stateFile, JSON.stringify(initial)); }
   const state = () => JSON.parse(fs.readFileSync(stateFile));
   const tokenFile = path.join(root, 'registration');
@@ -28,11 +28,19 @@ const state = JSON.parse(fs.readFileSync(file));
 state.calls.push(args);
 const save = () => { fs.writeFileSync(file + '.tmp', JSON.stringify(state)); fs.renameSync(file + '.tmp', file); };
 let result = null;
-if (args[0] === 'ec2') {
+if (args[0] === 'sts' && args[1] === 'get-caller-identity') result = {Account:'123456789012'};
+else if (args[0] === 'ec2') {
   if (args[1] === 'describe-instance-types') result = [{cpus:2,memory_mib:8192,architectures:['x86_64']}];
-  else if (args[1] === 'describe-launch-template-versions') result = [{image:'ami-test',tokens:'required',hop:1}];
+  else if (args[1] === 'describe-launch-template-versions') result = [{image:'ami-test',tokens:'required',hop:1,disks:[{Encrypted:true,DeleteOnTermination:true}]}];
   else if (args[1] === 'describe-images') result = [{ architecture: 'x86_64', platform: null }];
-  else if (args[1] === 'describe-instances') result = [new Date(Date.now() - 240000).toISOString()];
+  else if (args[1] === 'describe-instances') {
+    const query = args[args.indexOf('--query') + 1];
+    if (query.includes('MetadataOptions')) result = {State:'applied',HttpEndpoint:'disabled'};
+    else if (query.includes('BlockDeviceMappings')) result = [['vol-ci',true]];
+    else if (query.includes('State.Name')) result = ['terminated'];
+    else result = [new Date(Date.now() - 240000).toISOString()];
+  } else if (args[1] === 'describe-iam-instance-profile-associations' || args[1] === 'describe-volumes') result = [];
+  else if (args[1] === 'modify-instance-metadata-options') assert.ok(state.booted);
   else throw Error('unexpected EC2 command');
 } else if (args[0] === 'autoscaling') {
   const name = args[args.indexOf('--auto-scaling-group-name') + 1];
@@ -57,9 +65,12 @@ if (args[0] === 'ec2') {
   if (args[1] === 'describe-instance-information') { state.ssmChecks=(state.ssmChecks || 0)+1; result=state.ssmChecks<=2?[]:['i-test']; }
   else if (args[1] === 'put-parameter' || args[1] === 'send-command') {
     const request = JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json') + 1].slice(7)));
-    if (args[1] === 'put-parameter') {assert.equal(request.Type,'SecureString'); state.bootstrap = JSON.parse(request.Value);}
-    else {assert.ok(!request.Parameters.commands.join('').includes(state.bootstrap.token)); state.booted = true;}
-  }
+    if (args[1] === 'put-parameter') {assert.equal(request.Type,'SecureString'); state.bootstrap = JSON.parse(request.Value); state.parameter = true;}
+    else {assert.ok(!request.Parameters.commands.join('').includes(state.bootstrap.token)); state.booted = true; result={Command:{CommandId:'bootstrap-test'}};}
+  } else if (args[1] === 'get-command-invocation') result = {Status:'Success'};
+  else if (args[1] === 'describe-parameters') result = state.parameter ? ['/moonhub-runner/test/i-test'] : [];
+  else if (args[1] === 'delete-parameter') state.parameter = false;
+  else if (args[1] !== 'add-tags-to-resource') throw Error('unexpected SSM operation');
 } else if (args[0] === 'volume') {
   if (args[1] === 'ls') result = state.volumes.join(String.fromCharCode(10));
   else if (args[1] === 'create') {state.volumes.push(args.at(-1)); result = args.at(-1);}
@@ -173,6 +184,10 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
             } else assert.equal(worker.key, raceWorker, 'second task used a different worker');
           }
         }
+      } else if (/^\/workers\/[^/]+\/isolation$/.test(route)) {
+        assert.equal(req.headers.authorization,'Bearer ' + providerToken);
+        assert.equal(body.revision, revision);
+        result = {version:1};
       } else if (/^\/workers\/[^/]+\/drain$/.test(route)) {
         const worker = workers.find(w => w.id === route.split('/')[2]);
         assert.equal(req.headers.authorization,'Bearer ' + providerToken);
@@ -185,7 +200,7 @@ if (result !== null) console.log(typeof result === 'string' ? result : JSON.stri
   try {
     await new Promise(r => server.listen(0,'127.0.0.1',r));
     const args = ['run','--server',`http://127.0.0.1:${server.address().port}`,'--allow-http','--name','test','--mode',mode,'--registration-token-file',tokenFile,'--state-dir',path.join(root,'controller'),'--workspace-root',path.join(root,'workspace'),'--docker',adapter,'--aws',adapter,'--runner-image','moonhub:runner'];
-    if (mode === 'asg') args.push('--asg','on','--spot-asg','spot','--launch-template','lt-test','--instance-types','m6a.large');
+    if (mode === 'asg') args.push('--linux-ci','--asg','on','--spot-asg','spot','--launch-template','lt-test','--instance-types','m6a.large','--parameter-prefix','/moonhub-runner/test');
     child = spawn(binary,args,{stdio:['ignore','pipe','pipe']});
     child.stdout.on('data',b => {output += b;}); child.stderr.on('data',b => {output += b;});
     child.on('exit',() => {exited = true;});

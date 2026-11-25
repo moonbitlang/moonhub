@@ -238,16 +238,13 @@ async fn provision_worker(
   revision : String,
   controller_id : String,
 ) -> Unit {
-  let single_use = options.base.execution_mode() is Some(_)
-  if single_use {
-    // Journal before publishing any instance credential. Spot interruption or
-    // ASG health replacement can remove an instance without our terminate path.
-    @fs.write_file(
-      options.state_dir + "/" + instance.id + ".ci-retire",
-      "retire",
-      permission=0o600,
-    )
-  }
+  // Spot interruption or ASG health replacement can remove the instance
+  // before the controller requests termination.
+  @fs.write_file(
+    options.state_dir + "/" + instance.id + ".ci-retire",
+    "retire",
+    permission=0o600,
+  )
   let (worker, worker_token) = register_instance_worker(
     options,
     token,
@@ -255,7 +252,13 @@ async fn provision_worker(
   )
   let parameter = options.parameter_prefix + "/" + instance.id
   let receipt = options.state_dir + "/" + instance.id + ".bootstrap-command"
-  if !single_use || !@fs.exists(receipt) {
+  let command_id = if @fs.exists(receipt) {
+    let id = @fs.read_file(receipt).text()
+    guard valid_cloud_name(id) else {
+      raise InvalidConfiguration("Invalid saved bootstrap command.")
+    }
+    id
+  } else {
     let bootstrap : WorkerBootstrap = {
       server: options.base.server,
       token: worker_token,
@@ -283,45 +286,31 @@ async fn provision_worker(
         }),
       ),
     )
-    if single_use {
-      let identity = aws_request(options, ["sts", "get-caller-identity"])
-      guard identity is { "Account": String(account), .. } &&
-        account.length() == 12 &&
-        account.iter().all(c => c.is_ascii_digit()) else {
-        raise InvalidConfiguration(
-          "Cannot establish the bootstrap instance ARN.",
-        )
-      }
-      ignore(
-        aws_request(options, [
-          "ssm",
-          "add-tags-to-resource",
-          "--resource-type",
-          "Parameter",
-          "--resource-id",
-          parameter,
-          "--tags",
-          "Key=MoonHubInstanceArn,Value=arn:aws:ec2:\{options.region}:\{account}:instance/\{instance.id}",
-        ]),
-      )
+    let identity = aws_request(options, ["sts", "get-caller-identity"])
+    guard identity is { "Account": String(account), .. } &&
+      account.length() == 12 &&
+      account.iter().all(c => c.is_ascii_digit()) else {
+      raise InvalidConfiguration("Cannot establish the bootstrap instance ARN.")
     }
-  }
-  // Only resource names occur in SSM history. The credential is downloaded by
-  // the instance into a private file and never appears in a shell argv.
-  let (document, command) = worker_bootstrap_command(
-    options.region,
-    parameter,
-    runner_os,
-    linux_ci=options.base.linux_ci,
-    windows_vm=options.base.windows_vm,
-  )
-  let command_id = if single_use && @fs.exists(receipt) {
-    let id = @fs.read_file(receipt).text()
-    guard valid_cloud_name(id) else {
-      raise InvalidConfiguration("Invalid saved bootstrap command.")
-    }
-    id
-  } else {
+    ignore(
+      aws_request(options, [
+        "ssm",
+        "add-tags-to-resource",
+        "--resource-type",
+        "Parameter",
+        "--resource-id",
+        parameter,
+        "--tags",
+        "Key=MoonHubInstanceArn,Value=arn:aws:ec2:\{options.region}:\{account}:instance/\{instance.id}",
+      ]),
+    )
+    // SSM history contains the parameter name. The guest retrieves its value
+    // directly into a private file.
+    let (document, command) = worker_bootstrap_command(
+      options.region,
+      parameter,
+      runner_os,
+    )
     let response = aws_request(
       options,
       ["ssm", "send-command"],
@@ -332,78 +321,69 @@ async fn provision_worker(
         "TimeoutSeconds": 60,
       }),
     )
-    if single_use {
-      guard response is { "Command": { "CommandId": String(id), .. }, .. } &&
-        valid_cloud_name(id) else {
-        raise InvalidConfiguration("Invalid bootstrap command identity.")
-      }
-      @fs.write_file(receipt, id, create_mode=@fs.CreateNew, permission=0o600)
-      id
-    } else {
-      ""
+    guard response is { "Command": { "CommandId": String(id), .. }, .. } &&
+      valid_cloud_name(id) else {
+      raise InvalidConfiguration("Invalid bootstrap command identity.")
     }
+    @fs.write_file(receipt, id, create_mode=@fs.CreateNew, permission=0o600)
+    id
   }
-  if single_use {
-    // First let SSM download this instance's bootstrap. The worker
-    // service waits; no task can run until the outside controller disables IMDS.
-    let response = aws_request(options, [
-      "ssm",
-      "get-command-invocation",
-      "--command-id",
-      command_id,
+  // The worker waits without claiming while the controller cuts cloud access.
+  let response = aws_request(options, [
+    "ssm",
+    "get-command-invocation",
+    "--command-id",
+    command_id,
+    "--instance-id",
+    instance.id,
+  ])
+  guard response is { "Status": "Success", .. } else { return }
+  ignore(
+    aws_request(options, [
+      "ec2",
+      "modify-instance-metadata-options",
       "--instance-id",
       instance.id,
-    ])
-    guard response is { "Status": "Success", .. } else { return }
+      "--http-endpoint",
+      "disabled",
+      "--http-tokens",
+      "required",
+      "--http-put-response-hop-limit",
+      "1",
+    ]),
+  )
+  let metadata = aws_request(options, [
+    "ec2",
+    "describe-instances",
+    "--instance-ids",
+    instance.id,
+    "--query",
+    "Reservations[0].Instances[0].MetadataOptions",
+  ])
+  guard metadata is { "State": "applied", "HttpEndpoint": "disabled", .. } else {
+    return
+  }
+  guard isolate_vm(options, instance.id, parameter) else { return }
+  if !worker.draining && worker.active_attempts == 0 {
     ignore(
-      aws_request(options, [
-        "ec2",
-        "modify-instance-metadata-options",
-        "--instance-id",
-        instance.id,
-        "--http-endpoint",
-        "disabled",
-        "--http-tokens",
-        "required",
-        "--http-put-response-hop-limit",
-        "1",
-      ]),
+      control_request(
+        options.base.server,
+        "/workers/" + worker.id + "/isolation",
+        token,
+        { "version": 1, "controller_id": controller_id, "revision": revision },
+        allow_http=options.base.allow_http,
+      ),
     )
-    let metadata = aws_request(options, [
-      "ec2",
-      "describe-instances",
-      "--instance-ids",
-      instance.id,
-      "--query",
-      "Reservations[0].Instances[0].MetadataOptions",
-    ])
-    guard metadata is { "State": "applied", "HttpEndpoint": "disabled", .. } else {
-      return
-    }
-    if options.base.windows_vm {
-      guard isolate_windows_vm(options, instance.id, parameter) else { return }
-    }
-    if !worker.draining && worker.active_attempts == 0 {
-      ignore(
-        control_request(
-          options.base.server,
-          "/workers/" + worker.id + "/isolation",
-          token,
-          { "version": 1, "controller_id": controller_id, "revision": revision },
-          allow_http=options.base.allow_http,
-        ),
-      )
-      @fs.write_file(
-        options.state_dir + "/" + instance.id + ".armed-" + revision,
-        "armed",
-        permission=0o600,
-      )
-    }
+    @fs.write_file(
+      options.state_dir + "/" + instance.id + ".armed-" + revision,
+      "armed",
+      permission=0o600,
+    )
   }
 }
 
 ///|
-async fn isolate_windows_vm(
+async fn isolate_vm(
   options : ManagedOptions,
   id : String,
   parameter : String,
@@ -581,7 +561,6 @@ async fn reconcile_group(
   controller_id : String,
 ) -> Unit {
   let now = @env.now().reinterpret_as_int64()
-  let single_use = options.base.execution_mode() is Some(_)
   let idle_seconds = number(snapshot.config, "idle_seconds").to_int64()
   let timeout_ms = idle_seconds * 1000L
   for instance in group.instances {
@@ -613,8 +592,7 @@ async fn reconcile_group(
         instance.template_version !=
         snapshot.config.get("template_version").unwrap_or("")
       let expired = now - seen > 180000L
-      if single_use &&
-        !worker.draining &&
+      if !worker.draining &&
         !expired &&
         !obsolete &&
         !snapshot.paused &&
@@ -626,23 +604,6 @@ async fn reconcile_group(
           ".armed-" +
           snapshot.config_revision,
         ) {
-        provision_worker(
-          options,
-          token,
-          instance,
-          runner_os,
-          snapshot.config,
-          snapshot.config_revision,
-          controller_id,
-        )
-        continue
-      }
-      if !single_use &&
-        worker.state == "starting" &&
-        !expired &&
-        !obsolete &&
-        !worker.draining &&
-        !snapshot.paused {
         provision_worker(
           options,
           token,
@@ -682,25 +643,13 @@ async fn reconcile_group(
         )
         continue
       }
-      // Healthy workers must acknowledge cleanup. A lost worker is retired
-      // only after its task lease has been reconciled to a terminal state.
-      if worker.draining &&
-        worker.active_attempts == 0 &&
-        (
-          single_use ||
-          worker.state == "drained" ||
-          worker.state == "failed" ||
-          expired
-        ) {
-        if single_use {
-          // Persist before requesting termination. A controller interruption
-          // or ambiguous AWS response must not lose parameter cleanup.
-          @fs.write_file(
-            options.state_dir + "/" + instance.id + ".ci-retire",
-            "retire",
-            permission=0o600,
-          )
-        }
+      // Cleanup stays outside the guest and follows terminal attempt state.
+      if worker.draining && worker.active_attempts == 0 {
+        @fs.write_file(
+          options.state_dir + "/" + instance.id + ".ci-retire",
+          "retire",
+          permission=0o600,
+        )
         ignore(
           aws_request(options, [
             "autoscaling",
@@ -710,31 +659,6 @@ async fn reconcile_group(
             "--should-decrement-desired-capacity",
           ]),
         )
-        @fs.remove(options.state_dir + "/" + instance.id + ".token") catch {
-          _ => ()
-        }
-        @fs.remove(options.state_dir + "/" + instance.id + ".bootstrap-command") catch {
-          _ => ()
-        }
-        @fs.remove(
-          options.state_dir +
-          "/" +
-          instance.id +
-          ".armed-" +
-          snapshot.config_revision,
-        ) catch {
-          _ => ()
-        }
-        if !options.base.windows_vm {
-          ignore(
-            aws_request(options, [
-              "ssm",
-              "delete-parameter",
-              "--name",
-              options.parameter_prefix + "/" + instance.id,
-            ]),
-          )
-        }
       }
     } else if instance.template_version !=
       snapshot.config.get("template_version").unwrap_or("") ||
@@ -793,9 +717,6 @@ async fn cleanup_retired_ci(
   options : ManagedOptions,
   live : Array[String],
 ) -> Unit {
-  if options.base.execution_mode() is None {
-    return
-  }
   for name in @fs.readdir(options.state_dir) {
     guard name.strip_suffix(".ci-retire") is Some(raw) else { continue }
     let id = raw.to_owned()
@@ -817,7 +738,7 @@ async fn cleanup_retired_ci(
     let parameter = options.parameter_prefix + "/" + id
     delete_ci_parameter(options, parameter)
     let receipt = options.state_dir + "/" + id + ".ci-volumes"
-    if options.base.windows_vm && @fs.exists(receipt) {
+    if @fs.exists(receipt) {
       let volumes : Array[String] = @json.from_json(
         @json.parse(@fs.read_file(receipt).text()),
       )
@@ -1117,11 +1038,6 @@ async fn validate_cloud_configuration(
       "Task limits exceed instance resources; reserve at least 512 MiB for the host.",
     )
   }
-  let disks = if options.base.windows_vm {
-    ",disks:LaunchTemplateData.BlockDeviceMappings[].Ebs"
-  } else {
-    ""
-  }
   let templates = aws_request(options, [
     "ec2",
     "describe-launch-template-versions",
@@ -1130,9 +1046,7 @@ async fn validate_cloud_configuration(
     "--versions",
     config.get("template_version").unwrap_or(""),
     "--query",
-    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit" +
-    disks +
-    "}",
+    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit,disks:LaunchTemplateData.BlockDeviceMappings[].Ebs}",
   ])
   let templates : Array[WorkerTemplate] = @json.from_json(templates)
   guard templates.length() == 1 &&
@@ -1142,16 +1056,13 @@ async fn validate_cloud_configuration(
       "Pin an AMI and require IMDSv2 with hop limit one to keep host credentials outside job containers.",
     )
   }
-  guard !options.base.windows_vm ||
-    (
-      templates[0].disks is Some(disks) &&
-      !disks.is_empty() &&
-      disks.all(disk => {
-        disk is { "DeleteOnTermination": true, "Encrypted": true, .. }
-      })
-    ) else {
+  guard templates[0].disks is Some(disks) &&
+    !disks.is_empty() &&
+    disks.all(disk => {
+      disk is { "DeleteOnTermination": true, "Encrypted": true, .. }
+    }) else {
     raise InvalidConfiguration(
-      "Windows VM launch templates require explicit encrypted, disposable EBS mappings.",
+      "ASG VM launch templates require explicit encrypted, disposable EBS mappings.",
     )
   }
   let images = [templates[0].image]
@@ -1245,32 +1156,13 @@ fn worker_bootstrap_command(
   region : String,
   parameter : String,
   runner_os : String,
-  linux_ci~ : Bool = false,
-  windows_vm~ : Bool = false,
 ) -> (String, String) {
-  if windows_vm {
+  if runner_os == "windows" {
     (
       "AWS-RunPowerShellScript",
       "$ErrorActionPreference='Stop'; & 'C:/moonhub/ci-host.ps1' -BootstrapParameter '\{parameter}' -Region '\{region}'",
     )
-  } else if runner_os == "windows" {
-    (
-      "AWS-RunPowerShellScript",
-      "$ErrorActionPreference='Stop'; $dir='C:\\ProgramData\\MoonHub\\private'; " +
-      "New-Item -ItemType Directory -Force -Path $dir | Out-Null; " +
-      "& icacls.exe $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null; if($LASTEXITCODE -ne 0){throw 'Cannot protect bootstrap directory'}; " +
-      "$json = & aws.exe ssm get-parameter --region " +
-      region +
-      " --name " +
-      parameter +
-      " --with-decryption --query Parameter.Value --output text; if($LASTEXITCODE -ne 0){throw 'Cannot fetch bootstrap'}; " +
-      "[IO.File]::WriteAllText($dir+'\\bootstrap.json',($json -join [Environment]::NewLine),(New-Object Text.UTF8Encoding($false))); " +
-      "$task=Get-ScheduledTask -TaskName 'MoonHubRunnerWorker' -ErrorAction SilentlyContinue; if(!$task -or $task.State -ne 'Running'){ " +
-      "$action=New-ScheduledTaskAction -Execute 'C:\\ProgramData\\MoonHub\\bin\\moonhub-runner.exe' -Argument 'worker --bootstrap-file C:\\ProgramData\\MoonHub\\private\\bootstrap.json'; " +
-      "$settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable; " +
-      "Register-ScheduledTask -TaskName 'MoonHubRunnerWorker' -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -User 'SYSTEM' -RunLevel Highest -Settings $settings -Force | Out-Null; Start-ScheduledTask -TaskName 'MoonHubRunnerWorker' }",
-    )
-  } else if linux_ci {
+  } else {
     (
       "AWS-RunShellScript",
       "set -eu; test -x /usr/local/libexec/moonhub-ci-host; " +
@@ -1281,15 +1173,6 @@ fn worker_bootstrap_command(
       " --with-decryption --query Parameter.Value --output text > /run/moonhub-runner/bootstrap.json; " +
       "systemctl is-active --quiet moonhub-runner-worker || systemd-run --unit=moonhub-runner-worker --collect " +
       "/usr/local/libexec/moonhub-ci-host /run/moonhub-runner/bootstrap.json",
-    )
-  } else {
-    (
-      "AWS-RunShellScript",
-      "set -eu; install -d -m 700 /run/moonhub-runner; umask 077; aws ssm get-parameter --region " +
-      region +
-      " --name " +
-      parameter +
-      " --with-decryption --query Parameter.Value --output text > /run/moonhub-runner/bootstrap.json; systemctl is-active --quiet moonhub-runner-worker || systemd-run --unit=moonhub-runner-worker --collect /usr/local/bin/moonhub-runner worker --bootstrap-file /run/moonhub-runner/bootstrap.json",
     )
   }
 }

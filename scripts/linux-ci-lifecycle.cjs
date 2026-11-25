@@ -35,8 +35,8 @@ if(args[0]==='sts')result={Account:'123456789012'};
 else if(args[0]==='ec2'){
  if(args[1]==='describe-instance-types')result=[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
  else if(args[1]==='describe-launch-template-versions'){
-   assert.equal(args.at(args.indexOf('--query')+1).includes('disks:'),windows);
-   result=[{image:'ami-ci',tokens:'required',hop:1,...(windows?{disks:[{Encrypted:true,DeleteOnTermination:true}]}:{})}];
+   assert.ok(args.at(args.indexOf('--query')+1).includes('disks:'));
+   result=[{image:'ami-ci',tokens:'required',hop:1,disks:[{Encrypted:true,DeleteOnTermination:true}]}];
  }
  else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:windows?'windows':null}];
  else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
@@ -90,11 +90,9 @@ save();if(result!==null)console.log(JSON.stringify(result));
             last_seen_ms: String(Date.now()), idle_since_ms: String(Date.now()), active_attempts: 0}; result = worker;
         } else if (route === '/workers/1/isolation') {
           assert.ok(state().disabled, 'armed before externally disabling metadata');
-          if (windows) {
-            assert.ok(state().disassociated, 'armed before detaching the bootstrap role');
-            assert.ok(state().deleted, 'armed with a live bootstrap parameter');
-            assert.ok(fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
-          }
+          assert.ok(state().disassociated, 'armed before detaching the bootstrap role');
+          assert.ok(state().deleted, 'armed with a live bootstrap parameter');
+          assert.ok(fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
           assert.equal(body.revision, '1'); assert.match(body.controller_id, /^[a-f0-9]{32}$/);
           armed = true;
           if (vanished) {
@@ -130,10 +128,8 @@ save();if(result!==null)console.log(JSON.stringify(result));
     assert.equal(state().calls.filter(x => x[1] === 'send-command').length, 1, 'bootstrap command was replayed');
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
     assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));
-    if (windows) {
-      assert.ok(state().diskChecked, 'disk deletion was not checked');
-      assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
-    }
+    assert.ok(state().diskChecked, 'disk deletion was not checked');
+    assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
     console.log((windows ? 'WINDOWS_VM' : 'LINUX_CI') + '_EXTERNAL_RETIREMENT_' + (vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(10000)]); if (!exited) child.kill('SIGKILL');}

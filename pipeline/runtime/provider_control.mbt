@@ -104,18 +104,24 @@ pub fn Coordinator::register_runner(
     is Some(message) {
     raise @domain.BadRequest(message~)
   }
-  if request.defaults.get("execution_mode") == Some("windows-vm") {
-    guard request.mode == "asg" &&
+  let execution_mode = request.defaults.get("execution_mode")
+  if request.mode == "asg" {
+    guard execution_mode is Some(mode) &&
+      ["linux-ci", "windows-vm"].contains(mode) &&
       request.schema.any(field => {
         field.name == "execution_mode" &&
         field.kind == "choice" &&
         field.required &&
-        field.choices == ["windows-vm"]
+        field.choices == [mode]
       }) else {
       raise @domain.BadRequest(
-        message="Windows VM mode must be fixed at ASG enrollment.",
+        message="A disposable Linux or Windows VM profile is required at ASG enrollment.",
       )
     }
+  } else if execution_mode is Some("linux-ci" | "windows-vm") {
+    raise @domain.BadRequest(
+      message="Disposable EC2 profiles require ASG enrollment.",
+    )
   }
   self.pool.with_client(client => {
     client.with_transaction(
@@ -242,20 +248,15 @@ pub fn Coordinator::save_provider_config(
         if @protocol.validate_config(schema, config) is Some(message) {
           raise @domain.BadRequest(message~)
         }
-        guard (config.get("execution_mode") == Some("windows-vm")) ==
-          (@json.parse((row.get_name("config_json") : String))
-          is { "execution_mode": "windows-vm", .. }) else {
-          raise Conflict(
-            "Changing Windows VM mode requires a separate provider enrollment.",
+        if (row.get_name("mode") : String) == "asg" {
+          let old : Map[String, String] = @json.from_json(
+            @json.parse((row.get_name("config_json") : String)),
           )
-        }
-        guard !["linux-ci", "windows-vm"].contains(
-            config.get("execution_mode").unwrap_or(""),
-          ) ||
-          provider_environments(tx, id).is_empty() else {
-          raise @domain.BadRequest(
-            message="Remove named environments before changing the worker execution mode.",
-          )
+          guard config.get("execution_mode") == old.get("execution_mode") else {
+            raise Conflict(
+              "Changing the execution mode requires a separate provider enrollment.",
+            )
+          }
         }
         ignore(
           tx.execute(
@@ -348,8 +349,14 @@ pub fn Coordinator::sync_provider(
               for i in old_schema.length()..<schema.length() {
                 let field = schema[i]
                 guard field.name != "execution_mode" ||
-                  defaults.get(field.name) != Some("windows-vm") else {
-                  raise Conflict("Windows VM mode must be set at enrollment.")
+                  (
+                    (row.get_name("mode") : String) != "asg" &&
+                    !(defaults.get(field.name)
+                    is Some("linux-ci" | "windows-vm"))
+                  ) else {
+                  raise Conflict(
+                    "A disposable VM profile must be set at ASG enrollment.",
+                  )
                 }
                 config[field.name] = defaults.get(field.name).unwrap_or("")
               }

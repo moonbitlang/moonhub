@@ -2,7 +2,7 @@
 
 This is the current production deployment path. Web/SSH run in Compose on
 `moonhub-web`; a host systemd service runs the standalone ASG controller. Task
-containers for the ASG provider run on disposable worker EC2 instances. An
+containers for the Linux ASG provider run on single-job EC2 instances. An
 existing Docker/DinD provider can coexist on the Web host; upgrades preserve its
 original pause state as well. The `moonhub-legacy` SSH alias refers to the retired
 host.
@@ -33,10 +33,9 @@ Copy `deploy/production.env.example` to the Git-ignored `deploy/production.env`
 and restrict it to mode 0600. Set the real launch-template ID and preserve the
 existing Compose project name, data/SSH-key volume names, bootstrap secret bind,
 SSH-import bind, HTTP bind and Git SSH port. Do not recreate or rename data volumes.
-The dedicated provider is named `asg`, labels are `self-hosted,linux,moonhub-build`,
-and repository scope is `all` (current and future repositories). Enrollment preserves
-existing provider grants; verify an existing provider already has all-repository
-scope in Site settings. Never replace its enrolled identity just to change grants.
+The dedicated provider uses the Linux CI profile and all-repository scope. Set
+`MOONHUB_ASG_RUNNER_IMAGE` to the exact CI image preloaded on its AMI. Use a new
+provider name and private state directory when migrating from a reusable ASG.
 
 From an SSM session (or the same commands in `AWS-RunShellScript`):
 
@@ -83,29 +82,22 @@ security-group inbound rules empty.
 
 ## Launch template and initial enrollment
 
-The committed `worker-bootstrap.sh` installs Docker/AWS CLI/SSM, pulls the pinned
-task image and extracts the matching worker binary. Ubuntu 24.04 amd64 is supported
-by this bootstrap; use a prebuilt AMI for faster starts. The source template must
-have an encrypted disposable root disk, the dedicated worker role/security group,
-and IMDSv2 required with hop limit 1.
+Build the matching Ubuntu CI image and prepare an unenrolled Ubuntu 24.04 x64
+AMI following [Single-use Linux CI](../docs/linux-ci-runner.md). Supply its AMI ID
+to `deploy/asg-vm-pool.yml` with `GuestPlatform=linux`. Configure the stack's
+ASG name, launch template and bootstrap prefix in `production.env`. The
+controller defaults to numeric template version 1 on enrollment. On later
+releases, select the approved numeric version and its preloaded image in
+**Pipeline providers → Execution settings**. Keep the template ID and
+instance-type allowlist stable for an enrolled provider.
 
-Before initial enrollment, create version 1 of an image-pinned template, based on
-the existing dedicated template. This command uses the operator's AWS permissions:
-
-```sh
-python3 deploy/asg-template.py --region us-west-2 \
-  --template lt-EXISTING --source-version 1 \
-  --new-name moonhub-runner-production-COMMIT \
-  --image ACCOUNT.dkr.ecr.us-west-2.amazonaws.com/moonhub-runner:COMMIT
-```
-
-Write the returned template ID to `MOONHUB_LAUNCH_TEMPLATE` in `production.env`.
-The image tag must be the 12-character Git commit from the build. Initial enrollment
-uses template version 1. On later releases omit `--new-name` to add a version to
-the same template; select the returned numeric version and new Runner image in
-**Pipeline providers → Execution settings**. Those saved settings are authoritative
-after enrollment; changing CLI defaults does not overwrite them. Keep the template
-ID and instance-type allowlist stable for an enrolled provider.
+Migrate a reusable ASG before deploying the ASG-only coordinator. Enroll and
+verify the replacement Linux provider against the running coordinator. Give it
+the same labels and repository grants, pause the legacy provider and wait for
+its active jobs and ASGs to drain. Set the production provider name, ASG,
+template, image and state path to the replacement so the updated production
+controller rejoins that enrollment. Revoke the retired provider after verifying
+its replacement. Historical attempts retain their provider identifiers.
 
 ## Upgrade and verification
 
@@ -130,7 +122,7 @@ can keep ready workers only while paused and with their configuration applied.
 Busy or starting workers in those providers continue to block the switch. The
 controller restarts only after the original pause state has been restored. A successful upgrade starts the
 controller even if it was inactive beforehand, so idle retirement can resume.
-New commit-tagged bootstrap Runner image defaults do not change an enrolled
+Changes to the bootstrap Runner image default do not change an enrolled
 provider's saved execution settings.
 
 An independently installed `moonhub-dind-controller.service` is upgraded in the
@@ -280,8 +272,8 @@ from an operator laptop proves that the production controller can run it.
 | Identity | Required access |
 | --- | --- |
 | Provisioning operator | Create/update dedicated ECR, roles and instance profile, security group, launch templates and zero-capacity ASGs; install the scoped controller/worker policies. |
-| Web instance role / controller | Describe instance types, AMIs, launch templates (both DescribeLaunchTemplates and DescribeLaunchTemplateVersions) and ASGs; update the dedicated ASGs, set capacity/protection and terminate drained instances; put/delete only its bootstrap parameters; send the bootstrap SSM document only to tagged Runner instances; pass the dedicated worker role to EC2. Image publication additionally requires ECR push access. |
-| Worker instance role | SSM managed-instance connectivity; get/decrypt only its bootstrap parameter prefix; authenticate to ECR and pull only the Runner repository. |
+| Web instance role / controller | Describe the dedicated cloud resources, scale and drain ASGs, provision the instance-scoped SSM parameter, disable IMDS and disassociate the bootstrap role. Scope the mutating actions and PassRole to the intended pool. See the Linux and Windows VM guides for the isolation and volume checks. Image publication additionally requires ECR push access. |
+| Worker instance role | SSM managed-instance connectivity and get/decrypt only the instance's tagged bootstrap parameter. Preload the runner image during AMI preparation. |
 
 ASG configuration also validates permission to use the selected launch template.
 Grant the controller the required EC2 launch authorization for that template's

@@ -1,6 +1,6 @@
 # Multiple Linux environments in one provider
 
-A standard Linux Docker or ASG provider can offer up to eight execution
+A Linux Docker provider can offer up to eight execution
 environments. Each environment declares one distribution, architecture,
 immutable task image and optional capability labels. Provider authorization,
 worker count, task CPU/memory limits, pause and revocation remain shared.

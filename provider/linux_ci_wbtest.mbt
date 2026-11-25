@@ -32,10 +32,7 @@ test "privileged CI is opt-in and has no host Docker socket or shared namespaces
     None,
   )
   let (_, command) = worker_bootstrap_command(
-    "us-west-2",
-    "/moonhub-runner/ci/i-test",
-    "linux",
-    linux_ci=true,
+    "us-west-2", "/moonhub-runner/ci/i-test", "linux",
   )
   assert_true(command.contains("moonhub-ci-host"))
   assert_false(command.contains("--linux-ci --unsafe-local"))
