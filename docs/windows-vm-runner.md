@@ -25,10 +25,11 @@ an enrolled worker or its job state.
 
 Deploy `deploy/windows/vm-pool.yml` with the approved AMI and the required
 instance capacity. It creates a separate VPC without connections to production
-private networks, an HTTPS-only egress security group with no inbound rules, an
-instance-scoped bootstrap role, an explicit launch template and a zero-capacity
-On-Demand ASG. Keep the launch template's encrypted EBS volumes set to delete on
-termination. The template and runtime enforce IMDSv2 and an initial hop limit
+private networks, an HTTP and HTTPS egress security group with no inbound rules,
+an instance-scoped bootstrap role, an explicit launch template and a zero-capacity
+On-Demand ASG. Windows uses HTTP to fetch certificate revocation lists for some
+HTTPS connections. Keep the launch template's encrypted EBS volumes set to delete
+on termination. The template and runtime enforce IMDSv2 and an initial hop limit
 of one. Reserve at least two vCPUs and 8 GiB per guest.
 
 The external controller runs under a trusted cloud identity. In addition to
@@ -69,8 +70,9 @@ settings. Zero standby permits the ASG to scale to zero.
    recorded disks disappear and retains the retirement record if verification
    is incomplete. Restarting the controller preserves that cleanup work.
 4. Verify a job using `windows-vm` has administrator rights and can create a
-   symlink. Verify a standard Windows workflow still runs with an ordinary
-   account and that the two attempts use different, terminated EC2 instances.
+   symlink. Verify a standard Windows workflow resolves a public GitHub action
+   tag over HTTPS and runs with an ordinary account. Check that the two attempts
+   use different, terminated EC2 instances.
    Check the desired/observed/applied provider revisions and the associated
    EBS volumes and bootstrap parameters. Retry and cancellation should each
    leave the instance retired.

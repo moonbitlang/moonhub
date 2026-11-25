@@ -53,6 +53,11 @@ Resources:
       GroupDescription: Outbound HTTPS for disposable Windows CI
       VpcId: !Ref Network
       SecurityGroupEgress:
+        # Windows fetches some certificate revocation lists over HTTP.
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
