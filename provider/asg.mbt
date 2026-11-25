@@ -1117,6 +1117,11 @@ async fn validate_cloud_configuration(
       "Task limits exceed instance resources; reserve at least 512 MiB for the host.",
     )
   }
+  let disks = if options.base.windows_vm {
+    ",disks:LaunchTemplateData.BlockDeviceMappings[].Ebs"
+  } else {
+    ""
+  }
   let templates = aws_request(options, [
     "ec2",
     "describe-launch-template-versions",
@@ -1125,7 +1130,9 @@ async fn validate_cloud_configuration(
     "--versions",
     config.get("template_version").unwrap_or(""),
     "--query",
-    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit,disks:LaunchTemplateData.BlockDeviceMappings[].Ebs}",
+    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit" +
+    disks +
+    "}",
   ])
   let templates : Array[WorkerTemplate] = @json.from_json(templates)
   guard templates.length() == 1 &&

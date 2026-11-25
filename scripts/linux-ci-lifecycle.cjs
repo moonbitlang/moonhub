@@ -34,7 +34,10 @@ let result=null;
 if(args[0]==='sts')result={Account:'123456789012'};
 else if(args[0]==='ec2'){
  if(args[1]==='describe-instance-types')result=[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
- else if(args[1]==='describe-launch-template-versions')result=[{image:'ami-ci',tokens:'required',hop:1,disks:windows?[{Encrypted:true,DeleteOnTermination:true}]:null}];
+ else if(args[1]==='describe-launch-template-versions'){
+   assert.equal(args.at(args.indexOf('--query')+1).includes('disks:'),windows);
+   result=[{image:'ami-ci',tokens:'required',hop:1,...(windows?{disks:[{Encrypted:true,DeleteOnTermination:true}]}:{})}];
+ }
  else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:windows?'windows':null}];
  else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
  else if(args[1]==='describe-iam-instance-profile-associations')result=s.disassociated?[]:[{state:'associated',id:'iip-assoc-fixture'}];

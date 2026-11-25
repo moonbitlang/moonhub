@@ -23,11 +23,7 @@ async function runGuestJob(administrator) {
   const server = http.createServer(async (request, response) => {
     try {
       assert.equal(request.headers.authorization, 'Bearer ' + token);
-      if (request.method === 'GET') {
-        response.writeHead(200, {'Content-Length': 1024});
-        response.end(Buffer.alloc(1024));
-        return;
-      }
+      assert.equal(request.method, 'POST', 'The guest fixture has no source access');
       let input = '';
       for await (const chunk of request) input += chunk;
       const body = JSON.parse(input);
@@ -77,7 +73,7 @@ async function runGuestJob(administrator) {
       version: 11, attempt_id: attemptId, run_id: '1', job_id: '1',
       repository: 'test/windows-vm', commit_sha: 'a'.repeat(40), state: 'leased',
       server_time_ms: String(now), lease_until_ms: String(now + 60000),
-      job: {id: 'test', name: 'VM guest test', runs_on: labels, timeout_minutes: 2,
+      job: {id: 'test', name: 'VM guest test', runs_on: labels, timeout_minutes: 2, contents_read: false,
         steps: [{id: 'check', name: 'Check account', run, shell: '', working_directory: '.', env: {}, timeout_minutes: 0}]},
     }));
     const testScript = state + '/dispatch-test.ps1';
