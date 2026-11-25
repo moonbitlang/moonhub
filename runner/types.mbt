@@ -15,6 +15,7 @@ pub(all) struct Options {
   allow_http : Bool
   unsafe_local : Bool
   linux_ci : Bool
+  windows_vm : Bool
   heartbeat_ms : Int32
 }
 

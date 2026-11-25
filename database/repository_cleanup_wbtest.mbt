@@ -1,5 +1,5 @@
 ///|
-async test "schemas 38 through 44 upgrade without replaying completed migrations" {
+async test "schemas 38 through 45 upgrade without replaying completed migrations" {
   let baseline = @fs.read_file("db/base.sql").text()
   let storage = @fs.read_file("db/migrations/039_blob_storage.sql").text()
   let releases = @fs.read_file("db/migrations/040_releases.sql").text()
@@ -9,8 +9,11 @@ async test "schemas 38 through 44 upgrade without replaying completed migrations
     "db/migrations/043_provider_environments.sql",
   ).text()
   let transfers = @fs.read_file("db/migrations/044_repository_transfer.sql").text()
+  let release_workflows = @fs.read_file(
+    "db/migrations/045_release_workflows.sql",
+  ).text()
   @async.with_task_group(group => {
-    for version in [38, 39, 40, 41, 42, 43, 44] {
+    for version in [38, 39, 40, 41, 42, 43, 44, 45] {
       let pool = new_db_pool({ path: ":memory:", }, group)
       defer pool.close()
       pool.with_client(client => {
@@ -32,6 +35,9 @@ async test "schemas 38 through 44 upgrade without replaying completed migrations
         }
         if version >= 44 {
           client.batch_execute(transfers)
+        }
+        if version >= 45 {
+          client.batch_execute(release_workflows)
         }
         client.batch_execute(
           "PRAGMA user_version=\{version}; INSERT INTO team(name_key,display_name,kind) VALUES('retained','Retained','org');",
@@ -70,7 +76,7 @@ async test "schemas 38 through 44 upgrade without replaying completed migrations
         )
         assert_true(
           client
-          .query_all("SELECT * FROM pipeline_provider_environment")
+          .query_all("SELECT * FROM pipeline_provider_job_routing")
           .is_empty(),
         )
       })

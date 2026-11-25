@@ -27,6 +27,7 @@ priv struct WorkerBootstrap {
   runner_image : String
   runner_os : String?
   linux_ci : Bool?
+  windows_vm : Bool?
 }
 
 ///|
@@ -237,7 +238,8 @@ async fn provision_worker(
   revision : String,
   controller_id : String,
 ) -> Unit {
-  if options.base.linux_ci {
+  let single_use = options.base.execution_mode() is Some(_)
+  if single_use {
     // Journal before publishing any instance credential. Spot interruption or
     // ASG health replacement can remove an instance without our terminate path.
     @fs.write_file(
@@ -252,58 +254,68 @@ async fn provision_worker(
     instance.id,
   )
   let parameter = options.parameter_prefix + "/" + instance.id
-  let bootstrap : WorkerBootstrap = {
-    server: options.base.server,
-    token: worker_token,
-    allow_http: options.base.allow_http,
-    runner_image: config
-    .get("runner_image")
-    .unwrap_or(options.base.runner_image),
-    runner_os: Some(runner_os),
-    linux_ci: Some(options.base.linux_ci),
-  }
-  ignore(
-    aws_request(
-      options,
-      ["ssm", "put-parameter"],
-      body=Some({
-        "Name": parameter,
-        "Type": "SecureString",
-        "Value": ToJson::to_json(bootstrap).stringify(),
-        "Overwrite": true,
-      }),
-    ),
-  )
-  if options.base.linux_ci {
-    let identity = aws_request(options, ["sts", "get-caller-identity"])
-    guard identity is { "Account": String(account), .. } &&
-      account.length() == 12 &&
-      account.iter().all(c => c.is_ascii_digit()) else {
-      raise InvalidConfiguration("Cannot establish the bootstrap instance ARN.")
+  let receipt = options.state_dir + "/" + instance.id + ".bootstrap-command"
+  if !single_use || !@fs.exists(receipt) {
+    let bootstrap : WorkerBootstrap = {
+      server: options.base.server,
+      token: worker_token,
+      allow_http: options.base.allow_http,
+      runner_image: config
+      .get("runner_image")
+      .unwrap_or(options.base.runner_image),
+      runner_os: Some(runner_os),
+      linux_ci: Some(options.base.linux_ci),
+      windows_vm: if options.base.windows_vm {
+        Some(true)
+      } else {
+        None
+      },
     }
     ignore(
-      aws_request(options, [
-        "ssm",
-        "add-tags-to-resource",
-        "--resource-type",
-        "Parameter",
-        "--resource-id",
-        parameter,
-        "--tags",
-        "Key=MoonHubInstanceArn,Value=arn:aws:ec2:\{options.region}:\{account}:instance/\{instance.id}",
-      ]),
+      aws_request(
+        options,
+        ["ssm", "put-parameter"],
+        body=Some({
+          "Name": parameter,
+          "Type": "SecureString",
+          "Value": ToJson::to_json(bootstrap).stringify(),
+          "Overwrite": true,
+        }),
+      ),
     )
+    if single_use {
+      let identity = aws_request(options, ["sts", "get-caller-identity"])
+      guard identity is { "Account": String(account), .. } &&
+        account.length() == 12 &&
+        account.iter().all(c => c.is_ascii_digit()) else {
+        raise InvalidConfiguration(
+          "Cannot establish the bootstrap instance ARN.",
+        )
+      }
+      ignore(
+        aws_request(options, [
+          "ssm",
+          "add-tags-to-resource",
+          "--resource-type",
+          "Parameter",
+          "--resource-id",
+          parameter,
+          "--tags",
+          "Key=MoonHubInstanceArn,Value=arn:aws:ec2:\{options.region}:\{account}:instance/\{instance.id}",
+        ]),
+      )
+    }
   }
   // Only resource names occur in SSM history. The credential is downloaded by
-  // the instance into a root-only tmpfs file and never appears in a shell argv.
+  // the instance into a private file and never appears in a shell argv.
   let (document, command) = worker_bootstrap_command(
     options.region,
     parameter,
     runner_os,
     linux_ci=options.base.linux_ci,
+    windows_vm=options.base.windows_vm,
   )
-  let receipt = options.state_dir + "/" + instance.id + ".bootstrap-command"
-  let command_id = if options.base.linux_ci && @fs.exists(receipt) {
+  let command_id = if single_use && @fs.exists(receipt) {
     let id = @fs.read_file(receipt).text()
     guard valid_cloud_name(id) else {
       raise InvalidConfiguration("Invalid saved bootstrap command.")
@@ -320,7 +332,7 @@ async fn provision_worker(
         "TimeoutSeconds": 60,
       }),
     )
-    if options.base.linux_ci {
+    if single_use {
       guard response is { "Command": { "CommandId": String(id), .. }, .. } &&
         valid_cloud_name(id) else {
         raise InvalidConfiguration("Invalid bootstrap command identity.")
@@ -331,8 +343,8 @@ async fn provision_worker(
       ""
     }
   }
-  if options.base.linux_ci {
-    // First let SSM download this instance's bootstrap into tmpfs. The worker
+  if single_use {
+    // First let SSM download this instance's bootstrap. The worker
     // service waits; no task can run until the outside controller disables IMDS.
     let response = aws_request(options, [
       "ssm",
@@ -368,6 +380,9 @@ async fn provision_worker(
     guard metadata is { "State": "applied", "HttpEndpoint": "disabled", .. } else {
       return
     }
+    if options.base.windows_vm {
+      guard isolate_windows_vm(options, instance.id, parameter) else { return }
+    }
     if !worker.draining && worker.active_attempts == 0 {
       ignore(
         control_request(
@@ -384,6 +399,87 @@ async fn provision_worker(
         permission=0o600,
       )
     }
+  }
+}
+
+///|
+async fn isolate_windows_vm(
+  options : ManagedOptions,
+  id : String,
+  parameter : String,
+) -> Bool {
+  let associations = aws_request(options, [
+    "ec2",
+    "describe-iam-instance-profile-associations",
+    "--filters",
+    "Name=instance-id,Values=" + id,
+    "--query",
+    "IamInstanceProfileAssociations[].{id:AssociationId,state:State}",
+  ])
+  guard associations is Array(associations) else {
+    raise InvalidConfiguration(
+      "Cannot verify the VM bootstrap role was removed.",
+    )
+  }
+  for association in associations {
+    match association {
+      { "state": "disassociated", .. } => ()
+      { "state": "associated", "id": String(association), .. } if valid_cloud_name(
+          association,
+        ) => {
+        ignore(
+          aws_request(options, [
+            "ec2", "disassociate-iam-instance-profile", "--association-id", association,
+          ]),
+        )
+        return false
+      }
+      _ => return false
+    }
+  }
+  delete_ci_parameter(options, parameter)
+  let result = aws_request(options, [
+    "ec2", "describe-instances", "--instance-ids", id, "--query", "Reservations[].Instances[].BlockDeviceMappings[].Ebs.[VolumeId,DeleteOnTermination]",
+  ])
+  guard result is Array(mappings) && !mappings.is_empty() else {
+    raise InvalidConfiguration("Cannot verify the VM has disposable disks.")
+  }
+  let volumes = mappings.map(mapping => {
+    guard mapping is [String(volume), true] &&
+      volume.has_prefix("vol-") &&
+      valid_cloud_name(volume) else {
+      raise InvalidConfiguration("Cannot verify the VM has disposable disks.")
+    }
+    volume
+  })
+  @fs.write_file(
+    options.state_dir + "/" + id + ".ci-volumes",
+    ToJson::to_json(volumes).stringify(),
+    permission=0o600,
+  )
+  true
+}
+
+///|
+async fn delete_ci_parameter(
+  options : ManagedOptions,
+  parameter : String,
+) -> Unit {
+  let parameters = aws_request(options, [
+    "ssm",
+    "describe-parameters",
+    "--parameter-filters",
+    "Key=Name,Option=Equals,Values=" + parameter,
+    "--query",
+    "Parameters[].Name",
+  ])
+  if parameters != Json::array([]) {
+    guard parameters == Json::array([Json(parameter)]) else {
+      raise InvalidConfiguration("Unexpected CI cleanup parameter.")
+    }
+    ignore(
+      aws_request(options, ["ssm", "delete-parameter", "--name", parameter]),
+    )
   }
 }
 
@@ -485,6 +581,7 @@ async fn reconcile_group(
   controller_id : String,
 ) -> Unit {
   let now = @env.now().reinterpret_as_int64()
+  let single_use = options.base.execution_mode() is Some(_)
   let idle_seconds = number(snapshot.config, "idle_seconds").to_int64()
   let timeout_ms = idle_seconds * 1000L
   for instance in group.instances {
@@ -516,7 +613,7 @@ async fn reconcile_group(
         instance.template_version !=
         snapshot.config.get("template_version").unwrap_or("")
       let expired = now - seen > 180000L
-      if options.base.linux_ci &&
+      if single_use &&
         !worker.draining &&
         !expired &&
         !obsolete &&
@@ -540,7 +637,8 @@ async fn reconcile_group(
         )
         continue
       }
-      if worker.state == "starting" &&
+      if !single_use &&
+        worker.state == "starting" &&
         !expired &&
         !obsolete &&
         !worker.draining &&
@@ -589,12 +687,12 @@ async fn reconcile_group(
       if worker.draining &&
         worker.active_attempts == 0 &&
         (
-          options.base.linux_ci ||
+          single_use ||
           worker.state == "drained" ||
           worker.state == "failed" ||
           expired
         ) {
-        if options.base.linux_ci {
+        if single_use {
           // Persist before requesting termination. A controller interruption
           // or ambiguous AWS response must not lose parameter cleanup.
           @fs.write_file(
@@ -627,14 +725,16 @@ async fn reconcile_group(
         ) catch {
           _ => ()
         }
-        ignore(
-          aws_request(options, [
-            "ssm",
-            "delete-parameter",
-            "--name",
-            options.parameter_prefix + "/" + instance.id,
-          ]),
-        )
+        if !options.base.windows_vm {
+          ignore(
+            aws_request(options, [
+              "ssm",
+              "delete-parameter",
+              "--name",
+              options.parameter_prefix + "/" + instance.id,
+            ]),
+          )
+        }
       }
     } else if instance.template_version !=
       snapshot.config.get("template_version").unwrap_or("") ||
@@ -693,7 +793,7 @@ async fn cleanup_retired_ci(
   options : ManagedOptions,
   live : Array[String],
 ) -> Unit {
-  if !options.base.linux_ci {
+  if options.base.execution_mode() is None {
     return
   }
   for name in @fs.readdir(options.state_dir) {
@@ -715,21 +815,22 @@ async fn cleanup_retired_ci(
     ])
     guard state is ["terminated"] || state == Json::array([]) else { continue }
     let parameter = options.parameter_prefix + "/" + id
-    let parameters = aws_request(options, [
-      "ssm",
-      "describe-parameters",
-      "--parameter-filters",
-      "Key=Name,Option=Equals,Values=" + parameter,
-      "--query",
-      "Parameters[].Name",
-    ])
-    if parameters != Json::array([]) {
-      guard parameters == Json::array([Json(parameter)]) else {
-        raise InvalidConfiguration("Unexpected CI cleanup parameter.")
-      }
-      ignore(
-        aws_request(options, ["ssm", "delete-parameter", "--name", parameter]),
+    delete_ci_parameter(options, parameter)
+    let receipt = options.state_dir + "/" + id + ".ci-volumes"
+    if options.base.windows_vm && @fs.exists(receipt) {
+      let volumes : Array[String] = @json.from_json(
+        @json.parse(@fs.read_file(receipt).text()),
       )
+      let present = aws_request(options, [
+        "ec2",
+        "describe-volumes",
+        "--filters",
+        "Name=volume-id,Values=" + volumes.join(","),
+        "--query",
+        "Volumes[].VolumeId",
+      ])
+      guard present == Json::array([]) else { continue }
+      @fs.remove(receipt)
     }
     for file in @fs.readdir(options.state_dir) {
       if file == id + ".token" ||
@@ -1001,9 +1102,17 @@ async fn validate_cloud_configuration(
     "InstanceTypes[].{cpus:VCpuInfo.DefaultVCpus,memory_mib:MemoryInfo.SizeInMiB,architectures:ProcessorInfo.SupportedArchitectures}",
   ])
   let capacities : Array[InstanceCapacity] = @json.from_json(result)
-  guard capacities.length() == 1 &&
-    number(config, "cpus") <= capacities[0].cpus &&
-    number(config, "memory_mib") + 512 <= capacities[0].memory_mib else {
+  guard capacities.length() == 1 else {
+    raise InvalidConfiguration("Could not verify the selected instance type.")
+  }
+  if options.base.windows_vm {
+    guard capacities[0].cpus >= 2 && capacities[0].memory_mib >= 8192 else {
+      raise InvalidConfiguration(
+        "Windows VM requires at least two vCPUs and 8 GiB of RAM.",
+      )
+    }
+  } else if number(config, "cpus") > capacities[0].cpus ||
+    number(config, "memory_mib") + 512 > capacities[0].memory_mib {
     raise InvalidConfiguration(
       "Task limits exceed instance resources; reserve at least 512 MiB for the host.",
     )
@@ -1016,7 +1125,7 @@ async fn validate_cloud_configuration(
     "--versions",
     config.get("template_version").unwrap_or(""),
     "--query",
-    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit}",
+    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit,disks:LaunchTemplateData.BlockDeviceMappings[].Ebs}",
   ])
   let templates : Array[WorkerTemplate] = @json.from_json(templates)
   guard templates.length() == 1 &&
@@ -1024,6 +1133,18 @@ async fn validate_cloud_configuration(
     templates[0].hop == Some(1) else {
     raise InvalidConfiguration(
       "Pin an AMI and require IMDSv2 with hop limit one to keep host credentials outside job containers.",
+    )
+  }
+  guard !options.base.windows_vm ||
+    (
+      templates[0].disks is Some(disks) &&
+      !disks.is_empty() &&
+      disks.all(disk => {
+        disk is { "DeleteOnTermination": true, "Encrypted": true, .. }
+      })
+    ) else {
+    raise InvalidConfiguration(
+      "Windows VM launch templates require explicit encrypted, disposable EBS mappings.",
     )
   }
   let images = [templates[0].image]
@@ -1054,6 +1175,11 @@ async fn validate_cloud_configuration(
     }
     "windows"
   } else {
+    guard !options.base.windows_vm else {
+      raise InvalidConfiguration(
+        "Windows VM requires a Windows launch template.",
+      )
+    }
     "linux"
   }
 }
@@ -1070,7 +1196,7 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
   guard bootstrap.runner_os.unwrap_or("linux") == @platform.os() else {
     raise InvalidConfiguration("Worker OS does not match its launch template.")
   }
-  if bootstrap.linux_ci == Some(true) {
+  if bootstrap.linux_ci == Some(true) || bootstrap.windows_vm == Some(true) {
     guard !@fs.exists(base.workspace_root + "/ci-consumed") else {
       raise InvalidConfiguration("This CI instance has already executed a job.")
     }
@@ -1084,6 +1210,7 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
       allow_http: bootstrap.allow_http,
       runner_image: bootstrap.runner_image,
       linux_ci: bootstrap.linux_ci.unwrap_or(false),
+      windows_vm: bootstrap.windows_vm.unwrap_or(false),
     },
     bootstrap.token,
   )
@@ -1095,6 +1222,7 @@ priv struct WorkerTemplate {
   image : String
   tokens : String?
   hop : Int32?
+  disks : Array[Json]?
 }
 
 ///|
@@ -1111,8 +1239,14 @@ fn worker_bootstrap_command(
   parameter : String,
   runner_os : String,
   linux_ci~ : Bool = false,
+  windows_vm~ : Bool = false,
 ) -> (String, String) {
-  if runner_os == "windows" {
+  if windows_vm {
+    (
+      "AWS-RunPowerShellScript",
+      "$ErrorActionPreference='Stop'; & 'C:/moonhub/ci-host.ps1' -BootstrapParameter '\{parameter}' -Region '\{region}'",
+    )
+  } else if runner_os == "windows" {
     (
       "AWS-RunPowerShellScript",
       "$ErrorActionPreference='Stop'; $dir='C:\\ProgramData\\MoonHub\\private'; " +

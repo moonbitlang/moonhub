@@ -1,5 +1,8 @@
 # Standalone Windows PC provider
 
+For an AWS pool that runs one Windows job per disposable VM, see
+[Disposable Windows VM runner](windows-vm-runner.md).
+
 A dedicated Windows PC can provide one `docker` provider and one reusable worker.
 No EC2 instance, AMI, ASG, AWS CLI or SSM Agent is involved. Each job gets a fresh
 Windows container and named workspace volume; both are removed before another

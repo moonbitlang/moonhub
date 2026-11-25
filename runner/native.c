@@ -8,14 +8,24 @@
 #pragma comment(lib, "advapi32.lib")
 #endif
 int64_t moonhub_runner_monotonic(void) { return (int64_t)GetTickCount64(); }
-int32_t moonhub_runner_prepare(int32_t local) {
-  if (local) return 0;
+int32_t moonhub_runner_prepare(int32_t mode) {
+  if (mode == 1) return 0;
   DWORD type = 0, size = sizeof(type);
-  if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control", L"ContainerType", RRF_RT_REG_DWORD, NULL, &type, &size) != ERROR_SUCCESS) return -1;
+  LONG container = RegGetValueW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control", L"ContainerType", RRF_RT_REG_DWORD, NULL, &type, &size);
+  if (mode == 0) {
+    if (container != ERROR_SUCCESS) return -1;
+  } else if (mode == 3 || mode == 4) {
+    if (container != ERROR_FILE_NOT_FOUND) return -1;
+    DWORD marker = GetFileAttributesW(L"C:\\ProgramData\\MoonHub\\vm\\isolated");
+    if (marker == INVALID_FILE_ATTRIBUTES || (marker & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) return -1;
+  } else return -1;
   BYTE sid[SECURITY_MAX_SID_SIZE]; DWORD sid_size = sizeof(sid); BOOL admin = TRUE;
   if (!CreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, sid, &sid_size) ||
-      !CheckTokenMembership(NULL, sid, &admin) || admin) return -1;
-  // Steps share ContainerUser with the agent. Remove same-user process access
+      !CheckTokenMembership(NULL, sid, &admin) || (admin != (mode == 4))) return -1;
+  sid_size = sizeof(sid); BOOL system = TRUE;
+  if (!CreateWellKnownSid(WinLocalSystemSid, NULL, sid, &sid_size) ||
+      !CheckTokenMembership(NULL, sid, &system) || system) return -1;
+  // Steps share their account with the agent. Remove same-user process access
   // before loading credentials, preventing ReadProcessMemory/DuplicateHandle on
   // the agent; SYSTEM and administrators retain diagnostic access.
   PSECURITY_DESCRIPTOR descriptor = NULL;

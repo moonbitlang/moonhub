@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Isolated MoonHub disposable Windows Server 2025 ASG workers
+Parameters:
+  Image:
+    Type: AWS::EC2::Image::Id
+  InstanceType:
+    Type: String
+    Default: m6a.large
+  MaxWorkers:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 20
+Resources:
+  Network:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.249.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.249.0.0/24
+      VpcId: !Ref Network
+      MapPublicIpOnLaunch: true
+  Internet:
+    Type: AWS::EC2::InternetGateway
+  Connection:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref Internet
+      VpcId: !Ref Network
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Network
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: Connection
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Internet
+  Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+  GuestSecurity:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound HTTPS for disposable Windows CI
+      VpcId: !Ref Network
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  Bootstrap:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: ec2.amazonaws.com
+      Policies:
+        - PolicyName: bootstrap
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:UpdateInstanceInformation
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: '*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/moonhub-runner/${AWS::StackName}/*'
+                Condition:
+                  StringEquals:
+                    'aws:ResourceTag/MoonHubInstanceArn': '${ec2:SourceInstanceARN}'
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref Bootstrap
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref Image
+        InstanceType: !Ref InstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref GuestSecurity
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 1
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              Encrypted: true
+              DeleteOnTermination: true
+              VolumeType: gp3
+        TagSpecifications:
+          - ResourceType: volume
+            Tags:
+              - Key: MoonHubWindowsVmPool
+                Value: !Ref AWS::StackName
+  Group:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: InternetRoute
+    Properties:
+      MinSize: '0'
+      MaxSize: !Ref MaxWorkers
+      DesiredCapacity: '0'
+      NewInstancesProtectedFromScaleIn: true
+      HealthCheckType: EC2
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: MoonHubWindowsVmPool
+          Value: !Ref AWS::StackName
+          PropagateAtLaunch: true
+Outputs:
+  AutoScalingGroup:
+    Value: !Ref Group
+  LaunchTemplateId:
+    Value: !Ref LaunchTemplate
+  LaunchTemplateVersion:
+    Value: !GetAtt LaunchTemplate.LatestVersionNumber
+  WorkerRole:
+    Value: !GetAtt Bootstrap.Arn
+  BootstrapPrefix:
+    Value: !Sub '/moonhub-runner/${AWS::StackName}'

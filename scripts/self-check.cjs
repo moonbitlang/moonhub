@@ -133,6 +133,7 @@ async function main() {
   await run('S3 storage integration', process.execPath, ['scripts/storage-s3-smoke.mjs'], 300000);
   await run('Managed runner lifecycle', process.execPath, ['scripts/managed-runner-smoke.cjs'], 240000);
   await run('Single-use Linux CI lifecycle', process.execPath, ['scripts/linux-ci-lifecycle.cjs'], 180000);
+  await run('Disposable Windows VM lifecycle', process.execPath, ['scripts/linux-ci-lifecycle.cjs', '--windows-vm'], 120000);
   console.log('MOONHUB_SELF_CHECK_OK:' + (process.env.GITHUB_SHA || 'local'));
 }
 

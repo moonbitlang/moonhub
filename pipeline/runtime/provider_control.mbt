@@ -75,6 +75,13 @@ fn control_snapshot(
 }
 
 ///|
+fn single_use_asg(row : @database.DbRow) -> Bool raise {
+  (row.get_name("mode") : String) == "asg" &&
+  @json.parse((row.get_name("config_json") : String))
+  is { "execution_mode": "linux-ci" | "windows-vm", .. }
+}
+
+///|
 pub fn Coordinator::register_runner(
   self : Coordinator,
   registration_token : String,
@@ -96,6 +103,19 @@ pub fn Coordinator::register_runner(
   if @protocol.validate_config(request.schema, request.defaults)
     is Some(message) {
     raise @domain.BadRequest(message~)
+  }
+  if request.defaults.get("execution_mode") == Some("windows-vm") {
+    guard request.mode == "asg" &&
+      request.schema.any(field => {
+        field.name == "execution_mode" &&
+        field.kind == "choice" &&
+        field.required &&
+        field.choices == ["windows-vm"]
+      }) else {
+      raise @domain.BadRequest(
+        message="Windows VM mode must be fixed at ASG enrollment.",
+      )
+    }
   }
   self.pool.with_client(client => {
     client.with_transaction(
@@ -222,7 +242,16 @@ pub fn Coordinator::save_provider_config(
         if @protocol.validate_config(schema, config) is Some(message) {
           raise @domain.BadRequest(message~)
         }
-        guard config.get("execution_mode") != Some("linux-ci") ||
+        guard (config.get("execution_mode") == Some("windows-vm")) ==
+          (@json.parse((row.get_name("config_json") : String))
+          is { "execution_mode": "windows-vm", .. }) else {
+          raise Conflict(
+            "Changing Windows VM mode requires a separate provider enrollment.",
+          )
+        }
+        guard !["linux-ci", "windows-vm"].contains(
+            config.get("execution_mode").unwrap_or(""),
+          ) ||
           provider_environments(tx, id).is_empty() else {
           raise @domain.BadRequest(
             message="Remove named environments before changing the worker execution mode.",
@@ -318,6 +347,10 @@ pub fn Coordinator::sync_provider(
               )
               for i in old_schema.length()..<schema.length() {
                 let field = schema[i]
+                guard field.name != "execution_mode" ||
+                  defaults.get(field.name) != Some("windows-vm") else {
+                  raise Conflict("Windows VM mode must be set at enrollment.")
+                }
                 config[field.name] = defaults.get(field.name).unwrap_or("")
               }
               if @protocol.validate_config(schema, config) is Some(message) {
@@ -592,9 +625,7 @@ pub fn Coordinator::arm_ci_worker(
     client.with_transaction(
       tx => {
         let parent = authenticate_provider(tx, token)
-        guard (parent.get_name("mode") : String) == "asg" &&
-          @json.parse((parent.get_name("config_json") : String))
-          is { "execution_mode": "linux-ci", .. } &&
+        guard single_use_asg(parent) &&
           (parent.get_name("controller_id") : String) == controller_id &&
           (parent.get_name("controller_until_ms") : Int64) > (self.clock)() &&
           (parent.get_name("config_revision") : Int64) == revision else {

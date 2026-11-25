@@ -8,7 +8,7 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe');
-async function scenario(failed, vanished = false) {
+async function scenario(failed, vanished = false, windows = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-lifecycle-'));
   const stateFile = path.join(root, 'aws.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], disabled: false, terminated: false, booted: false}));
@@ -21,6 +21,7 @@ async function scenario(failed, vanished = false) {
   fs.writeFileSync(adapter, `#!${process.execPath}
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const file=${JSON.stringify(stateFile)},args=process.argv.slice(2),s=JSON.parse(fs.readFileSync(file));s.calls.push(args.slice(0,2));
+const windows=${windows};
 const save = () => {
  const temporary=file+'.'+process.pid;
  const handle=fs.openSync(temporary,'w');
@@ -33,10 +34,19 @@ let result=null;
 if(args[0]==='sts')result={Account:'123456789012'};
 else if(args[0]==='ec2'){
  if(args[1]==='describe-instance-types')result=[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
- else if(args[1]==='describe-launch-template-versions')result=[{image:'ami-ci',tokens:'required',hop:1}];
- else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:null}];
+ else if(args[1]==='describe-launch-template-versions')result=[{image:'ami-ci',tokens:'required',hop:1,disks:windows?[{Encrypted:true,DeleteOnTermination:true}]:null}];
+ else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:windows?'windows':null}];
  else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
- else if(args[1]==='describe-instances'){const q=args.at(args.indexOf('--query')+1);result=q.includes('MetadataOptions')?{State:'applied',HttpEndpoint:s.disabled?'disabled':'enabled'}:q.includes('State.Name')?[s.terminated?'terminated':'running']:[new Date().toISOString()];}
+ else if(args[1]==='describe-iam-instance-profile-associations')result=s.disassociated?[]:[{state:'associated',id:'iip-assoc-fixture'}];
+ else if(args[1]==='disassociate-iam-instance-profile'){assert.ok(s.disabled);s.disassociated=true;}
+ else if(args[1]==='describe-instances'){
+   const q=args.at(args.indexOf('--query')+1);
+   if(q.includes('MetadataOptions'))result={State:'applied',HttpEndpoint:s.disabled?'disabled':'enabled'};
+   else if(q.includes('State.Name'))result=[s.terminated?'terminated':'running'];
+   else if(q.includes('BlockDeviceMappings'))result=[['vol-ci',true]];
+   else result=[new Date().toISOString()];
+ }
+ else if(args[1]==='describe-volumes'){assert.ok(s.terminated);result=s.diskChecked?[]:['vol-ci'];s.diskChecked=true;}
  else throw Error('unexpected EC2 '+args[1]);
 }else if(args[0]==='autoscaling'){
  if(args[1]==='describe-auto-scaling-groups')result=[{name:'ci',min:0,max:1,desired:s.terminated?0:1,instances:s.terminated?[]:[{id:'i-ci',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'1'}]}];
@@ -44,9 +54,9 @@ else if(args[0]==='ec2'){
  else if(args[1]!=='update-auto-scaling-group')throw Error('unexpected ASG '+args[1]);
 }else if(args[0]==='ssm'){
  if(args[1]==='describe-instance-information')result=['i-ci'];
- else if(args[1]==='put-parameter'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));const p=JSON.parse(b.Value);assert.equal(p.linux_ci,true);assert.equal(p.runner_image,'ci:configured');s.workerToken=p.token;}
+ else if(args[1]==='put-parameter'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));const p=JSON.parse(b.Value);assert.equal(p.linux_ci,!windows);if(windows){assert.equal(p.windows_vm,true);assert.equal(p.runner_os,'windows');}else assert.equal(p.runner_image,'ci:configured');s.workerToken=p.token;}
  else if(args[1]==='add-tags-to-resource'){assert.ok(args.includes('Key=MoonHubInstanceArn,Value=arn:aws:ec2:us-west-2:123456789012:instance/i-ci'));}
- else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes('moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
+ else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes(windows?'ci-host.ps1':'moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
  else if(args[1]==='get-command-invocation')result={Status:'Success'};
  else if(args[1]==='delete-parameter'){
    if(!s.deleteFailed){s.deleteFailed=true;save();process.exit(1);}
@@ -67,8 +77,8 @@ save();if(result!==null)console.log(JSON.stringify(result));
         queued_jobs: armed ? 0 : 1, workers: worker ? [worker] : []});
       if (route === '/providers/register') {
         assert.equal(req.headers.authorization, 'Bearer ' + 'a'.repeat(64)); providerToken = body.provider_token;
-        schema = body.schema; config = {...body.defaults, runner_image: 'ci:configured'};
-        assert.equal(config.execution_mode, 'linux-ci'); result = snapshot();
+        schema = body.schema; config = windows ? body.defaults : {...body.defaults, runner_image: 'ci:configured'};
+        assert.equal(config.execution_mode, windows ? 'windows-vm' : 'linux-ci'); result = snapshot();
       } else {
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
         if (route === '/providers/sync') {status = body.status; result = snapshot();}
@@ -77,6 +87,11 @@ save();if(result!==null)console.log(JSON.stringify(result));
             last_seen_ms: String(Date.now()), idle_since_ms: String(Date.now()), active_attempts: 0}; result = worker;
         } else if (route === '/workers/1/isolation') {
           assert.ok(state().disabled, 'armed before externally disabling metadata');
+          if (windows) {
+            assert.ok(state().disassociated, 'armed before detaching the bootstrap role');
+            assert.ok(state().deleted, 'armed with a live bootstrap parameter');
+            assert.ok(fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
+          }
           assert.equal(body.revision, '1'); assert.match(body.controller_id, /^[a-f0-9]{32}$/);
           armed = true;
           if (vanished) {
@@ -94,7 +109,7 @@ save();if(result!==null)console.log(JSON.stringify(result));
   });
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    child = spawn(binary, ['run', '--linux-ci', '--server', 'http://127.0.0.1:' + server.address().port, '--allow-http',
+    child = spawn(binary, ['run', windows ? '--windows-vm' : '--linux-ci', '--server', 'http://127.0.0.1:' + server.address().port, '--allow-http',
       '--name', 'ci', '--mode', 'asg', '--registration-token-file', registration, '--state-dir', path.join(root, 'controller'),
       '--workspace-root', path.join(root, 'workspace'), '--aws', adapter, '--asg', 'ci', '--launch-template', 'lt-ci',
       '--instance-types', 'm6a.large', '--runner-image', 'ci:startup'], {stdio: ['ignore', 'pipe', 'pipe']});
@@ -112,7 +127,11 @@ save();if(result!==null)console.log(JSON.stringify(result));
     assert.equal(state().calls.filter(x => x[1] === 'send-command').length, 1, 'bootstrap command was replayed');
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
     assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));
-    console.log('LINUX_CI_EXTERNAL_RETIREMENT_' + (vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
+    if (windows) {
+      assert.ok(state().diskChecked, 'disk deletion was not checked');
+      assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
+    }
+    console.log((windows ? 'WINDOWS_VM' : 'LINUX_CI') + '_EXTERNAL_RETIREMENT_' + (vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(10000)]); if (!exited) child.kill('SIGKILL');}
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
@@ -120,5 +139,6 @@ save();if(result!==null)console.log(JSON.stringify(result));
 }
 (async () => {
   if (process.argv.includes('--unexpected-termination')) { await scenario(false, true); return; }
+  if (process.argv.includes('--windows-vm')) { await scenario(false, false, true); return; }
   await scenario(false); await scenario(true); await scenario(false, true);
 })().catch(e => {console.error(e); process.exitCode = 1;});

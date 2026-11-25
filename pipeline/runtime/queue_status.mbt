@@ -65,7 +65,7 @@ pub fn Coordinator::queue_reasons(
       let candidates = client.query_all(
         (
           #|SELECT p.paused, p.last_seen_ms,
-          #|EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate
+          #|EXISTS (SELECT 1 FROM pipeline_provider_job_routing candidate
           #|  WHERE candidate.job_id=? AND candidate.provider_id=p.id) AS matches_labels,
           #|EXISTS (SELECT 1 FROM pipeline_job_attempt a WHERE a.provider_id=p.id AND a.status<>'completed')
           #|AND (p.mode='' OR NOT EXISTS (SELECT 1 FROM pipeline_worker w WHERE w.provider_id=p.id
