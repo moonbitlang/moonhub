@@ -8,6 +8,8 @@ const path = require('node:path');
 
 const install = 'C:/moonhub';
 const state = 'C:/ProgramData/MoonHub';
+const workspaceRoot = state + '/workspace';
+const workerMarker = workspaceRoot + '/ci-consumed';
 const shell = install + '/pwsh/pwsh.exe';
 const testTask = 'MoonHubWindowsVmTest';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -17,7 +19,7 @@ const powershell = source => execFileSync(shell, ['-NoProfile', '-NonInteractive
 async function runGuestJob(administrator) {
   const token = randomBytes(32).toString('hex');
   const attemptId = administrator ? '2' : '1';
-  const directory = state + '/workspace/' + attemptId;
+  const directory = workspaceRoot + '/' + attemptId;
   let executionId = '', conclusion = '', sequence = 0;
   let logs = '', failure, receivedStart = false;
   const server = http.createServer(async (request, response) => {
@@ -73,6 +75,19 @@ async function runGuestJob(administrator) {
       "'@",
       'if (![MoonHub.Win32]::CreateSymbolicLink($alias, $target, 0)) { throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error()) }',
       "if ([IO.File]::ReadAllText($alias) -ne 'moonhub') { throw 'File symlink failed' }",
+      "$entry = Join-Path (Get-Location) 'entry.cjs'",
+      "@'",
+      "const assert = require('node:assert/strict');",
+      "const fs = require('node:fs');",
+      ...(administrator ? [] : [
+        "const denied = error => error.code === 'EPERM' || error.code === 'EACCES';",
+        `assert.throws(() => fs.readdirSync(${JSON.stringify(workspaceRoot)}), denied);`,
+        `assert.throws(() => fs.readFileSync(${JSON.stringify(workerMarker)}), denied);`,
+      ]),
+      "console.log('VM_JOB_NODE_ENTRY_OK');",
+      "'@ | Set-Content -LiteralPath $entry",
+      "& 'C:/moonhub/bin/node20.exe' $entry",
+      "if ($LASTEXITCODE -ne 0) { throw 'Node could not run the workspace entry point' }",
       "Write-Output 'VM_JOB_ACCOUNT_AND_SYMLINK_OK'",
     ].join('\n');
     const labels = ['self-hosted', 'windows', 'x64', 'windows-2025'];
@@ -105,9 +120,10 @@ async function runGuestJob(administrator) {
     assert.equal(conclusion, 'success', logs);
     assert.ok(fs.existsSync(donePath), 'Guest dispatch did not finish');
     assert.match(logs, /VM_JOB_ACCOUNT_AND_SYMLINK_OK/);
+    assert.match(logs, /VM_JOB_NODE_ENTRY_OK/);
     assert.ok(!fs.existsSync(directory + '/dispatch.json'), 'Attempt credential file was retained');
     assert.ok(!fs.existsSync(state + '/private/job-account'), 'The prepared account password file was retained');
-    console.log('Windows VM ' + (administrator ? 'administrator' : 'ordinary') + ' account and file symlink verified');
+    console.log('Windows VM ' + (administrator ? 'administrator' : 'ordinary') + ' account, file symlink and Node entry point verified');
   } finally {
     powershell("foreach ($name in '" + testTask + "','MoonHubWindowsVmJob') { if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $name; Unregister-ScheduledTask -TaskName $name -Confirm:$false } } " +
       "if (Get-LocalUser -Name MoonHubJob -ErrorAction SilentlyContinue) { Remove-LocalUser -Name MoonHubJob }");
@@ -124,6 +140,10 @@ async function main() {
   fs.mkdirSync(state + '/vm');
   fs.writeFileSync(state + '/vm/isolated', '');
   try {
+    fs.mkdirSync(workspaceRoot);
+    powershell("& icacls.exe '" + workspaceRoot + "' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null; " +
+      "if ($LASTEXITCODE -ne 0) { throw 'Cannot protect the test workspace root' }");
+    fs.writeFileSync(workerMarker, 'fixture');
     await runGuestJob(false);
     await runGuestJob(true);
   } finally {
