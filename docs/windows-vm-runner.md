@@ -55,7 +55,9 @@ settings. Zero standby permits the ASG to scale to zero.
    for AWS to apply the change, disassociates the bootstrap instance profile
    and removes the bootstrap parameter. Only an active controller can arm a
    worker for the current configuration revision. The worker stops SSM Agent
-   and removes local cloud caches before it advertises readiness.
+   and removes local cloud caches before preparing the local job account and
+   advertising readiness. Windows account creation and security policy setup
+   finish before the attempt's startup lease begins.
 2. MoonHub marks the worker consumed together with its first successful claim.
    Retrying that claim can recover the same attempt. A different attempt needs
    a fresh VM. A dedicated local account runs the job, and the runner reports

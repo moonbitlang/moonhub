@@ -87,7 +87,7 @@ async function runGuestJob(administrator) {
     const testScript = state + '/dispatch-test.ps1';
     fs.writeFileSync(testScript, [
       "$ErrorActionPreference = 'Stop'",
-      "try { & 'C:/moonhub/ci-host.ps1' -StartJob " + attemptId + " }",
+      "try { & 'C:/moonhub/ci-host.ps1' -PrepareJobAccount; & 'C:/moonhub/ci-host.ps1' -StartJob " + attemptId + " }",
       "catch { $_ | Out-String | Set-Content 'C:/ProgramData/MoonHub/dispatch-test-error'; exit 1 }",
     ].join('\r\n'));
     powershell("$action=New-ScheduledTaskAction -Execute '" + shell + "' -Argument '-NoProfile -NonInteractive -File " + testScript +
@@ -101,6 +101,7 @@ async function runGuestJob(administrator) {
     assert.equal(conclusion, 'success', logs);
     assert.match(logs, /VM_JOB_ACCOUNT_AND_SYMLINK_OK/);
     assert.ok(!fs.existsSync(directory + '/dispatch.json'), 'Attempt credential file was retained');
+    assert.ok(!fs.existsSync(state + '/private/job-account'), 'The prepared account password file was retained');
     console.log('Windows VM ' + (administrator ? 'administrator' : 'ordinary') + ' account and file symlink verified');
   } finally {
     powershell("foreach ($name in '" + testTask + "','MoonHubWindowsVmJob') { if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $name; Unregister-ScheduledTask -TaskName $name -Confirm:$false } } " +

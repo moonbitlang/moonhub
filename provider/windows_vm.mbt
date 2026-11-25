@@ -25,7 +25,7 @@ async fn run_windows_vm_worker(base : Options, token : String) -> Unit {
     prepare: _ => (),
     prepare_claim: _ => {
       if !isolated.val {
-        run_windows_vm_host(["-Isolate"], 45000)
+        run_windows_vm_host(["-Isolate"], 180000)
         isolated.val = true
       }
     },
@@ -67,11 +67,12 @@ async fn run_windows_vm_host(args : Array[String], timeout_ms : Int32) -> Unit {
   ]
   command.append(args)
   @async.with_timeout(timeout_ms, () => {
-    let (code, _) = @process.collect_output_merged(
+    let code = @process.run(
       "C:/moonhub/pwsh/pwsh.exe",
       command,
       inherit_env=false,
       extra_env=@platform.environment(),
+      no_console_window=true,
     )
     guard code == 0 else {
       raise InvalidConfiguration(
