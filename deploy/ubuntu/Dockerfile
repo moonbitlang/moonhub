@@ -32,7 +32,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 COPY --from=node20 /usr/local/bin/node /opt/actions/node20/bin/node
 COPY --from=action-dependencies /opt/moonhub-actions/node_modules /usr/local/lib/moonhub/actions/node_modules
-COPY runner/actions/*.mjs /usr/local/lib/moonhub/actions/
+COPY --chmod=0644 runner/actions/*.mjs /usr/local/lib/moonhub/actions/
 ENV PATH=/opt/moon/bin:/usr/local/bin:/usr/bin:/bin
 LABEL io.moonhub.runner.environment="ubuntu-24.04"
 
