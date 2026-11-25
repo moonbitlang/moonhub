@@ -82,11 +82,7 @@ async fn validate_options(
   guard monotonic_ms() >= 0L &&
     prepare_agent(
       if options.windows_vm {
-        if assignment.job.runs_on.contains("windows-vm") {
-          4
-        } else {
-          3
-        }
+        3
       } else if options.linux_ci {
         2
       } else if options.unsafe_local {
@@ -97,7 +93,11 @@ async fn validate_options(
     ) ==
     0 else {
     raise InvalidConfiguration(
-      "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only",
+      if options.windows_vm {
+        "Windows VM executor requires an isolated guest and an elevated local job account."
+      } else {
+        "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only"
+      },
     )
   }
   check_runner_environment(assignment.job.runs_on)

@@ -43,7 +43,6 @@ async fn run_windows_vm_worker(base : Options, token : String) -> Unit {
         "server": options.runner_server,
         "allow_http": options.allow_http,
         "token": credential,
-        "administrator": assignment.job.runs_on.contains("windows-vm"),
       }
       @fs.write_file(
         root + "/dispatch.json",

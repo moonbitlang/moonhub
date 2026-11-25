@@ -35,14 +35,14 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
         "execution_mode",
         "Execution mode",
         "choice",
-        "One native Windows job on each disposable EC2 instance.",
+        "One native Windows job running as a guest administrator on each disposable EC2 instance.",
         choices=["windows-vm"],
       ),
       config_field(
         "windows_vm_default",
         "Accept standard Windows jobs",
         "choice",
-        "Enabled also accepts the ordinary Windows labels. Tasks requesting windows-vm use the guest administrator account.",
+        "Enabled also accepts jobs using standard Windows labels without the windows-vm label.",
         choices=["disabled", "enabled"],
       ),
     ]
