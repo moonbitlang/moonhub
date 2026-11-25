@@ -87,6 +87,7 @@ async test "real runner obtains step secrets through HTTP and stores only masked
             allow_http: true,
             unsafe_local: true,
             linux_ci: false,
+            windows_vm: false,
             heartbeat_ms: 50,
           },
           action_node=node.text().trim().to_owned(),

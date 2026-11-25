@@ -25,6 +25,18 @@ pub(all) struct Options {
   cpus : String
   pids_limit : Int32
   linux_ci : Bool
+  windows_vm : Bool
+}
+
+///|
+fn Options::execution_mode(self : Options) -> String? {
+  if self.windows_vm {
+    Some("windows-vm")
+  } else if self.linux_ci {
+    Some("linux-ci")
+  } else {
+    None
+  }
 }
 
 ///|

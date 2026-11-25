@@ -126,6 +126,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Runner cancellation tests failed' }
           node scripts/windows-provider-preflight-test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Windows 11 preflight regression failed' }
+      - name: Package Windows VM runner
+        if: matrix.os == 'windows-2025' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        shell: pwsh
+        run: |
+          tar.exe -a -cf windows-vm-runner.zip -C .tmp windows-runner
+          if ($LASTEXITCODE -ne 0) { throw 'Windows VM bundle packaging failed' }
+      - name: Upload Windows VM runner
+        if: matrix.os == 'windows-2025' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-vm-runner-${{ github.sha }}
+          path: windows-vm-runner.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Test Windows VM job accounts
+        if: matrix.os == 'windows-2025'
+        run: node scripts/windows-vm-guest-test.cjs
       - name: Build Windows Server 2022 task image
         shell: pwsh
         run: |

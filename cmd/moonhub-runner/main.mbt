@@ -108,6 +108,11 @@ async fn run(args : ArrayView[String]) -> Int32 {
             long="linux-ci",
             about="Opt in a dedicated single-use Linux CI ASG with privileged task containers.",
           ),
+          @argparse.FlagArg(
+            "windows-vm",
+            long="windows-vm",
+            about="Enroll a dedicated single-use Windows Server 2025 ASG.",
+          ),
         ],
       ),
       @argparse.Command(
@@ -149,6 +154,7 @@ async fn run(args : ArrayView[String]) -> Int32 {
     memory: "4096m",
     pids_limit: 256,
     linux_ci: options.flags.get("linux-ci").unwrap_or(false),
+    windows_vm: options.flags.get("windows-vm").unwrap_or(false),
   }
   if subcommand == "worker" {
     @provider.run_bootstrap_worker(value(options, "bootstrap-file"), base)

@@ -28,11 +28,17 @@ fn validate_origin(
 
 ///|
 fn validate_options(options : Options) -> Unit raise ProviderError {
+  guard !options.windows_vm || (@platform.windows() && !options.linux_ci) else {
+    raise InvalidConfiguration("Windows VM requires a Windows worker.")
+  }
   guard !options.linux_ci || @platform.os() == "linux" else {
     raise InvalidConfiguration("Linux CI is only available on Linux.")
   }
   validate_origin(options.server, options.allow_http)
   validate_origin(options.runner_server, options.allow_http)
+  if options.windows_vm {
+    return
+  }
   guard options.network != "host" && !options.network.has_prefix("container:") else {
     raise InvalidConfiguration("runner requires its own network namespace")
   }

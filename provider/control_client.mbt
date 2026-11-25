@@ -33,6 +33,15 @@ fn configured_options(
   base : Options,
   config : Map[String, String],
 ) -> Options raise ProviderError {
+  guard config.get("execution_mode") == base.execution_mode() else {
+    raise InvalidConfiguration(
+      "Worker execution mode differs from its bootstrap.",
+    )
+  }
+  if base.windows_vm {
+    validate_options(base)
+    return base
+  }
   let memory = config.get("memory_mib").unwrap_or("4096")
   let cpus = config.get("cpus").unwrap_or("2")
   guard @protocol.parse_decimal(memory) is Some(mem) &&
@@ -44,11 +53,6 @@ fn configured_options(
     raise InvalidConfiguration("Invalid task limits.")
   }
   let image = config.get("runner_image").unwrap_or(base.runner_image)
-  guard (config.get("execution_mode") == Some("linux-ci")) == base.linux_ci else {
-    raise InvalidConfiguration(
-      "Worker execution mode differs from its bootstrap.",
-    )
-  }
   let options = { ..base, runner_image: image, memory: memory + "m", cpus, }
   validate_options(options)
   options
@@ -56,6 +60,10 @@ fn configured_options(
 
 ///|
 pub async fn run_worker(base : Options, token : String) -> Unit {
+  if base.windows_vm {
+    run_windows_vm_worker(base, token)
+    return
+  }
   let workspace : Ref[PreparedWorkspace?] = Ref(None)
   let release_workspace : async () -> Unit = () => {
     if workspace.val is Some(prepared) {
@@ -188,7 +196,7 @@ async fn run_backend_worker(
         current.val = configured_options(base, snapshot.config)
         let profiles = snapshot.environments.unwrap_or([])
         if !profiles.is_empty() {
-          guard backend.os == "linux" && !base.linux_ci else {
+          guard backend.os == "linux" && base.execution_mode() is None else {
             raise InvalidConfiguration(
               "Multiple environments require standard Linux containers.",
             )
@@ -207,6 +215,10 @@ async fn run_backend_worker(
         environments.val = profiles
         applied.val = snapshot.config_revision
         prepared.val = true
+      }
+      if base.windows_vm && snapshot.isolation_revision != Some(applied.val) {
+        @async.sleep(base.poll_ms)
+        continue
       }
       (backend.health)()
       state.val = "starting"
@@ -244,7 +256,8 @@ async fn run_backend_worker(
         @async.sleep(base.poll_ms)
         continue
       }
-      if base.linux_ci && ready.isolation_revision != Some(applied.val) {
+      if base.execution_mode() is Some(_) &&
+        ready.isolation_revision != Some(applied.val) {
         @async.sleep(base.poll_ms)
         continue
       }
@@ -289,7 +302,7 @@ async fn run_backend_worker(
           current.val
         }
         state.val = "busy"
-        if current.val.linux_ci {
+        if current.val.execution_mode() is Some(_) {
           @fs.write_file(
             base.workspace_root + "/ci-consumed",
             claimed.assignment.attempt_id,
@@ -311,7 +324,7 @@ async fn run_backend_worker(
             raise CleanupFailure
           }
         }
-        if current.val.linux_ci {
+        if current.val.execution_mode() is Some(_) {
           break
         }
         // A completed job has consumed the prepared workspace. Replenish

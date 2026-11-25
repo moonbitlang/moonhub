@@ -45,6 +45,11 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
         long="linux-ci",
         about="Execute in a prepared privileged single-use Linux CI container.",
       ),
+      @argparse.FlagArg(
+        "windows-vm",
+        long="windows-vm",
+        about="Execute inside a prepared disposable Windows Server 2025 guest.",
+      ),
     ],
     about="Execute one leased assignment. Read its 64-character attempt credential from stdin.",
   )
@@ -80,6 +85,7 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     allow_http: options.flags.get("allow-http").unwrap_or(false),
     unsafe_local: options.flags.get("unsafe-local").unwrap_or(false),
     linux_ci: options.flags.get("linux-ci").unwrap_or(false),
+    windows_vm: options.flags.get("windows-vm").unwrap_or(false),
     heartbeat_ms: 5000,
   })
   println(ToJson::to_json(report).stringify())

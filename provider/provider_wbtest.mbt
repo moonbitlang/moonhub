@@ -16,6 +16,7 @@ fn test_options() -> Options {
     cpus: "1",
     pids_limit: 128,
     linux_ci: false,
+    windows_vm: false,
   }
 }
 

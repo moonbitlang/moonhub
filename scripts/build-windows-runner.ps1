@@ -37,6 +37,7 @@ Copy-Item deploy/windows/runtime.json "$outputRoot/runtime.json"
 Copy-Item deploy/windows/install-vc-runtime.ps1 $outputRoot
 Copy-Item deploy/windows/build-tools.json, deploy/windows/install-build-tools.ps1 $outputRoot
 Copy-Item deploy/windows/install-worker.ps1, deploy/windows/install-provider.ps1, deploy/windows/run-provider.ps1, deploy/windows/installation-path.ps1 $outputRoot
+Copy-Item deploy/windows/ci-host.ps1, deploy/windows/install-vm-image.ps1 $outputRoot
 $downloads = Join-Path $outputRoot '.downloads'
 New-Item -ItemType Directory $downloads | Out-Null
 try {

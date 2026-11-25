@@ -14,7 +14,7 @@ let eligible_provider_jobs : String =
   #|AND EXISTS (SELECT 1 FROM pipeline_provider_label os WHERE os.provider_id=provider.id AND os.label=
   #|  CASE WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='windows') THEN 'windows'
   #|  WHEN EXISTS (SELECT 1 FROM pipeline_job_label os WHERE os.job_id=j.id AND os.label='macos') THEN 'macos' ELSE 'linux' END)
-  #|AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate
+  #|AND EXISTS (SELECT 1 FROM pipeline_provider_job_routing candidate
   #|  WHERE candidate.job_id=j.id AND candidate.provider_id=?)
 
 ///|
@@ -352,10 +352,18 @@ pub fn Coordinator::claim(
           p
         }
         let provider_id : Int64 = provider.get_name("id")
+        let config = @json.parse((provider.get_name("config_json") : String))
+        let single_use = single_use_asg(provider)
         let runner_os = request.runner_os.unwrap_or("linux")
         guard ["linux", "windows", "macos"].contains(runner_os) else {
           raise @domain.BadRequest(
             message="Unsupported runner operating system.",
+          )
+        }
+        guard !(config is { "execution_mode": "windows-vm", .. }) ||
+          (single_use && runner_os == "windows") else {
+          raise @domain.Forbidden(
+            message="Windows VM workers require Windows assignments.",
           )
         }
         guard tx.query_opt(
@@ -394,15 +402,11 @@ pub fn Coordinator::claim(
         } else {
           if worker_id is Some(_) {
             let w = authenticate_worker(tx, token)
-            let linux_ci = @json.parse(
-                (provider.get_name("config_json") : String),
-              )
-              is { "execution_mode": "linux-ci", .. }
             guard !(w.get_name("draining") : Bool) &&
               (
-                !linux_ci ||
+                !(config is { "execution_mode": "linux-ci" | "windows-vm", .. }) ||
                 (
-                  (provider.get_name("mode") : String) == "asg" &&
+                  single_use &&
                   (w.get_name("isolation_revision") : Int64) ==
                   (w.get_name("config_revision") : Int64)
                 )
@@ -443,7 +447,7 @@ pub fn Coordinator::claim(
           }
           let job = tx.query_opt(
             eligible_provider_jobs +
-            " AND EXISTS (SELECT 1 FROM pipeline_provider_job_environment candidate WHERE candidate.provider_id=provider.id AND candidate.job_id=j.id AND (candidate.environment_id IS NULL OR candidate.environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)))) ORDER BY j.id LIMIT 1",
+            " AND EXISTS (SELECT 1 FROM pipeline_provider_job_routing candidate WHERE candidate.provider_id=provider.id AND candidate.job_id=j.id AND (candidate.environment_id IS NULL OR candidate.environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)))) ORDER BY j.id LIMIT 1",
             params=[
               provider_id,
               @workflow.format_version.to_int64(),
@@ -455,7 +459,7 @@ pub fn Coordinator::claim(
           let job_id : Int64 = job.get_name("id")
           let run_id : Int64 = job.get_name("run_id")
           let selected = tx.query_one(
-            "SELECT environment_json FROM pipeline_provider_job_environment WHERE provider_id=? AND job_id=? AND (environment_id IS NULL OR environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))) ORDER BY is_default DESC,environment_id LIMIT 1",
+            "SELECT environment_json FROM pipeline_provider_job_routing WHERE provider_id=? AND job_id=? AND (environment_id IS NULL OR environment_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))) ORDER BY is_default DESC,environment_id LIMIT 1",
             params=[provider_id, job_id, ToJson::to_json(prepared).stringify()],
           )
           if (selected.get_name("environment_json") : String?)
@@ -497,12 +501,7 @@ pub fn Coordinator::claim(
             ignore(
               tx.execute(
                 "UPDATE pipeline_worker SET state='busy',draining=CASE WHEN ? THEN 1 ELSE draining END WHERE id=?",
-                params=[
-                  (provider.get_name("mode") : String) == "asg" &&
-                  @json.parse((provider.get_name("config_json") : String))
-                  is { "execution_mode": "linux-ci", .. },
-                  worker_id,
-                ],
+                params=[single_use, worker_id],
               ),
             )
           }

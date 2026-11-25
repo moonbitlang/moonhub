@@ -64,9 +64,30 @@ async fn validate_options(
       "Linux CI cannot use unsafe-local or another OS.",
     )
   }
+  guard (!assignment.job.runs_on.contains("windows-vm") || options.windows_vm) &&
+    (
+      !options.windows_vm ||
+      (
+        !options.unsafe_local &&
+        !options.linux_ci &&
+        @platform.windows() &&
+        @platform.windows_build() == 26100 &&
+        @platform.architecture() == "x64"
+      )
+    ) else {
+    raise InvalidConfiguration(
+      "Windows VM mode requires a prepared Server 2025 x64 guest.",
+    )
+  }
   guard monotonic_ms() >= 0L &&
     prepare_agent(
-      if options.linux_ci {
+      if options.windows_vm {
+        if assignment.job.runs_on.contains("windows-vm") {
+          4
+        } else {
+          3
+        }
+      } else if options.linux_ci {
         2
       } else if options.unsafe_local {
         1

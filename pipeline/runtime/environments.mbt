@@ -26,7 +26,9 @@ fn configurable_environments(
     @json.parse((row.get_name("config_json") : String)),
   )
   ["docker", "asg"].contains((row.get_name("mode") : String)) &&
-  config.get("execution_mode") != Some("linux-ci") &&
+  !["linux-ci", "windows-vm"].contains(
+    config.get("execution_mode").unwrap_or(""),
+  ) &&
   tx.query_opt(
     "SELECT 1 FROM pipeline_provider_label WHERE provider_id=? AND label='linux'",
     params=[(row.get_name("id") : Int64)],

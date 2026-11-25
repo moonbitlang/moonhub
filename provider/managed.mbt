@@ -29,31 +29,50 @@ fn config_field(
 
 ///|
 pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
-  let schema = [
-    config_field(
-      "runner_image", "Runner image", "text", "Applied to new tasks; existing tasks finish first.",
-    ),
-    config_field(
-      "cpus",
-      "CPU limit per task",
-      "integer",
-      "Each worker executes one task at a time.",
-      minimum=1,
-      maximum=256,
-    ),
-    config_field(
-      "memory_mib",
-      "Memory limit per task (MiB)",
-      "integer",
-      if options.mode == "tart" {
-        "Leave memory for the host and execution backend."
-      } else {
-        "Leave memory for the operating system and Docker."
-      },
-      minimum=256,
-      maximum=1048576,
-    ),
-  ]
+  let schema = if options.base.windows_vm {
+    [
+      config_field(
+        "execution_mode",
+        "Execution mode",
+        "choice",
+        "One native Windows job on each disposable EC2 instance.",
+        choices=["windows-vm"],
+      ),
+      config_field(
+        "windows_vm_default",
+        "Accept standard Windows jobs",
+        "choice",
+        "Enabled also accepts the ordinary Windows labels. Tasks requesting windows-vm use the guest administrator account.",
+        choices=["disabled", "enabled"],
+      ),
+    ]
+  } else {
+    [
+      config_field(
+        "runner_image", "Runner image", "text", "Applied to new tasks; existing tasks finish first.",
+      ),
+      config_field(
+        "cpus",
+        "CPU limit per task",
+        "integer",
+        "Each worker executes one task at a time.",
+        minimum=1,
+        maximum=256,
+      ),
+      config_field(
+        "memory_mib",
+        "Memory limit per task (MiB)",
+        "integer",
+        if options.mode == "tart" {
+          "Leave memory for the host and execution backend."
+        } else {
+          "Leave memory for the operating system and Docker."
+        },
+        minimum=256,
+        maximum=1048576,
+      ),
+    ]
+  }
   if options.mode == "tart" {
     schema.push(
       config_field(
@@ -156,10 +175,14 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
 
 ///|
 pub fn config_defaults(options : ManagedOptions) -> Map[String, String] {
-  let defaults : Map[String, String] = {
-    "runner_image": options.base.runner_image,
-    "cpus": "2",
-    "memory_mib": "4096",
+  let defaults : Map[String, String] = if options.base.windows_vm {
+    { "execution_mode": "windows-vm", "windows_vm_default": "disabled" }
+  } else {
+    {
+      "runner_image": options.base.runner_image,
+      "cpus": "2",
+      "memory_mib": "4096",
+    }
   }
   if options.mode == "tart" {
     defaults["standby_workers"] = "1"
@@ -199,10 +222,21 @@ priv struct RegistrationBinding {
   server : String
   name : String
   mode : String
+  windows_vm : Bool?
 }
 
 ///|
 pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit {
+  guard !options.base.windows_vm ||
+    (
+      options.mode == "asg" &&
+      !options.base.linux_ci &&
+      options.spot_asg.is_empty()
+    ) else {
+    raise InvalidConfiguration(
+      "Windows VM requires a dedicated On-Demand ASG controller.",
+    )
+  }
   guard !options.base.linux_ci || options.mode == "asg" else {
     raise InvalidConfiguration(
       "Linux CI requires a dedicated Linux ASG controller.",
@@ -246,7 +280,8 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
     )
     guard binding.server == options.base.server &&
       binding.name == options.name &&
-      binding.mode == options.mode else {
+      binding.mode == options.mode &&
+      binding.windows_vm.unwrap_or(false) == options.base.windows_vm else {
       raise InvalidConfiguration(
         "State directory belongs to another server, provider or mode.",
       )
@@ -273,6 +308,11 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
       server: options.base.server,
       name: options.name,
       mode: options.mode,
+      windows_vm: if options.base.windows_vm {
+        Some(true)
+      } else {
+        None
+      },
     }
     @fs.write_file(
       registered_path,
