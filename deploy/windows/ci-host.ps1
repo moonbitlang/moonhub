@@ -136,9 +136,9 @@ if ($dispatch.administrator) {
   Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $user
   $runLevel = 'Highest'
 }
-# Node resolves entry points through the worker root. Permit traversal and
-# attribute reads on that directory without granting directory listing.
-& icacls.exe "$root\workspace" /grant ("*{0}:(X,RA)" -f $sid) | Out-Null
+# Node resolves entry points by opening parent directories synchronously to
+# read attributes. Grant those rights on the root directory itself.
+& icacls.exe "$root\workspace" /grant ("*{0}:(X,RA,S)" -f $sid) | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot grant access to workspace path metadata' }
 & icacls.exe $job /grant ("*{0}:(OI)(CI)M" -f $sid) | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot grant access to the job directory' }
