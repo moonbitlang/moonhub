@@ -242,6 +242,9 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
       "Linux CI requires a dedicated Linux ASG controller.",
     )
   }
+  guard options.mode != "asg" || options.base.execution_mode() is Some(_) else {
+    raise InvalidConfiguration("ASG requires --linux-ci or --windows-vm.")
+  }
   guard ["docker", "asg", "tart"].contains(options.mode) &&
     !options.name.is_empty() else {
     raise InvalidConfiguration(

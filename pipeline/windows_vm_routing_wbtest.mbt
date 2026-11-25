@@ -15,7 +15,32 @@ async test "Windows VM claims require isolation and route standard labels when e
     let vm = c.create_provider(admin, "managed", "2".repeat(64), labels, [
       protocol_repo,
     ])
+    let retired = c.create_provider(admin, "legacy", "9".repeat(64), labels, [
+      protocol_repo,
+    ])
     let registration = control_registration(mode="asg")
+    try
+      c.register_runner("9".repeat(64), {
+        ..registration,
+        name: "legacy",
+        provider_token: "8".repeat(64),
+      })
+      |> ignore
+    catch {
+      @domain.BadRequest(_) => ()
+      err => raise err
+    } noraise {
+      _ => fail("reusable ASG registration succeeded")
+    }
+    // Mimic a reusable controller registered before the migration.
+    pool.with_client(client => {
+      ignore(
+        client.execute(
+          "UPDATE pipeline_provider SET mode='asg', config_revision=1 WHERE id=?",
+          params=[retired.id],
+        ),
+      )
+    })
     let field : @protocol.ConfigField = {
       name: "execution_mode",
       title: "Execution mode",
@@ -94,6 +119,18 @@ async test "Windows VM claims require isolation and route standard labels when e
       ..claim_request(secret="4".repeat(64)),
       runner_os: Some("windows"),
     }
+    let legacy = "9".repeat(64)
+    let legacy_worker = "8".repeat(64)
+    assert_eq(c.sync_provider(legacy, sync).queued_jobs, 0)
+    ignore(
+      c.register_worker(legacy, {
+        version: 1,
+        key: "i-legacy",
+        token: legacy_worker,
+      }),
+    )
+    ignore(c.sync_worker(legacy_worker, ready))
+    assert_true(c.claim(legacy_worker, request) is None)
     assert_true(c.claim(vm_worker, request) is None)
     let standard = { ..request, attempt_token: "5".repeat(64), }
     let taken = c.claim("1".repeat(64), standard).unwrap()

@@ -1,9 +1,8 @@
 # Single-use Linux Docker CI
 
-The optional Linux CI profile runs jobs with sudo and their own Docker daemon
+The Linux ASG profile runs jobs with passwordless sudo and their own Docker daemon
 inside a privileged Ubuntu task container. Each EC2 instance accepts at most
-one job and is then terminated by the outside ASG controller. Ordinary Docker,
-Linux ASG and Windows execution keep their existing restrictions and reuse.
+one job and is then terminated by the outside ASG controller.
 
 This profile treats the complete worker EC2 as untrusted after job execution
 starts. Its EC2 VM boundary, instance IAM boundary and externally enforced VPC
@@ -37,12 +36,11 @@ both workspace and Docker-data volumes; instance termination remains mandatory.
 
 Use a separate provider identity, ASGs, launch template, AMI, IAM role and
 bootstrap prefix. Grant only the intended repositories. Start its controller
-with the existing ASG options plus `--linux-ci`; this publishes a fixed
-`execution_mode=linux-ci` field. The Web execution settings cannot turn an
-ordinary controller into a privileged controller. Image selection must point to
-an image labelled `io.moonhub.runner.execution=linux-ci-v1`.
+with the ASG options plus `--linux-ci`. The profile is fixed when the provider
+enrolls. Select an image labelled `io.moonhub.runner.execution=linux-ci-v1`.
 
-Install `deploy/ubuntu/ci-host.sh` as root-owned 0755
+Provision the AMD64 Ubuntu 24.04 pool using `deploy/asg-vm-pool.yml` with
+`GuestPlatform=linux` and the approved AMI. Install `deploy/ubuntu/ci-host.sh` as root-owned 0755
 `/usr/local/libexec/moonhub-ci-host` in the dedicated AMI. Pre-pull its exact
 configured runner image, install the matching native worker and remove build
 credentials. Keep IMDSv2 required with hop limit 1 during provisioning, an
@@ -58,7 +56,9 @@ Ubuntu labels to a generic Debian image.
    starts the installed CI host service. The service waits; it cannot claim
    work yet.
 3. After confirming SSM bootstrap completion, the controller disables the EC2
-   metadata endpoint through the EC2 API and waits for `State=applied`.
+   metadata endpoint and waits for `State=applied`. It detaches the bootstrap
+   instance profile, removes the parameter and records the disposable EBS
+   volumes before it arms the claim gate.
 4. Only that live controller can arm the worker's current configuration revision
    through `POST /-/runner-api/v1/workers/:id/isolation`. Worker credentials
    cannot arm themselves. Both worker readiness and the server claim transaction
@@ -83,12 +83,11 @@ with the real policy before enabling a provider. The example boundary does not
 grant permissions by itself.
 
 The controller additionally needs scoped `ssm:AddTagsToResource`,
-`ssm:GetCommandInvocation`, `ec2:DescribeInstances` and
-`ec2:ModifyInstanceMetadataOptions` for this dedicated fleet. Those permissions
-must never be assigned to its task instances.
-It also needs `ssm:DescribeParameters` for nonsecret cleanup-name checks. A local
-retirement journal survives controller interruption and retries parameter removal
-after EC2 confirms termination; already absent parameters count as cleaned.
+`ssm:GetCommandInvocation`, `ec2:DescribeInstances`,
+`ec2:ModifyInstanceMetadataOptions`, `ec2:DescribeIamInstanceProfileAssociations`,
+`ec2:DisassociateIamInstanceProfile`, `ec2:DescribeVolumes` and
+`ssm:DescribeParameters`. A local retirement journal survives controller
+interruption and verifies parameter and storage cleanup after EC2 termination.
 The journal is created before publishing bootstrap credentials, so unexpected
 Spot interruption or ASG health replacement also triggers cleanup.
 
@@ -121,9 +120,9 @@ Success reports do not independently establish that arbitrary job code was hones
 
 ## Validation and rollout
 
-Schema 042 adds the isolation revision. Upgrade coordinator, controller, AMI
-worker and task image together. Existing snapshots and ordinary providers keep
-their prior execution contracts. Rollback requires the matching database backup.
+Upgrade the coordinator, controller, AMI worker and task image together. Migrate
+any reusable ASGs to dedicated one-job pools before deploying the ASG-only
+coordinator. Rollback requires the matching database backup.
 
 ```sh
 moon test --strip -j 1 database provider pipeline runner

@@ -22,7 +22,7 @@ runner starts, remove staging and builder access material, and generalize the
 instance with EC2Launch Sysprep before creating an encrypted AMI. Never capture
 an enrolled worker or its job state.
 
-Deploy `deploy/windows/vm-pool.yml` with the approved AMI and the required
+Deploy `deploy/asg-vm-pool.yml` with the approved AMI and the required
 instance capacity. It creates a separate VPC without connections to production
 private networks, an HTTP and HTTPS egress security group with no inbound rules,
 an instance-scoped bootstrap role, an explicit launch template and a zero-capacity

@@ -92,12 +92,7 @@ async test "controller lease excludes a second manager and acknowledgements are 
         [],
       ),
     )
-    ignore(
-      c.runtime.register_runner(
-        "a".repeat(64),
-        control_registration(mode="asg"),
-      ),
-    )
+    ignore(c.runtime.register_runner("a".repeat(64), control_registration()))
     let request : @protocol.ProviderSyncRequest = {
       environment_protocol: None,
       version: 1,
@@ -411,7 +406,7 @@ async test "controller schema extension preserves configuration and requires the
       ["self-hosted", "linux"],
       [],
     )
-    let registration = control_registration(mode="asg")
+    let registration = control_registration()
     ignore(c.runtime.register_runner("a".repeat(64), registration))
     c.runtime.save_provider_config(admin, provider.id, 1L, {
       "image": "runner:saved",
@@ -584,12 +579,7 @@ async test "Windows prepared workspaces require explicit drain acknowledgement" 
       ["self-hosted", "windows", "x64"],
       [],
     )
-    ignore(
-      c.runtime.register_runner(
-        "a".repeat(64),
-        control_registration(mode="asg"),
-      ),
-    )
+    ignore(c.runtime.register_runner("a".repeat(64), control_registration()))
     let worker = c.runtime.register_worker("b".repeat(64), {
       version: 1,
       key: "windows",

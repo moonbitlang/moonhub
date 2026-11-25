@@ -1,4 +1,4 @@
-# Prepare a dedicated Windows host or AMI. No AWS tooling is required here.
+# Prepare a dedicated Windows Docker provider host. No AWS tooling is required.
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)][string]$Bundle,

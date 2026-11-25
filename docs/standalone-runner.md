@@ -47,14 +47,14 @@ containers and labeled MoonHub workspace volumes.
 
 ## Runtime configuration
 
-Standard Linux Docker/ASG providers can offer several distribution-specific task
+Linux Docker providers can offer several distribution-specific task
 images with shared capacity; see [provider environments](provider-environments.md).
 Without named environments, the existing runner-image setting remains authoritative.
 
 Open **Execution settings** beside the provider. The server renders its bounded
 schema using generic text, integer and choice fields. No AWS credentials are stored.
 
-- Both modes: runner image, CPU and memory limits per job.
+- Docker and Linux CI: runner image, CPU and memory limits per job.
 - ASG: instance type from the local allowlist, total worker limit, standby worker
   count, idle timeout, numeric launch-template version, purchase policy and Spot
   wait timeout. Standby workers are kept idle in addition to active and queued
@@ -82,89 +82,27 @@ a new provider enrollment. The UI cannot select arbitrary cloud resources.
 
 ## ASG mode
 
-For jobs that require sudo, nested Docker or host kernel settings, see the
-explicit [single-use Linux CI profile](linux-ci-runner.md). Its dedicated ASG
-requires external metadata isolation, instance-scoped bootstrap permissions and
-one job per EC2; the ordinary mode described below remains reusable.
+Each ASG instance runs one job. Enroll an ASG with the profile for its guest OS.
 
-For the production Git/SSM deployment, image publication, systemd installation
-and rollback procedure, see [production deployment](../deploy/production.md).
+- [Linux CI](linux-ci-runner.md) runs Ubuntu jobs with passwordless sudo and a
+  job-local Docker daemon.
+- [Windows VM](windows-vm-runner.md) runs native jobs as a local administrator
+  on Windows Server 2025.
 
-Create dedicated ASGs first: one On-Demand group and optionally a separate Spot
-group. Both need minimum zero, ordinary instance-count capacity without weights,
-and maximum at least the configured total worker limit. Do not attach other
-scaling policies, scheduled actions, lifecycle hooks, warm pools or instance
-refreshes. Prefer empty groups initially. Enable protection before attaching
-existing instances. The controller protects future instances and explicitly drains
-workers before scale-in. Health replacement and Spot reclamation can still
-interrupt instances.
+Use a dedicated minimum-zero ASG with an explicit, immutable launch-template
+version. Linux supports an optional separate Spot ASG with bounded wait and
+On-Demand fallback. Install AWS CLI v2 on the controller, pin encrypted
+DeleteOnTermination EBS mappings, and scope SSM and IAM permissions to the pool.
+The controller waits for the instance to report Online through SSM before it
+creates a worker identity. The boot budget is 15 minutes from EC2 LaunchTime.
 
-```sh
-moonhub-runner run \
-  --server https://moonhub.example --name aws-ci --mode asg \
-  --registration-token-file /etc/moonhub-runner/registration-token \
-  --state-dir /var/lib/moonhub-runner/controller \
-  --region us-west-2 --asg moonhub-ci-on-demand --spot-asg moonhub-ci-spot \
-  --launch-template lt-0123456789abcdef0 \
-  --instance-types m6a.large,c6a.large,m7a.large \
-  --parameter-prefix /moonhub-runner/aws-ci \
-  --runner-image registry.example/moonhub:runner
-```
-
-Install AWS CLI v2 on the controller (`--aws` overrides its path). It uses its usual
-credential chain or instance role. The `runner-controller` Docker target packages
-the native CLI; ASG deployments must additionally supply AWS CLI. A host systemd
-service is the simplest deployment.
-
-The template pins an AMI and explicit numeric version. The AMI needs Docker, AWS
-CLI, SSM Agent, systemd, `/usr/local/bin/moonhub-runner`, and preferably the task
-image already pulled. Require **IMDSv2, hop limit 1**. The controller checks that
-setting, instance/AMI architecture and task limits before accepting configuration.
-Leave at least 512 MiB memory for the host. Jobs run in a bridge network without
-privileged mode, the Docker socket, host AWS credentials or application data.
-Docker cleanup is not a hostile-tenant security boundary; use disposable EC2
-instances per task or stronger VM isolation for untrusted tenants.
-
-Worker roles need SSM managed-instance permissions and read/decrypt permissions
-for the bootstrap prefix. Per-instance worker credentials are transported through
-SSM SecureString, then downloaded to a root-only file under `/run/moonhub-runner`.
-Command history contains names, not credentials. Never share a prefix between
-controllers. Provide outbound access to SSM, MoonHub, registries and dependencies.
-No inbound management SSH is required. Scope controller IAM to these groups,
-instances, template, SSM document and parameter prefix. Required actions include:
-
-- Auto Scaling describe/update, desired-capacity, instance-protection and termination.
-- EC2 describe instance types, launch-template versions and images.
-- SSM put/delete parameter and send command, plus applicable KMS permissions.
-- IAM PassRole/service-linked-role permissions required by the launch template.
-
-Capacity follows eligible queued jobs plus active attempts, capped across both
-groups. Starting EC2 instances count as allocated. Spot fallback first requests
-Spot, waits the configured timeout, cancels unfulfilled demand, rereads both groups,
-and requests only missing On-Demand capacity. AWS allocation races can temporarily
-produce surplus capacity; surplus idle workers are drained. Healthy On-Demand
-workers are not automatically replaced with Spot.
-
-Before registering a newly launched worker, the controller waits for that EC2
-instance to report Online through SSM. Instances that are still starting count
-toward the capacity limit but never count as standby and cannot claim work. The
-startup budget is bounded to 15 minutes from EC2 LaunchTime, survives controller
-restarts, and is separate from the 180-second heartbeat lease of a registered
-worker. Pause and obsolete templates still retire starting instances through the
-ordinary drain/active-attempt checks. Controller IAM additionally needs
-ssm:DescribeInstanceInformation and ec2:DescribeInstances.
-
-Idle workers drain after the configured timeout. Instance/template changes, pause,
-failure and lost heartbeats also trigger draining. Termination requires zero active
-attempts and cleanup acknowledgement, or an expired lost-worker lease. Worker
-heartbeats expire after 180 seconds. Each termination decrements ASG desired
-capacity, which is reread before scaling. Each EC2 executes one task at a time
-using a fresh container and volume. Cleanup failure prevents subsequent claims.
-
-Keep the controller running to scale to zero. Stopping or revoking it does not
-destroy infrastructure or guarantee cleanup. Pause and drain first. Manual AWS
-termination or Spot interruption can leave orphan parameters; periodically remove
-these and corresponding local per-instance token files.
+The controller disables IMDS, detaches the guest bootstrap role, deletes the
+bootstrap parameter and verifies the disk settings before it arms the claim gate.
+A consumed worker retires once its attempt reaches a terminal state. An idle
+unused worker drains on pause, replacement or after the configured idle window
+when it exceeds demand. Keep the controller running until cloud retirement and
+disk deletion are confirmed. See [production deployment](../deploy/production.md)
+for rollout and rollback.
 
 ## Protocol and verification
 
@@ -197,70 +135,11 @@ boot and Spot availability need separate deployment acceptance.
 
 ## Windows x64 workers
 
-Windows supports standalone PCs through `--mode docker` as well as the existing
-ASG controller. See [standalone Windows deployment](windows-runner.md) for Windows
-11/Server 2022/2025 installation without AWS. Keep Linux and Windows in separate
-providers; register the Windows provider with `self-hosted,windows,x64` and
-explicitly request those labels in workflows. Jobs without an OS label retain
-Linux semantics. There is no `--worker-os` flag: the controller resolves the
-existing `--launch-template` plus saved numeric `template_version`, reads its
-AMI's `Platform` and `Architecture`, and selects Windows bootstrap automatically
-in ASG mode. A standalone provider detects the local Windows daemon directly.
-The controller itself may remain on Linux. Claims include the worker's actual OS;
-old clients that omit it remain Linux and cannot claim from a Windows provider.
-
-Task images support **Windows Server 2022 x64** (build 20348) and **Server 2025
-x64** (build 26100). Server 2022 hosts use their matching image; Server 2025 hosts
-support both images with process isolation. Windows 11 hosts use the 2022 image
-with Hyper-V isolation. See the [generic C++ build environment](windows-build-environment.md)
-for the 2025 image and fixed environment selectors. The worker checks
-the real daemon platform, image and container startup before acknowledging
-readiness. Linux Docker daemons cannot run these images.
-For ASG deployment, prepare a dedicated AMI with Containers enabled, a Windows Docker Engine, AWS CLI
-v2 and SSM Agent. Build the worker bundle on Windows with Visual Studio C++ Build
-Tools and the production MoonBit version from `deploy/base.Dockerfile`:
-
-```powershell
-moon update
-node scripts/resolve-dependencies.cjs
-./scripts/build-windows-runner.ps1
-docker build --isolation=process -f deploy/windows/Dockerfile `
-  -t registry.example/moonhub:runner-windows .tmp/windows-runner
-# Publish this image to your registry using its normal authenticated workflow.
-./deploy/windows/install-worker.ps1 -Bundle .tmp/windows-runner `
-  -RunnerImage registry.example/moonhub:runner-windows
-```
-
-The bundle pins and verifies PowerShell 7, Portable Git, Node 20 and Node 24 with
-SHA-256 checksums in `deploy/windows/runtime.json`. It includes the native worker,
-step launcher and Action runtime. It does not include a compiler: install the
-MoonBit toolchain per job with `moonhub/setup-moonbit@v1`, or provide your own
-Windows task image with the tools your jobs require. MSVC or other build tools for
-job workloads are likewise an image choice. The host needs only the worker's
-`bin` directory; never bake credentials or controller state into an AMI.
-
-Create a numeric launch-template version for this AMI, requiring IMDSv2 with hop
-limit 1 as on Linux. Set the Windows provider's existing runner-image and template
-version settings. Controller IAM must permit `AWS-RunPowerShellScript` in addition
-to the EC2/ASG/SSM/KMS operations above. Windows bootstrap downloads the SecureString
-to an ACL-protected `C:\ProgramData\MoonHub\private\bootstrap.json` and starts the
-`MoonHubRunnerWorker` scheduled task as SYSTEM. The task restarts at boot; its
-execution time is unlimited. The bootstrap token never appears in SSM command
-history. Worker state and workspace roots default to `C:\ProgramData\MoonHub`.
-
-Each attempt runs as **ContainerUser**, using a new container and named workspace
-volume. Windows uses native memory/CPU limits and its `nat` network; Linux-only
-read-only-rootfs, capabilities, tmpfs and PID-limit options are not passed to the
-Windows daemon. Only the credential-free assignment directory is mounted read-only;
-no Docker named pipe, AWS credentials or application data is mounted into the task.
-The attempt token is passed through stdin. Steps inherit a small OS environment
-allowlist. Windows environment names and workspace containment are case-insensitive;
-NTFS device names, alternate data streams and escaping junctions are rejected.
-A kill-on-close Windows Job Object owns every step process tree, including detached
-children. Normal completion, timeout and cancellation stop that tree. Containers
-and workspace volumes are removed **before** the worker acknowledges ready and
-claims another job; cleanup failure stops reuse. Instance draining/idle timeout and
-Spot fallback retain their existing lifecycle.
+Use [disposable Windows Server 2025 VMs](windows-vm-runner.md) for Windows
+ASG capacity. A dedicated Windows PC can separately run a
+[standalone Docker provider](windows-runner.md), with supported Windows 11 and
+Server 2022/2025 host and image combinations. Register Windows capacity with
+`self-hosted,windows,x64`. Jobs without an OS label retain Linux semantics.
 
 ```yaml
 name: Windows

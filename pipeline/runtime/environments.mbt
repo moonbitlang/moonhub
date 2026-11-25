@@ -25,7 +25,7 @@ fn configurable_environments(
   let config : Map[String, String] = @json.from_json(
     @json.parse((row.get_name("config_json") : String)),
   )
-  ["docker", "asg"].contains((row.get_name("mode") : String)) &&
+  (row.get_name("mode") : String) == "docker" &&
   !["linux-ci", "windows-vm"].contains(
     config.get("execution_mode").unwrap_or(""),
   ) &&
@@ -86,7 +86,7 @@ pub fn Coordinator::save_provider_environments(
         }
         guard configurable_environments(tx, row) else {
           raise @domain.BadRequest(
-            message="Multiple environments require a standard Linux Docker or ASG provider.",
+            message="Multiple environments require a Linux Docker provider.",
           )
         }
         guard values.is_empty() ||

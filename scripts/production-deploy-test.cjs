@@ -86,18 +86,19 @@ assert m.unit_quote('a %b $c') == '"a %%b $$c"'
 try: m.unit_quote('bad' + chr(10) + 'ExecStart=evil')
 except ValueError: pass
 else: raise AssertionError('newline injection')
-e = dict(MOONHUB_SERVER='https://example.invalid', MOONHUB_REGISTRATION_TOKEN_FILE='/private/token', MOONHUB_CONTROLLER_STATE_DIR='/private/state', MOONHUB_AWS_REGION='us-west-2', MOONHUB_ASG='on', MOONHUB_LAUNCH_TEMPLATE='lt-test', MOONHUB_INSTANCE_TYPES='m6a.large', MOONHUB_PARAMETER_PREFIX='/moonhub-runner/test', MOONHUB_TASK_IMAGE='registry/image:commit')
+e = dict(MOONHUB_SERVER='https://example.invalid', MOONHUB_REGISTRATION_TOKEN_FILE='/private/token', MOONHUB_CONTROLLER_STATE_DIR='/private/state', MOONHUB_AWS_REGION='us-west-2', MOONHUB_ASG='on', MOONHUB_LAUNCH_TEMPLATE='lt-test', MOONHUB_INSTANCE_TYPES='m6a.large', MOONHUB_PARAMETER_PREFIX='/moonhub-runner/test', MOONHUB_ASG_RUNNER_IMAGE='ci-runner:commit')
 u = m.render(e)
 assert 'RestartSec=65' in u and 'ReadWritePaths="/private/state"' in u
+assert '"--linux-ci"' in u and '"--runner-image" "ci-runner:commit"' in u
 assert '--spot-asg' not in u
-assert m.equivalent(u, u.replace('registry/image:commit','registry/image:new-commit'))
+assert m.equivalent(u, u.replace('ci-runner:commit','ci-runner:new-commit'))
 assert not m.equivalent(u, u.replace('lt-test','lt-other'))
 assert not m.equivalent(u, u.replace('MemoryMax=256M','MemoryMax=512M'))
 assert not m.equivalent('unrecognized', 'unrecognized')
 e['MOONHUB_SPOT_ASG']='spot'; assert '--spot-asg' in m.render(e)
 `], {encoding:'utf8'});
   assert.equal(unit.status,0,unit.stderr);
-  const syntax = spawnSync('bash',['-n','deploy/production.sh','deploy/worker-bootstrap.sh'],{encoding:'utf8'});
+  const syntax = spawnSync('bash',['-n','deploy/production.sh'],{encoding:'utf8'});
   assert.equal(syntax.status,0,syntax.stderr);
   const fixture = path.join(root, 'checkout');
   fs.mkdirSync(path.join(fixture, 'deploy'), {recursive:true});
@@ -207,7 +208,7 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted\nfixture 90000000
     MOONHUB_REGISTRATION_TOKEN_FILE:path.join(root,'registration'),MOONHUB_SERVER:'https://example.invalid',
     MOONHUB_AWS_REGION:'us-west-2',MOONHUB_ASG:'on',MOONHUB_SPOT_ASG:'spot',
     MOONHUB_LAUNCH_TEMPLATE:'lt-test',MOONHUB_INSTANCE_TYPES:'m6a.large',MOONHUB_PARAMETER_PREFIX:'/moonhub-runner/test',
-    MOONHUB_TASK_IMAGE:'registry/previous:commit',MOONHUB_PRODUCTION_DRAIN_TIMEOUT:'0'};
+    MOONHUB_ASG_RUNNER_IMAGE:'ci-runner:commit',MOONHUB_PRODUCTION_DRAIN_TIMEOUT:'0'};
   const rendered=spawnSync('python3',['deploy/controller-unit.py'],{env:upgradeEnv,encoding:'utf8'});
   assert.equal(rendered.status,0,rendered.stderr);fs.writeFileSync(installedUnit,rendered.stdout);
   fs.writeFileSync(path.join(root,'bin/systemctl'),`#!${process.execPath}

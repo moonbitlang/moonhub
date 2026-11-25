@@ -131,6 +131,7 @@ web_deploy() {
 prepare_controller() {
   [ -z "$CONTROLLER_STAGE" ] || return 0
   : "${MOONHUB_SERVER:?}" "${MOONHUB_ASG:?}" "${MOONHUB_LAUNCH_TEMPLATE:?}" "${MOONHUB_INSTANCE_TYPES:?}" "${MOONHUB_PARAMETER_PREFIX:?}"
+  : "${MOONHUB_ASG_RUNNER_IMAGE:?}"
   matching_images
   CONTROLLER_STAGE=$(mktemp -d /tmp/moonhub-production-controller.XXXXXX)
   local container result=0
@@ -138,7 +139,7 @@ prepare_controller() {
   docker cp "$container:/usr/local/bin/moonhub-runner" "$CONTROLLER_STAGE/moonhub-runner" || result=$?
   docker rm "$container" >/dev/null
   [ "$result" = 0 ] || return "$result"
-  export MOONHUB_TASK_IMAGE=$TASK_IMAGE MOONHUB_CONTROLLER_STATE_DIR=$STATE MOONHUB_REGISTRATION_TOKEN_FILE=$TOKEN
+  export MOONHUB_CONTROLLER_STATE_DIR=$STATE MOONHUB_REGISTRATION_TOKEN_FILE=$TOKEN
   python3 "$ROOT/deploy/controller-unit.py" > "$CONTROLLER_STAGE/controller.service"
 }
 controller_unchanged() {

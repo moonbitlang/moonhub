@@ -1,6 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Isolated MoonHub disposable Windows Server 2025 ASG workers
+Description: Isolated MoonHub disposable ASG workers
 Parameters:
+  GuestPlatform:
+    Type: String
+    Default: windows
+    AllowedValues: [windows, linux]
   Image:
     Type: AWS::EC2::Image::Id
   InstanceType:
@@ -11,17 +15,19 @@ Parameters:
     Default: 1
     MinValue: 1
     MaxValue: 20
+Conditions:
+  IsWindows: !Equals [!Ref GuestPlatform, windows]
 Resources:
   Network:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 10.249.0.0/24
+      CidrBlock: !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]
       EnableDnsSupport: true
       EnableDnsHostnames: true
   PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
-      CidrBlock: 10.249.0.0/24
+      CidrBlock: !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]
       VpcId: !Ref Network
       MapPublicIpOnLaunch: true
   Internet:
@@ -50,7 +56,7 @@ Resources:
   GuestSecurity:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Outbound HTTPS for disposable Windows CI
+      GroupDescription: !If [IsWindows, Outbound HTTPS for disposable Windows CI, Outbound web access for disposable Linux CI]
       VpcId: !Ref Network
       SecurityGroupEgress:
         # Windows fetches some certificate revocation lists over HTTP.
@@ -116,10 +122,11 @@ Resources:
               Encrypted: true
               DeleteOnTermination: true
               VolumeType: gp3
+              VolumeSize: !If [IsWindows, !Ref 'AWS::NoValue', 40]
         TagSpecifications:
           - ResourceType: volume
             Tags:
-              - Key: MoonHubWindowsVmPool
+              - Key: !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]
                 Value: !Ref AWS::StackName
   Group:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -136,7 +143,7 @@ Resources:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       Tags:
-        - Key: MoonHubWindowsVmPool
+        - Key: !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]
           Value: !Ref AWS::StackName
           PropagateAtLaunch: true
 Outputs:
