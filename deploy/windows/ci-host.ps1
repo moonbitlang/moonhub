@@ -5,6 +5,7 @@ param(
   [Parameter(Mandatory,ParameterSetName='Bootstrap')]
   [ValidatePattern('^[a-z0-9-]+$')][string]$Region,
   [Parameter(Mandatory,ParameterSetName='Isolate')][switch]$Isolate,
+  [Parameter(Mandatory,ParameterSetName='Prepare')][switch]$PrepareJobAccount,
   [Parameter(Mandatory,ParameterSetName='Start')]
   [ValidatePattern('^[1-9][0-9]{0,18}$')][string]$StartJob,
   [Parameter(Mandatory,ParameterSetName='Run')]
@@ -19,6 +20,7 @@ $script = 'C:\moonhub\ci-host.ps1'
 $marker = "$root\vm\isolated"
 $task = 'MoonHubWindowsVmJob'
 $bootstrap = "$root\private\bootstrap.json"
+$jobPassword = "$root\private\job-account"
 
 if ($PSCmdlet.ParameterSetName -eq 'Run') {
   $job = "$root\workspace\$RunJob"
@@ -71,17 +73,48 @@ if ($PSCmdlet.ParameterSetName -eq 'Bootstrap') {
   return
 }
 
-if ($Isolate) {
-  if (Test-Path $bootstrap) { throw 'The worker still has a bootstrap file' }
-  $agent = Get-Service -Name AmazonSSMAgent
-  Set-Service -InputObject $agent -StartupType Disabled
-  Stop-Service -InputObject $agent -Force
-  if ((Get-Service -Name AmazonSSMAgent).Status -ne 'Stopped') { throw 'The SSM agent is still running' }
-  foreach ($directory in @("$env:SystemRoot\System32\config\systemprofile\.aws",
-      "$env:SystemRoot\System32\config\systemprofile\.docker",
-      "$env:ProgramFiles\Amazon\SSM\credentials")) {
-    if (Test-Path $directory) { Remove-Item $directory -Recurse -Force }
+if ($Isolate -or $PrepareJobAccount) {
+  if ($Isolate) {
+    if (Test-Path $bootstrap) { throw 'The worker still has a bootstrap file' }
+    $agent = Get-Service -Name AmazonSSMAgent
+    Set-Service -InputObject $agent -StartupType Disabled
+    if ($agent.Status -ne 'Stopped') {
+      Stop-Service -InputObject $agent -Force -NoWait
+      $agent.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromMinutes(2))
+    }
+    foreach ($directory in @("$env:SystemRoot\System32\config\systemprofile\.aws",
+        "$env:SystemRoot\System32\config\systemprofile\.docker",
+        "$env:ProgramFiles\Amazon\SSM\credentials")) {
+      if (Test-Path $directory) { Remove-Item $directory -Recurse -Force }
+    }
   }
+  $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) + 'a!A9'
+  $user = New-LocalUser -Name 'MoonHubJob' -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+  $sid = $user.SID.Value
+  if (!(Get-LocalGroupMember -SID 'S-1-5-32-545' | Where-Object { $_.SID.Value -eq $sid })) {
+    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
+  }
+  # Set the rights before readiness. secedit and account creation can otherwise
+  # consume the short attempt start lease on a newly booted Windows instance.
+  $policy = @'
+[Unicode]
+Unicode=yes
+[Version]
+signature="$CHICAGO$"
+Revision=1
+[Privilege Rights]
+'@
+  $policy = ($policy -split '\r?\n') + @(
+    "SeBatchLogonRight = *S-1-5-32-544,*$sid",
+    "SeCreateSymbolicLinkPrivilege = *S-1-5-32-544,*$sid",
+    ''
+  )
+  $policy = $policy -join [Environment]::NewLine
+  [IO.File]::WriteAllText("$root\private\job-rights.inf", $policy, [Text.Encoding]::Unicode)
+  & secedit.exe /configure /db "$root\private\job-rights.sdb" /cfg "$root\private\job-rights.inf" /areas USER_RIGHTS /quiet
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot apply the job account rights' }
+  [IO.File]::WriteAllText($jobPassword, $password)
+  if ($PrepareJobAccount) { return }
   New-Item -ItemType Directory -Path "$root\vm" -Force | Out-Null
   & icacls.exe "$root\vm" /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-11:(OI)(CI)RX' | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Cannot protect the guest isolation marker' }
@@ -94,36 +127,15 @@ if (!(Test-Path $marker -PathType Leaf) -or (Get-ScheduledTask -TaskName $task -
 }
 $job = "$root\workspace\$StartJob"
 $dispatch = Get-Content "$job\dispatch.json" -Raw | ConvertFrom-Json
-$password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) + 'a!A9'
-$user = New-LocalUser -Name 'MoonHubJob' -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+$password = [IO.File]::ReadAllText($jobPassword)
+Remove-Item $jobPassword -Force
+$user = Get-LocalUser -Name 'MoonHubJob'
 $sid = $user.SID.Value
-if (!(Get-LocalGroupMember -SID 'S-1-5-32-545' | Where-Object { $_.SID.Value -eq $sid })) {
-  Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
-}
 $runLevel = 'Limited'
 if ($dispatch.administrator) {
   Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $user
   $runLevel = 'Highest'
 }
-# The ordinary account also needs CreateSymbolicLinkW with flags=0. Scope the
-# two rights to this disposable guest account and keep the administrator grant.
-$policy = @'
-[Unicode]
-Unicode=yes
-[Version]
-signature="$CHICAGO$"
-Revision=1
-[Privilege Rights]
-'@
-$policy = ($policy -split '\r?\n') + @(
-  "SeBatchLogonRight = *S-1-5-32-544,*$sid",
-  "SeCreateSymbolicLinkPrivilege = *S-1-5-32-544,*$sid",
-  ''
-)
-$policy = $policy -join [Environment]::NewLine
-[IO.File]::WriteAllText("$root\private\job-rights.inf", $policy, [Text.Encoding]::Unicode)
-& secedit.exe /configure /db "$root\private\job-rights.sdb" /cfg "$root\private\job-rights.inf" /areas USER_RIGHTS /quiet
-if ($LASTEXITCODE -ne 0) { throw 'Cannot apply the job account rights' }
 # The worker state root has a private DACL. Give the account traversal only.
 & icacls.exe "$root\workspace" /grant ("*{0}:(X)" -f $sid) | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Cannot grant workspace traversal' }
