@@ -11,31 +11,41 @@ const image = process.env.MOONHUB_LINUX_CI_IMAGE || 'moonhub-runner:linux-ci-dev
 const docker = (args, options = {}) => execFileSync('docker', args, {
   encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024, ...options,
 });
-async function scenario(cancel) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-smoke-'));
-  const name = 'moonhub-ci-smoke-' + crypto.randomBytes(8).toString('hex');
-  const token = crypto.randomBytes(32).toString('hex');
+function createRunnerFixture({token, cancel, now = Date.now}) {
   const logs = [], events = []; let execution = '', sequence = 0, conclusion = '', started = 0, cancelReady = false, failure;
   const server = http.createServer(async (req, res) => {
     try {
       assert.equal(req.headers.authorization, 'Bearer ' + token);
       let source = ''; for await (const chunk of req) { source += chunk; assert.ok(source.length < 65536); }
       const body = JSON.parse(source), operation = req.url.split('/').at(-1);
-      events.push({operation, state: body.state, sequence: body.sequence});
-      if (operation === 'start') { execution = body.execution_id; started = Date.now(); }
+      // A second clock read can make the lease exceed the protocol's 60000 ms limit.
+      const time = now();
+      const event = {operation, state: body.state, sequence: body.sequence};
+      events.push(event);
+      if (operation === 'start') { execution = body.execution_id; started = time; }
       else if (operation === 'logs') {
         assert.equal(body.sequence, String(++sequence));
         assert.ok(!body.text.includes(token)); logs.push(body.text);
         if (body.text.includes('CI_DOCKER_READY')) cancelReady = true;
       } else if (operation === 'complete') conclusion = body.conclusion;
       else assert.ok(['heartbeat', 'steps'].includes(operation));
+      const response = {version: 1, execution_id: execution, attempt_id: '1',
+        state: conclusion ? 'completed' : 'running', server_time_ms: String(time),
+        lease_until_ms: String(time + 60000), deadline_ms: String(started + 300000),
+        cancel_requested: cancel && cancelReady, log_sequence: String(sequence), conclusion};
+      event.response = response;
       res.writeHead(200, {'Content-Type': 'application/json'});
-      res.end(JSON.stringify({version: 1, execution_id: execution, attempt_id: '1',
-        state: conclusion ? 'completed' : 'running', server_time_ms: String(Date.now()),
-        lease_until_ms: String(Date.now() + 60000), deadline_ms: String(started + 300000),
-        cancel_requested: cancel && cancelReady, log_sequence: String(sequence), conclusion}));
+      res.end(JSON.stringify(response));
     } catch (error) { failure = error; res.writeHead(500); res.end('fixture rejected request'); }
   });
+  return {server, logs, events, get failure() { return failure; }, get conclusion() { return conclusion; }};
+}
+async function scenario(cancel) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-smoke-'));
+  const name = 'moonhub-ci-smoke-' + crypto.randomBytes(8).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
+  const fixture = createRunnerFixture({token, cancel});
+  const {server, logs, events} = fixture;
   await new Promise(resolve => server.listen(0, '0.0.0.0', resolve));
   const script = [
     'test "$(id -u)" = 10001',
@@ -59,8 +69,9 @@ async function scenario(cancel) {
     'echo CI_DOCKER_READY',
     ...(cancel ? ['sleep 120'] : ['echo CI_JOB_PASSED']),
   ].join('\n');
+  const now = Date.now();
   const assignment = {version: 1, attempt_id: '1', run_id: '1', job_id: '1', repository: 'test/ci',
-    commit_sha: 'a'.repeat(40), lease_until_ms: String(Date.now() + 60000), server_time_ms: String(Date.now()), state: 'leased',
+    commit_sha: 'a'.repeat(40), lease_until_ms: String(now + 60000), server_time_ms: String(now), state: 'leased',
     job: {id: 'ci', name: 'CI profile', runs_on: ['self-hosted', 'linux'], contents_read: false, timeout_minutes: 5,
       steps: [{id: 'probe', name: 'Probe', run: script, shell: 'bash', working_directory: '.', env: {}, timeout_minutes: 0}]}};
   const manifest = path.join(root, 'assignment.json'); fs.writeFileSync(manifest, JSON.stringify(assignment), {mode: 0o644});
@@ -79,10 +90,10 @@ async function scenario(cancel) {
     child.stdin.on('error', () => {}); child.stdin.end(token + '\n');
     timer = setTimeout(() => { try { docker(['rm', '-f', name]); } catch {} }, 360000);
     const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
-    if (failure) throw failure;
+    if (fixture.failure) throw fixture.failure;
     assert.equal(code, cancel ? 1 : 0, diagnostic + '\n' + output + '\n' + JSON.stringify(events) + '\n' + logs.join(''));
     const report = JSON.parse(output.trim()); assert.equal(report.reported, true);
-    assert.equal(report.conclusion, cancel ? 'cancelled' : 'success'); assert.equal(conclusion, report.conclusion);
+    assert.equal(report.conclusion, cancel ? 'cancelled' : 'success'); assert.equal(fixture.conclusion, report.conclusion);
     assert.ok(logs.join('').includes('CI_DOCKER_READY'));
     assert.equal(docker(['ps', '-aq', '--filter', 'name=^' + name + '$']).trim(), '');
     console.log('LINUX_CI_' + (cancel ? 'CANCELLATION' : 'EXECUTION') + '_OK');
@@ -92,4 +103,7 @@ async function scenario(cancel) {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
   }
 }
-(async () => { await scenario(false); await scenario(true); })().catch(error => {console.error(error); process.exitCode = 1;});
+module.exports = {createRunnerFixture};
+if (require.main === module) {
+  (async () => { await scenario(false); await scenario(true); })().catch(error => {console.error(error); process.exitCode = 1;});
+}
