@@ -136,6 +136,7 @@ async test "pull request automatically runs built-in checkout against its merged
               unsafe_local: true,
               linux_ci: false,
               windows_vm: false,
+              macos_vm: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),
@@ -288,6 +289,7 @@ async test "duplicate runner is fenced while original receives remote cancellati
           unsafe_local: true,
           linux_ci: false,
           windows_vm: false,
+          macos_vm: false,
           heartbeat_ms: 50,
         }
         let original = group.spawn(() => {

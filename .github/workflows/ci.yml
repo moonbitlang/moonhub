@@ -197,8 +197,21 @@ jobs:
           moon test --strip -j 1 --deny-warn filelock runner/platform provider pipeline/protocol
           node --test runner/actions/runtime.test.mjs scripts/macos-guest-test.mjs
           node --test scripts/macos-runner-lifecycle-test.cjs
-          bash -n deploy/macos/install-guest.sh
-          plutil -lint deploy/macos/launchd.plist
+          node scripts/linux-ci-lifecycle.cjs --macos-vm
+          for script in deploy/macos/*.sh; do bash -n "$script"; done
+          plutil -lint deploy/macos/*.plist
+      - name: Package macOS ASG runner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: COPYFILE_DISABLE=1 tar -czf macos-vm-runner.tar.gz -C .tmp macos-runner
+      - name: Upload macOS ASG runner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-vm-runner-${{ github.sha }}
+          path: macos-vm-runner.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
   frontend:
     name: Frontend checks

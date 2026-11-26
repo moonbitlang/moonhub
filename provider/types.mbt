@@ -26,12 +26,15 @@ pub(all) struct Options {
   pids_limit : Int32
   linux_ci : Bool
   windows_vm : Bool
+  macos_vm : Bool
 }
 
 ///|
 fn Options::execution_mode(self : Options) -> String? {
   if self.windows_vm {
     Some("windows-vm")
+  } else if self.macos_vm {
+    Some("macos-vm")
   } else if self.linux_ci {
     Some("linux-ci")
   } else {
@@ -70,6 +73,7 @@ pub(all) struct MacOptions {
   tart : String
   home : String
   prepare_timeout_ms : Int32
+  softnet_dir : String
 }
 
 ///|

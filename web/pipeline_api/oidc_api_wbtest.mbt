@@ -168,6 +168,7 @@ async test "real runner carries OIDC through shell JavaScript pre main post and 
               unsafe_local: true,
               linux_ci: false,
               windows_vm: false,
+              macos_vm: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),
