@@ -566,6 +566,30 @@ async test "queued approval rechecks reviewer membership before consuming capaci
           .get_name("n") : Int64),
         0L,
       )
+      ignore(
+        client.execute("UPDATE user SET is_site_admin=1 WHERE id=?", params=[
+          reviewer.id,
+        ]),
+      )
     })
+    for _ in 0..<2 {
+      c.runtime.review_deployment(
+        reviewer,
+        protocol_repo,
+        run.number,
+        pending.job_id,
+        pending.environment_id,
+        pending.policy_version,
+        "approved",
+      )
+    }
+    let approved = @runtime.job_deployments(
+        pool,
+        actor,
+        protocol_repo,
+        run.number,
+      )[0]
+    assert_eq(approved.state, "approved")
+    assert_eq(approved.reviews.length(), 2)
   })
 }
