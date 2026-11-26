@@ -11,7 +11,7 @@ import {
 }
 
 // Values
-pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String, inputs? : Map[String, @json.Json], jobs? : Array[String]) -> @runtime.Run
+pub async fn create_run(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, String, inputs? : Map[String, @json.Json], jobs? : Array[String], runner_group? : String?) -> @runtime.Run
 
 pub async fn dispatch_choices(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String) -> DispatchChoices
 

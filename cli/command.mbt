@@ -38,7 +38,7 @@ fn command_option_names() -> Array[String] {
     "reviewer", "comment", "format", "file-id", "mode", "ignore-comments", "ignore-tests",
     "document-id", "hunk-id", "diff-page", "commit", "path", "side", "start-line",
     "end-line", "discussion", "state-version", "assignee", "workflow", "inputs-file",
-    "jobs", "branch", "attempt", "after",
+    "jobs", "runner-group", "branch", "attempt", "after",
   ]
 }
 
@@ -107,7 +107,8 @@ fn action_options(group : String, action : String) -> Array[String] {
     ("issue", "create") => ["title", "body-file", "assignee"]
     ("issue", "comment") => ["body-file"]
     ("issue", "edit") => ["edit-version", "title", "body-file", "assignee"]
-    ("ci", "run") => ["branch", "workflow", "jobs", "inputs-file"]
+    ("ci", "run") =>
+      ["branch", "workflow", "jobs", "runner-group", "inputs-file"]
     ("ci", "logs") => ["attempt", "after"]
     ("inbox", "list") => ["filter", "page"]
     ("attachment", "upload") => ["file"]

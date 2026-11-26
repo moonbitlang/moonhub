@@ -1118,7 +1118,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
       // The inputs object may use 65535 bytes before the request wrapper.
       let body = api_body(
         req,
-        ["branch", "workflow", "inputs", "jobs"],
+        ["branch", "workflow", "inputs", "jobs", "runner_group"],
         body_limit=73728,
       )
       let inputs : Map[String, Json] = match body.get("inputs") {
@@ -1136,6 +1136,11 @@ pub let api_module : @moonback.Module = Module(ctx => {
       } else {
         []
       }
+      let runner_group = match body.get("runner_group") {
+        None => None
+        Some(String(name)) => Some(name)
+        _ => raise @domain.BadRequest(message="runner_group must be a string")
+      }
       @dto.run_json(
         @pipeline.create_run(
           pool,
@@ -1146,6 +1151,7 @@ pub let api_module : @moonback.Module = Module(ctx => {
           field(body, "workflow"),
           inputs~,
           jobs~,
+          runner_group~,
         ),
       )
     }),
