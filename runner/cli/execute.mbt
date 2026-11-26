@@ -50,6 +50,11 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
         long="windows-vm",
         about="Execute inside a prepared disposable Windows Server 2025 guest.",
       ),
+      @argparse.FlagArg(
+        "macos-vm",
+        long="macos-vm",
+        about="Execute as a local administrator in a prepared disposable macOS VM.",
+      ),
     ],
     about="Execute one leased assignment. Read its 64-character attempt credential from stdin.",
   )
@@ -86,6 +91,7 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     unsafe_local: options.flags.get("unsafe-local").unwrap_or(false),
     linux_ci: options.flags.get("linux-ci").unwrap_or(false),
     windows_vm: options.flags.get("windows-vm").unwrap_or(false),
+    macos_vm: options.flags.get("macos-vm").unwrap_or(false),
     heartbeat_ms: 5000,
   })
   println(ToJson::to_json(report).stringify())

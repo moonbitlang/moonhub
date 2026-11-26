@@ -14,7 +14,7 @@ test "container plans retain services options and bounded public expressions" {
       #|      database:
       #|        image: postgres:16-bookworm
       #|        ports: [5432, '15432:5432/tcp']
-      #|        options: --health-cmd "pg_isready -U postgres" --health-retries 5
+      #|        options: --health-cmd "pg_isready -U postgres" --health-retries 5 --user postgres
       #|    steps: [{uses: 'docker://busybox:1.37'}]
     ),
   )
@@ -23,13 +23,15 @@ test "container plans retain services options and bounded public expressions" {
   assert_eq(plan.job.unwrap().image, "${{ vars.IMAGE }}")
   assert_eq(plan.services["database"].ports, ["5432", "15432:5432/tcp"])
   assert_eq(plan.services["database"].options, [
-    "--health-cmd", "pg_isready -U postgres", "--health-retries", "5",
+    "--health-cmd", "pg_isready -U postgres", "--health-retries", "5", "--user",
+    "postgres",
   ])
   for
     field in [
       "container: {image: debian, volumes: ['/:/host']}", "container: {image: debian, options: '--privileged true'}",
       "container: {image: debian, options: '--network host'}", "container: {image: debian, ports: ['0.0.0.0:80:80']}",
-      "container: {image: debian, env: {VALUE: '${{ secrets.TOKEN }}'}}", "services: {localhost: {image: debian}}",
+      "container: {image: debian, options: '--user nobody'}", "container: {image: debian, env: {VALUE: '${{ secrets.TOKEN }}'}}",
+      "services: {localhost: {image: debian}}",
     ] {
     try
       ignore(

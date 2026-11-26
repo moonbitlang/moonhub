@@ -209,6 +209,87 @@ async test "callee failure fails its caller aggregate and skips ordinary depende
 }
 
 ///|
+async test "failed-only reusable reruns preserve inputs shared by reused and retried children" {
+  let caller = call_workflow.replace_all(
+    old="label: pinned",
+    new="label: 'attempt-${{ github.run_attempt }}'",
+  )
+  let callee = "concurrency: '${{ inputs.label }}'\n" +
+    called_workflow +
+    "\n  verify:\n    runs-on: self-hosted\n    steps: [{run: echo verify}]\n"
+  with_reusable_fixture(
+    (c, pool, root, run, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let child = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      assert_eq(child.job.id, "build")
+      assert_eq(
+        child.job.dispatch_inputs.get("label"),
+        Some(Json::string("attempt-1")),
+      )
+      ignore(complete_output_job(c, child, attempt_secret, Map([])))
+      let verify = c.runtime
+        .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
+        .unwrap()
+      assert_eq(verify.job.id, "verify")
+      ignore(
+        complete_output_job(
+          c,
+          verify,
+          "c".repeat(64),
+          Map([]),
+          conclusion="failure",
+        ),
+      )
+      let again = rerun_run(
+        pool,
+        root,
+        actor,
+        protocol_repo,
+        run.number,
+        failed_only=true,
+      )
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, again.number)
+      assert_eq(
+        jobs.iter().find_first(job => job.job_key == "call/build").unwrap().reused_from,
+        Some(run.number),
+      )
+      pool.with_client(client => {
+        let key : String = client
+          .query_one(
+            "SELECT group_key FROM pipeline_concurrency_slot WHERE run_id=?",
+            params=[again.id],
+          )
+          .get_name("group_key")
+        assert_eq(key, "attempt-1")
+      })
+      let retry = c.runtime
+        .claim(provider_secret, claim_request(id="3", secret="d".repeat(64)))
+        .unwrap()
+      assert_eq(retry.job.id, "verify")
+      assert_eq(
+        retry.job.dispatch_inputs.get("label"),
+        Some(Json::string("attempt-1")),
+      )
+      ignore(complete_output_job(c, retry, "d".repeat(64), Map([])))
+      let after = c.runtime
+        .claim(provider_secret, claim_request(id="4", secret="e".repeat(64)))
+        .unwrap()
+      ignore(complete_output_job(c, after, "e".repeat(64), Map([])))
+      ignore(rerun_run(pool, root, actor, protocol_repo, run.number))
+      let fresh = c.runtime
+        .claim(provider_secret, claim_request(id="5", secret="f".repeat(64)))
+        .unwrap()
+      assert_eq(
+        fresh.job.dispatch_inputs.get("label"),
+        Some(Json::string("attempt-3")),
+      )
+    },
+    caller~,
+    callee~,
+  )
+}
+
+///|
 async test "reusable concurrency holds cancellation until callee execution is fenced" {
   let caller = call_workflow.replace_all(
     old="    uses:",
@@ -421,6 +502,35 @@ async test "callee concurrency resolves typed callee inputs and run cancellation
       assert_true(
         @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
         is Some(Cancelled),
+      )
+    },
+    callee~,
+  )
+}
+
+///|
+async test "callee jobs cannot wait on their own reusable call concurrency group" {
+  let callee = "concurrency: called-deploy\n" +
+    called_workflow.replace_all(
+      old="    runs-on:",
+      new="    concurrency: called-deploy\n    runs-on:",
+    )
+  with_reusable_fixture(
+    (_, pool, _, run, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
+      let child = jobs
+        .iter()
+        .find_first(job => job.job_key == "call/build")
+        .unwrap()
+      assert_true(child.conclusion is Some(Failure))
+      assert_eq(
+        child.scheduling_error,
+        "job concurrency group conflicts with its reusable caller group",
+      )
+      assert_true(
+        @runtime.get_run(pool, actor, protocol_repo, run.number).conclusion
+        is Some(Failure),
       )
     },
     callee~,

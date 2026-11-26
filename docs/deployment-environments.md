@@ -78,7 +78,7 @@ Configuration changes require a write-scoped token plus repository management
 permission. Run details include `deployments`, independently of provider execution
 image metadata. Browser forms enforce the same business checks and CSRF binding.
 
-Schema 53 adds configuration, immutable public snapshots, per-job admission and
+Schema 54 adds configuration, immutable public snapshots, per-job admission and
 append-only review records. No assignment protocol change is needed: execution
 uses the existing variable and scoped-secret channels. Older workflow snapshots
 without a deployment target keep their prior behavior.

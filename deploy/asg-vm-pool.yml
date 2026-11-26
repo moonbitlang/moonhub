@@ -4,12 +4,32 @@ Parameters:
   GuestPlatform:
     Type: String
     Default: windows
-    AllowedValues: [windows, linux]
+    AllowedValues: [windows, linux, macos]
   Image:
     Type: AWS::EC2::Image::Id
   InstanceType:
     Type: String
     Default: m6a.large
+  MacInstanceType:
+    Type: String
+    Default: mac2.metal
+    AllowedValues: [mac2.metal, mac2-m2.metal, mac2-m2pro.metal, mac2-m1ultra.metal, mac-m4.metal, mac-m4pro.metal]
+  MacHostResourceGroupArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:[^:]+:resource-groups:[^:]+:[0-9]{12}:group/.+$'
+  MacAvailabilityZone:
+    Type: String
+    Default: ''
+  MacRootDeviceName:
+    Type: String
+    Default: /dev/sda1
+    AllowedPattern: '^/dev/[a-zA-Z0-9]+$'
+  MacRootVolumeSize:
+    Type: Number
+    Default: 160
+    MinValue: 80
+    MaxValue: 1024
   MaxWorkers:
     Type: Number
     Default: 1
@@ -17,17 +37,27 @@ Parameters:
     MaxValue: 20
 Conditions:
   IsWindows: !Equals [!Ref GuestPlatform, windows]
+  IsMac: !Equals [!Ref GuestPlatform, macos]
+Rules:
+  MacDedicatedPlacement:
+    RuleCondition: !Equals [!Ref GuestPlatform, macos]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref MacHostResourceGroupArn, '']]
+        AssertDescription: EC2 Mac requires a Dedicated Host resource group ARN.
+      - Assert: !Not [!Equals [!Ref MacAvailabilityZone, '']]
+        AssertDescription: Select an Availability Zone with the Mac instance type.
 Resources:
   Network:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]
+      CidrBlock: !If [IsMac, 10.247.0.0/24, !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]]
       EnableDnsSupport: true
       EnableDnsHostnames: true
   PublicSubnet:
     Type: AWS::EC2::Subnet
     Properties:
-      CidrBlock: !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]
+      CidrBlock: !If [IsMac, 10.247.0.0/24, !If [IsWindows, 10.249.0.0/24, 10.248.0.0/24]]
+      AvailabilityZone: !If [IsMac, !Ref MacAvailabilityZone, !Ref 'AWS::NoValue']
       VpcId: !Ref Network
       MapPublicIpOnLaunch: true
   Internet:
@@ -56,7 +86,7 @@ Resources:
   GuestSecurity:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !If [IsWindows, Outbound HTTPS for disposable Windows CI, Outbound web access for disposable Linux CI]
+      GroupDescription: !If [IsMac, Outbound web access for disposable macOS CI, !If [IsWindows, Outbound HTTPS for disposable Windows CI, Outbound web access for disposable Linux CI]]
       VpcId: !Ref Network
       SecurityGroupEgress:
         # Windows fetches some certificate revocation lists over HTTP.
@@ -107,7 +137,12 @@ Resources:
     Properties:
       LaunchTemplateData:
         ImageId: !Ref Image
-        InstanceType: !Ref InstanceType
+        InstanceType: !If [IsMac, !Ref MacInstanceType, !Ref InstanceType]
+        Placement: !If
+          - IsMac
+          - Tenancy: host
+            HostResourceGroupArn: !Ref MacHostResourceGroupArn
+          - !Ref 'AWS::NoValue'
         IamInstanceProfile:
           Arn: !GetAtt InstanceProfile.Arn
         SecurityGroupIds:
@@ -117,16 +152,16 @@ Resources:
           HttpTokens: required
           HttpPutResponseHopLimit: 1
         BlockDeviceMappings:
-          - DeviceName: /dev/sda1
+          - DeviceName: !If [IsMac, !Ref MacRootDeviceName, /dev/sda1]
             Ebs:
               Encrypted: true
               DeleteOnTermination: true
               VolumeType: gp3
-              VolumeSize: !If [IsWindows, !Ref 'AWS::NoValue', 40]
+              VolumeSize: !If [IsMac, !Ref MacRootVolumeSize, !If [IsWindows, !Ref 'AWS::NoValue', 40]]
         TagSpecifications:
           - ResourceType: volume
             Tags:
-              - Key: !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]
+              - Key: !If [IsMac, MoonHubMacosVmPool, !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]]
                 Value: !Ref AWS::StackName
   Group:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -137,13 +172,14 @@ Resources:
       DesiredCapacity: '0'
       NewInstancesProtectedFromScaleIn: true
       HealthCheckType: EC2
+      HealthCheckGracePeriod: !If [IsMac, 1200, !Ref 'AWS::NoValue']
       VPCZoneIdentifier:
         - !Ref PublicSubnet
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
       Tags:
-        - Key: !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]
+        - Key: !If [IsMac, MoonHubMacosVmPool, !If [IsWindows, MoonHubWindowsVmPool, MoonHubLinuxVmPool]]
           Value: !Ref AWS::StackName
           PropagateAtLaunch: true
 Outputs:

@@ -158,7 +158,7 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             is None {
             let inputs = if job.reusable_call is Some(call) &&
               call.definition.concurrency is Some(_) {
-              @workflow.reusable_inputs(job, context)
+              resolve_call_inputs(tx, run_id, job, context)
             } else {
               job.call_inputs.unwrap_or(
                 run.context.map(ctx => ctx.inputs).unwrap_or(Map([])),

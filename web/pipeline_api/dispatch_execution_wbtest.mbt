@@ -128,6 +128,7 @@ async test "real runner carries typed dispatch inputs event files and outputs ac
               unsafe_local: true,
               linux_ci: false,
               windows_vm: false,
+              macos_vm: false,
               heartbeat_ms: 50,
             },
             action_node=node.text().trim().to_owned(),

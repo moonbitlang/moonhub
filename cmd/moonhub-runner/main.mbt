@@ -44,7 +44,18 @@ async fn run(args : ArrayView[String]) -> Int32 {
       "moonhub:runner",
     ]),
   ]
-  let controller = common.copy()
+  let mac_options = [
+    @argparse.OptionArg("tart", long="tart", default_values=[
+      "/opt/homebrew/bin/tart",
+    ]),
+    @argparse.OptionArg("tart-home", long="tart-home", default_values=[
+      "/var/lib/moonhub-runner/tart",
+    ]),
+    @argparse.OptionArg("prepare-timeout", long="prepare-timeout", default_values=[
+      "180",
+    ]),
+  ]
+  let controller = common + mac_options
   controller.append([
     @argparse.OptionArg(
       "server",
@@ -66,15 +77,6 @@ async fn run(args : ArrayView[String]) -> Int32 {
         "/var/lib/moonhub-runner/controller"
       },
     ]),
-    @argparse.OptionArg("tart", long="tart", default_values=[
-      "/opt/homebrew/bin/tart",
-    ]),
-    @argparse.OptionArg("tart-home", long="tart-home", default_values=[
-      "/var/lib/moonhub-runner/tart",
-    ]),
-    @argparse.OptionArg("prepare-timeout", long="prepare-timeout", default_values=[
-      "180",
-    ]),
     @argparse.OptionArg("aws", long="aws", default_values=["aws"]),
     @argparse.OptionArg("region", long="region", default_values=["us-west-2"]),
     @argparse.OptionArg("asg", long="asg", default_values=[""]),
@@ -86,10 +88,15 @@ async fn run(args : ArrayView[String]) -> Int32 {
       "/moonhub-runner/ci",
     ]),
     @argparse.OptionArg("instance-types", long="instance-types", default_values=[
-      "m6a.large,m7a.large",
+      "",
     ]),
   ])
-  let worker = common.copy()
+  let worker = common + mac_options
+  worker.push(
+    @argparse.OptionArg("softnet-dir", long="softnet-dir", default_values=[
+      "/usr/local/lib/moonhub-macos-asg/bin",
+    ]),
+  )
   worker.push(
     @argparse.OptionArg("bootstrap-file", long="bootstrap-file", required=true),
   )
@@ -112,6 +119,11 @@ async fn run(args : ArrayView[String]) -> Int32 {
             "windows-vm",
             long="windows-vm",
             about="Enroll a dedicated single-use Windows Server 2025 ASG.",
+          ),
+          @argparse.FlagArg(
+            "macos-vm",
+            long="macos-vm",
+            about="Enroll an Apple Silicon EC2 Mac ASG with one disposable macOS administrator VM per job.",
           ),
         ],
       ),
@@ -155,10 +167,7 @@ async fn run(args : ArrayView[String]) -> Int32 {
     pids_limit: 256,
     linux_ci: options.flags.get("linux-ci").unwrap_or(false),
     windows_vm: options.flags.get("windows-vm").unwrap_or(false),
-  }
-  if subcommand == "worker" {
-    @provider.run_bootstrap_worker(value(options, "bootstrap-file"), base)
-    return 0
+    macos_vm: options.flags.get("macos-vm").unwrap_or(false),
   }
   let prepare_seconds = @protocol.parse_decimal(
     value(options, "prepare-timeout"),
@@ -167,6 +176,29 @@ async fn run(args : ArrayView[String]) -> Int32 {
     raise @provider.InvalidConfiguration(
       "prepare-timeout must be 10-900 seconds",
     )
+  }
+  let macos : @provider.MacOptions = {
+    tart: value(options, "tart"),
+    home: value(options, "tart-home"),
+    prepare_timeout_ms: prepare_seconds.to_int() * 1000,
+    softnet_dir: if subcommand == "worker" {
+      value(options, "softnet-dir")
+    } else {
+      ""
+    },
+  }
+  if subcommand == "worker" {
+    @provider.run_bootstrap_worker(
+      value(options, "bootstrap-file"),
+      base,
+      macos~,
+    )
+    return 0
+  }
+  let instance_types = match value(options, "instance-types") {
+    "" if base.macos_vm => "mac2.metal"
+    "" => "m6a.large,m7a.large"
+    value => value
   }
   @provider.run_managed(
     {
@@ -181,16 +213,12 @@ async fn run(args : ArrayView[String]) -> Int32 {
       spot_asg: value(options, "spot-asg"),
       launch_template: value(options, "launch-template"),
       parameter_prefix: value(options, "parameter-prefix"),
-      instance_types: value(options, "instance-types")
+      instance_types: instance_types
       .split(",")
       .map(t => t.trim().to_owned())
       .collect(),
     },
-    macos={
-      tart: value(options, "tart"),
-      home: value(options, "tart-home"),
-      prepare_timeout_ms: prepare_seconds.to_int() * 1000,
-    },
+    macos~,
   )
   0
 }

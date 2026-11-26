@@ -149,6 +149,7 @@ async fn source_bundle(
   repo : @domain.RepoId,
   sha : String,
   full_history~ : Bool = false,
+  expanded_history_limit~ : Int64 = 268435456L,
 ) -> Bytes {
   let bytes = @async.with_timeout(30000, () => {
     let git_dir = @repository.resolve_repository_dir(root, repo)
@@ -174,6 +175,7 @@ async fn source_bundle(
     }
     let tags : Array[String] = []
     if full_history {
+      let object_roots = [sha]
       let (code, refs) = @gitops.merge_git_command(
         git_dir,
         [
@@ -195,10 +197,12 @@ async fn source_bundle(
           raise @domain.BadRequest(message="source tag limit exceeded")
         }
         tags.push(object.to_owned() + ":" + ref_.to_owned())
+        object_roots.push(object.to_owned())
       }
       let (code, objects) = @gitops.merge_git_command(
         git_dir,
-        ["rev-list", "--objects", "--no-object-names", sha],
+        ["rev-list", "--objects", "--no-object-names", "--stdin"],
+        input=object_roots.join("\n") + "\n",
         limit=4194304,
       )
       guard code == 0 else {
@@ -216,7 +220,7 @@ async fn source_bundle(
       let mut total = 0L
       for size in @domain.split_lines(sizes) {
         total += @string.parse_int64(size)
-        guard total <= 268435456L else {
+        guard total <= expanded_history_limit else {
           raise @domain.BadRequest(
             message="source history exceeds 256 MiB expanded object budget",
           )
