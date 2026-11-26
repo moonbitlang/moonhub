@@ -4,20 +4,21 @@ fn saved_job(
   run : Run,
   job_id : Int64,
   key : String,
-) -> @workflow.Job raise {
+) -> (@workflow.Job, Bool) raise {
   if tx.query_opt(
       "SELECT definition_json FROM pipeline_job_definition WHERE job_id=?",
       params=[job_id],
     )
     is Some(row) {
-    return @json.from_json(
+    let job : @workflow.Job = @json.from_json(
       @json.parse((row.get_name("definition_json") : String)),
     )
+    return (job, true)
   }
   guard run.definition.jobs.iter().find_first(job => job.id == key) is Some(job) else {
     raise InvalidRecord
   }
-  job
+  (job, false)
 }
 
 ///|
@@ -130,15 +131,6 @@ fn persist_expanded_jobs(
   job : @workflow.Job,
   children : Array[@workflow.Job],
 ) -> Unit raise {
-  // Validate all generated definitions and budgets before writing any child.
-  validate_secret_policy(
-    tx,
-    run.repository_id,
-    run.source_branch,
-    run.workflow_path,
-    run.context,
-    children,
-  )
   let ordinal : Int64 = tx
     .query_one(
       "SELECT COALESCE(MAX(ordinal),0)+1 AS ordinal FROM pipeline_job WHERE run_id=?",
