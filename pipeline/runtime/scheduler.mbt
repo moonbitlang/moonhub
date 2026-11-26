@@ -38,7 +38,7 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
         is Some(_) else {
         continue
       }
-      let job = saved_job(tx, run, job_id, job_key)
+      let (job, expanded) = saved_job(tx, run, job_id, job_key)
       let needs = tx.query_all(
         "SELECT j.status, j.conclusion FROM pipeline_job_need n JOIN pipeline_job j ON j.run_id = n.run_id AND j.job_key = n.needs_job_key WHERE n.run_id = ? AND n.job_key = ?",
         params=[run_id, job_key],
@@ -138,6 +138,18 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
             expand_run_matrix(tx, run, job_id, job, context)
             changed = true
             continue
+          }
+          // Expanded jobs can reference secrets in a branch that never runs.
+          // Check only after their condition passes, before admitting the job.
+          if expanded {
+            validate_secret_policy(
+              tx,
+              run.repository_id,
+              run.source_branch,
+              run.workflow_path,
+              run.context,
+              [job],
+            )
           }
           if job.containers is Some(_) &&
             job.runs_on.any(label => ["windows", "macos"].contains(label)) {

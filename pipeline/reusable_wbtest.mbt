@@ -704,3 +704,67 @@ async test "reusable aggregate outputs suppress reconstructed delivered secrets"
     secret=true,
   )
 }
+
+///|
+async test "reusable children validate secrets only after their job condition passes" {
+  let callee =
+    #|on:
+    #|  workflow_call:
+    #|    inputs:
+    #|      version: {type: string, required: true}
+    #|jobs:
+    #|  build:
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo build}]
+    #|  publish:
+    #|    needs: build
+    #|    if: inputs.version == ''
+    #|    runs-on: self-hosted
+    #|    steps:
+    #|      - run: echo publish
+    #|        env: {TOKEN: '${{ secrets.TOKEN }}'}
+  for version in ["1.2.3", ""] {
+    let caller = call_workflow.replace_all(
+      old="with: {enabled: true, label: pinned}",
+      new="with: {version: '" + version + "'}",
+    )
+    with_reusable_fixture(
+      (c, pool, _, run, _) => {
+        let actor = @identity.active_user_by_name(pool, "alice")
+        assert_true(
+          @runtime.list_jobs(pool, actor, protocol_repo, run.number).any(job => {
+            job.job_key == "call/build"
+          }),
+          msg="a conditional child must not prevent expansion",
+        )
+        let (build, token) = claim_dag_attempt(c, provider_secret)
+        assert_eq(build.job.id, "build")
+        ignore(complete_output_job(c, build, token, Map([])))
+        let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
+        let publish = jobs
+          .iter()
+          .find_first(job => job.job_key == "call/publish")
+          .unwrap()
+        assert_true(publish.attempt_id is None)
+        let aggregate = jobs
+          .iter()
+          .find_first(job => job.job_key == "call")
+          .unwrap()
+        if version.is_empty() {
+          assert_true(publish.conclusion is Some(Failure))
+          assert_true(publish.scheduling_error.contains("Secret TOKEN"))
+          assert_true(aggregate.conclusion is Some(Failure))
+          assert_true(c.runtime.claim(provider_secret, claim_request()) is None)
+        } else {
+          assert_true(publish.conclusion is Some(Skipped))
+          assert_eq(publish.scheduling_error, "")
+          assert_true(aggregate.conclusion is Some(Success))
+          let (after, _) = claim_dag_attempt(c, provider_secret)
+          assert_eq(after.job.id, "after")
+        }
+      },
+      caller~,
+      callee~,
+    )
+  }
+}
