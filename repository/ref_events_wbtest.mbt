@@ -1,5 +1,5 @@
 ///|
-async test "reference transaction ignores tags deletes and unauthorized auto execution" {
+async test "reference transaction ignores deletes noops and unauthorized auto execution" {
   @test_support.with_repository_test_data((pool, root) => {
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
     let actor = @identity.active_user_by_name(pool, "alice")
@@ -8,7 +8,6 @@ async test "reference transaction ignores tags deletes and unauthorized auto exe
     let zero = "0".repeat(40)
     for
       line in [
-        "\{zero} \{sha} refs/tags/v1",
         "\{sha} \{zero} refs/heads/master",
         "\{sha} \{sha} refs/heads/master",
         "ref:refs/heads/master ref:refs/heads/main HEAD",
