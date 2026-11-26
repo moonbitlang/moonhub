@@ -79,9 +79,11 @@ test('checkout validates primary identity and a separate secondary path before e
   const { config } = await fixture(t), runtime = new ActionRuntime(config);
   runtime.dependency = {};
   const secondary = { repository: 'private/other', ref: 'refs/heads/main' };
-  for (const inputs of [{ ref: 'moved' }, secondary, { ...secondary, path: '../escape' }, { ...secondary, path: './.' }]) {
+  for (const inputs of [{ ref: 'moved' }, secondary, { ...secondary, path: '../escape' }, { ...secondary, path: './.' }, { ...secondary, path: ' ./.' }]) {
     await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, inputs, {}, runtime.context(), {}, 'main'), /retain the run commit|separate path/);
   }
+  await fs.symlink(config.workspace, path.join(config.workspace, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, { ...secondary, path: 'alias/dependency' }, {}, runtime.context(), {}, 'main'), /without symbolic links/);
 });
 
 test('Git push credentials are URL scoped and invocation files disappear after success and failure', async t => {

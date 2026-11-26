@@ -263,7 +263,21 @@ export class ActionRuntime {
         const original = this.config.context?.ref || '';
         if (inputs.ref && ![this.config.sha, original, original.replace(/^refs\/heads\//, ''), original.replace(/^refs\/tags\//, '')].includes(inputs.ref)) throw new Error('Primary checkout must retain the run commit');
         inputs.ref = this.config.sha;
-      } else if (!inputs.ref || !validRelative(inputs.path) || path.resolve(this.workspace, inputs.path) === this.workspace) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
+      } else {
+        inputs.path = inputs.path?.trim();
+        if (!inputs.ref || !validRelative(inputs.path)) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
+        const target = path.relative(this.workspace, path.resolve(this.workspace, inputs.path));
+        if (!target) throw new Error('Secondary checkout requires a separate path');
+        let directory = this.workspace;
+        for (const part of target.split(path.sep)) {
+          directory = path.join(directory, part);
+          const info = await fs.lstat(directory).catch(error => {
+            if (error.code !== 'ENOENT') throw error;
+          });
+          if (!info) break;
+          if (info.isSymbolicLink()) throw new Error('Secondary checkout requires a path without symbolic links');
+        }
+      }
       if (phase === 'main' && (repository !== this.config.repository || inputs['fetch-depth'] === '0')) {
         source = await this.dependency.source(repository, inputs.ref, inputs['fetch-depth'] === '0', this.baseEnv);
         inputs.ref = source.sha;
