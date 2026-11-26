@@ -45,7 +45,7 @@ test('commit MoonDiff modes, server pairing, worker highlighting and SPA remount
   await expect(page.getByRole('button', { name: 'AST', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(algorithm.locator('[aria-pressed=true]')).toHaveCount(1);
   await expect(algorithm.getByRole('button', { name: 'AST', exact: true })).toHaveCSS('font-weight', '700');
-  await expect(algorithm.getByRole('button', { name: 'AST', exact: true })).toHaveCSS('color', 'rgb(23, 105, 210)');
+  await expect(algorithm.getByRole('button', { name: 'AST', exact: true })).toHaveCSS('color', 'rgb(9, 105, 218)');
   await expect(algorithm.getByRole('button', { name: 'Token', exact: true })).toHaveCSS('font-weight', '400');
   await expect(source.getByText(/Declaration order changed:/)).toBeVisible();
   await page.getByRole('button', { name: 'Line', exact: true }).click();
@@ -56,7 +56,7 @@ test('commit MoonDiff modes, server pairing, worker highlighting and SPA remount
   await expect(layout.locator('[aria-pressed=true]')).toHaveCount(1);
   await expect(layout.getByRole('button', { name: 'Unified', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(layout.getByRole('button', { name: 'Unified', exact: true })).toHaveCSS('font-weight', '700');
-  await expect(layout.getByRole('button', { name: 'Unified', exact: true })).toHaveCSS('color', 'rgb(23, 105, 210)');
+  await expect(layout.getByRole('button', { name: 'Unified', exact: true })).toHaveCSS('color', 'rgb(9, 105, 218)');
   await layout.getByRole('button', { name: 'Split', exact: true }).click();
   await expect(source.locator('table').first()).toHaveClass('split');
   await expect(layout.getByRole('button', { name: 'Split', exact: true })).toHaveAttribute('aria-pressed', 'true');
