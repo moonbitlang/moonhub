@@ -17,6 +17,7 @@ fn test_options() -> Options {
     pids_limit: 128,
     linux_ci: false,
     windows_vm: false,
+    macos_vm: false,
   }
 }
 

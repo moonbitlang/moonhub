@@ -76,6 +76,7 @@ int32_t moonhub_runner_reap_namespace(void) { return 0; }
 #include <sys/stat.h>
 #include <sys/ptrace.h>
 #include <sys/resource.h>
+#include <membership.h>
 #include <stdlib.h>
 #endif
 
@@ -99,9 +100,15 @@ int32_t moonhub_runner_prepare(int32_t local) {
   return 0;
 #elif defined(__APPLE__)
   int guest = 0; size_t length = sizeof(guest); struct stat marker;
-  if (geteuid() == 0 || sysctlbyname("kern.hv_vmm_present", &guest, &length, NULL, 0) != 0 || !guest ||
+  if ((local != 0 && local != 4) || geteuid() == 0 ||
+      sysctlbyname("kern.hv_vmm_present", &guest, &length, NULL, 0) != 0 || !guest ||
       lstat("/Library/Application Support/MoonHub/guest.json", &marker) != 0 ||
       !S_ISREG(marker.st_mode) || marker.st_uid != 0 || (marker.st_mode & 022)) return -1;
+  uuid_t user, administrators;
+  int administrator = 0;
+  if (mbr_uid_to_uuid(geteuid(), user) != 0 || mbr_gid_to_uuid(80, administrators) != 0 ||
+      mbr_check_membership(user, administrators, &administrator) != 0 ||
+      !!administrator != (local == 4)) return -1;
   struct rlimit core = {0, 0};
   if (setrlimit(RLIMIT_CORE, &core) != 0 || ptrace(PT_DENY_ATTACH, 0, 0, 0) != 0) return -1;
   return 0;

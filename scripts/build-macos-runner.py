@@ -32,6 +32,8 @@ subprocess.check_call(['npm','ci','--prefix','runner/actions','--omit=dev','--ig
 for file in (root/'runner/actions').glob('*.mjs'):shutil.copy2(file,output/'actions'/file.name)
 shutil.copytree(root/'runner/actions/node_modules',output/'actions/node_modules')
 shutil.copy2(root/'deploy/macos/guest.mjs',output/'macos-guest.mjs');shutil.copy2(root/'deploy/macos/install-guest.sh',output/'install-guest.sh')
+for name in ['install-asg-host.sh','asg-host.sh','asg-worker.plist']:
+ shutil.copy2(root/'deploy/macos'/name,output/name)
 shutil.copy2(root/'LICENSE',output/'licenses/MoonHub.txt')
 pins=json.loads((root/'deploy/macos/runtime.json').read_text())
 with tempfile.TemporaryDirectory() as tmp:

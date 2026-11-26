@@ -15,7 +15,7 @@ pub async fn control_request(String, String, String, @json.Json, allow_http? : B
 
 pub async fn run(Options, String) -> Unit raise ProviderError
 
-pub async fn run_bootstrap_worker(String, Options) -> Unit
+pub async fn run_bootstrap_worker(String, Options, macos? : MacOptions) -> Unit
 
 pub async fn run_managed(ManagedOptions, macos? : MacOptions) -> Unit
 
@@ -36,6 +36,7 @@ pub(all) struct MacOptions {
   tart : String
   home : String
   prepare_timeout_ms : Int32
+  softnet_dir : String
 }
 
 pub(all) struct ManagedOptions {
@@ -70,6 +71,7 @@ pub(all) struct Options {
   pids_limit : Int32
   linux_ci : Bool
   windows_vm : Bool
+  macos_vm : Bool
 }
 
 // Type aliases

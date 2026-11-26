@@ -224,6 +224,18 @@ fn normalize_provider_labels(labels : Array[String]) -> Array[String] raise {
 }
 
 ///|
+fn validate_macos_asg_labels(labels : Array[String]) -> Unit raise {
+  guard labels.contains("macos") &&
+    labels.contains("arm64") &&
+    !labels.contains("x64") &&
+    !labels.contains("macos-14") else {
+    raise @domain.BadRequest(
+      message="macOS ASG providers require macos and arm64 labels and support macOS 15.",
+    )
+  }
+}
+
+///|
 pub fn Coordinator::set_provider_labels(
   self : Coordinator,
   actor : @domain.CurrentUser,
@@ -237,11 +249,14 @@ pub fn Coordinator::set_provider_labels(
     client.with_transaction(
       tx => {
         guard tx.query_opt(
-            "SELECT id FROM pipeline_provider WHERE id = ? AND revoked = 0",
+            "SELECT config_json FROM pipeline_provider WHERE id = ? AND revoked = 0",
             params=[id],
           )
-          is Some(_) else {
+          is Some(row) else {
           raise @domain.NotFound(message="provider not found")
+        }
+        if disposable_provider_os(row) == Some("macos") {
+          validate_macos_asg_labels(labels)
         }
         validate_environment_provider_labels(tx, id, labels)
         let _ = tx.execute(
