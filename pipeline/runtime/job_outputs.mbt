@@ -76,6 +76,9 @@ fn run_job_github(
     "run_id": Json::string(run.public_id.to_string()),
     "run_attempt": Json::string(run.run_attempt.to_string()),
   }
+  if run.workflow_run_number is Some(value) {
+    github["run_number"] = Json::string(value.to_string())
+  }
   if run.definition_version >= 5 && run.context is Some(context) {
     github["event"] = ToJson::to_json(run_event_context(context, event_ref~))
   }

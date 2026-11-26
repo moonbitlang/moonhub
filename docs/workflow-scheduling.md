@@ -26,13 +26,18 @@ No ownership or pending state is kept only in process memory.
 
 Groups may use captured `github.workflow`, `github.ref`, `github.repository`,
 `github.sha`, `github.event_name`, `github.head_ref`, `github.base_ref` and
-`github.run_id`. For an MR, `github.ref` is `refs/pull/NUMBER/merge`, so two MRs
+`github.run_id` and `github.run_number`. For an MR, `github.ref` is `refs/pull/NUMBER/merge`, so two MRs
 using the same source branch have different refs. Push/manual refs are the saved
 `refs/heads/BRANCH`. Current snapshots also expose captured `github.event` and
 typed workflow `inputs` and repository `vars`; see [dispatch inputs](dispatch-inputs.md)
 and [repository variables](repository-variables.md). Secrets,
 environment and matrix contexts are rejected, even in an unevaluated boolean
 branch. A group is resolved once per saved run, not from later refs.
+
+`github.run_number` and the runner's `GITHUB_RUN_NUMBER` start at 1 for each
+workflow file in a repository. A fresh run advances that file's sequence.
+Reruns keep their original workflow run number and advance the attempt number.
+Repository-wide run page numbers still identify individual attempts.
 
 The bounded scheduling expression parser supports scalar literals, field and
 literal-string indexes, `!`, `==`, `!=`, `&&`, `||`, parentheses, `contains`,

@@ -59,6 +59,26 @@ fn test_assignment(steps : Array[@protocol.StepPlan]) -> @protocol.Assignment {
 }
 
 ///|
+async test "native script execution exposes the workflow run number" {
+  @test_support.with_runner_workspace((_, launcher, workspace) => {
+    let server = fake_server()
+    let assignment = test_assignment([
+      test_step("check", "test \"$GITHUB_RUN_NUMBER\" = 27"),
+    ])
+    let assignment = {
+      ..assignment,
+      job: { ..assignment.job, context: { "run_number": "27" }, },
+    }
+    let result = execute_assignment(
+      assignment,
+      test_options(launcher, workspace),
+      (operation, body, until) => server.post(operation, body, until),
+    )
+    assert_eq(result.conclusion, "success")
+  })
+}
+
+///|
 priv struct FakeServer {
   logs : Array[@protocol.LogRequest]
   events : Array[@protocol.StepRequest]

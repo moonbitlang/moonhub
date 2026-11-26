@@ -4,6 +4,9 @@ async test "blob storage migration preserves legacy rows and journals cascade de
     pool.with_client(client => {
       client.batch_execute(
         (
+          #|DROP TRIGGER pipeline_workflow_run_number_immutable;
+          #|DROP TABLE pipeline_workflow_run_sequence;
+          #|ALTER TABLE pipeline_run DROP COLUMN workflow_run_number;
           #|DROP VIEW pipeline_provider_job_routing;
           #|DROP TABLE pipeline_attempt_report;
           #|DROP TABLE branch_required_result;
