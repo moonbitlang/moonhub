@@ -4,16 +4,16 @@
 including their final tables, columns, defaults, constraints, indexes, views and
 triggers. Historical data backfills are no longer part of fresh initialization.
 The minimum supported existing database version is 38. The current
-`database_schema_version` is 57. Migrations 039–057 extend the baseline.
+`database_schema_version` is 58. Migrations 039–058 extend the baseline.
 
 Web calls `database.initialize_db` before becoming healthy. A database at version
-57 is accepted without replaying DDL or reading schema files. Versions 38–56
+58 is accepted without replaying DDL or reading schema files. Versions 38–57
 read and apply only their missing incremental migrations in version order.
 Version 0 is initialized only when it contains no user-defined database objects,
 including views. For an empty database, the initializer reads `base.sql` and
-migrations 039–057, obtains a write reservation with `BEGIN IMMEDIATE`, rechecks
+migrations 039–058, obtains a write reservation with `BEGIN IMMEDIATE`, rechecks
 version and objects, then creates the baseline, applies the migrations and sets
-`PRAGMA user_version=57` in the same transaction. Any failure rolls back DDL,
+`PRAGMA user_version=58` in the same transaction. Any failure rolls back DDL,
 data and version. Existing database upgrades use the same write reservation and
 atomic commit. Do not run `base.sql` directly against an existing database or
 change `user_version` manually to bypass the checks.
@@ -33,7 +33,7 @@ The complete backup/restore workflow is unchanged. It preserves the database,
 repositories, attachment bytes and deployment state together. Legacy identity-only
 transfer tools are no longer supplied.
 
-Keep schema 38 as the existing-database floor. Migrations 039–057 continue above
+Keep schema 38 as the existing-database floor. Migrations 039–058 continue above
 this baseline; future incremental migrations must extend the supported-version
 logic in `database/schema.mbt`. Fresh databases must reach the same schema as
 upgraded databases in one atomic initialization transaction.
@@ -64,5 +64,7 @@ against concurrent repository creation until each transfer commits or rolls back
 Schema 045 extends the durable Actions trigger queue for stable Release
 publication. Existing Releases and push events are not replayed.
 
-Schema 048 adds runner groups and repository grants. Existing providers retain
+Schema 048 adds routing for disposable macOS ASG workers.
+
+Schema 049 adds runner groups and repository grants. Existing providers retain
 their current scope; groups grant no access until explicitly configured.

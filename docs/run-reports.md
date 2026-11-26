@@ -35,7 +35,9 @@ per runner-normalized title and 1,024 bytes per source path. Positions are posit
 later content with a visible notice. Individual command files retain their
 existing 1 MiB read limit. The server rejects malformed or oversized submissions,
 limits the JSON envelope to 4 MiB and stored reports across a workflow attempt to
-8 MiB. It reapplies field and aggregate byte limits after server-side masking,
+8 MiB. When that storage budget is exhausted, valid updates acknowledge the
+lease and preserve the previous entries with a truncation notice if it fits.
+It reapplies field and aggregate byte limits after server-side masking,
 truncating expanded content at UTF-8 boundaries with the same visible notice. Reports belong to their job attempts and are removed with those records.
 
 The runner endpoint is `POST /-/runner-api/v1/attempts/ID/reports`, using the

@@ -1,9 +1,8 @@
 # Local macOS VM runner
 
-The first macOS backend uses one dedicated Apple Silicon host and one clean,
-booted Tart VM as an execution slot. It does not provision EC2 Mac or manage
-Dedicated Hosts. The existing Docker/ASG backends are unchanged; cloud capacity
-management can reuse this worker lifecycle after deployment acceptance.
+The local backend uses one dedicated Apple Silicon host and one clean, booted
+Tart VM as an execution slot. For cloud capacity and administrator jobs, see
+[Disposable macOS ASG runner](macos-asg-runner.md).
 
 ## Readiness and standby
 

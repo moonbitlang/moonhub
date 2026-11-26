@@ -66,6 +66,9 @@ fn parse_containers(
   let job = fields
     .get("container")
     .map(value => parse_container(value, "job.container"))
+  if job is Some(container) && container.options.contains("--user") {
+    raise InvalidWorkflow("--user is supported only on service containers")
+  }
   let services : Map[String, @actions.Container] = Map([])
   if fields.get("services") is Some(value) {
     for name, value in yaml_as_obj(value, "job.services") {

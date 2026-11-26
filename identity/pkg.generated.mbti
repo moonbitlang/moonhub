@@ -34,6 +34,8 @@ pub fn ensure_root_invitation(@database.Database, RootUserConfig) -> Unit raise
 
 pub fn get_team_by_name_key(@database.Database, String) -> TeamSummary? raise
 
+pub fn grant_site_admin(@database.Database, @domain.CurrentUser, Int64) -> String raise
+
 pub fn hash_password(String) -> String
 
 pub fn hash_token(String) -> String

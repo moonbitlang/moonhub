@@ -271,7 +271,7 @@ export class ActionRuntime {
         const original = this.config.context?.ref || '';
         if (inputs.ref && ![this.config.sha, original, original.replace(/^refs\/heads\//, ''), original.replace(/^refs\/tags\//, '')].includes(inputs.ref)) throw new Error('Primary checkout must retain the run commit');
         inputs.ref = this.config.sha;
-      } else if (!inputs.ref || !inputs.path || inputs.path === '.' || !validRelative(inputs.path)) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
+      } else if (!inputs.ref || !validRelative(inputs.path) || path.resolve(this.workspace, inputs.path) === this.workspace) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
       if (phase === 'main' && (repository !== this.config.repository || inputs['fetch-depth'] === '0')) {
         source = await this.dependency.source(repository, inputs.ref, inputs['fetch-depth'] === '0', this.baseEnv);
         inputs.ref = source.sha;

@@ -35,6 +35,23 @@ fn valid_vm_image(image : String) -> Bool {
 }
 
 ///|
+fn tart_environment(macos : MacOptions) -> Map[String, String] {
+  {
+    "PATH": if macos.softnet_dir.is_empty() {
+      "/usr/bin:/bin:/usr/sbin:/sbin"
+    } else {
+      macos.softnet_dir + ":/usr/bin:/bin:/usr/sbin:/sbin"
+    },
+    "HOME": if !macos.softnet_dir.is_empty() {
+      @env.get_env_var("HOME").unwrap_or(macos.home)
+    } else {
+      macos.home
+    },
+    "TART_HOME": macos.home,
+  }
+}
+
+///|
 async fn tart_control(
   macos : MacOptions,
   args : Array[String],
@@ -45,11 +62,7 @@ async fn tart_control(
       macos.tart,
       args,
       inherit_env=false,
-      extra_env={
-        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-        "HOME": macos.home,
-        "TART_HOME": macos.home,
-      },
+      extra_env=tart_environment(macos),
     )
     guard code == 0 else {
       raise InvalidConfiguration(
@@ -142,6 +155,16 @@ async fn run_tart_worker(
       "Use a dedicated absolute Tart home on an Apple Silicon Mac",
     )
   }
+  if base.macos_vm {
+    validate_options(base)
+    guard macos.softnet_dir.has_prefix("/") &&
+      !macos.softnet_dir.contains(":") &&
+      @fs.can_execute(macos.softnet_dir + "/softnet") else {
+      raise InvalidConfiguration(
+        "Mac ASG requires the host's Softnet executable.",
+      )
+    }
+  }
   @platform.private_directory(macos.home)
   @fs.chmod(macos.home, 0o700)
   let file = @fs.open(
@@ -218,10 +241,17 @@ async fn run_tart_worker(
         fields.get("os") is Some(String("macos")) &&
         fields.get("arch") is Some(String("arm64")) &&
         fields.get("clean") is Some(True) &&
+        (fields.get("administrator") is Some(True)) == base.macos_vm &&
         fields.get("runtime") is Some(Number(1, ..)) else {
         raise InvalidConfiguration(
           "Mac guest is not a clean execution environment",
         )
+      }
+      if base.macos_vm {
+        guard fields.get("product_version") is Some(String(version)) &&
+          version.has_prefix("15.") else {
+          raise InvalidConfiguration("The macOS ASG guest must run macOS 15.")
+        }
       }
     }
     run_backend_worker(base, token, {
@@ -251,7 +281,8 @@ async fn run_tart_worker(
       },
       prepare: current => {
         cleanup()
-        guard valid_vm_image(current.runner_image) else {
+        guard valid_vm_image(current.runner_image) &&
+          (!base.macos_vm || current.runner_image == base.runner_image) else {
           raise InvalidConfiguration(
             "Use a pinned OCI VM digest or an operator-owned local:template",
           )
@@ -294,19 +325,21 @@ async fn run_tart_worker(
         )
         let input = @process.redirect_from_file("/dev/null")
         let name = slot.val
+        let args = [
+          "run", name, "--no-graphics", "--no-audio", "--no-clipboard", "--no-usb-accessories",
+        ]
+        if base.macos_vm {
+          args.append([
+            "--net-softnet", "--net-softnet-block", "@host,169.254.0.0/16",
+          ])
+        }
         running.val = Some(
           tasks.spawn(no_wait=true, () => {
             @process.run(
               macos.tart,
-              [
-                "run", name, "--no-graphics", "--no-audio", "--no-clipboard", "--no-usb-accessories",
-              ],
+              args,
               inherit_env=false,
-              extra_env={
-                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-                "HOME": macos.home,
-                "TART_HOME": macos.home,
-              },
+              extra_env=tart_environment(macos),
               stdin=input,
               stdout=log,
               stderr=log,
@@ -349,6 +382,7 @@ async fn run_tart_worker(
           "version": 1,
           "server": current.runner_server,
           "allow_http": current.allow_http,
+          "administrator": base.macos_vm,
           "assignment": ToJson::to_json(assignment),
           "token": credential,
         }
@@ -371,11 +405,7 @@ async fn run_tart_worker(
                 "execute",
               ],
               inherit_env=false,
-              extra_env={
-                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-                "HOME": macos.home,
-                "TART_HOME": macos.home,
-              },
+              extra_env=tart_environment(macos),
               stdin~,
               stdout=output,
               stderr=diagnostic,

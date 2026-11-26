@@ -129,10 +129,11 @@ async test "workflow completion events deduplicate persist upstream context and 
 
 ///|
 async test "PR ready edited and closed lifecycle runs stay outside merge gates" {
-  let source = @test_support.single_job_workflow.replace_all(
-    old="on: workflow_dispatch",
-    new="on: {pull_request: {types: [ready_for_review, edited, closed]}}",
-  )
+  let source = "permissions: {contents: read, id-token: write}\n" +
+    @test_support.single_job_workflow.replace_all(
+      old="on: workflow_dispatch",
+      new="on: {pull_request: {types: [ready_for_review, edited, closed]}}",
+    )
   with_merge_check_fixture(
     (pool, root, scope, actor, mr) => {
       @collaboration.edit_merge_request(pool, scope, actor, mr, "draft", "", "")
@@ -166,9 +167,19 @@ async test "PR ready edited and closed lifecycle runs stay outside merge gates" 
         ).is_empty(),
       )
       let c = merge_check_provider(pool)
+      let oidc_path = root + "/oidc.json"
+      @test_support.create_oidc_config(oidc_path, "https://issuer.example")
+      let issuer = @oidc.OidcIssuer::load(oidc_path)
+      let oidc = @oidc.Service::new(pool, oidc=issuer, clock=c.clock)
       for action in ["ready_for_review", "edited", "closed"] {
         let (a, token) = claim_dag_attempt(c, provider_secret)
         assert_eq(a.job.event.get("action"), Some(Json::string(action)))
+        let id = @protocol.parse_decimal(a.attempt_id).unwrap()
+        let execution_id = "1".repeat(32)
+        ignore(c.runtime.start(id, token, 1, execution_id~))
+        let grant = oidc.oidc_runtime(id, token, { version: 1, execution_id, })
+        let jwt = oidc.oidc_token(id, grant.token, "")
+        assert_true(jwt is { "value": String(_), .. })
         ignore(complete_output_job(c, a, token, Map([])))
       }
     },

@@ -164,7 +164,7 @@ includes `release.tag_name`, `release.target_commitish` (the pinned SHA),
 `release.draft` and `release.prerelease` and is available through `GITHUB_EVENT_PATH`.
 The runner provides a lightweight tag for this commit to checkout without
 exporting other tags or history. Upgrade Web, SSH and the runner images together
-before using publication activities; their captured payload uses schema 050.
+before using publication activities; their captured payload uses schema 051.
 
 The native runner regression normally uses an offline tag fetch. Set
 `MOONHUB_TEST_RELEASE_CHECKOUT=1` when running the `release source exposes`

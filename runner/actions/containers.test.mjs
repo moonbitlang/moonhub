@@ -38,14 +38,16 @@ test('container options and references reject shell and host-control syntax', ()
 });
 
 test('job containers share only selected paths and services use aliases and loopback published ports', { skip: process.platform !== 'linux' }, async t => {
-  const f = await fixture(t, { job: { image: 'debian:bookworm', env: {}, options: [], ports: [] }, services: { database: { image: 'postgres:16', env: { REGION: '${{ vars.REGION }}' }, ports: ['5432'], options: ['--health-cmd', 'pg_isready -U postgres'] } } });
-  await f.session.ensure({ vars: { REGION: 'east' } });
+  const f = await fixture(t, { job: { image: 'debian:bookworm', env: {}, options: [], ports: [] }, services: { database: { image: 'postgres:16', env: { REGION: '${{ vars.REGION }}', CONTEXT: '${{ toJSON(github) }}' }, ports: ['5432'], options: ['--health-cmd', 'pg_isready -U postgres', '--user', 'postgres'] } } });
+  await f.session.ensure({ vars: { REGION: 'east' }, github: { repository: f.config.repository, token: 'fixture-token' } });
   const creates = f.calls.filter(call => call.args[0] === 'create');
   assert.equal(creates.length, 2);
   assert.ok(creates[0].args.includes('--network-alias'));
   assert.ok(creates[0].args.includes('database'));
   assert.ok(creates[0].args.includes('127.0.0.1::5432/tcp'));
   assert.equal(creates[0].options.env.REGION, 'east');
+  assert.deepEqual(JSON.parse(creates[0].options.env.CONTEXT), { repository: f.config.repository });
+  assert.ok(creates[0].args.includes('postgres'));
   assert.ok(!creates[0].args.includes('east'));
   assert.ok(!creates[0].args.includes('--mount'));
   assert.ok(!creates[1].args.some(value => value.includes('docker.sock') || value.includes('/control/')));
@@ -86,6 +88,9 @@ test('ordinary providers and unsafe container flags never issue Docker commands'
     await assert.rejects(session.ensure({}), /Unsupported container option/);
     assert.equal(f.resources.size, 0);
   }
+  const customUser = new ContainerSession({ ...f.config, container_plan: { job: { image: 'debian:bookworm', options: ['--user', 'nobody'] }, services: {} } }, {}, f.adapters);
+  await assert.rejects(customUser.ensure({}), /only on service containers/);
+  assert.equal(f.resources.size, 0);
 });
 
 test('Docker action command files remain mapped and failed invocations remove their container', { skip: process.platform !== 'linux' }, async t => {

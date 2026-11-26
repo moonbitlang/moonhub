@@ -44,11 +44,11 @@ pub fn Coordinator::write_report(
           )
         }
         let row = load_live_attempt(tx, id, token, now)
-        if tx.query_opt(
-            "SELECT revision,payload_hash FROM pipeline_attempt_report WHERE attempt_id=?",
-            params=[id],
-          )
-          is Some(old) {
+        let previous = tx.query_opt(
+          "SELECT revision,payload_hash,content_json FROM pipeline_attempt_report WHERE attempt_id=?",
+          params=[id],
+        )
+        if previous is Some(old) {
           let revision : Int64 = old.get_name("revision")
           if revision == report.revision.to_int64() &&
             (old.get_name("payload_hash") : String) == digest {
@@ -148,9 +148,25 @@ pub fn Coordinator::write_report(
             params=[live.run_id, id],
           )
           .get_name("n")
-        guard existing_size + @utf8.encode(content).length().to_int64() <=
-          8388608L else {
-          raise @domain.BadRequest(message="workflow reports exceed 8 MiB")
+        let remaining = 8388608L - existing_size
+        let content = if @utf8.encode(content).length().to_int64() <= remaining {
+          content
+        } else {
+          // Keep the last published entries when the shared storage budget
+          // fills while this job is running.
+          let entries = match previous {
+            Some(old) => {
+              let saved : @protocol.JobReport = @json.from_json(
+                @json.parse((old.get_name("content_json") : String)),
+              )
+              saved.entries
+            }
+            None => []
+          }
+          ToJson::to_json({ ..report, entries, truncated: true, }).stringify()
+        }
+        if @utf8.encode(content).length().to_int64() > remaining {
+          return lease_state(row, now)
         }
         ignore(
           tx.execute(

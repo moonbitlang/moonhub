@@ -34,6 +34,15 @@ fn validate_options(options : Options) -> Unit raise ProviderError {
   guard !options.linux_ci || @platform.os() == "linux" else {
     raise InvalidConfiguration("Linux CI is only available on Linux.")
   }
+  guard !options.macos_vm ||
+    (
+      @platform.macos() &&
+      @platform.architecture() == "arm64" &&
+      !options.linux_ci &&
+      !options.windows_vm
+    ) else {
+    raise InvalidConfiguration("Mac ASG requires an Apple Silicon worker.")
+  }
   validate_origin(options.server, options.allow_http)
   validate_origin(options.runner_server, options.allow_http)
   if options.windows_vm {

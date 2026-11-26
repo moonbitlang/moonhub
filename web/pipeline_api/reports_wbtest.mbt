@@ -64,6 +64,7 @@ async test "native reports persist combined summaries and annotations with safe 
           unsafe_local: true,
           linux_ci: false,
           windows_vm: false,
+          macos_vm: false,
           heartbeat_ms: 50,
         },
         action_node=node.text().trim().to_owned(),
@@ -401,4 +402,107 @@ async test "server report masking preserves byte limits and truncates later cont
     },
     workflow=report_test_workflow,
   )
+}
+
+///|
+async test "workflow report storage limit preserves published entries and accepts updates" {
+  let workflow =
+    #|name: Report storage
+    #|on: workflow_dispatch
+    #|jobs:
+  let jobs = [1, 2, 3, 4].map(i => {
+    "  job\{i}:\n    runs-on: self-hosted\n    steps:\n      - id: first\n        run: echo report\n"
+  })
+  with_artifact_http(
+    (port, c, pool, _, a, lease) => {
+      let execution = "e".repeat(32)
+      let id = @protocol.parse_decimal(a.attempt_id).unwrap()
+      let start = (id, token) => {
+        ignore(c.runtime.start(id, token, 1, execution_id=execution))
+        ignore(
+          c.runtime.update_step(id, token, {
+            version: 1,
+            step_id: "first",
+            state: "running",
+            exit_code: 0,
+          }),
+        )
+      }
+      start(id, lease)
+      let request : @protocol.ReportRequest = {
+        version: 1,
+        execution_id: execution,
+        report: {
+          revision: 1,
+          entries: [{ step_id: "first", summary: "keep", annotations: [], }],
+          truncated: false,
+        },
+      }
+      ignore(c.runtime.write_report(id, lease, request))
+      let large_report = {
+        ..request.report,
+        entries: [
+          { ..request.report.entries[0], summary: "\"".repeat(1048576), },
+        ],
+      }
+      for i in 2..<=4 {
+        let provider_token = (i + 4).to_string().repeat(64)
+        ignore(
+          c.runtime.create_provider(
+            @identity.active_user_by_name(pool, "admin"),
+            "report-provider-" + i.to_string(),
+            provider_token,
+            ["self-hosted", "linux"],
+            [{ owner: "alice", name: "demo", }],
+          ),
+        )
+        let token = i.to_string().repeat(64)
+        let assignment = c.runtime
+          .claim(provider_token, {
+            version: 1,
+            request_id: i.to_string().repeat(32),
+            attempt_token: token,
+            runner_os: None,
+            environments: None,
+          })
+          .unwrap()
+        let attempt = @protocol.parse_decimal(assignment.attempt_id).unwrap()
+        start(attempt, token)
+        ignore(
+          c.runtime.write_report(attempt, token, {
+            ..request,
+            report: large_report,
+          }),
+        )
+      }
+      let body = ToJson::to_json({
+        ..request,
+        report: { ..large_report, revision: 2, },
+      }).stringify()
+      for _ in 0..<2 {
+        assert_eq(
+          @web_testkit.runner_post_json(
+            port,
+            "/attempts/" + a.attempt_id + "/reports",
+            body,
+            token=lease,
+          ).0,
+          200,
+        )
+      }
+      let stored = c.runtime.read_report(
+        @identity.active_user_by_name(pool, "alice"),
+        { owner: "alice", name: "demo", },
+        1L,
+        id,
+      )
+      assert_eq(stored.revision, 2)
+      assert_true(stored.truncated)
+      assert_eq(stored.entries[0].summary, "keep")
+    },
+    workflow=workflow + "\n" + jobs.join(""),
+  ) catch {
+    @domain.BadRequest(message~) => fail(message)
+    err => raise err
+  }
 }

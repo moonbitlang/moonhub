@@ -1,4 +1,23 @@
 ///|
+fn resolve_call_inputs(
+  tx : @database.DbTransaction,
+  run_id : Int64,
+  job : @workflow.Job,
+  context : Map[String, Json],
+) -> Map[String, Json] raise {
+  // Reused children must keep the resolved inputs of the source expansion.
+  // A full rerun has no reuse source and evaluates caller expressions again.
+  if tx.query_opt(
+      "SELECT e.inputs_json FROM pipeline_run_reuse_source r JOIN pipeline_job previous ON previous.run_id=r.source_run_id JOIN pipeline_call_expansion e ON e.job_id=previous.id WHERE r.run_id=? AND previous.job_key=?",
+      params=[run_id, job.id],
+    )
+    is Some(row) {
+    return @json.from_json(@json.parse((row.get_name("inputs_json") : String)))
+  }
+  @workflow.reusable_inputs(job, context)
+}
+
+///|
 fn expand_reusable_call(
   tx : @database.DbTransaction,
   run : Run,
@@ -6,7 +25,8 @@ fn expand_reusable_call(
   job : @workflow.Job,
   context : Map[String, Json],
 ) -> Unit raise {
-  let (inputs, children) = @workflow.instantiate_reusable(job, context)
+  let inputs = resolve_call_inputs(tx, run.id, job, context)
+  let children = @workflow.instantiate_reusable(job, inputs)
   let (count, steps, bytes) = expansion_budget(tx, run)
   let executable = children.filter(job => {
     job.dynamic_matrix is None && job.reusable_call is None

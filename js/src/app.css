@@ -733,6 +733,7 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 }
 @media (max-width:700px) {
   .list-filters { align-items:stretch; }.list-filters .field { flex-basis:100%; }
+  .site-user-search { align-items: flex-end; }
   .mr-sidebar { display:block; }.mr-sidebar .mr-merge-panel { margin-bottom:16px; }
   .mr-sidebar .mr-reviewers, .mr-sidebar .secondary-details { margin:12px 0; }
   .run-list > li { align-items:flex-start; flex-direction:column; gap:6px; }.run-list time { padding-left:0; }
