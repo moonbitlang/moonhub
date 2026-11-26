@@ -131,6 +131,14 @@ The REST run request accepts the same selection as a `jobs` array. Browser Run
 workflow offers a Job selector. Existing execute-token and manager authorization
 remain required; selecting jobs never satisfies or reruns an MR's required check.
 
+Use `ci run --jobs build --runner-group trusted-linux` to limit the selected
+jobs and all their prerequisites to a runner group granted to the repository.
+The REST run request accepts the group as the `runner_group` string. Jobs keep
+their runner label requirements and any group already set in the workflow must
+match the requested group. This option accepts static job plans. A selection
+that includes a dynamic matrix or reusable workflow fails before the run is
+created. Reruns keep the saved group.
+
 ## Commands
 
 ```sh

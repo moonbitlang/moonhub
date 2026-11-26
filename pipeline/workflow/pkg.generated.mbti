@@ -29,6 +29,8 @@ pub fn resolve_context(Workflow, RunContext) -> Workflow raise InvalidWorkflow
 
 pub fn resolve_dispatch_inputs(Array[DispatchInput], Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
 
+pub fn restrict_runner_group(Workflow, String) -> Workflow raise InvalidWorkflow
+
 pub fn reusable_inputs(Job, Map[String, @json.Json]) -> Map[String, @json.Json] raise InvalidWorkflow
 
 pub fn reusable_outputs(Job, Map[String, @json.Json], Map[String, @json.Json], Map[String, @json.Json]) -> Map[String, String] raise InvalidWorkflow

@@ -622,6 +622,9 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
           value.split(",").map(id => id.trim().to_owned()).collect(),
         )
       }
+      if option(matches, "runner-group") is Some(value) {
+        fields["runner_group"] = Json(value)
+      }
       ("\{base}/runs", Some(Json(fields)))
     }
     ("ci", "rerun") =>
