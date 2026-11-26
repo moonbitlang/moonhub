@@ -139,11 +139,7 @@ fn Service::oidc_claims(
         )
         let repository_id : Int64 = row.repository_id
         let repo = context.repository
-        let mr_number = if context.event_name == "pull_request" {
-          Some((run.get_name("mr_number") : Int64))
-        } else {
-          None
-        }
+        let mr_number : Int64? = run.get_name("mr_number")
         let event_ref = @runtime.run_event_ref(
           Some(context),
           run.get_name("source_branch"),

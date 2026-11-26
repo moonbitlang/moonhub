@@ -30,10 +30,11 @@ export function argumentWords(value) {
   if (result.length > 128) throw new Error('Too many container arguments');
   return result;
 }
-function options(values = []) {
+function options(values = [], job = false) {
   if (!Array.isArray(values) || values.length > 32 || values.length % 2) throw new Error('Container options require flag/value pairs');
   for (let i = 0; i < values.length; i += 2) {
     if (!flags.has(values[i]) || typeof values[i + 1] !== 'string' || !values[i + 1] || values[i + 1].startsWith('-') || /[\0\r\n]/.test(values[i + 1])) throw new Error('Unsupported container option');
+    if (job && values[i] === '--user') throw new Error('--user is supported only on service containers');
   }
   return values;
 }
@@ -121,7 +122,7 @@ export class ContainerSession {
     }
     return result;
   }
-  async spec(value, context) {
+  async spec(value, context, job = false) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['image', 'env', 'ports', 'options'].includes(key))) throw new Error('Invalid container definition');
     const image = imageName(await interpolate(value.image, context)), env = {};
     if (value.env && (typeof value.env !== 'object' || Array.isArray(value.env))) throw new Error('Invalid container environment');
@@ -132,7 +133,7 @@ export class ContainerSession {
       env[name] = await interpolate(template, context);
       if (env[name].includes('\0') || Buffer.byteLength(env[name]) > 65536) throw new Error('Container environment value exceeds limits');
     }
-    return { image, env, ports: ports(value.ports), options: options(value.options) };
+    return { image, env, ports: ports(value.ports), options: options(value.options, job) };
   }
   async create(name, spec, { job = false, alias = '' } = {}) {
     await this.call(['pull', spec.image]);
@@ -165,12 +166,15 @@ export class ContainerSession {
     if (!this.plan || typeof this.plan !== 'object' || Array.isArray(this.plan) || Object.keys(this.plan).some(key => !['job', 'services'].includes(key)) || !this.plan.services || typeof this.plan.services !== 'object' || Array.isArray(this.plan.services) || Buffer.byteLength(JSON.stringify(this.plan)) > 65536) throw new Error('Invalid container plan');
     const services = Object.entries(this.plan.services || {});
     if (services.length > 8 || services.some(([name]) => !/^[A-Za-z_][A-Za-z0-9_-]{0,62}$/.test(name) || ['localhost', 'job', 'host'].includes(name.toLowerCase()))) throw new Error('Invalid service alias');
+    const { github = {}, inputs, vars, needs, matrix, strategy } = context;
+    const { token, ...publicGithub } = github;
+    const publicContext = { github: publicGithub, inputs, vars, needs, matrix, strategy };
     try {
       const network = await this.call(['network', 'create', '--label', `${label}=${this.id}`, `${this.prefix}-network`]);
       if (!/^[a-f0-9]{12,64}$/.test(network)) throw new Error('Invalid container network identity');
       this.resources.network = network;
       for (const [name, value] of services) {
-        const id = await this.create(`${this.prefix}-${name}`, await this.spec(value, context), { alias: name });
+        const id = await this.create(`${this.prefix}-${name}`, await this.spec(value, publicContext), { alias: name });
         this.resources.services[name] = { id, network, ports: {} };
         await this.healthy(id);
         const published = JSON.parse(await this.call(['inspect', '--format', '{{json .NetworkSettings.Ports}}', id]));
@@ -179,7 +183,7 @@ export class ContainerSession {
           if (binding) this.resources.services[name].ports[port.split('/')[0]] = Number(binding.HostPort);
         }
       }
-      if (this.plan.job) this.resources.job = await this.create(`${this.prefix}-job`, await this.spec(this.plan.job, context), { job: true });
+      if (this.plan.job) this.resources.job = await this.create(`${this.prefix}-job`, await this.spec(this.plan.job, publicContext, true), { job: true });
       this.resources.initialized = true;
     } catch (error) {
       try { await cleanupContainers(this.config, this.adapters); } catch {}

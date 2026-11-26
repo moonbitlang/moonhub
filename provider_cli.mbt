@@ -103,6 +103,7 @@ async fn run_provider_cli(args : ArrayView[String]) -> Int32 {
       pids_limit: provider_cli_int(options, "pids-limit"),
       linux_ci: false,
       windows_vm: false,
+      macos_vm: false,
     },
     token,
   )

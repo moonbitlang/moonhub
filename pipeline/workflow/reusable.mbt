@@ -315,14 +315,13 @@ pub fn reusable_inputs(
 ///|
 pub fn instantiate_reusable(
   job : Job,
-  context : Map[String, Json],
-) -> (Map[String, Json], Array[Job]) raise InvalidWorkflow {
+  inputs : Map[String, Json],
+) -> Array[Job] raise InvalidWorkflow {
   guard job.reusable_call is Some(call) else {
     raise InvalidWorkflow("missing reusable call")
   }
-  let inputs = reusable_inputs(job, context)
   let prefix = job.id + "/"
-  let children = call.definition.jobs.map(child => {
+  call.definition.jobs.map(child => {
     ..child,
     id: prefix + child.id,
     needs: child.needs.map(need => prefix + need),
@@ -337,7 +336,6 @@ pub fn instantiate_reusable(
     id_token_write: child.id_token_write && job.id_token_write,
     api_permissions: child.api_permissions & job.api_permissions,
   })
-  (inputs, children)
 }
 
 ///|

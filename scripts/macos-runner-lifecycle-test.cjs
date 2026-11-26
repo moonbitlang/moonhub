@@ -6,7 +6,7 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { test } = require('node:test');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function scenario(failCleanup = false, remoteImage = false, stopIdle = false) {
+async function scenario(failCleanup = false, remoteImage = false, stopIdle = false, asg = false) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-tart-state-')),
       file = path.join(root, 'state.json');
     fs.writeFileSync(file, JSON.stringify({ vms: {}, prepared: 0, executions: 0, deleted: 0 }));
@@ -15,6 +15,7 @@ async function scenario(failCleanup = false, remoteImage = false, stopIdle = fal
       adapter,
       `#!${process.execPath}
 const fs=require('node:fs');const state=JSON.parse(fs.readFileSync(${JSON.stringify(file)}));const args=process.argv.slice(2);const save=()=>fs.writeFileSync(${JSON.stringify(file)},JSON.stringify(state));
+const asg=${asg};
 if(args[0]==='--version')console.log('2.41.1');
 else if(args[0]==='list')console.log(JSON.stringify(Object.keys(state.vms).map(Name=>({Name}))));
 else if(args[0]==='pull'){}
@@ -22,11 +23,11 @@ else if(args[0]==='get'&&args[1].includes('/'))process.exit(2);
 else if(args[0]==='get')console.log(JSON.stringify({OS:'darwin',State:state.vms[args[1]]?.running?'running':'stopped',Running:!!state.vms[args[1]]?.running}));
 else if(args[0]==='clone'){state.vms[args[2]]={running:false};save();}
 else if(args[0]==='set'){}
-else if(args[0]==='run'){state.vms[args[1]].running=true;state.vms[args[1]].pid=process.pid;save();setInterval(()=>{},1000);}
+else if(args[0]==='run'){if(asg&&(!args.includes('--net-softnet')||!args.includes('@host,169.254.0.0/16')))process.exit(2);state.vms[args[1]].running=true;state.vms[args[1]].pid=process.pid;save();setInterval(()=>{},1000);}
 else if(args[0]==='stop'){try{process.kill(state.vms[args[1]].pid,'SIGKILL')}catch{} state.vms[args[1]].running=false;save();}
 else if(args[0]==='delete'){if(${JSON.stringify(failCleanup)})process.exit(1);delete state.vms[args[1]];state.deleted++;save();}
-else if(args[0]==='exec'&&args.at(-1)==='health'){const vm=state.vms[args[1]];if(!vm?.running||vm.used)process.exit(2);state.prepared++;save();console.log(JSON.stringify({version:1,os:'macos',arch:'arm64',clean:true,runtime:1}));}
-else if(args[0]==='exec'){let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',()=>{const body=JSON.parse(input);if(!/^[a-f0-9]{64}$/.test(body.token))process.exit(2);const name=args[2];state.vms[name].used=true;state.executions++;save();console.log(JSON.stringify({reported:true,conclusion:'success'}));});}
+else if(args[0]==='exec'&&args.at(-1)==='health'){const vm=state.vms[args[1]];if(!vm?.running||vm.used)process.exit(2);state.prepared++;save();console.log(JSON.stringify({version:1,os:'macos',arch:'arm64',clean:true,runtime:1,administrator:asg,product_version:'15.7.7'}));}
+else if(args[0]==='exec'){let input='';process.stdin.on('data',b=>input+=b);process.stdin.on('end',()=>{const body=JSON.parse(input);if(!/^[a-f0-9]{64}$/.test(body.token)||body.administrator!==asg||Object.keys(body).some(key=>!['token','version','server','allow_http','administrator','assignment'].includes(key)))process.exit(2);const name=args[2];state.vms[name].used=true;state.executions++;save();console.log(JSON.stringify({reported:true,conclusion:'success'}));});}
 else process.exit(2);
 `,
       { mode: 0o700 },
@@ -34,8 +35,10 @@ else process.exit(2);
     const state = () => JSON.parse(fs.readFileSync(file));
     const registration = 'a'.repeat(64);
     fs.writeFileSync(path.join(root, 'registration'), registration, { mode: 0o600 });
+    const bootstrap = path.join(root, 'bootstrap.json');
+    let isolated = !asg;
+    let config = asg ? { execution_mode:'macos-vm', runner_image:'local:template', cpus:'2', memory_mib:'4096' } : undefined;
     let token,
-      config,
       schema,
       workerKey,
       applied = '0',
@@ -97,6 +100,7 @@ else process.exit(2);
           reply = { version: 1, id: '1' };
         } else if (req.url.includes('workers/sync')) {
           if (body.state === 'ready') {
+            assert.ok(isolated, 'advertised ready before the controller isolation gate');
             const st = state();
             assert.equal(Object.values(st.vms).filter((vm) => vm.running && !vm.used).length, 1);
             assert.equal(st.deleted, st.executions);
@@ -112,6 +116,7 @@ else process.exit(2);
             provider_id: '1',
             worker_id: '1',
             paused: false,
+            isolation_revision: isolated ? '1' : '0',
             draining: state().executions === 2,
             config_revision: '1',
             config,
@@ -119,9 +124,10 @@ else process.exit(2);
         } else if (route === 'claims') {
           assert.equal(body.runner_os, 'macos');
           assert.ok(ready > 0);
+          assert.ok(isolated);
           const st = state();
           assert.equal(st.deleted, st.executions);
-          if (stopIdle || applied !== '1') reply = { version: 1, assignment: null };
+          if (stopIdle || (!asg && applied !== '1')) reply = { version: 1, assignment: null };
           else {
             claims++;
             const now = Date.now();
@@ -171,29 +177,28 @@ else process.exit(2);
       output = '';
     try {
       await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const address = `http://127.0.0.1:${server.address().port}`;
+      if (asg) {
+        fs.writeFileSync(bootstrap, JSON.stringify({ server:address, token:registration,
+          allow_http:true, runner_os:'macos', runner_image:'local:template', macos_vm:true }), {mode:0o600});
+        fs.writeFileSync(path.join(root,'softnet'), '#!/bin/sh\nexit 0\n', {mode:0o700});
+      }
+      const args = asg ? ['worker','--bootstrap-file',bootstrap,'--softnet-dir',root] : [
+        'run', '--mode', 'tart', '--name', 'fixture', '--server', address, '--allow-http',
+        '--registration-token-file', path.join(root, 'registration'),
+        '--state-dir', path.join(root, 'controller'), '--runner-image',
+        remoteImage ? 'ghcr.io/example/macos@sha256:'+'a'.repeat(64) : 'local:template',
+      ];
       child = spawn(
         path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe'),
         [
-          'run',
-          '--mode',
-          'tart',
-          '--name',
-          'fixture',
-          '--server',
-          `http://127.0.0.1:${server.address().port}`,
-          '--allow-http',
-          '--registration-token-file',
-          path.join(root, 'registration'),
-          '--state-dir',
-          path.join(root, 'controller'),
+          ...args,
           '--workspace-root',
           path.join(root, 'workspace'),
           '--tart',
           adapter,
           '--tart-home',
           path.join(root, 'vms'),
-          '--runner-image',
-          remoteImage ? 'ghcr.io/example/macos@sha256:'+'a'.repeat(64) : 'local:template',
         ],
         { stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -211,11 +216,19 @@ else process.exit(2);
       });
       let stopped=false;
       for (let i = 0; i < 550 && !exited && !failure && !drained; i++) {
+        if(asg && !isolated && state().prepared>0 && i>=65) {
+          assert.equal(ready,0);assert.equal(claims,0);isolated=true;
+        }
         if(stopIdle && ready>0 && !stopped) { stopped=true;child.kill('SIGINT'); }
         await delay(100);
       }
       if (failure) throw failure;
-      if(stopIdle) {
+      if(asg) {
+        assert.ok(drained,output);await closed;assert.equal(code,0,output);
+        assert.equal(claims,1);assert.equal(state().executions,1);assert.equal(state().deleted,1);
+        assert.deepEqual(state().vms,{});assert.equal(fs.existsSync(bootstrap),false);
+        assert.equal(fs.readFileSync(path.join(root,'workspace/ci-consumed'),'utf8'),'1');
+      } else if(stopIdle) {
         assert.ok(exited,output);await closed;
         assert.equal(claims,0);assert.equal(state().executions,0);
         assert.equal(state().deleted,1,'shutdown left a prepared VM behind');
@@ -252,3 +265,5 @@ test('macOS cleanup failure prevents readiness and further claims', {skip:proces
 test('immutable OCI VM sources are inspected through their local clone', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,true));
 
 test('interrupting an idle Mac worker removes its prepared VM', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,false,true));
+
+test('macOS ASG worker waits for isolation and exits after deleting one administrator guest', {skip:process.platform !== 'darwin',timeout:60000}, () => scenario(false,false,false,true));
