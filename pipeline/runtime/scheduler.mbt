@@ -30,6 +30,14 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
     for row in waiting {
       let job_id : Int64 = row.get_name("id")
       let job_key : String = row.get_name("job_key")
+      // Reserving a slot for an earlier job can cancel this job in the same pass.
+      guard tx.query_opt(
+          "SELECT id FROM pipeline_job WHERE id=? AND status='waiting'",
+          params=[job_id],
+        )
+        is Some(_) else {
+        continue
+      }
       let job = saved_job(tx, run, job_id, job_key)
       let needs = tx.query_all(
         "SELECT j.status, j.conclusion FROM pipeline_job_need n JOIN pipeline_job j ON j.run_id = n.run_id AND j.job_key = n.needs_job_key WHERE n.run_id = ? AND n.job_key = ?",
