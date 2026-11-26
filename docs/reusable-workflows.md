@@ -74,7 +74,7 @@ eligible. Job-level `uses` currently accepts `name`, `needs`, `if`, `with`,
 `permissions` and `concurrency`; caller-level matrices and secret forwarding are
 outside this local-call contract.
 
-Schema 52 stores call expansion inputs and aggregate outputs separately from the
+Schema 53 stores call expansion inputs and aggregate outputs separately from the
 original run definition. The definition retains the complete normalized callee
 and original callee source. Restart and duplicate completion reuse these records.
 A snapshot rerun never reloads a moved source branch. Failed-only reruns reuse

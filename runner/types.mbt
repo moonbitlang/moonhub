@@ -16,6 +16,7 @@ pub(all) struct Options {
   unsafe_local : Bool
   linux_ci : Bool
   windows_vm : Bool
+  macos_vm : Bool
   heartbeat_ms : Int32
 }
 

@@ -38,7 +38,7 @@ test "reusable snapshots retain typed declarations cap permissions and namespace
   }
   let decoded : Workflow = @json.from_json(ToJson::to_json(workflow))
   assert_eq(ToJson::to_json(decoded), ToJson::to_json(workflow))
-  let (inputs, children) = instantiate_reusable(decoded.jobs[0], {
+  let inputs = reusable_inputs(decoded.jobs[0], {
     "github": {},
     "inputs": {},
     "needs": {},
@@ -48,6 +48,7 @@ test "reusable snapshots retain typed declarations cap permissions and namespace
   }
   assert_true(inputs.get("enabled") is Some(True))
   assert_eq(inputs.get("count"), Some(Json::number(3)))
+  let children = instantiate_reusable(decoded.jobs[0], inputs)
   assert_eq(children[0].id, "call/build")
   assert_eq(children[0].context_prefix, "call/")
   assert_eq(children[0].api_permissions, 1)

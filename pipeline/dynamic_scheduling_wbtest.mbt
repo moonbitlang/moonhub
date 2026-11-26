@@ -498,6 +498,65 @@ async test "job FIFO admission survives restart while unrelated work remains eli
 }
 
 ///|
+async test "job concurrency rejects a cycle between admitted workflows" {
+  let workflow =
+    #|on: workflow_dispatch
+    #|concurrency: first-workflow
+    #|jobs:
+    #|  prepare:
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo prepare}]
+    #|  finalize:
+    #|    needs: prepare
+    #|    runs-on: self-hosted
+    #|    concurrency: second-workflow
+    #|    steps: [{run: echo finalize}]
+  let other =
+    #|on: workflow_dispatch
+    #|concurrency: second-workflow
+    #|jobs:
+    #|  build:
+    #|    runs-on: self-hosted
+    #|    concurrency: first-workflow
+    #|    steps: [{run: echo build}]
+  with_protocol_fixture(
+    (c, pool, root, run, _, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let path = ".github/workflows/build.yml"
+      let prepare = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      ignore(
+        filter_test_commit(
+          protocol_repo.git_dir(root),
+          run.commit_sha,
+          "pipeline",
+          [(path, other)],
+        ),
+      )
+      let second = create_run(
+        pool, root, actor, protocol_repo, "pipeline", path,
+      )
+      assert_true(
+        c.runtime.queue_reasons(actor, protocol_repo, second.number)["build"]
+        is @runtime.WaitingConcurrency,
+      )
+      ignore(complete_output_job(c, prepare, attempt_secret, Map([])))
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
+      assert_true(jobs[1].conclusion is Some(Failure))
+      assert_eq(
+        jobs[1].scheduling_error,
+        "job concurrency would deadlock admitted workflows",
+      )
+      let build = c.runtime
+        .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
+        .unwrap()
+      assert_eq(build.run_id, second.id.to_string())
+      assert_eq(build.job.id, "build")
+    },
+    workflow~,
+  )
+}
+
+///|
 async test "failed-only reruns freeze expanded matrices while full reruns reevaluate them" {
   let source =
     #|on: workflow_dispatch

@@ -27,9 +27,9 @@ jobs:
 
 Container mappings support `image`, public `env`, `ports` and bounded `options`.
 Image/environment expressions use github, inputs, vars, needs, matrix and
-strategy contexts. Secret expressions are supplied through step env/inputs;
-container definitions do not accept secrets. Services retain their image user
-and entrypoint. A job container defaults to root and `sh`; its image must contain
+strategy contexts. Container expressions omit `github.token`. Use step env or
+inputs for secret expressions. Services retain their image user and entrypoint.
+A job container runs as root and defaults to `sh`. Its image must contain
 the selected shell and command tools. JavaScript actions require a compatible
 Linux image and Node's dynamic libraries. The runner mounts its Node executables,
 workspace, temporary command/action files, job home and read-only source Git
@@ -42,7 +42,8 @@ to loopback; omitted host ports are allocated dynamically. Steps can read
 `job.services.<name>.ports['<container-port>']`. A services-only job executes
 scripts on the isolated runner and connects to these loopback ports.
 
-Allowed options are CPU/memory limits, shm size, user and health-check settings.
+Allowed options are CPU/memory limits, shm size and health-check settings.
+Services can also override their image user with `--user`.
 Host mounts, host networks, privileged flags, daemon addresses and arbitrary
 Docker client configuration are rejected. Limits are eight services, sixteen
 port mappings per container, sixteen option/value pairs and 64 KiB per plan.

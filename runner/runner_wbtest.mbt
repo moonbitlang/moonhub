@@ -161,6 +161,7 @@ fn test_options(launcher : String, workspace : String) -> Options {
     unsafe_local: true,
     linux_ci: false,
     windows_vm: false,
+    macos_vm: false,
     heartbeat_ms: 50,
   }
 }

@@ -78,7 +78,8 @@ test('dependency access errors and foreign origins fail closed', async t => {
 test('checkout validates primary identity and a separate secondary path before executing code', async t => {
   const { config } = await fixture(t), runtime = new ActionRuntime(config);
   runtime.dependency = {};
-  for (const inputs of [{ ref: 'moved' }, { repository: 'private/other', ref: 'refs/heads/main' }, { repository: 'private/other', ref: 'refs/heads/main', path: '../escape' }]) {
+  const secondary = { repository: 'private/other', ref: 'refs/heads/main' };
+  for (const inputs of [{ ref: 'moved' }, secondary, { ...secondary, path: '../escape' }, { ...secondary, path: './.' }]) {
     await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, inputs, {}, runtime.context(), {}, 'main'), /retain the run commit|separate path/);
   }
 });

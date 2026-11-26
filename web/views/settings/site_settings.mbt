@@ -3,6 +3,7 @@ pub let site_settings_module : @moonback.Module = Module(ctx => {
   let assets = ctx.require(@web_context.asset_paths_key)
   let pool = ctx.require(@web_context.config_db_pool)
   let addresses = ctx.require(@web_context.config_ssh_addresses)
+  ctx.use_(site_users_module)
   ctx.get("/-/admin/settings/ssh", async fn(req, res) {
     let actor = @web_context.require_current_user(req)
     guard actor.is_site_admin else {

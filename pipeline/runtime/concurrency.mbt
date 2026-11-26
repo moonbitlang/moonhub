@@ -65,7 +65,7 @@ fn reserve_concurrency(
     "SELECT run_id,job_id,admitted FROM pipeline_concurrency_live WHERE repository_id=? AND group_key=? ORDER BY id",
     params=[run.repository_id, key],
   )
-  // A job cannot wait for the workflow that contains it to finish.
+  // A job cannot wait for the workflow or reusable call that contains it.
   guard !existing.any(row => {
     job_id is Some(_) &&
     (row.get_name("run_id") : Int64) == run.id &&
@@ -75,10 +75,45 @@ fn reserve_concurrency(
       message="job concurrency group conflicts with its workflow group",
     )
   }
+  if job_id is Some(job_id) &&
+    tx.query_opt(
+      "SELECT s.id FROM pipeline_concurrency_live s JOIN pipeline_job caller ON caller.id=s.job_id JOIN pipeline_job child ON child.id=? AND child.run_id=s.run_id WHERE s.repository_id=? AND s.group_key=? AND substr(child.job_key,1,length(caller.job_key)+1)=caller.job_key||'/'",
+      params=[job_id, run.repository_id, key],
+    )
+    is Some(_) {
+    raise @domain.BadRequest(
+      message="job concurrency group conflicts with its reusable caller group",
+    )
+  }
   if queue_max &&
     existing.filter(row => !(row.get_name("admitted") : Bool)).length() >= 100 {
     cancel_concurrency_holder(tx, run.id, job_id)
     return
+  }
+  // Admitted workflows hold their slots even while their jobs wait for other
+  // workflows. Reject the arrival if it closes a cycle of those dependencies.
+  if job_id is Some(_) &&
+    !cancel &&
+    tx.query_opt(
+      (
+        #|WITH RECURSIVE blocked(run_id) AS (
+        #|  SELECT run_id FROM pipeline_concurrency_live
+        #|  WHERE repository_id=? AND group_key=? AND admitted=1 AND job_id IS NULL AND cancel_requested=0
+        #|  UNION
+        #|  SELECT holder.run_id FROM blocked
+        #|  JOIN pipeline_concurrency_live waiter ON waiter.run_id=blocked.run_id
+        #|  JOIN pipeline_concurrency_live holder ON holder.repository_id=waiter.repository_id AND holder.group_key=waiter.group_key
+        #|  WHERE waiter.job_id IS NOT NULL AND waiter.admitted=0 AND waiter.cancel_requested=0
+        #|    AND holder.job_id IS NULL AND holder.admitted=1 AND holder.cancel_requested=0
+        #|)
+        #|SELECT run_id FROM blocked WHERE run_id=?
+      ),
+      params=[run.repository_id, key, run.id],
+    )
+    is Some(_) {
+    raise @domain.BadRequest(
+      message="job concurrency would deadlock admitted workflows",
+    )
   }
   for row in existing {
     if cancel || (!queue_max && !(row.get_name("admitted") : Bool)) {
