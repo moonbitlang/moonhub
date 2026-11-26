@@ -34,11 +34,17 @@ pub fn insert_run_snapshot(
   } else {
     context
   }
-  let (public_id, run_attempt) = if rerun_source == 0L {
-    (0L, 1L)
+  let (public_id, run_attempt, workflow_run_number) = if rerun_source == 0L {
+    let workflow_run_number : Int64 = tx
+      .query_one(
+        "INSERT INTO pipeline_workflow_run_sequence(repository_id,workflow_path,last_number) VALUES(?,?,1) ON CONFLICT(repository_id,workflow_path) DO UPDATE SET last_number=last_number+1 RETURNING last_number",
+        params=[repository_id, workflow_path],
+      )
+      .get_name("last_number")
+    (0L, 1L, Some(workflow_run_number))
   } else {
     let prior = tx.query_one(
-      "SELECT COALESCE(public_run_id,id) AS public_id FROM pipeline_run WHERE id=? AND repository_id=? AND commit_sha=? AND status='completed'",
+      "SELECT COALESCE(public_run_id,id) AS public_id,workflow_run_number FROM pipeline_run WHERE id=? AND repository_id=? AND commit_sha=? AND status='completed'",
       params=[rerun_source, repository_id, sha],
     )
     let public_id : Int64 = prior.get_name("public_id")
@@ -48,7 +54,7 @@ pub fn insert_run_snapshot(
         params=[public_id],
       )
       .get_name("attempt")
-    (public_id, attempt)
+    (public_id, attempt, (prior.get_name("workflow_run_number") : Int64?))
   }
   validate_secret_policy(
     tx,
@@ -81,6 +87,9 @@ pub fn insert_run_snapshot(
         .get_name("name_key") : String),
       "workflow": workflow_name,
     }
+    if workflow_run_number is Some(value) {
+      github["run_number"] = Json::string(value.to_string())
+    }
     if context is Some(saved) {
       github["event"] = ToJson::to_json(run_event_context(saved, event_ref~))
     }
@@ -98,7 +107,7 @@ pub fn insert_run_snapshot(
     title
   }
   let row = tx.query_one(
-    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json, public_run_id, run_attempt, workflow_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, 0), ?, NULLIF(?, 0)) RETURNING *",
+    "INSERT INTO pipeline_run (repository_id, number, requested_by_user_id, workflow_path, workflow_name, display_title, source_branch, commit_sha, source_ref, definition_version, workflow_source, definition_json, trigger_event_id, merge_check_id, context_json, public_run_id, run_attempt, workflow_event_id, workflow_run_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, 0), NULLIF(?, 0), NULLIF(?, ''), NULLIF(?, 0), ?, NULLIF(?, 0), NULLIF(?, 0)) RETURNING *",
     params=[
       repository_id,
       number,
@@ -118,6 +127,7 @@ pub fn insert_run_snapshot(
       public_id,
       run_attempt,
       workflow_event_id,
+      workflow_run_number.unwrap_or(0L),
     ],
   )
   let run = Run::from_row(row)

@@ -14,10 +14,10 @@ async test "empty database initializes the complete baseline and repeats safely"
       )
       for
         (kind, count) in [
-          ("table", 111L),
+          ("table", 112L),
           ("index", 81L),
           ("view", 8L),
-          ("trigger", 67L),
+          ("trigger", 68L),
         ] {
         assert_eq(
           (
@@ -101,6 +101,44 @@ async test "schema 38 upgrades atomically and preserves existing data" {
       assert_true(
         client.query_all("SELECT * FROM pipeline_artifact_location").is_empty(),
       )
+      assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
+    })
+  })
+}
+
+///|
+async test "workflow run number migration ranks original runs and copies their number to reruns" {
+  @test_support.with_ssh_test_db(pool => {
+    pool.with_client(client => {
+      client.batch_execute(
+        (
+          #|DROP TRIGGER pipeline_workflow_run_number_immutable;
+          #|DROP TABLE pipeline_workflow_run_sequence;
+          #|ALTER TABLE pipeline_run DROP COLUMN workflow_run_number;
+          #|PRAGMA user_version=58;
+          #|INSERT INTO pipeline_run(id,repository_id,number,requested_by_user_id,workflow_path,workflow_name,source_branch,commit_sha,source_ref,definition_version,workflow_source,definition_json,public_run_id,run_attempt)
+          #|VALUES
+          #|  (10,1,1,1,'.github/workflows/main.yml','Main','main','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','refs/pipeline/10',1,'old','{}',NULL,1),
+          #|  (20,1,2,1,'.github/workflows/other.yml','Other','main','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','refs/pipeline/20',1,'old','{}',NULL,1),
+          #|  (30,1,3,1,'.github/workflows/main.yml','Main','main','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','refs/pipeline/30',1,'old','{}',NULL,1),
+          #|  (40,1,4,1,'.github/workflows/main.yml','Main','main','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','refs/pipeline/40',1,'old','{}',10,2),
+          #|  (50,2,1,1,'.github/workflows/main.yml','Main','main','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','refs/pipeline/50',1,'old','{}',NULL,1);
+        ),
+      )
+    })
+    initialize_db(pool)
+    initialize_db(pool)
+    pool.with_client(client => {
+      let numbers : Array[Int64] = client
+        .query_all("SELECT workflow_run_number FROM pipeline_run ORDER BY id")
+        .map(row => row.get_name("workflow_run_number"))
+      assert_eq(numbers, [1L, 1L, 2L, 1L, 1L])
+      let counters : Array[Int64] = client
+        .query_all(
+          "SELECT last_number FROM pipeline_workflow_run_sequence ORDER BY repository_id,workflow_path",
+        )
+        .map(row => row.get_name("last_number"))
+      assert_eq(counters, [2L, 1L, 1L])
       assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
     })
   })

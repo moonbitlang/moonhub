@@ -706,3 +706,62 @@ async test "failed job reruns retain public identity event outputs and immutable
     workflow=source,
   )
 }
+
+///|
+async test "workflow run numbers are independent across files and stable across reruns" {
+  let workflow =
+    #|on: workflow_dispatch
+    #|run-name: Workflow run ${{ github.run_number }}
+    #|concurrency: ${{ github.workflow }}-${{ github.run_number }}
+    #|jobs:
+    #|  build:
+    #|    runs-on: self-hosted
+    #|    if: github.run_number != ''
+    #|    steps: [{run: echo build}]
+  with_protocol_fixture(
+    (c, pool, root, first, _, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let build_path = ".github/workflows/build.yml"
+      let other_path = ".github/workflows/other.yml"
+      ignore(
+        filter_test_commit(
+          protocol_repo.git_dir(root),
+          first.commit_sha,
+          "pipeline",
+          [(build_path, workflow), (other_path, workflow)],
+        ),
+      )
+      for (path, expected) in [(other_path, "1"), (build_path, "2")] {
+        let next = create_run(
+          pool, root, actor, protocol_repo, "pipeline", path,
+        )
+        assert_eq(next.display_title, "Workflow run " + expected)
+      }
+      assert_eq(first.display_title, "Workflow run 1")
+      let first_job = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      assert_eq(first_job.job.context.get("run_number"), Some("1"))
+      ignore(complete_output_job(c, first_job, attempt_secret, Map([])))
+      let again = rerun_run(pool, root, actor, protocol_repo, first.number)
+      assert_eq(again.display_title, first.display_title)
+      let third = create_run(
+        pool, root, actor, protocol_repo, "pipeline", build_path,
+      )
+      assert_eq(third.display_title, "Workflow run 3")
+      let observed : Map[String, String] = Map([])
+      for i, ch in ['c', 'd', 'e', 'f'] {
+        let token = ch.to_string().repeat(64)
+        let assignment = c.runtime
+          .claim(
+            provider_secret,
+            claim_request(id=(i + 2).to_string(), secret=token),
+          )
+          .unwrap()
+        observed[assignment.run_id] = assignment.job.context["run_number"]
+        ignore(complete_output_job(c, assignment, token, Map([])))
+      }
+      assert_eq(observed[again.id.to_string()], "1")
+      assert_eq(observed[third.id.to_string()], "3")
+    },
+    workflow~,
+  )
+}

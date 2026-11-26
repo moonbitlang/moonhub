@@ -555,7 +555,7 @@ pub fn Coordinator::claim(
         let reports = job.reports &&
           (row.get_name("definition_version") : Int64) >= 9L
         let captured = tx.query_one(
-          "SELECT COALESCE(r.public_run_id,r.id) AS public_id,r.run_attempt,r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
+          "SELECT COALESCE(r.public_run_id,r.id) AS public_id,r.run_attempt,r.workflow_run_number,r.source_branch,r.workflow_name,r.context_json,(SELECT name_key FROM \"user\" WHERE id=r.requested_by_user_id) AS actor_name,m.number AS mr_number FROM pipeline_run r LEFT JOIN merge_check c ON c.id=r.merge_check_id LEFT JOIN merge_request m ON m.id=c.merge_request_id WHERE r.id = ?",
           params=[(row.get_name("run_id") : Int64)],
         )
         let saved : @workflow.RunContext? = (
@@ -569,6 +569,9 @@ pub fn Coordinator::claim(
             mr_number=captured.get_name("mr_number"),
           ),
           "workflow": captured.get_name("workflow_name"),
+        }
+        if (captured.get_name("workflow_run_number") : Int64?) is Some(value) {
+          context["run_number"] = value.to_string()
         }
         if (row.get_name("definition_version") : Int64) >= 7L {
           context["actor"] = captured.get_name("actor_name")

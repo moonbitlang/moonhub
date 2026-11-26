@@ -559,6 +559,9 @@ async fn Runtime::execute_script(
   env["GITHUB_WORKSPACE"] = self.options.workspace
   env["GITHUB_SHA"] = self.assignment.commit_sha
   env["GITHUB_REPOSITORY"] = self.assignment.repository
+  if self.assignment.job.context.get("run_number") is Some(value) {
+    env["GITHUB_RUN_NUMBER"] = value
+  }
   let script = if @platform.windows() &&
     (step.shell.is_empty() || step.shell == "pwsh") {
     let filename = script + ".ps1"

@@ -328,6 +328,7 @@ pub struct Run {
   state : RunState
   conclusion : Conclusion?
   created_at : String
+  // private fields
 }
 pub fn Run::to_repr(Self) -> @debug.Repr
 

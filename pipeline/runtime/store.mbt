@@ -33,6 +33,7 @@ pub struct Run {
   id : Int64
   public_id : Int64
   run_attempt : Int64
+  priv workflow_run_number : Int64?
   repository_id : Int64
   number : Int64
   requested_by_user_id : Int64
@@ -150,6 +151,7 @@ fn Run::from_row(row : @database.DbRow) -> Run raise {
       row.get_name("id"),
     ),
     run_attempt: row.get_name("run_attempt"),
+    workflow_run_number: row.get_name("workflow_run_number"),
     repository_id: row.get_name("repository_id"),
     number: row.get_name("number"),
     requested_by_user_id: row.get_name("requested_by_user_id"),

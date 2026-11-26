@@ -12,7 +12,7 @@ pub fn[T] new_db_pool(
 }
 
 ///|
-pub let database_schema_version : Int64 = 58L
+pub let database_schema_version : Int64 = 59L
 
 ///|
 let database_initialization_state : String =
@@ -70,7 +70,7 @@ fn initialize_database_schema(
         for
           target in [
             39L, 40L, 41L, 42L, 43L, 44L, 45L, 46L, 47L, 48L, 49L, 50L, 51L, 52L,
-            53L, 54L, 55L, 56L, 57L, 58L,
+            53L, 54L, 55L, 56L, 57L, 58L, 59L,
           ] {
           if version < target {
             guard migrations.iter().find_first(item => item.0 == target)
@@ -127,6 +127,7 @@ pub async fn initialize_db(pool : Database) -> Unit {
         (56L, "db/migrations/056_dependency_access.sql"),
         (57L, "db/migrations/057_job_api_checks.sql"),
         (58L, "db/migrations/058_job_reports.sql"),
+        (59L, "db/migrations/059_workflow_run_number.sql"),
       ] {
       if version < target {
         migrations.push((target, @fs.read_file(path).text()))

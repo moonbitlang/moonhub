@@ -133,6 +133,7 @@ export class ActionRuntime {
     const github = { repository: this.config.repository, sha: this.config.sha, server_url: this.config.server,
       api_url: `${this.config.server}/-/api/v1`, ref: this.config.context?.ref || this.config.sha,
       workflow: this.config.context?.workflow || '', actor: this.config.context?.actor || '', run_id: this.config.context?.run_id || this.config.run_id || '0', run_attempt: this.config.context?.run_attempt || '1', job: this.config.job_id || '',
+      ...(this.config.context?.run_number ? { run_number: this.config.context.run_number } : {}),
       event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.apiToken || (this.config.contents_read === false ? '' : 'moonhub-local-source'),
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
     return { github, job: this.containerSession?.jobContext() || { services: {}, container: {} }, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
@@ -244,6 +245,7 @@ export class ActionRuntime {
       GITHUB_ACTIONS: 'true', GITHUB_ACTION: this.config.step?.id || 'post',
       GITHUB_RUN_ID: context.github.run_id, GITHUB_RUN_ATTEMPT: context.github.run_attempt, GITHUB_JOB: this.config.job_id || '',
       RUNNER_OS: context.runner.os, RUNNER_ARCH: context.runner.arch, RUNNER_TEMP: this.temp, RUNNER_TOOL_CACHE: context.runner.tool_cache });
+    if (context.github.run_number) env.GITHUB_RUN_NUMBER = context.github.run_number;
     delete env.ACTIONS_ID_TOKEN_REQUEST_URL;
     delete env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
     if (this.oidc) {

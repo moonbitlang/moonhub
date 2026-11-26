@@ -875,13 +875,15 @@ test('job API credential is host-bound, masked, scoped to one invocation and usa
   assert.equal(await fs.stat(directory).then(()=>true,()=>false),false);
 });
 
-test('public run identity and workflow attempts reach expressions and child environment', async t => {
+test('public run identity, workflow run number and attempts reach expressions and child environment', async t => {
   const { config } = await fixture(t);
   for (const attempt of ['1', '2', '3']) {
-    const runtime = new ActionRuntime({ ...config, run_id: String(100 + Number(attempt)), context: { run_id: '100', run_attempt: attempt } });
+    const runtime = new ActionRuntime({ ...config, run_id: String(100 + Number(attempt)), context: { run_id: '100', run_number: '4', run_attempt: attempt } });
     assert.equal(evaluate('github.run_id', runtime.context()), '100');
+    assert.equal(evaluate('github.run_number', runtime.context()), '4');
     assert.equal(evaluate('github.run_attempt', runtime.context()), attempt);
     assert.equal(runtime.environment().GITHUB_RUN_ID, '100');
+    assert.equal(runtime.environment().GITHUB_RUN_NUMBER, '4');
     assert.equal(runtime.environment().GITHUB_RUN_ATTEMPT, attempt);
   }
 });
