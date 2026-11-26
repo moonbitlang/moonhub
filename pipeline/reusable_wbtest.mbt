@@ -598,6 +598,49 @@ async test "callee job concurrency rejects a cycle between admitted reusable cal
 }
 
 ///|
+async test "reusable cancellation prevents a waiting matrix from expanding in the same scheduling pass" {
+  let caller =
+    #|on: workflow_dispatch
+    #|jobs:
+    #|  replace:
+    #|    needs: prepare
+    #|    if: always()
+    #|    runs-on: self-hosted
+    #|    concurrency: {group: deploy, cancel-in-progress: true}
+    #|    steps: [{run: echo replace}]
+    #|  prepare:
+    #|    if: ${{ false }}
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo skip}]
+    #|  call:
+    #|    concurrency: deploy
+    #|    uses: ./.github/workflows/callee.yml
+  let callee =
+    #|on: workflow_call
+    #|jobs:
+    #|  deploy:
+    #|    runs-on: self-hosted
+    #|    strategy: {matrix: '${{ fromJSON(''{"target":["one"]}'') }}'}
+    #|    steps: [{run: echo deploy}]
+  with_reusable_fixture(
+    (c, pool, _, run, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
+      let deploy = jobs
+        .iter()
+        .find_first(job => job.job_key == "call/deploy")
+        .unwrap()
+      assert_true(deploy.conclusion is Some(Cancelled))
+      assert_false(jobs.any(job => job.job_key.has_prefix("call/deploy[")))
+      let assigned = c.runtime.claim(provider_secret, claim_request()).unwrap()
+      assert_eq(assigned.job.id, "replace")
+    },
+    caller~,
+    callee~,
+  )
+}
+
+///|
 async test "reusable aggregate outputs suppress reconstructed delivered secrets" {
   let callee = called_workflow
     .replace_all(
