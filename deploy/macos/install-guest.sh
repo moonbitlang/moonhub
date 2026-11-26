@@ -3,7 +3,12 @@
 set -euo pipefail
 [[ $(uname -s) = Darwin && $(uname -m) = arm64 && $(id -u) = 0 ]]
 [[ $(sysctl -n kern.hv_vmm_present) = 1 ]] || { echo 'Refusing installation on a physical host' >&2; exit 1; }
-BUNDLE=${1:?Usage: install-guest.sh /path/to/bundle}
+BUNDLE=${1:?Usage: install-guest.sh /path/to/bundle [--asg]}
+profile=${2:-}
+[[ $# -le 2 && ( -z "$profile" || "$profile" = --asg ) ]]
+if [[ "$profile" = --asg ]]; then
+  [[ $(/usr/bin/sw_vers -productVersion) = 15.* ]]
+fi
 [[ -x "$BUNDLE/bin/moonhub-runner" && -x "$BUNDLE/bin/moonhub-runner-step" && -x "$BUNDLE/bin/node" ]]
 # Identity lookups must fail closed: `! command` is exempt from bash `set -e`.
 assert_identity_owner() {
@@ -37,7 +42,17 @@ fi
 dscl . -create /Users/_moonhub UserShell /usr/bin/false
 dscl . -create /Users/_moonhub NFSHomeDirectory /var/empty
 dscl . -create /Users/_moonhub IsHidden 1
-[[ " $(id -Gn _moonhub) " != *' admin '* ]]
+sudoers=/private/etc/sudoers.d/moonhub-asg-job
+if [[ "$profile" = --asg ]]; then
+  /usr/sbin/dseditgroup -o edit -a _moonhub -t user admin
+  policy=$(mktemp)
+  trap 'rm -f "$policy"' EXIT
+  printf '_moonhub ALL=(ALL) NOPASSWD: ALL\n' > "$policy"
+  /usr/sbin/visudo -cf "$policy"
+  install -o root -g wheel -m 0440 "$policy" "$sudoers"
+else
+  [[ " $(id -Gn _moonhub) " != *' admin '* && ! -e "$sudoers" ]]
+fi
 mkdir -p /usr/local/bin /usr/local/lib/moonhub /usr/local/libexec /opt/actions/node20/bin
 # Run the transport as a root LaunchDaemon so readiness never depends on GUI
 # auto-login or the base image's public administrator password.
@@ -64,7 +79,11 @@ mkdir -p '/Library/Application Support/MoonHub' /var/lib/moonhub-guest
 [[ -z $(ls -A /var/lib/moonhub-guest) ]] || { echo 'Template already contains job state' >&2; exit 1; }
 chown root:wheel '/Library/Application Support/MoonHub' /var/lib/moonhub-guest
 chmod 755 '/Library/Application Support/MoonHub' /var/lib/moonhub-guest
-printf '{"version":1}\n' > '/Library/Application Support/MoonHub/guest.json'
+if [[ "$profile" = --asg ]]; then
+  printf '{"version":1,"administrator":true}\n'
+else
+  printf '{"version":1}\n'
+fi > '/Library/Application Support/MoonHub/guest.json'
 chown root:wheel '/Library/Application Support/MoonHub/guest.json'
 chmod 644 '/Library/Application Support/MoonHub/guest.json'
 if [[ "$agent" != /usr/local/lib/moonhub/tart-guest-agent ]]; then cp "$agent" /usr/local/lib/moonhub/tart-guest-agent; fi

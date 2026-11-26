@@ -75,10 +75,21 @@ fn control_snapshot(
 }
 
 ///|
-fn single_use_asg(row : @database.DbRow) -> Bool raise {
-  (row.get_name("mode") : String) == "asg" &&
-  @json.parse((row.get_name("config_json") : String))
-  is { "execution_mode": "linux-ci" | "windows-vm", .. }
+fn disposable_runner_os(mode : String) -> String? {
+  match mode {
+    "linux-ci" => Some("linux")
+    "windows-vm" => Some("windows")
+    "macos-vm" => Some("macos")
+    _ => None
+  }
+}
+
+///|
+fn disposable_provider_os(row : @database.DbRow) -> String? raise {
+  match @json.parse((row.get_name("config_json") : String)) {
+    { "execution_mode": String(mode), .. } => disposable_runner_os(mode)
+    _ => None
+  }
 }
 
 ///|
@@ -105,9 +116,10 @@ pub fn Coordinator::register_runner(
     raise @domain.BadRequest(message~)
   }
   let execution_mode = request.defaults.get("execution_mode")
+  let execution_os = execution_mode.bind(disposable_runner_os)
   if request.mode == "asg" {
     guard execution_mode is Some(mode) &&
-      ["linux-ci", "windows-vm"].contains(mode) &&
+      execution_os is Some(_) &&
       request.schema.any(field => {
         field.name == "execution_mode" &&
         field.kind == "choice" &&
@@ -115,10 +127,10 @@ pub fn Coordinator::register_runner(
         field.choices == [mode]
       }) else {
       raise @domain.BadRequest(
-        message="A disposable Linux or Windows VM profile is required at ASG enrollment.",
+        message="A disposable Linux, Windows or macOS VM profile is required at ASG enrollment.",
       )
     }
-  } else if execution_mode is Some("linux-ci" | "windows-vm") {
+  } else if execution_os is Some(_) {
     raise @domain.BadRequest(
       message="Disposable EC2 profiles require ASG enrollment.",
     )
@@ -137,6 +149,16 @@ pub fn Coordinator::register_runner(
         }
         let id : Int64 = row.get_name("id")
         let mode : String = row.get_name("mode")
+        if execution_os == Some("macos") {
+          validate_macos_asg_labels(
+            tx
+            .query_all(
+              "SELECT label FROM pipeline_provider_label WHERE provider_id=?",
+              params=[id],
+            )
+            .map(label => label.get_name("label")),
+          )
+        }
         if !mode.is_empty() {
           guard mode == request.mode &&
             (row.get_name("token_hash") : String) == credential_hash &&
@@ -351,8 +373,7 @@ pub fn Coordinator::sync_provider(
                 guard field.name != "execution_mode" ||
                   (
                     (row.get_name("mode") : String) != "asg" &&
-                    !(defaults.get(field.name)
-                    is Some("linux-ci" | "windows-vm"))
+                    defaults.get(field.name).bind(disposable_runner_os) is None
                   ) else {
                   raise Conflict(
                     "A disposable VM profile must be set at ASG enrollment.",
@@ -555,6 +576,7 @@ pub fn Coordinator::sync_worker(
         let state = if draining &&
           request.state == "ready" &&
           (row.get_name("provider_mode") : String) != "tart" &&
+          disposable_provider_os(row) != Some("macos") &&
           !(row.get_name("windows_provider") : Bool) {
           "drained"
         } else {
@@ -632,7 +654,8 @@ pub fn Coordinator::arm_ci_worker(
     client.with_transaction(
       tx => {
         let parent = authenticate_provider(tx, token)
-        guard single_use_asg(parent) &&
+        guard (parent.get_name("mode") : String) == "asg" &&
+          disposable_provider_os(parent) is Some(_) &&
           (parent.get_name("controller_id") : String) == controller_id &&
           (parent.get_name("controller_until_ms") : Int64) > (self.clock)() &&
           (parent.get_name("config_revision") : Int64) == revision else {

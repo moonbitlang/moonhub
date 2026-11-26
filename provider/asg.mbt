@@ -28,6 +28,7 @@ priv struct WorkerBootstrap {
   runner_os : String?
   linux_ci : Bool?
   windows_vm : Bool?
+  macos_vm : Bool?
 }
 
 ///|
@@ -164,6 +165,25 @@ async fn configure_group(
   guard group.max >= number(config, "max_workers") else {
     raise InvalidConfiguration("Requested workers exceed the ASG maximum.")
   }
+  if options.base.macos_vm {
+    // EC2 Mac uses the instance type and Dedicated Host placement pinned in
+    // the launch template. Do not install a mixed purchase policy.
+    ignore(
+      aws_request(
+        options,
+        ["autoscaling", "update-auto-scaling-group"],
+        body=Some({
+          "AutoScalingGroupName": name,
+          "NewInstancesProtectedFromScaleIn": true,
+          "LaunchTemplate": {
+            "LaunchTemplateId": options.launch_template,
+            "Version": version,
+          },
+        }),
+      ),
+    )
+    return
+  }
   // Preserve AMI, networking, instance profile and boot data in the locally
   // pinned template. Only the permitted instance type is overridden remotely.
   let policy : Json = {
@@ -269,6 +289,11 @@ async fn provision_worker(
       runner_os: Some(runner_os),
       linux_ci: Some(options.base.linux_ci),
       windows_vm: if options.base.windows_vm {
+        Some(true)
+      } else {
+        None
+      },
+      macos_vm: if options.base.macos_vm {
         Some(true)
       } else {
         None
@@ -543,10 +568,33 @@ async fn instance_startup(
   guard launch <= now + 30000L else {
     raise InvalidConfiguration("EC2 launch timestamp is in the future.")
   }
-  if now - launch < 900000L {
+  // EC2 Mac cold launches can take 20 minutes even with an AWS base AMI.
+  let startup_ms = if options.base.macos_vm { 1800000L } else { 900000L }
+  if now - launch < startup_ms {
     Booting
   } else {
     TimedOut
+  }
+}
+
+///|
+async fn macos_cleanup_expired(
+  options : ManagedOptions,
+  instance_id : String,
+  now : Int64,
+) -> Bool {
+  // Give the trusted worker time to delete the guest after the server marks
+  // the job terminal. An independent deadline bounds cleanup even if the
+  // worker remains online or the controller restarts.
+  let path = options.state_dir + "/" + instance_id + ".mac-cleanup"
+  if @fs.exists(path) {
+    guard @protocol.parse_decimal(@fs.read_file(path).text()) is Some(started) else {
+      return true
+    }
+    now - started >= 60000L
+  } else {
+    @fs.write_file(path, now.to_string(), permission=0o600)
+    false
   }
 }
 
@@ -645,6 +693,12 @@ async fn reconcile_group(
       }
       // Cleanup stays outside the guest and follows terminal attempt state.
       if worker.draining && worker.active_attempts == 0 {
+        if options.base.macos_vm &&
+          !expired &&
+          !["drained", "failed"].contains(worker.state) &&
+          !macos_cleanup_expired(options, instance.id, now) {
+          continue
+        }
         @fs.write_file(
           options.state_dir + "/" + instance.id + ".ci-retire",
           "retire",
@@ -756,6 +810,7 @@ async fn cleanup_retired_ci(
     for file in @fs.readdir(options.state_dir) {
       if file == id + ".token" ||
         file == id + ".bootstrap-command" ||
+        file == id + ".mac-cleanup" ||
         file.has_prefix(id + ".armed-") {
         @fs.remove(options.state_dir + "/" + file)
       }
@@ -1032,6 +1087,14 @@ async fn validate_cloud_configuration(
         "Windows VM requires at least two vCPUs and 8 GiB of RAM.",
       )
     }
+  } else if options.base.macos_vm {
+    guard capacities[0].architectures.contains("arm64_mac") &&
+      number(config, "cpus") < capacities[0].cpus &&
+      number(config, "memory_mib") + 4096 <= capacities[0].memory_mib else {
+      raise InvalidConfiguration(
+        "macOS VM requires an Apple Silicon Mac with at least one host CPU and 4 GiB of host memory available.",
+      )
+    }
   } else if number(config, "cpus") > capacities[0].cpus ||
     number(config, "memory_mib") + 512 > capacities[0].memory_mib {
     raise InvalidConfiguration(
@@ -1046,7 +1109,7 @@ async fn validate_cloud_configuration(
     "--versions",
     config.get("template_version").unwrap_or(""),
     "--query",
-    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit,disks:LaunchTemplateData.BlockDeviceMappings[].Ebs}",
+    "LaunchTemplateVersions[].{image:LaunchTemplateData.ImageId,tokens:LaunchTemplateData.MetadataOptions.HttpTokens,hop:LaunchTemplateData.MetadataOptions.HttpPutResponseHopLimit,disks:LaunchTemplateData.BlockDeviceMappings[].Ebs,disk_devices:LaunchTemplateData.BlockDeviceMappings[].DeviceName,instance_type:LaunchTemplateData.InstanceType,placement:LaunchTemplateData.Placement,market:LaunchTemplateData.InstanceMarketOptions.MarketType}",
   ])
   let templates : Array[WorkerTemplate] = @json.from_json(templates)
   guard templates.length() == 1 &&
@@ -1065,19 +1128,35 @@ async fn validate_cloud_configuration(
       "ASG VM launch templates require explicit encrypted, disposable EBS mappings.",
     )
   }
-  let images = [templates[0].image]
   let images = aws_request(options, [
     "ec2",
     "describe-images",
     "--image-ids",
-    images[0],
+    templates[0].image,
     "--query",
-    "Images[].{architecture:Architecture,platform:Platform}",
+    "Images[].{architecture:Architecture,platform:Platform,root_device:RootDeviceName}",
   ])
   let images : Array[WorkerImage] = @json.from_json(images)
   guard images.length() == 1 &&
     capacities[0].architectures.contains(images[0].architecture) else {
     raise InvalidConfiguration("AMI and instance architectures differ.")
+  }
+  if options.base.macos_vm {
+    guard images[0].architecture == "arm64_mac" &&
+      templates[0].instance_type == Some(instance_type) &&
+      templates[0].market.unwrap_or(Json::null()) == Json::null() &&
+      templates[0].disk_devices is Some(devices) &&
+      images[0].root_device is Some(root_device) &&
+      devices.contains(root_device) &&
+      templates[0].placement
+      is Some({ "Tenancy": "host", "HostResourceGroupArn": String(group), .. }) &&
+      group.has_prefix("arn:") &&
+      group.contains(":resource-groups:" + options.region + ":") else {
+      raise InvalidConfiguration(
+        "macOS VM requires an ARM64 Mac AMI, matching On-Demand instance type, and a Dedicated Host resource group in the launch template.",
+      )
+    }
+    return "macos"
   }
   guard ["x86_64", "arm64"].contains(images[0].architecture) else {
     raise InvalidConfiguration("Unsupported worker AMI architecture.")
@@ -1103,7 +1182,11 @@ async fn validate_cloud_configuration(
 }
 
 ///|
-pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
+pub async fn run_bootstrap_worker(
+  path : String,
+  base : Options,
+  macos? : MacOptions,
+) -> Unit {
   guard @fs.kind(path, follow_symlink=false) is Regular &&
     @fs.file_size(path) <= 8192L else {
     raise InvalidConfiguration("Invalid worker bootstrap.")
@@ -1114,24 +1197,32 @@ pub async fn run_bootstrap_worker(path : String, base : Options) -> Unit {
   guard bootstrap.runner_os.unwrap_or("linux") == @platform.os() else {
     raise InvalidConfiguration("Worker OS does not match its launch template.")
   }
-  if bootstrap.linux_ci == Some(true) || bootstrap.windows_vm == Some(true) {
+  let base = {
+    ..base,
+    server: bootstrap.server,
+    runner_server: bootstrap.server,
+    allow_http: bootstrap.allow_http,
+    runner_image: bootstrap.runner_image,
+    linux_ci: bootstrap.linux_ci.unwrap_or(false),
+    windows_vm: bootstrap.windows_vm.unwrap_or(false),
+    macos_vm: bootstrap.macos_vm.unwrap_or(false),
+  }
+  if base.execution_mode() is Some(_) {
     guard !@fs.exists(base.workspace_root + "/ci-consumed") else {
       raise InvalidConfiguration("This CI instance has already executed a job.")
     }
     @fs.remove(path)
   }
-  run_worker(
-    {
-      ..base,
-      server: bootstrap.server,
-      runner_server: bootstrap.server,
-      allow_http: bootstrap.allow_http,
-      runner_image: bootstrap.runner_image,
-      linux_ci: bootstrap.linux_ci.unwrap_or(false),
-      windows_vm: bootstrap.windows_vm.unwrap_or(false),
-    },
-    bootstrap.token,
-  )
+  if base.macos_vm {
+    guard macos is Some(settings) && !base.linux_ci && !base.windows_vm else {
+      raise InvalidConfiguration(
+        "Mac ASG bootstrap requires Tart worker settings.",
+      )
+    }
+    run_tart_worker(base, bootstrap.token, settings)
+  } else {
+    run_worker(base, bootstrap.token)
+  }
 }
 
 ///|
@@ -1141,12 +1232,17 @@ priv struct WorkerTemplate {
   tokens : String?
   hop : Int32?
   disks : Array[Json]?
+  disk_devices : Array[String]?
+  instance_type : String?
+  placement : Json?
+  market : Json?
 }
 
 ///|
 priv struct WorkerImage {
   architecture : String
   platform : String?
+  root_device : String?
 }
 
 ///|
@@ -1161,6 +1257,11 @@ fn worker_bootstrap_command(
     (
       "AWS-RunPowerShellScript",
       "$ErrorActionPreference='Stop'; & 'C:/moonhub/ci-host.ps1' -BootstrapParameter '\{parameter}' -Region '\{region}'",
+    )
+  } else if runner_os == "macos" {
+    (
+      "AWS-RunShellScript",
+      "exec /usr/local/libexec/moonhub-macos-asg-host bootstrap '\{region}' '\{parameter}'",
     )
   } else {
     (
@@ -1190,6 +1291,11 @@ impl @json.FromJson for WorkerImage with fn from_json(json, path) {
     platform: match fields.get("platform") {
       None | Some(Null) => None
       Some(value) => Some(@json.from_json(value, path=path.add_key("platform")))
+    },
+    root_device: match fields.get("root_device") {
+      None | Some(Null) => None
+      Some(value) =>
+        Some(@json.from_json(value, path=path.add_key("root_device")))
     },
   }
 }

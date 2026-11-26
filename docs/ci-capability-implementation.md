@@ -34,7 +34,7 @@ runtime requirement. Providers and Runners must be upgraded together.
   nonzero exit codes. They require the Windows CI runner and are skipped locally.
 - #73: `ubuntu-22.04-arm` requires Linux ARM64 and Ubuntu 22.04. Scheduler tests
   reject x64 providers. No real ARM64 compilation/packaging has been executed.
-- #89: schema 48 adds administrator-maintained groups, provider membership and
+- #89: schema 49 adds administrator-maintained groups, provider membership and
   repository grants. Assignment intersects all group, provider and label rules;
   live authorization rechecks grants. Administration forms enforce CSRF and
   optimistic revisions; scheduler tests cover restart and revocation.
@@ -49,7 +49,7 @@ commands passed with the production compiler pin.
 - #70: definition v9 persists bounded event payloads with the immutable run.
   PR concurrency uses the saved number and head/base SHAs; push events retain
   before/after and ref. Conditions, runner expressions and event files share it.
-- #107: schema 49 adds stable public IDs and monotonically increasing workflow
+- #107: schema 50 adds stable public IDs and monotonically increasing workflow
   attempts, separate from worker attempts and historical run record numbers.
   Assignment v15 exposes the stable ID/attempt to runner context and environment.
   API history and run pages link previous attempts; OIDC uses the public identity.
@@ -71,7 +71,7 @@ all categories are implemented.
   and retain tagged commit/ref snapshots. Branch/path semantics remain distinct.
 - #75: first stable/prerelease publication supports `published`; `released`
   defaults remain stable-only. Retry/draft/authorization behavior stays bounded.
-- #76/#77/#79: schema 50 persists completion, repository dispatch and explicit PR
+- #76/#77/#79: schema 51 persists completion, repository dispatch and explicit PR
   lifecycle events. Per-workflow deduplication survives restart; completion chains
   stop after three levels. Dispatch requires execute authority on both API mounts.
   Lifecycle runs are independent of merge gates and retain closed/merged metadata.
@@ -86,7 +86,7 @@ passed. No production image was built or deployed.
 
 ## Dynamic matrices and scheduling
 
-- #81: deferred matrix templates retain the original workflow snapshot. Schema 51
+- #81: deferred matrix templates retain the original workflow snapshot. Schema 52
   stores evaluated matrices and child definitions transactionally; invalid data
   fails the consumer with a visible diagnostic. Expanded jobs retain event-resolved
   values, provider checks, output ordering and shared job/step/byte budgets.
@@ -113,7 +113,7 @@ Required check/format/interface commands passed. No cloud execution was performe
   outputs and dependency closures retain the shared job, step and byte budgets.
   Callee permissions intersect caller permissions; cycles and unsupported remote
   refs fail before execution. Successful calls can be reused on failed-only reruns.
-- Schema 52 persists call expansion and outputs. Cancellation keeps group capacity
+- Schema 53 persists call expansion and outputs. Cancellation keeps group capacity
   until active children are fenced. Output aggregation retains bounded secret
   fingerprints after raw credential cleanup, including across reused attempts.
 

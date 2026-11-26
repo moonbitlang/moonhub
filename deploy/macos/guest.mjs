@@ -9,6 +9,7 @@ const user = '_moonhub';
 let phase = 'identity';
 export function validatePayload(value) {
   assert.equal(value?.version, 1);
+  assert.ok(value.administrator === undefined || typeof value.administrator === 'boolean');
   assert.ok(typeof value.token === 'string' && /^[a-f0-9]{64}$/.test(value.token));
   const url = new URL(value.server);
   assert.ok(
@@ -42,7 +43,9 @@ async function identity() {
   const groups = execFileSync('/usr/bin/id', ['-Gn', user], { encoding: 'utf8' })
     .trim()
     .split(/\s+/);
-  assert.ok(uid > 0 && gid > 0 && !groups.includes('admin'));
+  const administrator = info.administrator === true;
+  assert.ok(uid > 0 && gid > 0);
+  assert.equal(groups.includes('admin'), administrator);
   for (const name of [
     '/usr/local/bin/moonhub-runner',
     '/usr/local/bin/moonhub-runner-step',
@@ -51,7 +54,7 @@ async function identity() {
     const file = await fs.stat(name);
     assert.ok(file.isFile() && file.uid === 0 && !(file.mode & 0o022));
   }
-  return { uid, gid };
+  return { uid, gid, administrator };
 }
 // Observe process exit separately from pipe closure: detached descendants can
 // retain stdout/stderr after the executor has exited. The host destroys the
@@ -108,13 +111,24 @@ export async function collectExecution(child, token, timeoutMs) {
 }
 
 async function main() {
-  const { uid, gid } = await identity();
+  const { uid, gid, administrator } = await identity();
   if (process.argv[2] === 'health') {
     execFileSync('/usr/local/bin/moonhub-runner', ['--help'], { stdio: 'ignore' });
     assert.deepEqual(await fs.readdir(root), []);
-    console.log(
-      JSON.stringify({ version: 1, os: 'macos', arch: 'arm64', clean: true, runtime: 1 }),
-    );
+    const product_version = execFileSync('/usr/bin/sw_vers', ['-productVersion'], {
+      encoding: 'utf8',
+    }).trim();
+    if (administrator) {
+      assert.match(product_version, /^15\./);
+      assert.equal(
+        execFileSync('/usr/bin/sudo', ['-n', '-u', user, '/usr/bin/sudo', '-n', '/usr/bin/id', '-u'], {
+          encoding: 'utf8',
+        }).trim(),
+        '0',
+      );
+    }
+    console.log(JSON.stringify({ version: 1, os: 'macos', arch: 'arm64', clean: true,
+      runtime: 1, administrator, product_version }));
     return;
   }
   assert.equal(process.argv[2], 'execute');
@@ -125,6 +139,7 @@ async function main() {
     assert.ok(Buffer.byteLength(input) <= 2097152 + 65536);
   }
   const payload = validatePayload(JSON.parse(input));
+  assert.equal(payload.administrator === true, administrator);
   // CreateNew makes this guest single-use, including failed/crashed executions.
   phase = 'workspace';
   const consumed = await fs.open(path.join(root, 'consumed'), 'wx', 0o600);
@@ -144,10 +159,16 @@ async function main() {
     workspace,
   ];
   if (payload.allow_http) args.push('--allow-http');
+  if (administrator) args.push('--macos-vm');
   phase = 'spawn';
-  const child = spawn('/usr/local/bin/moonhub-runner', args, {
-    uid,
-    gid,
+  // sudo initializes the account's supplementary groups on Darwin. Node's
+  // uid/gid spawn options only switch the process IDs.
+  const command = administrator ? '/usr/bin/sudo' : '/usr/local/bin/moonhub-runner';
+  const argv = administrator
+    ? ['-n', '-u', user, '--', '/usr/local/bin/moonhub-runner', ...args]
+    : args;
+  const child = spawn(command, argv, {
+    ...(administrator ? {} : { uid, gid }),
     env: { PATH: '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', TMPDIR: '/tmp', HOME: workspace },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
