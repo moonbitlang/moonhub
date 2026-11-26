@@ -91,40 +91,43 @@ WHERE NOT EXISTS (SELECT 1 FROM pipeline_provider_environment e WHERE e.provider
 ) candidate JOIN pipeline_provider_job_group authorized
 ON authorized.job_id=candidate.job_id AND authorized.provider_id=candidate.provider_id;
 
--- Group-only selectors bind the provider OS at claim time. Keep disposable
--- Windows VM opt-in and group grants in the same routing view used by claims,
--- capacity accounting and queue diagnostics.
+-- Group-only selectors bind the provider OS at claim time.
 DROP VIEW pipeline_provider_job_routing;
 
 CREATE VIEW pipeline_provider_job_routing AS
 SELECT candidate.*
 FROM pipeline_provider_job_environment candidate
 JOIN pipeline_provider p ON p.id = candidate.provider_id
-WHERE (
-  p.mode = 'asg' AND json_extract(p.config_json, '$.execution_mode') = 'windows-vm'
-  AND (
-    EXISTS (SELECT 1 FROM pipeline_job_label
-      WHERE job_id = candidate.job_id AND label = 'windows')
-    OR (
+WHERE CASE
+  WHEN p.mode <> 'asg' THEN NOT EXISTS (
+    SELECT 1 FROM pipeline_job_label
+    WHERE job_id = candidate.job_id AND label IN ('windows-vm', 'macos-vm')
+  )
+  WHEN json_extract(p.config_json, '$.execution_mode') = 'windows-vm' THEN
+    (EXISTS (SELECT 1 FROM pipeline_job_label
+      WHERE job_id = candidate.job_id AND label = 'windows') OR (
       EXISTS (SELECT 1 FROM pipeline_job_runner_group WHERE job_id = candidate.job_id)
       AND NOT EXISTS (SELECT 1 FROM pipeline_job_label
         WHERE job_id = candidate.job_id AND label IN ('linux', 'windows', 'macos'))
+    ))
+    AND NOT EXISTS (SELECT 1 FROM pipeline_job_label
+      WHERE job_id = candidate.job_id AND label = 'macos-vm')
+    AND (
+      json_extract(p.config_json, '$.windows_vm_default') = 'enabled'
+      OR EXISTS (SELECT 1 FROM pipeline_job_label
+        WHERE job_id = candidate.job_id AND label = 'windows-vm')
     )
-  )
-  AND (
-    json_extract(p.config_json, '$.windows_vm_default') = 'enabled'
-    OR EXISTS (SELECT 1 FROM pipeline_job_label
-      WHERE job_id = candidate.job_id AND label = 'windows-vm')
-  )
-) OR (
-  (
-    p.mode <> 'asg'
-    OR (
-      json_extract(p.config_json, '$.execution_mode') = 'linux-ci'
+  WHEN json_extract(p.config_json, '$.execution_mode') = 'macos-vm' THEN
+    (EXISTS (SELECT 1 FROM pipeline_job_label
+      WHERE job_id = candidate.job_id AND label = 'macos') OR (
+      EXISTS (SELECT 1 FROM pipeline_job_runner_group WHERE job_id = candidate.job_id)
       AND NOT EXISTS (SELECT 1 FROM pipeline_job_label
-        WHERE job_id = candidate.job_id AND label IN ('windows', 'macos'))
-    )
-  )
-  AND NOT EXISTS (SELECT 1 FROM pipeline_job_label
-    WHERE job_id = candidate.job_id AND label = 'windows-vm')
-);
+        WHERE job_id = candidate.job_id AND label IN ('linux', 'windows', 'macos'))
+    ))
+    AND NOT EXISTS (SELECT 1 FROM pipeline_job_label
+      WHERE job_id = candidate.job_id AND label IN ('linux', 'windows', 'windows-vm', 'x64', 'macos-14'))
+  WHEN json_extract(p.config_json, '$.execution_mode') = 'linux-ci' THEN
+    NOT EXISTS (SELECT 1 FROM pipeline_job_label
+      WHERE job_id = candidate.job_id AND label IN ('windows', 'macos', 'windows-vm', 'macos-vm'))
+  ELSE 0
+END;

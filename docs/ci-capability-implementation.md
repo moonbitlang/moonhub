@@ -34,7 +34,7 @@ runtime requirement. Providers and Runners must be upgraded together.
   nonzero exit codes. They require the Windows CI runner and are skipped locally.
 - #73: `ubuntu-22.04-arm` requires Linux ARM64 and Ubuntu 22.04. Scheduler tests
   reject x64 providers. No real ARM64 compilation/packaging has been executed.
-- #89: schema 48 adds administrator-maintained groups, provider membership and
+- #89: schema 49 adds administrator-maintained groups, provider membership and
   repository grants. Assignment intersects all group, provider and label rules;
   live authorization rechecks grants. Administration forms enforce CSRF and
   optimistic revisions; scheduler tests cover restart and revocation.
@@ -49,7 +49,7 @@ commands passed with the production compiler pin.
 - #70: definition v9 persists bounded event payloads with the immutable run.
   PR concurrency uses the saved number and head/base SHAs; push events retain
   before/after and ref. Conditions, runner expressions and event files share it.
-- #107: schema 49 adds stable public IDs and monotonically increasing workflow
+- #107: schema 50 adds stable public IDs and monotonically increasing workflow
   attempts, separate from worker attempts and historical run record numbers.
   Assignment v15 exposes the stable ID/attempt to runner context and environment.
   API history and run pages link previous attempts; OIDC uses the public identity.

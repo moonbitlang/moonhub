@@ -74,7 +74,7 @@ const allowed = {
   'web/views/merge_requests': [
     'domain', 'gitops', 'identity', 'repository', 'collaboration', 'web/assets', 'web/context', 'web/ui',
   ],
-  'web/views/settings': ['domain', 'mail', 'repository', 'web/assets', 'web/context', 'web/ui'],
+  'web/views/settings': ['domain', 'identity', 'mail', 'repository', 'web/assets', 'web/context', 'web/ui'],
   'web/views/pipelines': [
     'domain', 'database', 'identity', 'repository', 'pipeline', 'pipeline/runtime', 'pipeline/results', 'pipeline/protocol', 'pipeline/environment',
     'web/assets', 'web/context', 'web/ui',
