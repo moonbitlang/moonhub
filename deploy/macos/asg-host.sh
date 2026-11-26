@@ -23,7 +23,8 @@ if [[ "$mode" = bootstrap ]]; then
   [[ ! -e "$workspace/ci-consumed" ]]
   pending=$(mktemp "$private/bootstrap.XXXXXX")
   trap 'rm -f "$pending"' EXIT
-  AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_PROFILE= \
+  /usr/bin/env -i PATH="$PATH" HOME="$home" \
+    AWS_CONFIG_FILE=/dev/null AWS_SHARED_CREDENTIALS_FILE=/dev/null \
     aws ssm get-parameter --region "$2" --name "$3" --with-decryption \
     --query Parameter.Value --output text --no-cli-pager > "$pending"
   [[ -s "$pending" ]]
