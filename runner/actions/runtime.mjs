@@ -382,8 +382,9 @@ export async function execute(config, state = {}, adapters = {}) {
   const step = config.step, templates = step.templates || {};
   let result, tolerate = false;
   try {
-    const overrides = new Set(step.env_overrides ?? Object.keys(step.env || {}));
-    const inheritedExport = key => own(runtime.state.env, key) && !overrides.has(key);
+    const envKey = key => windows ? key.toUpperCase() : key;
+    const overrides = new Set((step.env_overrides ?? Object.keys(step.env || {})).map(envKey));
+    const inheritedExport = key => own(runtime.state.env, envKey(key)) && !overrides.has(envKey(key));
     const supplied = Object.fromEntries(Object.entries(step.env || {}).filter(([key]) => !inheritedExport(key)));
     const condition = templates.if ?? 'success()';
     if (!truthy(await evaluate(condition, runtime.context({ env: environment(runtime.context().env, supplied) }), true))) {
