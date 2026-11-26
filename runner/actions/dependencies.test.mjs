@@ -82,6 +82,9 @@ test('checkout validates primary identity and a separate secondary path before e
   for (const inputs of [{ ref: 'moved' }, secondary, { ...secondary, path: '../escape' }, { ...secondary, path: './.' }, { ...secondary, path: ' ./.' }]) {
     await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, inputs, {}, runtime.context(), {}, 'main'), /retain the run commit|separate path/);
   }
+  for (const target of ['.git', 'vendor/.GIT/data']) {
+    await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, { ...secondary, path: target }, {}, runtime.context(), {}, 'main'), /outside Git metadata/);
+  }
   await fs.symlink(config.workspace, path.join(config.workspace, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, { ...secondary, path: 'alias/dependency' }, {}, runtime.context(), {}, 'main'), /without symbolic links/);
 });

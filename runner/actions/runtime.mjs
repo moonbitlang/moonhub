@@ -271,8 +271,10 @@ export class ActionRuntime {
         if (!inputs.ref || !validRelative(inputs.path)) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
         const target = path.relative(this.workspace, path.resolve(this.workspace, inputs.path));
         if (!target) throw new Error('Secondary checkout requires a separate path');
+        const parts = target.split(path.sep);
+        if (parts.some(part => part.toLowerCase() === '.git')) throw new Error('Secondary checkout requires a path outside Git metadata');
         let directory = this.workspace;
-        for (const part of target.split(path.sep)) {
+        for (const part of parts) {
           directory = path.join(directory, part);
           const info = await fs.lstat(directory).catch(error => {
             if (error.code !== 'ENOENT') throw error;
