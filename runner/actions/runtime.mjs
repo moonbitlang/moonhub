@@ -23,6 +23,14 @@ const scalarMap = (value, label) => Object.fromEntries(Object.entries(value ? ma
   if (item !== null && !['string', 'number', 'boolean'].includes(typeof item)) throw new Error(`${label}.${key} must be a scalar`);
   return [key, string(item)];
 }));
+async function actionInputs(definitions, provided, context) {
+  const inputs = Object.assign(Object.create(null), provided);
+  for (const [name, definition] of Object.entries(definitions || {})) {
+    const key = name.toLowerCase();
+    if (!own(inputs, key)) inputs[key] = await interpolate(definition.default ?? '', context);
+  }
+  return inputs;
+}
 export async function readBounded(filename, maximum = limit) {
   const handle = await fs.open(filename, 'r');
   try {
@@ -136,7 +144,8 @@ export class ActionRuntime {
       ...(this.config.context?.run_number ? { run_number: this.config.context.run_number } : {}),
       event_name: this.config.context?.event_name || 'workflow_dispatch', ...(this.dispatchContext ? { event: this.event, event_path: this.eventPath } : {}), token: this.apiToken || (this.config.contents_read === false ? '' : 'moonhub-local-source'),
       workspace: this.workspace, head_ref: this.config.context?.head_ref || '', base_ref: this.config.context?.base_ref || '', ...extra.github };
-    return { github, job: this.containerSession?.jobContext() || { services: {}, container: {} }, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
+    const job = { ...(this.containerSession?.jobContext() || { services: {}, container: {} }), status: this.cancelled ? 'cancelled' : this.failure ? 'failure' : 'success' };
+    return { github, job, env: environment(this.baseEnv, this.state.env), runner: { os: runnerOS, arch: process.arch === 'arm64' ? 'ARM64' : 'X64', temp: this.temp, tool_cache: path.join(this.baseEnv.HOME || this.baseEnv.USERPROFILE, '.tool-cache') },
       ...(this.variablesContext ? { vars: this.variables } : {}), ...(this.dispatchContext ? { inputs: this.inputs } : {}), steps: this.state.steps, needs: this.config.needs || {}, matrix: this.config.matrix || {}, strategy: this.config.strategy || {}, failure: this.failure, cancelled: this.cancelled, ...extra };
   }
   async resolve(uses) {
@@ -346,12 +355,12 @@ export class ActionRuntime {
     }
     const action = await this.resolve(uses), value = await metadata(action.directory);
     const context = this.context({ ...extra, env: environment(this.context().env, extra.env, supplied), github: { ...this.context().github, ...extra.github, action_path: action.directory } });
-    const inputs = Object.create(null);
-    for (const [name, definition] of Object.entries(value.inputs || {})) inputs[name.toLowerCase()] = await interpolate(definition.default ?? '', context);
+    const explicitInputs = Object.create(null);
     for (const [name, item] of Object.entries(provided)) {
       if (!/^[A-Za-z0-9_-]{1,100}$/.test(name)) throw new Error('Invalid action input name');
-      inputs[name.toLowerCase()] = string(item);
+      explicitInputs[name.toLowerCase()] = string(item);
     }
+    const inputs = await actionInputs(value.inputs, explicitInputs, context);
     const inputContext = { ...context, inputs };
     if (value.runs.using === 'composite') {
       const steps = Object.create(null), outputs = Object.create(null);
@@ -397,7 +406,7 @@ export class ActionRuntime {
     let saved = {};
     let post;
     if (value.runs.post) {
-      post = { step_id: this.reportStep, action, value, inputs, env: supplied, saved, condition: value.runs['post-if'] || 'always()' };
+      post = { step_id: this.reportStep, action, value, inputs: explicitInputs, env: supplied, saved, condition: value.runs['post-if'] || 'always()' };
       this.state.posts.push(post);
     }
     if (value.runs.pre && truthy(await evaluate(value.runs['pre-if'] || 'always()', context))) {
@@ -452,10 +461,12 @@ export class ActionRuntime {
     let code = 0;
     while (this.state.posts.length) {
       const post = this.state.posts.pop(), context = this.context();
+      context.github.action_path = post.action.directory;
       this.reportStep = post.step_id || this.reportStep;
       try {
         if (!truthy(await evaluate(post.condition, context))) continue;
-        const result = await this.javascript(post.action, post.value, post.inputs, post.env, context, post.saved, 'post');
+        const inputs = await actionInputs(post.value.inputs, post.inputs, context);
+        const result = await this.javascript(post.action, post.value, inputs, post.env, context, post.saved, 'post');
         if (result.code) { code = result.code; this.failure = true; this.state.failure = true; }
       } catch { process.stderr.write('runner: action post failed\n'); code = 1; this.failure = true; this.state.failure = true; }
     }
