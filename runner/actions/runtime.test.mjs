@@ -252,6 +252,34 @@ runs:
   assert.equal(result.code, 0); assert.equal(result.outputs.result, 'nested-value'); assert.equal(runtime.state.env.OUTER, 'ready');
 });
 
+test('metadata defaults see current job status in main and post while explicit inputs stay fixed', async t => {
+  const { config } = await fixture(t);
+  const script = `require('node:fs').appendFileSync(process.env.GITHUB_WORKSPACE + '/job-status.log', process.env['INPUT_JOB-STATUS'] + '\\n');`;
+  const uses = await action(config, 'job-status', [
+    'inputs:',
+    '  job-status:',
+    '    default: ${{ job.status }}',
+    'runs: {using: node24, main: main.cjs, post: post.cjs}',
+  ].join('\n'), { 'main.cjs': script, 'post.cjs': script });
+  const file = path.join(config.workspace, 'job-status.log');
+  for (const [status, terminal] of [
+    ['success', {}],
+    ['failure', { failure: true }],
+    ['cancelled', { failure: true, cancelled: true }],
+  ]) {
+    const main = await execute({ ...config, step: { id: 'setup', remote: true, uses } });
+    assert.equal(main.code, 0);
+    const post = await execute({ ...config, phase: 'post', ...terminal }, main.state);
+    assert.equal(post.code, 0);
+    assert.equal(await fs.readFile(file, 'utf8'), `success\n${status}\n`);
+    await fs.unlink(file);
+  }
+  const main = await execute({ ...config, step: { id: 'setup', remote: true, uses, inputs: { 'JOB-STATUS': 'explicit' } } });
+  assert.equal(main.code, 0);
+  assert.equal((await execute({ ...config, phase: 'post', failure: true }, main.state)).code, 0);
+  assert.equal(await fs.readFile(file, 'utf8'), 'explicit\nexplicit\n');
+});
+
 test('failed main still registers cleanup and post-if sees job failure', async t => {
   const { config, runtime } = await fixture(t);
   const uses = await action(config, 'failure', `runs:
