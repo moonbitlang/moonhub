@@ -522,7 +522,7 @@ impl @io.Writer for ArtifactTestWriter with fn write_once(
   if self.stall {
     self.blocked.acquire()
   }
-  self.bytes.write_bytes(data[offset:offset + len])
+  self.bytes.write_bytesview(data[offset:offset + len])
   len
 }
 
