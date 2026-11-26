@@ -111,6 +111,14 @@ let user_api_dependencies_module : @moonback.Module = Module(ctx => {
     raise @domain.BadRequest(message="missing moonhub.db_pool")
   }
   ctx.provide(@web_context.config_db_pool, pool)
+  // Repository API responses report the same SSH clone URL as the Web UI.
+  ctx.provide(
+    @web_context.config_ssh_addresses,
+    ctx
+    .config()
+    .get_custom(@web_context.config_ssh_addresses)
+    .unwrap_or(@repository.no_ssh_address_config),
+  )
   ctx.use_(pipeline_dependencies_module)
   ctx.use_(webhook_dependencies_module)
   ctx.use_(release_dependencies_module)

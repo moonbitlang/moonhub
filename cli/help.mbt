@@ -78,6 +78,7 @@ fn option_description(name : String, group~ : String = "") -> String {
     "attempt" =>
       "Run attempt ID from ci view NUMBER --json (not the attempt ordinal)."
     "after" => "Log cursor; start at 0, then use the returned next_cursor."
+    "visibility" => "New repository visibility: private (default) or public."
     _ => ""
   }
 }
@@ -86,6 +87,12 @@ fn option_description(name : String, group~ : String = "") -> String {
 fn command_description(group : String, action : String) -> String {
   match (group, action) {
     ("auth", "") => "Set up access tokens, sign in, check identity or sign out."
+    ("repo", "") =>
+      "Create a repository in a namespace you manage, or show its state and SSH clone URL."
+    ("repo", "create") =>
+      "Create --repo OWNER/NAME (empty); waits briefly for provisioning; write token and namespace owner/admin required."
+    ("repo", "view") =>
+      "Show visibility, provisioning state (ready, pending, running or failed) and the SSH clone URL."
     ("mr", "") =>
       "Manage merge requests and reviews; Closes #123 closes issues after merge."
     ("issue", "") => "List, create, edit and discuss repository issues."
@@ -194,6 +201,10 @@ fn command_examples(group : String, action : String) -> String {
       "moonhub auth status --json\nMOONHUB_SERVER and MOONHUB_TOKEN can supply credentials without saving a login."
     ("auth", "logout") =>
       "moonhub auth logout\nServer-side revocation: open YOUR_SERVER/-/settings/tokens."
+    ("repo", "" | "create") =>
+      "moonhub repo create --repo OWNER/NAME --visibility private\ngit remote add origin CLONE_URL\ngit push -u origin main\nmoonhub mr create --repo OWNER/NAME --source feature --target main --title 'Add feature'\nThe repository is empty; push your first branch over SSH with a key added in account settings."
+    ("repo", "view") =>
+      "moonhub repo view --repo OWNER/NAME --json\nstate is ready, pending, running or failed; clone_url is null until the server's SSH address is configured."
     ("mr", "") =>
       "moonhub mr list --repo OWNER/NAME\nmoonhub mr view 12 --json\nmoonhub mr diff 12 --version 3\nmoonhub mr review 12 --version 3 --decision approved\nInspect the current version and edit_version with view --json before mutations."
     ("mr", "list") | ("issue", "" | "list") =>
