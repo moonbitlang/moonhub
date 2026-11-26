@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { ActionRuntime } from './runtime.mjs';
+import { ActionRuntime, execute } from './runtime.mjs';
 import { validRelative, environment } from './platform.mjs';
 
 const windows = process.platform === 'win32';
@@ -30,6 +30,22 @@ test('Windows PowerShell defaults, exit codes and case-insensitive PATH exports'
     assert.equal(environment({Path:'a'}, {PATH:'b'}).PATH, 'b');
     for (const name of ['NUL', 'con.txt', 'file:stream', 'trailing.', 'trailing ', 'a/../b']) assert.equal(validRelative(name), false, name);
     assert.equal(validRelative('.'), true);
+  });
+});
+
+test('Windows steps honor GITHUB_ENV when the workflow environment preserves its original case', { skip: !windows }, async () => {
+  await fixture(async runtime => {
+    const step = (id, run, env = {}, env_overrides = []) => ({
+      ...runtime.config, step: { id, run, env, env_overrides, working_directory: '.' },
+    });
+    const exported = await execute(step('export', "'Greeting=exported' | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8"));
+    assert.equal(exported.code, 0);
+    assert.equal(exported.state.env.GREETING, 'exported');
+
+    const inherited = await execute(step('inherit', "if ($env:GREETING -ne 'exported') { exit 5 }", { Greeting: 'workflow' }), exported.state);
+    assert.equal(inherited.code, 0);
+    const explicit = await execute(step('override', "if ($env:GREETING -ne 'step') { exit 6 }", { Greeting: 'step' }, ['Greeting']), inherited.state);
+    assert.equal(explicit.code, 0);
   });
 });
 

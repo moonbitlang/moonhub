@@ -544,7 +544,7 @@ async test "job concurrency rejects a cycle between admitted workflows" {
       assert_true(jobs[1].conclusion is Some(Failure))
       assert_eq(
         jobs[1].scheduling_error,
-        "job concurrency would deadlock admitted workflows",
+        "job concurrency would deadlock admitted workflows or reusable calls",
       )
       let build = c.runtime
         .claim(provider_secret, claim_request(id="2", secret="c".repeat(64)))
