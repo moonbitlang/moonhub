@@ -5,6 +5,14 @@ The native `moonhub` executable also acts as a remote collaboration client.
 `/-/api/v1`. They do not open the server database. Existing Web startup,
 Runner/provider and administration commands retain their entry points.
 
+All of them form one command tree: `moonhub --help` lists every command, and
+`moonhub help COMMAND` or `moonhub COMMAND --help` shows its options. Without a
+command, `moonhub ROOT --assets DIR` serves the Web UI exactly as before
+(`moonhub serve ...` is equivalent). In the native executable, client options such
+as `--repo` and `--server` follow the command group (`moonhub mr list --repo
+OWNER/NAME` or `moonhub mr --repo OWNER/NAME list`); the standalone client also
+accepts them before the group. Invalid arguments exit with status 2.
+
 These commands document the MoonHub product. Development and CI for this source
 repository use GitHub; see [repository CI and migration](github-ci.md). Workflow
 examples below refer to files in the repository being operated on.

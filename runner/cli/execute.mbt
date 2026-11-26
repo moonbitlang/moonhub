@@ -1,14 +1,25 @@
 ///|
 pub async fn execute(args : ArrayView[String]) -> Int32 {
-  if args.length() == 1 && args[0] == "--probe-environment" {
-    println(ToJson::to_json(@runner.environment_probe()).stringify())
-    return 0
-  }
-  let command = @argparse.Command(
+  execute_matches(command().parse(argv=args))
+}
+
+///|
+/// The runner command, for executables that embed it in a command tree.
+/// --server and --assignment are required unless --probe-environment is set.
+pub fn command() -> @argparse.Command {
+  @argparse.Command(
     "runner",
     options=[
-      @argparse.OptionArg("server", long="server", required=true),
-      @argparse.OptionArg("assignment", long="assignment", required=true),
+      @argparse.OptionArg(
+        "server",
+        long="server",
+        about="MoonHub server URL; required to execute an assignment.",
+      ),
+      @argparse.OptionArg(
+        "assignment",
+        long="assignment",
+        about="Assignment JSON file; required to execute an assignment.",
+      ),
       @argparse.OptionArg("workspace", long="workspace", default_values=[
         if @platform.windows() {
           "C:/workspace"
@@ -53,7 +64,21 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
     ],
     about="Execute one leased assignment. Read its 64-character attempt credential from stdin.",
   )
-  let options = command.parse(argv=args)
+}
+
+///|
+/// Execute parsed runner options; see `command`.
+pub async fn execute_matches(options : @argparse.Matches) -> Int32 {
+  if options.flags.get("probe-environment").unwrap_or(false) {
+    println(ToJson::to_json(@runner.environment_probe()).stringify())
+    return 0
+  }
+  guard options.values.get("server") is Some(_) &&
+    options.values.get("assignment") is Some(_) else {
+    raise @runner.InvalidConfiguration(
+      "--server and --assignment are required unless --probe-environment is set",
+    )
+  }
   let path = cli_value(options, "assignment")
   guard @fs.kind(path, follow_symlink=false) is Regular &&
     @fs.file_size(path) <= 2097152L else {

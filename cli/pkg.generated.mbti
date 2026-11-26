@@ -2,11 +2,22 @@
 package "hackwaly/moonhub/cli"
 
 import {
+  "moonbitlang/core/argparse",
   "moonbitlang/core/json",
 }
 
 // Values
+pub const CLI_VERSION : String = "0.1.1"
+
+pub fn client_group_commands() -> Array[@argparse.Command]
+
+pub fn contextual_help(String) -> String
+
 pub async fn execute(ArrayView[String]) -> Int32
+
+pub async fn execute_group(String, @argparse.Matches) -> Int32
+
+pub fn is_client_command(String) -> Bool
 
 pub async fn request(String, String, String, @json.Json?, allow_http? : Bool, raw_body? : Bytes) -> @json.Json
 

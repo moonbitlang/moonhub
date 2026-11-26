@@ -1,35 +1,43 @@
 ///|
-fn management_command() -> @argparse.Command {
-  @argparse.Command(
-    "moonhub",
-    subcommand_required=true,
-    options=[
-      OptionArg(
-        "db",
-        long="db",
-        env="DB_PATH",
-        default_values=["moonhub.db"],
-        global=true,
-      ),
-      OptionArg(
-        "root",
-        long="root",
-        env="MOONHUB_REPO_ROOT",
-        default_values=["repos"],
-        global=true,
-      ),
-    ],
-    subcommands=[
-      @argparse.Command("ssh-authorized-key", hidden=true, positionals=[
+// Administrative commands open the service database and repository root.
+fn management_storage_options() -> Array[@argparse.OptionArg] {
+  [
+    OptionArg(
+      "db",
+      long="db",
+      env="DB_PATH",
+      default_values=["moonhub.db"],
+      about="Service database file.",
+    ),
+    OptionArg(
+      "root",
+      long="root",
+      env="MOONHUB_REPO_ROOT",
+      default_values=["repos"],
+      about="Repository root containing OWNER/NAME.git directories.",
+    ),
+  ]
+}
+
+///|
+fn management_commands() -> Array[@argparse.Command] {
+  [
+    @argparse.Command(
+      "ssh-authorized-key",
+      options=management_storage_options(),
+      hidden=true,
+      positionals=[
         PositionArg("system-user"),
         PositionArg("type"),
         PositionArg("key"),
-      ]),
-      @argparse.Command(
-        "ssh-serve",
-        hidden=true,
-        positionals=[PositionArg("id")],
-        options=[
+      ],
+    ),
+    @argparse.Command(
+      "ssh-serve",
+      hidden=true,
+      positionals=[PositionArg("id")],
+      options=management_storage_options() +
+        [
           OptionArg(
             "read-idle-timeout-seconds",
             long="read-idle-timeout-seconds",
@@ -43,22 +51,30 @@ fn management_command() -> @argparse.Command {
             default_values=["3600"],
           ),
         ],
-      ),
-      @argparse.Command("ssh-pre-receive", hidden=true, positionals=[
-        PositionArg("id"),
-        PositionArg("repository"),
-      ]),
-      @argparse.Command("ssh-ref-transaction", hidden=true, positionals=[
+    ),
+    @argparse.Command(
+      "ssh-pre-receive",
+      options=management_storage_options(),
+      hidden=true,
+      positionals=[PositionArg("id"), PositionArg("repository")],
+    ),
+    @argparse.Command(
+      "ssh-ref-transaction",
+      options=management_storage_options(),
+      hidden=true,
+      positionals=[
         PositionArg("id"),
         PositionArg("repository"),
         PositionArg("push-id"),
         PositionArg("phase"),
-      ]),
-      @argparse.Command(
-        "ssh-key-add",
-        about="Bind an Ed25519 public key to an active user.",
-        positionals=[PositionArg("user")],
-        options=[
+      ],
+    ),
+    @argparse.Command(
+      "ssh-key-add",
+      about="Bind an Ed25519 public key to an active user.",
+      positionals=[PositionArg("user")],
+      options=management_storage_options() +
+        [
           OptionArg("title", long="title", default_values=["SSH key"]),
           OptionArg(
             "file",
@@ -66,35 +82,38 @@ fn management_command() -> @argparse.Command {
             about="Public key file; reads stdin when omitted.",
           ),
         ],
-      ),
-      @argparse.Command("ssh-key-list", about="List registered SSH keys.", options=[
-        OptionArg("user", long="user"),
-      ]),
-      @argparse.Command(
-        "ssh-key-revoke",
-        about="Revoke an SSH key immediately for new operations.",
-        positionals=[PositionArg("id")],
-      ),
-      @argparse.Command(
-        "repo-create",
-        about="Create a registered bare repository, or register an existing one.",
-        positionals=[PositionArg("repository")],
-        flags=[
-          FlagArg(
-            "import",
-            long="import",
-            about="Register an existing bare repository without changing its Git data.",
-          ),
-        ],
-        options=[
-          OptionArg("visibility", long="visibility", default_values=["private"]),
-        ],
-      ),
-      @argparse.Command(
-        "deploy-key-add",
-        about="Bind a new Ed25519 public key to exactly one repository.",
-        positionals=[PositionArg("repository")],
-        options=[
+    ),
+    @argparse.Command(
+      "ssh-key-list",
+      about="List registered SSH keys.",
+      options=management_storage_options() + [OptionArg("user", long="user")],
+    ),
+    @argparse.Command(
+      "ssh-key-revoke",
+      options=management_storage_options(),
+      about="Revoke an SSH key immediately for new operations.",
+      positionals=[PositionArg("id")],
+    ),
+    @argparse.Command(
+      "repo-create",
+      about="Create a registered bare repository, or register an existing one.",
+      positionals=[PositionArg("repository")],
+      flags=[
+        FlagArg(
+          "import",
+          long="import",
+          about="Register an existing bare repository without changing its Git data.",
+        ),
+      ],
+      options=management_storage_options() +
+        [OptionArg("visibility", long="visibility", default_values=["private"])],
+    ),
+    @argparse.Command(
+      "deploy-key-add",
+      about="Bind a new Ed25519 public key to exactly one repository.",
+      positionals=[PositionArg("repository")],
+      options=management_storage_options() +
+        [
           OptionArg("actor", long="actor", required=true),
           OptionArg("title", long="title", required=true),
           OptionArg(
@@ -104,30 +123,33 @@ fn management_command() -> @argparse.Command {
             about="Public key file.",
           ),
         ],
-        flags=[
-          FlagArg(
-            "write",
-            long="write",
-            about="Explicitly grant push access; defaults to read-only.",
-          ),
-        ],
-      ),
-      @argparse.Command(
-        "deploy-key-list",
-        about="List repository deploy keys.",
-        positionals=[PositionArg("repository")],
-        options=[OptionArg("actor", long="actor", required=true)],
-      ),
-      @argparse.Command(
-        "deploy-key-revoke",
-        about="Revoke a repository deploy key for subsequent operations.",
-        positionals=[PositionArg("repository"), PositionArg("id")],
-        options=[OptionArg("actor", long="actor", required=true)],
-      ),
-      @argparse.Command(
-        "pipeline-provider-create",
-        about="Register a Docker pipeline provider from a token file.",
-        options=[
+      flags=[
+        FlagArg(
+          "write",
+          long="write",
+          about="Explicitly grant push access; defaults to read-only.",
+        ),
+      ],
+    ),
+    @argparse.Command(
+      "deploy-key-list",
+      about="List repository deploy keys.",
+      positionals=[PositionArg("repository")],
+      options=management_storage_options() +
+        [OptionArg("actor", long="actor", required=true)],
+    ),
+    @argparse.Command(
+      "deploy-key-revoke",
+      about="Revoke a repository deploy key for subsequent operations.",
+      positionals=[PositionArg("repository"), PositionArg("id")],
+      options=management_storage_options() +
+        [OptionArg("actor", long="actor", required=true)],
+    ),
+    @argparse.Command(
+      "pipeline-provider-create",
+      about="Register a Docker pipeline provider from a token file.",
+      options=management_storage_options() +
+        [
           OptionArg("name", long="name", required=true),
           OptionArg("token-file", long="token-file", required=true),
           OptionArg("labels", long="labels", default_values=[
@@ -142,18 +164,19 @@ fn management_command() -> @argparse.Command {
           OptionArg("repositories", long="repositories", default_values=[""]),
           OptionArg("admin", long="admin", default_values=["root"]),
         ],
-      ),
-      @argparse.Command(
-        "pipeline-provider-ensure",
-        about="Idempotently register a Docker pipeline provider from a token file.",
-        flags=[
-          FlagArg(
-            "preserve-existing",
-            long="preserve-existing",
-            about="Only initialize new providers; preserve existing Web settings.",
-          ),
-        ],
-        options=[
+    ),
+    @argparse.Command(
+      "pipeline-provider-ensure",
+      about="Idempotently register a Docker pipeline provider from a token file.",
+      flags=[
+        FlagArg(
+          "preserve-existing",
+          long="preserve-existing",
+          about="Only initialize new providers; preserve existing Web settings.",
+        ),
+      ],
+      options=management_storage_options() +
+        [
           OptionArg("name", long="name", required=true),
           OptionArg("token-file", long="token-file", required=true),
           OptionArg("labels", long="labels", default_values=[
@@ -167,15 +190,15 @@ fn management_command() -> @argparse.Command {
           OptionArg("repositories", long="repositories", default_values=[""]),
           OptionArg("admin", long="admin", default_values=["root"]),
         ],
-      ),
-      @argparse.Command(
-        "pipeline-rerun",
-        about="Rerun a completed pipeline from its immutable source snapshot.",
-        positionals=[PositionArg("repository"), PositionArg("number")],
-        options=[OptionArg("admin", long="admin", default_values=["root"])],
-      ),
-    ],
-  )
+    ),
+    @argparse.Command(
+      "pipeline-rerun",
+      about="Rerun a completed pipeline from its immutable source snapshot.",
+      positionals=[PositionArg("repository"), PositionArg("number")],
+      options=management_storage_options() +
+        [OptionArg("admin", long="admin", default_values=["root"])],
+    ),
+  ]
 }
 
 ///|
@@ -212,10 +235,8 @@ fn ssh_read_seconds(matches : @argparse.Matches, name : String) -> Int32 raise {
 }
 
 ///|
-async fn run_management_cli(args : ArrayView[String]) -> Int32 {
-  let matches = management_command().parse(argv=args, env=@env.get_env_vars())
-  guard matches.subcommand is Some((command, options)) else { return 1 }
-  let db_path = cli_value(matches, "db")
+async fn run_management(command : String, options : @argparse.Matches) -> Int32 {
+  let db_path = cli_value(options, "db")
   guard @fs.exists(db_path) else {
     raise @domain.NotFound(
       message="database not found; start the web service first",
@@ -251,7 +272,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         return @ssh.serve_git_ssh(
           pool,
           @ssh.SshCredential::parse(cli_value(options, "id")),
-          cli_value(matches, "root"),
+          cli_value(options, "root"),
           read_idle_timeout_seconds=ssh_read_seconds(
             options, "read-idle-timeout-seconds",
           ),
@@ -330,7 +351,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         )
         @repository.create_managed_repository(
           pool,
-          cli_value(matches, "root"),
+          cli_value(options, "root"),
           repo,
           cli_value(options, "visibility"),
           options.flags.get("import").unwrap_or(false),
@@ -454,14 +475,14 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         println("Ensured pipeline provider \{provider.id}:\{provider.name}")
       }
       "pipeline-rerun" => {
-        let number = @string.parse_int64(cli_value(matches, "number")) catch {
+        let number = @string.parse_int64(cli_value(options, "number")) catch {
           _ => raise @domain.BadRequest(message="invalid pipeline run number")
         }
         guard number > 0L else {
           raise @domain.BadRequest(message="invalid pipeline run number")
         }
         let repo = @domain.parse_transport_repo(
-          cli_value(matches, "repository"),
+          cli_value(options, "repository"),
         )
         let actor = @identity.active_user_by_name(
           pool,
@@ -469,7 +490,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         )
         let run = @pipeline.rerun_run(
           pool,
-          cli_value(matches, "root"),
+          cli_value(options, "root"),
           actor,
           repo,
           number,

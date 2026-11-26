@@ -4,10 +4,10 @@ fn single_value(matches : @argparse.Matches, name : String) -> String? {
 }
 
 ///|
-async fn parse_config() -> @web.Config {
-  let cmd = @argparse.Command(
-    "moonhub",
-    about="Serve registered bare Git repositories. Administrative commands: ssh-key-add, ssh-key-list, ssh-key-revoke, repo-create (use COMMAND --help).",
+fn serve_command() -> @argparse.Command {
+  @argparse.Command(
+    "serve",
+    about="Serve registered bare Git repositories and the Web UI (the default command).",
     options=[
       OptionArg("host", long="host", about="Bind host.", default_values=[
         "127.0.0.1",
@@ -48,7 +48,48 @@ async fn parse_config() -> @web.Config {
       ),
     ],
   )
-  let matches = cmd.parse(env=@env.get_env_vars())
+}
+
+///|
+fn config_check_command(name : String, about : String) -> @argparse.Command {
+  @argparse.Command(name, about~, positionals=[
+    PositionArg(
+      "config",
+      about="Configuration file to validate.",
+      num_args=@argparse.ValueRange::single(),
+    ),
+  ])
+}
+
+///|
+/// One command tree for the full native executable. Without a command it
+/// serves the Web UI, so `moonhub ROOT --assets DIR` keeps working.
+fn moonhub_command() -> @argparse.Command {
+  @argparse.Command(
+    "moonhub",
+    about="MoonHub server, administration and collaboration client.\n" +
+      "Without a command, serves the Web UI (see serve --help). Client commands\n" +
+      "call a MoonHub server; administrative commands open the service database.",
+    version=@cli.CLI_VERSION,
+    default_subcommand="serve",
+    subcommands=[serve_command()] +
+      @cli.client_group_commands() +
+      management_commands() +
+      [
+        @runner_cli.command(),
+        provider_command(),
+        config_check_command(
+          "storage-check", "Validate a blob storage configuration file.",
+        ),
+        config_check_command(
+          "oidc-check", "Validate a workflow OIDC issuer configuration file.",
+        ),
+      ],
+  )
+}
+
+///|
+async fn parse_config(matches : @argparse.Matches) -> @web.Config {
   let root = single_value(matches, "root").unwrap_or("")
   let assets_root = single_value(matches, "assets").unwrap_or("")
   let host = single_value(matches, "host").unwrap_or("127.0.0.1")
@@ -101,8 +142,8 @@ async fn report_startup_error(message : String) -> Unit {
 }
 
 ///|
-async fn run_web() -> Unit {
-  let raw_config = parse_config()
+async fn run_web(matches : @argparse.Matches) -> Unit {
+  let raw_config = parse_config(matches)
   if !@fs.exists(raw_config.root) {
     abort("repo root does not exist: \{raw_config.root}")
   }
@@ -132,33 +173,14 @@ async fn run_web() -> Unit {
 }
 
 ///|
-async fn main {
-  let args = @env.args()
-  match args.get(1) {
-    Some(
-      "auth"
-      | "mr"
-      | "issue"
-      | "ci"
-      | "inbox"
-      | "attachment"
-      | "webhook"
-      | "secret"
-      | "variable"
-      | "help"
-      | "--version"
-      | "-V",
-    ) => @sys.exit(@cli.execute(args[1:]))
-    Some("storage-check") => {
-      let code = try {
-        guard args.length() == 3 else {
-          raise @domain.BadRequest(
-            message="Usage: moonhub storage-check CONFIG_FILE",
-          )
-        }
+/// Run a parsed non-Web command and return its exit code.
+async fn run_command(name : String, options : @argparse.Matches) -> Int32 {
+  match name {
+    "storage-check" =>
+      try {
         ignore(
           @storage.Config::load(
-            args[2],
+            single_value(options, "config").unwrap_or(""),
             node=@config.env_value("MOONHUB_STORAGE_NODE").unwrap_or("node"),
             helper=@config.env_value("MOONHUB_S3_HELPER").unwrap_or(
               "storage/s3/bridge.mjs",
@@ -173,16 +195,11 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
-    }
-    Some("oidc-check") => {
-      let code = try {
-        guard args.length() == 3 else {
-          raise @domain.BadRequest(
-            message="Usage: moonhub oidc-check CONFIG_FILE",
-          )
-        }
-        ignore(@oidc.OidcIssuer::load(args[2]))
+    "oidc-check" =>
+      try {
+        ignore(
+          @oidc.OidcIssuer::load(single_value(options, "config").unwrap_or("")),
+        )
         println("Workflow OIDC configuration valid")
         0
       } catch {
@@ -191,10 +208,8 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
-    }
-    Some("runner") => {
-      let code = run_runner_cli(args[2:]) catch {
+    "runner" =>
+      @runner_cli.execute_matches(options) catch {
         @runner.InvalidConfiguration(message) => {
           @stdio.stderr.write("runner: \{message}\n")
           2
@@ -204,10 +219,8 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
-    }
-    Some("provider") => {
-      let code = run_provider_cli(args[2:]) catch {
+    "provider" =>
+      run_provider(options) catch {
         @provider.InvalidConfiguration(message) => {
           @stdio.stderr.write("provider: \{message}\n")
           2
@@ -217,25 +230,9 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
-    }
-    Some(
-      "ssh-authorized-key"
-      | "ssh-serve"
-      | "ssh-pre-receive"
-      | "ssh-ref-transaction"
-      | "ssh-key-add"
-      | "ssh-key-list"
-      | "ssh-key-revoke"
-      | "deploy-key-add"
-      | "deploy-key-list"
-      | "deploy-key-revoke"
-      | "repo-create"
-      | "pipeline-provider-create"
-      | "pipeline-provider-ensure"
-      | "pipeline-rerun",
-    ) as command => {
-      let code = run_management_cli(args[1:]) catch {
+    _ if @cli.is_client_command(name) => @cli.execute_group(name, options)
+    _ => {
+      let code = run_management(name, options) catch {
         err => {
           let message = match err {
             @domain.BadRequest(message~)
@@ -244,9 +241,8 @@ async fn main {
             | @domain.NotFound(message~)
             | @gitops.Failure(message~) => message
             _ =>
-              if command == Some("ssh-serve") ||
-                command == Some("ssh-pre-receive") ||
-                command == Some("ssh-ref-transaction") {
+              if name
+                is ("ssh-serve" | "ssh-pre-receive" | "ssh-ref-transaction") {
                 @domain.internal_error_message
               } else {
                 err.to_string()
@@ -256,13 +252,54 @@ async fn main {
           1
         }
       }
-      @sys.exit(if code < 0 { 128 - code } else { code })
-    }
-    _ => {
-      @config.load_dotenv(".env")
-      run_web() catch {
-        err => report_startup_error(err.to_string())
+      if code < 0 {
+        128 - code
+      } else {
+        code
       }
     }
+  }
+}
+
+///|
+async fn main {
+  let args = @env.args()
+  let argv = args[1:]
+  let matches = match
+    moonhub_command().parse_outcome(argv~, env=@env.get_env_vars()) {
+    Parsed(matches) => matches
+    Help(text) => {
+      println(@cli.contextual_help(text))
+      @sys.exit(0)
+      return
+    }
+    Version(_) => {
+      println("moonhub \{@cli.CLI_VERSION}")
+      @sys.exit(0)
+      return
+    }
+    Failed(err) => {
+      @stdio.stderr.write("moonhub: \{@cli.contextual_help(err.to_string())}\n")
+      @sys.exit(2)
+      return
+    }
+  }
+  guard matches.subcommand is Some((name, options)) else {
+    @sys.exit(2)
+    return
+  }
+  if name == "serve" {
+    // The Web service reads `.env` before resolving its environment-backed
+    // options; other commands keep using only the process environment.
+    @config.load_dotenv(".env")
+    guard moonhub_command().parse(argv~, env=@env.get_env_vars()).subcommand
+      is Some((_, options)) else {
+      return
+    }
+    run_web(options) catch {
+      err => report_startup_error(err.to_string())
+    }
+  } else {
+    @sys.exit(run_command(name, options))
   }
 }

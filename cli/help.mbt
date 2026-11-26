@@ -276,7 +276,7 @@ fn command_examples(group : String, action : String) -> String {
 }
 
 ///|
-fn contextual_help(text : String) -> String {
+pub fn contextual_help(text : String) -> String {
   for line in text.split("\n") {
     if line.has_prefix("Usage: moonhub ") {
       let usage = line.split(" ").collect()

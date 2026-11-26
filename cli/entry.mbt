@@ -2,7 +2,22 @@
 /// Run the collaboration client with the same diagnostics and exit codes on
 /// native and Wasm entry points. Unexpected failures never print credentials.
 pub async fn execute(args : ArrayView[String]) -> Int32 {
-  run(args) catch {
+  report_errors(() => run(args))
+}
+
+///|
+/// Run a client group parsed by a containing command tree, such as the full
+/// native executable, with the same diagnostics and exit codes.
+pub async fn execute_group(
+  group : String,
+  matches : @argparse.Matches,
+) -> Int32 {
+  report_errors(() => run_group(group, matches))
+}
+
+///|
+async fn report_errors(command : async () -> Int32) -> Int32 {
+  command() catch {
     Invalid(message) => {
       @stdio.stderr.write("moonhub: \{message}\n")
       2

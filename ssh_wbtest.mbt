@@ -25,7 +25,7 @@ test "SSH read timeouts default and explicit options override environment" {
         60,
       ),
     ] {
-    let (_, options) = management_command().parse(argv=args, env~).subcommand.unwrap()
+    let (_, options) = moonhub_command().parse(argv=args, env~).subcommand.unwrap()
     assert_eq(ssh_read_seconds(options, "read-idle-timeout-seconds"), idle)
     assert_eq(ssh_read_seconds(options, "read-max-seconds"), maximum)
   }
@@ -46,7 +46,7 @@ test "SSH read timeouts default and explicit options override environment" {
         } else {
           args.push("--\{name}=\{value}")
         }
-        let (_, options) = management_command().parse(argv=args, env~).subcommand.unwrap()
+        let (_, options) = moonhub_command().parse(argv=args, env~).subcommand.unwrap()
         try ignore(ssh_read_seconds(options, name)) catch {
           @domain.BadRequest(_) => ()
           err => raise err
@@ -60,13 +60,13 @@ test "SSH read timeouts default and explicit options override environment" {
 
 ///|
 test "management commands inherit deployment settings and parse key identifiers" {
-  let parsed = management_command().parse(
+  let parsed = moonhub_command().parse(
     argv=["repo-create", "alice/demo", "--import", "--visibility", "public"],
     env={ "DB_PATH": "/data/moonhub.db", "MOONHUB_REPO_ROOT": "/data/repos" },
   )
-  assert_eq(cli_value(parsed, "db"), "/data/moonhub.db")
-  assert_eq(cli_value(parsed, "root"), "/data/repos")
   let (_, options) = parsed.subcommand.unwrap()
+  assert_eq(cli_value(options, "db"), "/data/moonhub.db")
+  assert_eq(cli_value(options, "root"), "/data/repos")
   assert_eq(cli_value(options, "repository"), "alice/demo")
   assert_true(options.flags["import"])
   assert_eq(cli_value(options, "visibility"), "public")
