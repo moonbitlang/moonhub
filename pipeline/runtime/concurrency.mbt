@@ -77,7 +77,7 @@ fn reserve_concurrency(
   }
   if job_id is Some(job_id) &&
     tx.query_opt(
-      "SELECT s.id FROM pipeline_concurrency_live s JOIN pipeline_job caller ON caller.id=s.job_id JOIN pipeline_job child ON child.id=? AND child.run_id=s.run_id WHERE s.repository_id=? AND s.group_key=? AND substr(child.job_key,1,length(caller.job_key)+1)=caller.job_key||'/'",
+      "SELECT s.id FROM pipeline_concurrency_live s JOIN pipeline_job caller ON caller.id=s.job_id JOIN pipeline_job child ON child.id=? AND child.run_id=s.run_id WHERE s.repository_id=? AND s.group_key=? AND substr(child.job_key,1,length(caller.job_key)+1)=caller.job_key||'/' LIMIT 1",
       params=[job_id, run.repository_id, key],
     )
     is Some(_) {
@@ -90,29 +90,34 @@ fn reserve_concurrency(
     cancel_concurrency_holder(tx, run.id, job_id)
     return
   }
-  // Admitted workflows hold their slots even while their jobs wait for other
-  // workflows. Reject the arrival if it closes a cycle of those dependencies.
+  // Workflows and reusable calls retain their slots while descendants wait.
+  // Walk the admitted holders and reject arrivals that close a dependency cycle.
   if job_id is Some(_) &&
     !cancel &&
     tx.query_opt(
       (
-        #|WITH RECURSIVE blocked(run_id) AS (
-        #|  SELECT run_id FROM pipeline_concurrency_live
-        #|  WHERE repository_id=? AND group_key=? AND admitted=1 AND job_id IS NULL AND cancel_requested=0
+        #|WITH RECURSIVE blocked(id,run_id,job_key) AS (
+        #|  SELECT holder.id, holder.run_id, job.job_key FROM pipeline_concurrency_live holder
+        #|  LEFT JOIN pipeline_job job ON job.id=holder.job_id
+        #|  WHERE holder.repository_id=? AND holder.group_key=? AND holder.admitted=1 AND holder.cancel_requested=0
         #|  UNION
-        #|  SELECT holder.run_id FROM blocked
+        #|  SELECT holder.id, holder.run_id, job.job_key FROM blocked
         #|  JOIN pipeline_concurrency_live waiter ON waiter.run_id=blocked.run_id
+        #|  JOIN pipeline_job child ON child.id=waiter.job_id
         #|  JOIN pipeline_concurrency_live holder ON holder.repository_id=waiter.repository_id AND holder.group_key=waiter.group_key
-        #|  WHERE waiter.job_id IS NOT NULL AND waiter.admitted=0 AND waiter.cancel_requested=0
-        #|    AND holder.job_id IS NULL AND holder.admitted=1 AND holder.cancel_requested=0
+        #|  LEFT JOIN pipeline_job job ON job.id=holder.job_id
+        #|  WHERE waiter.admitted=0 AND waiter.cancel_requested=0 AND holder.admitted=1 AND holder.cancel_requested=0
+        #|    AND (blocked.job_key IS NULL OR substr(child.job_key,1,length(blocked.job_key)+1)=blocked.job_key||'/')
         #|)
-        #|SELECT run_id FROM blocked WHERE run_id=?
+        #|SELECT blocked.id FROM blocked JOIN pipeline_job arrival ON arrival.id=? AND arrival.run_id=blocked.run_id
+        #|WHERE blocked.job_key IS NULL OR substr(arrival.job_key,1,length(blocked.job_key)+1)=blocked.job_key||'/'
+        #|LIMIT 1
       ),
-      params=[run.repository_id, key, run.id],
+      params=[run.repository_id, key, job_id.unwrap()],
     )
     is Some(_) {
     raise @domain.BadRequest(
-      message="job concurrency would deadlock admitted workflows",
+      message="job concurrency would deadlock admitted workflows or reusable calls",
     )
   }
   for row in existing {

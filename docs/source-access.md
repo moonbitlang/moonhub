@@ -71,7 +71,8 @@ jobs:
 The primary checkout stays at the captured run SHA. Full-history export includes
 its complete ancestor graph and tags whose commits are ancestors of that SHA.
 The default checkout stays shallow. Secondary checkout requires a separate
-relative path and an explicitly granted ref, then checks out its saved SHA.
+relative path outside Git metadata with no symbolic links and an explicitly
+granted ref, then checks out its saved SHA.
 It does not receive general read access to that repository.
 
 Exports retain the 64 MiB bundle and 10,000-file current-tree limits. Full history

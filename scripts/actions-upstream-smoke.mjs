@@ -49,6 +49,7 @@ try {
   });
   assert.equal((await fullRuntime.action('actions/checkout@v6', { 'fetch-depth': '0' })).code, 0);
   assert.equal(git('-C', fullWorkspace, 'rev-parse', 'HEAD'), fullSha);
+  assert.equal(git('-C', fullWorkspace, 'symbolic-ref', '--short', 'HEAD'), 'main');
   assert.ok(!git('-C', fullWorkspace, 'config', '--local', '--list').includes(fullRuntime.apiToken));
   assert.ok(!git('-C', fullWorkspace, 'config', '--local', '--list').includes(Buffer.from('x-access-token:' + fullRuntime.apiToken).toString('base64')));
   assert.equal(git('-C', fullWorkspace, 'remote', 'get-url', '--push', 'origin'), config.server + '/-/api/v1/repos/' + config.repository + '/git');
