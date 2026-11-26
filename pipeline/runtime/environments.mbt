@@ -22,13 +22,8 @@ fn configurable_environments(
   tx : @database.DbTransaction,
   row : @database.DbRow,
 ) -> Bool raise {
-  let config : Map[String, String] = @json.from_json(
-    @json.parse((row.get_name("config_json") : String)),
-  )
   (row.get_name("mode") : String) == "docker" &&
-  !["linux-ci", "windows-vm"].contains(
-    config.get("execution_mode").unwrap_or(""),
-  ) &&
+  disposable_provider_os(row) is None &&
   tx.query_opt(
     "SELECT 1 FROM pipeline_provider_label WHERE provider_id=? AND label='linux'",
     params=[(row.get_name("id") : Int64)],
