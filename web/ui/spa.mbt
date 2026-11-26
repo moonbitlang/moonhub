@@ -5,7 +5,7 @@ priv struct PageBuffer {
 
 ///|
 impl @io.Writer for PageBuffer with fn write_once(self, bytes, offset~, len~) {
-  self.bytes.write_bytes(bytes[offset:offset + len])
+  self.bytes.write_bytesview(bytes[offset:offset + len])
   len
 }
 
