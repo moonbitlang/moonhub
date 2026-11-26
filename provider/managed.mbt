@@ -46,6 +46,39 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
         choices=["disabled", "enabled"],
       ),
     ]
+  } else if options.base.macos_vm {
+    [
+      config_field(
+        "execution_mode",
+        "Execution mode",
+        "choice",
+        "One disposable macOS administrator VM per job on a dedicated EC2 Mac.",
+        choices=["macos-vm"],
+      ),
+      config_field(
+        "runner_image",
+        "Guest template",
+        "choice",
+        "The stopped macOS template baked into the approved host AMI.",
+        choices=[options.base.runner_image],
+      ),
+      config_field(
+        "cpus",
+        "Guest vCPUs",
+        "integer",
+        "Leave capacity for the EC2 Mac host.",
+        minimum=2,
+        maximum=256,
+      ),
+      config_field(
+        "memory_mib",
+        "Guest memory (MiB)",
+        "integer",
+        "Leave at least 4 GiB for the EC2 Mac host.",
+        minimum=4096,
+        maximum=1048576,
+      ),
+    ]
   } else {
     [
       config_field(
@@ -177,6 +210,13 @@ pub fn config_schema(options : ManagedOptions) -> Array[@protocol.ConfigField] {
 pub fn config_defaults(options : ManagedOptions) -> Map[String, String] {
   let defaults : Map[String, String] = if options.base.windows_vm {
     { "execution_mode": "windows-vm", "windows_vm_default": "disabled" }
+  } else if options.base.macos_vm {
+    {
+      "execution_mode": "macos-vm",
+      "runner_image": options.base.runner_image,
+      "cpus": "4",
+      "memory_mib": "8192",
+    }
   } else {
     {
       "runner_image": options.base.runner_image,
@@ -223,6 +263,7 @@ priv struct RegistrationBinding {
   name : String
   mode : String
   windows_vm : Bool?
+  macos_vm : Bool?
 }
 
 ///|
@@ -231,6 +272,7 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
     (
       options.mode == "asg" &&
       !options.base.linux_ci &&
+      !options.base.macos_vm &&
       options.spot_asg.is_empty()
     ) else {
     raise InvalidConfiguration(
@@ -242,8 +284,22 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
       "Linux CI requires a dedicated Linux ASG controller.",
     )
   }
+  guard !options.base.macos_vm ||
+    (
+      options.mode == "asg" &&
+      !options.base.linux_ci &&
+      options.spot_asg.is_empty() &&
+      options.base.runner_image.has_prefix("local:") &&
+      valid_vm_image(options.base.runner_image)
+    ) else {
+    raise InvalidConfiguration(
+      "macOS VM requires a dedicated On-Demand ASG and a baked local:template.",
+    )
+  }
   guard options.mode != "asg" || options.base.execution_mode() is Some(_) else {
-    raise InvalidConfiguration("ASG requires --linux-ci or --windows-vm.")
+    raise InvalidConfiguration(
+      "ASG requires --linux-ci, --windows-vm or --macos-vm.",
+    )
   }
   guard ["docker", "asg", "tart"].contains(options.mode) &&
     !options.name.is_empty() else {
@@ -284,7 +340,8 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
     guard binding.server == options.base.server &&
       binding.name == options.name &&
       binding.mode == options.mode &&
-      binding.windows_vm.unwrap_or(false) == options.base.windows_vm else {
+      binding.windows_vm.unwrap_or(false) == options.base.windows_vm &&
+      binding.macos_vm.unwrap_or(false) == options.base.macos_vm else {
       raise InvalidConfiguration(
         "State directory belongs to another server, provider or mode.",
       )
@@ -312,6 +369,11 @@ pub async fn run_managed(options : ManagedOptions, macos? : MacOptions) -> Unit 
       name: options.name,
       mode: options.mode,
       windows_vm: if options.base.windows_vm {
+        Some(true)
+      } else {
+        None
+      },
+      macos_vm: if options.base.macos_vm {
         Some(true)
       } else {
         None

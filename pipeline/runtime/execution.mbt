@@ -378,18 +378,19 @@ pub fn Coordinator::claim(
           p
         }
         let provider_id : Int64 = provider.get_name("id")
-        let config = @json.parse((provider.get_name("config_json") : String))
-        let single_use = single_use_asg(provider)
+        let execution_os = disposable_provider_os(provider)
+        let single_use = (provider.get_name("mode") : String) == "asg" &&
+          execution_os is Some(_)
         let runner_os = request.runner_os.unwrap_or("linux")
         guard ["linux", "windows", "macos"].contains(runner_os) else {
           raise @domain.BadRequest(
             message="Unsupported runner operating system.",
           )
         }
-        guard !(config is { "execution_mode": "windows-vm", .. }) ||
-          (single_use && runner_os == "windows") else {
+        guard execution_os is None ||
+          (single_use && execution_os == Some(runner_os)) else {
           raise @domain.Forbidden(
-            message="Windows VM workers require Windows assignments.",
+            message="Runner operating system does not match the disposable ASG profile.",
           )
         }
         guard tx.query_opt(
@@ -430,12 +431,9 @@ pub fn Coordinator::claim(
             let w = authenticate_worker(tx, token)
             guard !(w.get_name("draining") : Bool) &&
               (
-                !(config is { "execution_mode": "linux-ci" | "windows-vm", .. }) ||
-                (
-                  single_use &&
-                  (w.get_name("isolation_revision") : Int64) ==
-                  (w.get_name("config_revision") : Int64)
-                )
+                !single_use ||
+                (w.get_name("isolation_revision") : Int64) ==
+                (w.get_name("config_revision") : Int64)
               ) &&
               (w.get_name("state") : String) == "ready" &&
               (w.get_name("applied_revision") : Int64) ==

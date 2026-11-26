@@ -70,6 +70,31 @@ fn reserve_concurrency(
     cancel_concurrency_holder(tx, run.id, job_id)
     return
   }
+  // Admitted workflows hold their slots even while their jobs wait for other
+  // workflows. Reject the arrival if it closes a cycle of those dependencies.
+  if job_id is Some(_) &&
+    !cancel &&
+    tx.query_opt(
+      (
+        #|WITH RECURSIVE blocked(run_id) AS (
+        #|  SELECT run_id FROM pipeline_concurrency_live
+        #|  WHERE repository_id=? AND group_key=? AND admitted=1 AND job_id IS NULL AND cancel_requested=0
+        #|  UNION
+        #|  SELECT holder.run_id FROM blocked
+        #|  JOIN pipeline_concurrency_live waiter ON waiter.run_id=blocked.run_id
+        #|  JOIN pipeline_concurrency_live holder ON holder.repository_id=waiter.repository_id AND holder.group_key=waiter.group_key
+        #|  WHERE waiter.job_id IS NOT NULL AND waiter.admitted=0 AND waiter.cancel_requested=0
+        #|    AND holder.job_id IS NULL AND holder.admitted=1 AND holder.cancel_requested=0
+        #|)
+        #|SELECT run_id FROM blocked WHERE run_id=?
+      ),
+      params=[run.repository_id, key, run.id],
+    )
+    is Some(_) {
+    raise @domain.BadRequest(
+      message="job concurrency would deadlock admitted workflows",
+    )
+  }
   for row in existing {
     if cancel || (!queue_max && !(row.get_name("admitted") : Bool)) {
       cancel_concurrency_holder(

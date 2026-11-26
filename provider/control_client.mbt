@@ -216,7 +216,8 @@ async fn run_backend_worker(
         applied.val = snapshot.config_revision
         prepared.val = true
       }
-      if base.windows_vm && snapshot.isolation_revision != Some(applied.val) {
+      if (base.windows_vm || base.macos_vm) &&
+        snapshot.isolation_revision != Some(applied.val) {
         @async.sleep(base.poll_ms)
         continue
       }
