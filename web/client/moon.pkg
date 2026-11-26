@@ -11,6 +11,8 @@ supported_targets = "js"
 
 warnings = "-alert_experimental"
 
+pkgtype(kind: "foreign_library")
+
 options(
-  link: { "js": { "exports": [ "start" ], "format": "esm" } },
+  link: { "js": { "format": "esm" } },
 )

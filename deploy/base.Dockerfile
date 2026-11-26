@@ -7,7 +7,7 @@ COPY --from=action-node20 /usr/local/bin/node /opt/actions/node20/bin/node
 ARG MOONHUB_USE_CN_MIRRORS=0
 ARG DEBIAN_MIRROR=http://mirrors.ustc.edu.cn/debian
 ARG DEBIAN_SECURITY_MIRROR=http://mirrors.ustc.edu.cn/debian-security
-ARG MOONBIT_VERSION=0.10.21+06da1ed44
+ARG MOONBIT_VERSION=1.0.0-rc1+3c0520448
 
 COPY deploy/configure-apt.sh /tmp/configure-apt.sh
 RUN sh /tmp/configure-apt.sh && rm /tmp/configure-apt.sh
