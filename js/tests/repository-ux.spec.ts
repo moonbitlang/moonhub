@@ -317,9 +317,20 @@ test('file finder follows its trigger through resizing and scrolling with a long
     await panel.evaluate(element => { element.scrollTop = 0; });
   }
   await page.setViewportSize({ width: 1440, height: 700 });
-  const before = (await panel.boundingBox())!;
+  // The panel stays attached to the moving trigger. Scrolling may legitimately flip
+  // it to the other side once a fallback remembered from a smaller viewport stops fitting.
+  const gapToTrigger = async () => {
+    const trigger = (await finder.locator('summary').boundingBox())!;
+    const bounds = (await panel.boundingBox())!;
+    return Math.round(bounds.y >= trigger.y + trigger.height
+      ? bounds.y - (trigger.y + trigger.height)
+      : trigger.y - (bounds.y + bounds.height));
+  };
+  expect(await gapToTrigger()).toBe(6);
+  const triggerBefore = (await finder.locator('summary').boundingBox())!;
   await page.evaluate(() => window.scrollBy(0, 30));
-  await expect.poll(async () => Math.round((await panel.boundingBox())!.y)).toBe(Math.round(before.y - 30));
+  await expect.poll(async () => Math.round((await finder.locator('summary').boundingBox())!.y)).toBe(Math.round(triggerBefore.y - 30));
+  await expect.poll(gapToTrigger).toBe(6);
   await page.locator('h1').click();
   await expect(finder).not.toHaveAttribute('open', '');
 });

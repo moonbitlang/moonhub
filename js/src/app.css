@@ -336,8 +336,8 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mr-actions form { margin: 0; }
 .provider-access-summary { overflow-wrap: anywhere; }
 .mr-actions > a:not(.button-link) { font-size: 13px; }
-.mr-actions button { color: var(--color-text); background: var(--color-surface); border-color: var(--color-border); }
-.mr-actions button:hover { background: var(--color-surface-subtle); }
+.mr-actions button { color: var(--color-text); background: var(--color-surface-subtle); border-color: var(--color-border); }
+.mr-actions button:hover { background: var(--color-surface-hover); }
 .mr-actions button[aria-disabled="true"]::after { color: var(--color-accent); }
 .mr-tabs, .repository-mode { display: flex; flex-wrap: wrap; gap: 24px; margin: 24px 0; border-bottom: 1px solid var(--color-border); }
 .mr-tabs a, .repository-mode a { display: inline-flex; min-height: 40px; align-items: center; padding: 9px 1px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--color-muted); font-size: 13px; text-transform: capitalize; }
@@ -376,7 +376,8 @@ moonhub-commit-diff pre[hidden], moonhub-file-view pre[hidden], moonhub-file-vie
 .mr-comment { margin: 12px 0 0; }
 .mr-merge-panel { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--color-border); }
 .mr-merge-panel > h3 { font-size: 16px; }
-.mr-merge-panel .mr-actions button { background: var(--color-accent); border-color: transparent; color: #fff; }
+.mr-merge-panel .mr-actions button { background: var(--color-primary); border-color: rgb(31 35 40 / 15%); color: #fff; }
+.mr-merge-panel .mr-actions button:hover { background: var(--color-primary-hover); }
 .mr-merge-panel .mr-actions button[aria-disabled="true"]::after { color: #fff; }
 .mr-edit { max-width: 800px; margin: 0 0 24px; }
 .mr-edit summary { width: fit-content; padding: 5px 0; color: var(--color-accent); cursor: pointer; font-size: 13px; }
@@ -691,7 +692,8 @@ form[data-auto-submit][data-enhanced] .no-js-submit { display:none; }
 .mr-sidebar .form-stack { margin-top:12px; gap:12px; }
 .review-composer { margin-bottom:20px; }.review-composer > summary { color:var(--color-accent); cursor:pointer; font-weight:600; padding:8px 0; }
 .permission-hint { color:var(--color-muted); font-size:12px; margin:12px 0 0; }
-.mr-review-form button[type=submit], [data-branch-comparison] button[type=submit] { background:var(--color-accent); color:white; border-color:transparent; }
+.mr-review-form button[type=submit], [data-branch-comparison] button[type=submit] { background:var(--color-primary); color:white; border-color:rgb(31 35 40 / 15%); }
+.mr-review-form button[type=submit]:hover, [data-branch-comparison] button[type=submit]:hover { background:var(--color-primary-hover); }
 .mr-timeline > li { padding:16px 0; }.mr-comment { margin-top:10px; }
 .inbox-list .inbox-item { padding-block:18px; }.inbox-item .inbox-title { font-size:14px; }
 .inbox-history { margin-top:10px; font-size:12px; }.inbox-history summary { cursor:pointer; color:var(--color-muted); }
