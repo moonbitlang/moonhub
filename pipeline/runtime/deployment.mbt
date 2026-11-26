@@ -346,7 +346,7 @@ pub fn Coordinator::review_deployment(
         }
         if (row.get_name("state") : String) == decision &&
           tx.query_opt(
-            "SELECT id FROM pipeline_deployment_review WHERE job_id=? AND policy_version=? AND actor_id=? AND decision=?",
+            "SELECT id FROM pipeline_deployment_review WHERE job_id=? AND policy_version=? AND actor_id=? AND decision=? LIMIT 1",
             params=[job_id, policy_version, actor.id, decision],
           )
           is Some(_) {
