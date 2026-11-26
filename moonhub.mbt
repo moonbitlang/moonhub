@@ -135,20 +135,8 @@ async fn run_web() -> Unit {
 async fn main {
   let args = @env.args()
   match args.get(1) {
-    Some(
-      "auth"
-      | "mr"
-      | "issue"
-      | "ci"
-      | "inbox"
-      | "attachment"
-      | "webhook"
-      | "secret"
-      | "variable"
-      | "help"
-      | "--version"
-      | "-V",
-    ) => @env.exit(@cli.execute(args[1:]))
+    Some(first) if @cli.is_client_command(first) ||
+      first is ("--version" | "-V") => @env.exit(@cli.execute(args[1:]))
     Some("storage-check") => {
       let code = try {
         guard args.length() == 3 else {

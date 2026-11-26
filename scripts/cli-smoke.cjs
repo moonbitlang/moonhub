@@ -99,6 +99,22 @@ async function main() {
   assert.equal(fs.statSync(path.join(temp, 'home/.config/moonhub/auth.json')).mode & 0o777, 0o600);
   const saved = execFileSync(binary, ['auth', 'status', '--allow-http', '--json'], { cwd: temp, env: cliEnv, encoding: 'utf8' });
   assert.equal(JSON.parse(saved).username, 'root');
+  // Repository creation from the CLI: token to clone URL without the Web UI.
+  const repoCli = (args, token = write) => require('node:child_process').spawnSync(binary, ['repo', ...args, '--server', base, '--allow-http', '--token-file', token], { cwd: temp, env: cliEnv, encoding: 'utf8', timeout: 60000 });
+  const reader = await tokenFile('read', 'reader');
+  const deniedRepo = repoCli(['create', '--repo', 'root/cli-created'], reader);
+  assert.equal(deniedRepo.status, 1, deniedRepo.stdout + deniedRepo.stderr);
+  const createdRepo = repoCli(['create', '--repo', 'root/cli-created', '--visibility', 'public', '--json']);
+  assert.equal(createdRepo.status, 0, createdRepo.stdout + createdRepo.stderr);
+  const createdJson = JSON.parse(createdRepo.stdout.trim());
+  assert.equal(createdJson.full_name, 'root/cli-created');
+  assert.equal(createdJson.visibility, 'public');
+  assert.equal(createdJson.state, 'ready');
+  assert.ok(fs.existsSync(path.join(temp, 'repos/root/cli-created.git/HEAD')));
+  const viewedRepo = repoCli(['view', '--repo', 'root/cli-created']);
+  assert.equal(viewedRepo.status, 0, viewedRepo.stdout + viewedRepo.stderr);
+  assert.match(viewedRepo.stdout, /^root\/cli-created\tpublic\tready$/m);
+  assert.equal(repoCli(['create', '--repo', 'root/cli-created']).status, 1);
   const body = path.join(temp, 'body.md');
   fs.writeFileSync(body, 'Review this CLI workflow.\nSecond line.');
   const issue = cli(['issue', 'create', '--title', 'Track CLI', '--body-file', body, '--assignee', '1']);

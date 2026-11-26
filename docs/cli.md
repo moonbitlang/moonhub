@@ -1,7 +1,7 @@
 # Collaboration CLI
 
 The native `moonhub` executable also acts as a remote collaboration client.
-`auth`, `mr`, `issue`, `ci`, `secret` and `inbox` connect to the Web service through
+`auth`, `repo`, `mr`, `issue`, `ci`, `secret` and `inbox` connect to the Web service through
 `/-/api/v1`. They do not open the server database. Existing Web startup,
 Runner/provider and administration commands retain their entry points.
 
@@ -138,6 +138,33 @@ their runner label requirements and any group already set in the workflow must
 match the requested group. This option accepts static job plans. A selection
 that includes a dynamic matrix or reusable workflow fails before the run is
 created. Reruns keep the saved group.
+
+## Repositories
+
+`repo create` makes an empty repository in a namespace you own or administer,
+the same operation as **New repository** in the Web UI. It needs a `write` token;
+the namespace role is still required, so a token never creates repositories in
+another user's or team's namespace. Visibility defaults to `private`.
+Provisioning runs in the background: the client waits up to about 30 seconds
+and then prints the state and SSH clone URL. `repo view` reports `state` as
+`ready`, `pending`, `running` or `failed`; pending and failed repositories are
+visible only to namespace managers. `clone_url` is `null` until a site
+administrator configures the SSH address.
+
+From a fresh account to a merge request, using only the terminal after the token
+and SSH key are created in account settings:
+
+```sh
+moonhub auth login --server https://moonhub.example --token-file /path/to/moonhub.token
+moonhub repo create --repo OWNER/NAME --visibility private
+git remote add origin ssh://git@moonhub.example:22/OWNER/NAME.git
+git push -u origin main feature
+moonhub mr create --repo OWNER/NAME --source feature --target main --title 'Add feature'
+```
+
+The REST endpoints are `POST /-/api/v1/repos` with `owner`, `name` and optional
+`visibility`, and `GET /-/api/v1/repos/OWNER/NAME`. SSH imports remain a Web-only
+operation.
 
 ## Commands
 

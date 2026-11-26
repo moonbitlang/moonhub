@@ -5,6 +5,7 @@ const CLI_VERSION : String = "0.1.1"
 fn command_groups() -> Array[(String, Array[String])] {
   [
     ("auth", ["setup", "login", "status", "logout"]),
+    ("repo", ["create", "view"]),
     (
       "mr",
       [
@@ -31,6 +32,13 @@ fn command_groups() -> Array[(String, Array[String])] {
 }
 
 ///|
+/// Whether `name` starts a remote client command. The full native executable
+/// dispatches with this so it cannot drift from the client's command groups.
+pub fn is_client_command(name : String) -> Bool {
+  name == "help" || command_groups().iter().any(entry => entry.0 == name)
+}
+
+///|
 fn command_option_names() -> Array[String] {
   [
     "server", "token-file", "repo", "page", "status", "filter", "title", "body-file",
@@ -38,7 +46,7 @@ fn command_option_names() -> Array[String] {
     "reviewer", "comment", "format", "file-id", "mode", "ignore-comments", "ignore-tests",
     "document-id", "hunk-id", "diff-page", "commit", "path", "side", "start-line",
     "end-line", "discussion", "state-version", "assignee", "workflow", "inputs-file",
-    "jobs", "runner-group", "branch", "attempt", "after",
+    "jobs", "runner-group", "branch", "attempt", "after", "visibility",
   ]
 }
 
@@ -61,6 +69,7 @@ fn client_option(
     "status" => Some(["open"])
     "filter" => Some([if group == "mr" { "all" } else { "unread" }])
     "after" => Some(["0"])
+    "visibility" => Some(["private"])
     _ => None
   }
   let default_values = defaults.map(values => values[:])
@@ -79,6 +88,7 @@ fn client_option(
 fn action_options(group : String, action : String) -> Array[String] {
   match (group, action) {
     ("mr" | "issue", "list") => ["status", "page"]
+    ("repo", "create") => ["visibility"]
     ("mr", "create") => ["title", "source", "target", "body-file"]
     ("mr", "diff") =>
       [

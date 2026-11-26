@@ -6,7 +6,7 @@ Run the remote collaboration CLI from Mooncakes with a current MoonBit toolchain
 moonx hackwaly/moonhub/cmd/moonhub@latest --help
 ```
 
-The client supports `auth`, `mr`, `issue`, `ci`, `inbox`, `attachment`, `webhook`,
+The client supports `auth`, `repo`, `mr`, `issue`, `ci`, `inbox`, `attachment`, `webhook`,
 `secret` and `variable`. Create an access token in Account settings and see
 [CLI setup and commands](docs/cli.md). The native server executable includes
 the same client commands.

@@ -290,6 +290,47 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     }
   }
   let base = "/repos/" + repo
+  if group == "repo" {
+    let mut result = if action == "create" {
+      let visibility = required(matches, "visibility")
+      guard visibility == "private" || visibility == "public" else {
+        raise Invalid("--visibility must be private or public")
+      }
+      guard repo.split_once("/") is Some((owner, name)) else {
+        raise Invalid("--repo must be OWNER/NAME")
+      }
+      request(
+        server,
+        token,
+        "/repos",
+        Some({
+          "owner": owner.to_owned(),
+          "name": name.to_owned(),
+          "visibility": visibility,
+        }),
+        allow_http~,
+      )
+    } else {
+      request(server, token, base, None, allow_http~)
+    }
+    // Creation is provisioned in the background; wait briefly so the printed
+    // clone URL can be pushed to immediately.
+    if action == "create" {
+      for _ in 0..<30 {
+        guard result is { "state": String("pending" | "running"), .. } else {
+          break
+        }
+        @async.sleep(1000)
+        result = request(server, token, base, None, allow_http~)
+      }
+    }
+    if matches.flags.get("json").unwrap_or(false) {
+      println(result.stringify())
+    } else {
+      render_repository(result, server, created=action == "create")
+    }
+    return 0
+  }
   if group == "attachment" && action == "upload" {
     let path = required(matches, "file")
     guard @fs.kind(path, follow_symlink=false) is Regular &&
@@ -685,6 +726,60 @@ fn render(json : Json) -> Unit {
     { "title": String(title), "kind": String(kind), .. } =>
       println("\{kind}\t\{terminal_text(title)}")
     _ => println(json.stringify())
+  }
+}
+
+///|
+fn render_repository(
+  json : Json,
+  server : String,
+  created~ : Bool,
+) -> Unit raise CliError {
+  guard json
+    is {
+      "owner": String(owner),
+      "name": String(name),
+      "full_name": String(full_name),
+      "visibility": String(visibility),
+      "state": String(state),
+      ..
+    } else {
+    raise InvalidResponse
+  }
+  let full_name = terminal_text(full_name)
+  let clone_url = if json is { "clone_url": String(url), .. } {
+    Some(terminal_text(url))
+  } else {
+    None
+  }
+  if created {
+    println("Created \{full_name} (\{terminal_text(visibility)}).")
+  } else {
+    println(
+      "\{full_name}\t\{terminal_text(visibility)}\t\{terminal_text(state)}",
+    )
+  }
+  match clone_url {
+    Some(url) => println("Clone URL: \{url}")
+    None =>
+      println(
+        "Clone URL unavailable: a site administrator must configure the SSH address.",
+      )
+  }
+  match state {
+    "ready" if created && clone_url is Some(url) =>
+      println(
+        "Next:\n  git remote add origin \{url}\n  git push -u origin main",
+      )
+    "ready" => ()
+    "failed" =>
+      println(
+        "Creation failed; retry or discard it at \{server}/\{terminal_text(owner)}/-/repositories/\{terminal_text(name)}/status",
+      )
+    _ =>
+      println(
+        "Still provisioning (\{terminal_text(state)}); check again with: moonhub repo view --repo \{full_name}",
+      )
   }
 }
 
