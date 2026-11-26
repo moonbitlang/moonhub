@@ -16,7 +16,7 @@ pub fn expand_dynamic_matrix(Job, Map[String, @json.Json], remaining_jobs~ : Int
 
 pub let format_version : Int32
 
-pub fn instantiate_reusable(Job, Map[String, @json.Json]) -> (Map[String, @json.Json], Array[Job]) raise InvalidWorkflow
+pub fn instantiate_reusable(Job, Map[String, @json.Json]) -> Array[Job] raise InvalidWorkflow
 
 pub fn job_condition(String, Map[String, @json.Json], Map[String, @json.Json], inputs? : Map[String, @json.Json], variables? : Map[String, String]?, success~ : Bool, failure~ : Bool, cancelled~ : Bool) -> Bool raise InvalidWorkflow
 

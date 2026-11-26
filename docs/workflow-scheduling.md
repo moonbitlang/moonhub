@@ -106,7 +106,7 @@ JSON input is limited to 64 KiB, 32 levels and 8192 nodes. Empty matrices, malfo
 JSON, invalid runner selectors and budget overflows fail the consumer with a
 persisted diagnostic; producer completion remains committed.
 
-The original template remains in the immutable workflow snapshot. Schema 51 stores
+The original template remains in the immutable workflow snapshot. Schema 52 stores
 the evaluated matrix and generated job definitions separately in the same database
 transaction. A logical barrier waits for every instance before releasing downstream
 jobs. Generated instances share the static matrix limits, provider authorization,
