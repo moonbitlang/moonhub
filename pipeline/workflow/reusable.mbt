@@ -1,17 +1,47 @@
 ///|
+priv struct SelectedJob {
+  all : Bool
+  exact : Array[String]
+}
+
+///|
 fn selected_job_closure(
   fields : Map[String, @yaml.Yaml],
   jobs : Array[String],
-) -> Map[String, Bool] raise InvalidWorkflow {
+) -> Map[String, SelectedJob] raise InvalidWorkflow {
   guard !fields.is_empty() && fields.length() <= 16 && jobs.length() <= 16 else {
     raise InvalidWorkflow("workflow requires between 1 and 16 jobs")
   }
-  let selected : Map[String, Bool] = Map([])
-  for id in jobs {
-    guard valid_identifier(id) && fields.contains(id) && !selected.contains(id) else {
-      raise InvalidWorkflow("selected jobs must be unique workflow job IDs")
+  let selected : Map[String, SelectedJob] = Map([])
+  for key in jobs {
+    let (id, all) = if key.split_once("[") is Some((name, suffix)) {
+      guard suffix.strip_suffix("]") is Some(index) &&
+        !index.is_empty() &&
+        index.length() <= 3 &&
+        !index.has_prefix("0") &&
+        index.iter().all(c => c.is_ascii_digit()) else {
+        raise InvalidWorkflow("invalid selected matrix job key: " + key)
+      }
+      (name.to_owned(), false)
+    } else {
+      (key, true)
     }
-    selected[id] = true
+    guard valid_identifier(id) && fields.contains(id) else {
+      raise InvalidWorkflow("unknown selected workflow job: " + key)
+    }
+    let exact = match selected.get(id) {
+      None => []
+      Some(previous) => {
+        guard !all && !previous.all && !previous.exact.contains(key) else {
+          raise InvalidWorkflow("overlapping selected workflow jobs: " + key)
+        }
+        previous.exact
+      }
+    }
+    if !all {
+      exact.push(key)
+    }
+    selected[id] = { all, exact, }
   }
   for _ in 0..<16 {
     let before = selected.length()
@@ -25,7 +55,8 @@ fn selected_job_closure(
         guard fields.get("uses") is None || need != id else {
           raise InvalidWorkflow("job dependency cycle")
         }
-        selected[need] = true
+        let exact = selected.get(need).map(job => job.exact).unwrap_or([])
+        selected[need] = { all: true, exact, }
       }
     }
     if selected.length() == before {

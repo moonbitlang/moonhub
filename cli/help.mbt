@@ -71,7 +71,7 @@ fn option_description(name : String, group~ : String = "") -> String {
     "inputs-file" =>
       "UTF-8 JSON object of up to 25 string/boolean/number workflow inputs."
     "jobs" =>
-      "Comma-separated original job IDs; dependencies and matrix children are included."
+      "Comma-separated logical job IDs or exact static matrix keys, e.g. 'build[1],test'. Dependencies are included."
     "branch" => "Existing branch to run CI on, or to scope a repository secret."
     "attempt" =>
       "Run attempt ID from ci view NUMBER --json (not the attempt ordinal)."
@@ -238,7 +238,7 @@ fn command_examples(group : String, action : String) -> String {
     ("ci", "" | "list") =>
       "moonhub ci list --repo OWNER/NAME --json\nmoonhub ci view 9 --json"
     ("ci", "run") =>
-      "moonhub ci run --repo OWNER/NAME --branch master --workflow .github/workflows/build.yml\nmoonhub ci run --branch master --workflow .github/workflows/build.yml --jobs build,test --inputs-file inputs.json\ninputs.json example: {\"release\":false,\"version\":\"1.2.3\"}. Selected jobs include dependencies and matrix children."
+      "moonhub ci run --repo OWNER/NAME --branch master --workflow .github/workflows/build.yml\nmoonhub ci run --branch master --workflow .github/workflows/build.yml --jobs 'build[1],test' --inputs-file inputs.json\ninputs.json example: {\"release\":false,\"version\":\"1.2.3\"}. Logical job IDs include all matrix children. Dependencies are included."
     ("ci", "view") =>
       "moonhub ci view 9 --repo OWNER/NAME --json\nUse the returned attempt ID for ci logs --attempt."
     ("ci", "logs") =>

@@ -9,15 +9,17 @@ async test "run API selects original PR workflow jobs with execute permission an
       pool, actor, "no-execution", "write", 1,
     )
     let repo : @domain.RepoId = { owner: "alice", name: "demo", }
-    let source = @test_support.single_job_workflow.replace_all(
-      old="workflow_dispatch",
-      new="pull_request",
-    )
+    let source = @test_support.single_job_workflow
+      .replace_all(old="workflow_dispatch", new="pull_request")
+      .replace_all(
+        old="    runs-on: [self-hosted, linux]",
+        new="    runs-on: ${{ matrix.os }}\n    strategy: {matrix: {os: [ubuntu-24.04, macos-15]}}",
+      )
     let sha = @test_support.workflow_commit(repo.git_dir(root), source)
     let request : Json = {
       "branch": "pipeline",
       "workflow": ".github/workflows/build.yml",
-      "jobs": ["build"],
+      "jobs": ["build[1]"],
     }
     assert_eq(
       api_test_request(port, "/repos/alice/demo/runs", write, Some(request)).0,
@@ -29,6 +31,8 @@ async test "run API selects original PR workflow jobs with execute permission an
         Json([1]),
         Json(["missing"]),
         Json(["build", "build"]),
+        Json(["build", "build[1]"]),
+        Json(["build[3]"]),
       ] {
       let (status, _) = api_test_request(
         port,
@@ -50,7 +54,10 @@ async test "run API selects original PR workflow jobs with execute permission an
     )
     assert_eq(status, 200)
     assert_eq(@gitops.branch_sha(repo.git_dir(root), "pipeline"), sha)
-    assert_eq(@runtime.get_run(pool, actor, repo, 1L).workflow_source, source)
+    let run = @runtime.get_run(pool, actor, repo, 1L)
+    assert_eq(run.workflow_source, source)
+    assert_eq(run.definition.jobs.map(job => job.id), ["build[1]"])
+    assert_true(run.definition.jobs[0].runs_on.contains("ubuntu-24.04"))
   })
 }
 

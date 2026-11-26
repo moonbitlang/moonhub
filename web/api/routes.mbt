@@ -1129,7 +1129,9 @@ pub let api_module : @moonback.Module = Module(ctx => {
       let jobs : Array[String] = if body.get("jobs") is Some(value) {
         @json.from_json(value) catch {
           _ =>
-            raise @domain.BadRequest(message="jobs must be an array of job IDs")
+            raise @domain.BadRequest(
+              message="jobs must be an array of workflow job IDs or static matrix keys",
+            )
         }
       } else {
         []

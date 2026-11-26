@@ -703,6 +703,21 @@ fn parse_definition(
         remaining_bytes=1048576 - plan_bytes,
       )
     }
+    let expanded = match selected.get(id) {
+      Some({ all, exact, }) if !exact.is_empty() => {
+        for key in exact {
+          guard expanded.any(job => job.id == key) else {
+            raise InvalidWorkflow("unknown or non-static matrix job: " + key)
+          }
+        }
+        if all {
+          expanded
+        } else {
+          expanded.filter(job => exact.contains(job.id))
+        }
+      }
+      _ => expanded
+    }
     for job in expanded {
       if job.reusable_call is None && job.dynamic_matrix is None {
         budget[0] += 1

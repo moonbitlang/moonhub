@@ -2,10 +2,10 @@
 test "CI run accepts an inputs JSON file" {
   let parsed = command().parse(argv=[
     "ci", "run", "--branch", "master", "--workflow", ".github/workflows/release.yml",
-    "--inputs-file", "/tmp/inputs.json", "--json", "--jobs", "build,test",
+    "--inputs-file", "/tmp/inputs.json", "--json", "--jobs", "build[1],test",
   ])
   assert_eq(option(parsed, "inputs-file"), Some("/tmp/inputs.json"))
-  assert_eq(option(parsed, "jobs"), Some("build,test"))
+  assert_eq(option(parsed, "jobs"), Some("build[1],test"))
   assert_eq(option(parsed, "workflow"), Some(".github/workflows/release.yml"))
 }
 

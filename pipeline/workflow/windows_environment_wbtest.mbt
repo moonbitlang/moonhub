@@ -92,3 +92,68 @@ test "selected workflow jobs retain dependency closure and reject invalid select
     _ => fail("selected dependency cycle accepted")
   }
 }
+
+///|
+test "exact static matrix selections preserve ordinals and complete logical dependencies" {
+  let source =
+    #|on: pull_request
+    #|jobs:
+    #|  prepare:
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo prepare}]
+    #|  build:
+    #|    needs: prepare
+    #|    runs-on: ${{ matrix.os }}
+    #|    strategy:
+    #|      matrix:
+    #|        os: [ubuntu-24.04, windows-2025, macos-15]
+    #|        exclude: [{os: windows-2025}]
+    #|        include: [{os: windows-2025, extra: win}]
+    #|    steps: [{run: echo build}]
+    #|  finish:
+    #|    needs: build
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo finish}]
+  let selected = parse(source, jobs=["build[3]", "build[1]"]).jobs
+  assert_eq(selected.map(job => job.id), ["prepare", "build[1]", "build[3]"])
+  assert_eq(selected[1].matrix.get("os"), Some(Json::string("ubuntu-24.04")))
+  assert_eq(selected[2].matrix.get("os"), Some(Json::string("windows-2025")))
+  assert_eq(selected[2].strategy.get("job-index"), Some(Json(2)))
+  assert_eq(selected[2].strategy.get("job-total"), Some(Json(3)))
+  assert_eq(selected[2].needs, ["prepare"])
+  let logical = parse(source, jobs=["finish", "build[3]"]).jobs
+  assert_eq(logical[4].needs, ["build[1]", "build[2]", "build[3]"])
+  for
+    jobs in [
+      ["build[0]"],
+      ["build[01]"],
+      ["build[1]junk"],
+      ["build[4]"],
+      ["finish", "build[4]"],
+      ["missing[1]"],
+      ["prepare[1]"],
+      ["build[1]", "build[1]"],
+      ["build", "build[1]"],
+      ["build[1]", "build"],
+    ] {
+    try ignore(parse(source, jobs~)) catch {
+      InvalidWorkflow(_) => ()
+    } noraise {
+      _ => fail("invalid exact job selection was accepted")
+    }
+  }
+  let dynamic =
+    #|on: pull_request
+    #|jobs:
+    #|  build:
+    #|    runs-on: self-hosted
+    #|    strategy:
+    #|      matrix: '${{ fromJSON(''{"flavor":["a"]}'') }}'
+    #|    steps: [{run: echo build}]
+  assert_true(parse(dynamic, jobs=["build"]).jobs[0].dynamic_matrix is Some(_))
+  try ignore(parse(dynamic, jobs=["build[1]"])) catch {
+    InvalidWorkflow(message) => assert_true(message.contains("non-static"))
+  } noraise {
+    _ => fail("dynamic matrix child was accepted")
+  }
+}

@@ -118,10 +118,14 @@ accept `--page` where supported; MR/Issue/Inbox pages contain at most 50 entries
 CI lists use the server's existing latest-run limit. Human-readable lists strip
 terminal control characters from repository content.
 
-`ci run --jobs build,test` selects original logical job IDs and their complete
-dependency closure, including all matrix children. Explicit selection lets a
-repository manager run a PR-only workflow without adding `workflow_dispatch` or
-changing Git refs. Omitting `--jobs` retains the normal dispatch requirement.
+`ci run --jobs build,test` selects logical job IDs and their complete dependency
+closure, including all matrix children. Use `--jobs 'build[1],build[3]'` to select
+exact rows of a static matrix in their original expansion order, starting at 1.
+A logical dependency on `build` still includes every row. Giving both `build`
+and `build[1]` explicitly is an error. Dynamic matrices use logical selection.
+Explicit selection lets a repository manager run a PR-only workflow without
+adding `workflow_dispatch` or changing Git refs. Omitting `--jobs` retains the
+normal dispatch requirement.
 The saved source YAML and commit are unchanged; reruns retain the selected plan.
 The REST run request accepts the same selection as a `jobs` array. Browser Run
 workflow offers a Job selector. Existing execute-token and manager authorization
