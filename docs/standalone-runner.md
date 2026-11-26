@@ -88,13 +88,16 @@ Each ASG instance runs one job. Enroll an ASG with the profile for its guest OS.
   job-local Docker daemon.
 - [Windows VM](windows-vm-runner.md) runs native jobs as a local administrator
   on Windows Server 2025.
+- [macOS VM](macos-asg-runner.md) runs macOS 15 ARM64 jobs as a local administrator
+  in a fresh Tart guest on an Apple Silicon EC2 Mac.
 
 Use a dedicated minimum-zero ASG with an explicit, immutable launch-template
 version. Linux supports an optional separate Spot ASG with bounded wait and
 On-Demand fallback. Install AWS CLI v2 on the controller, pin encrypted
 DeleteOnTermination EBS mappings, and scope SSM and IAM permissions to the pool.
 The controller waits for the instance to report Online through SSM before it
-creates a worker identity. The boot budget is 15 minutes from EC2 LaunchTime.
+creates a worker identity. The boot budget from EC2 LaunchTime is 15 minutes
+for Linux and Windows and 30 minutes for macOS.
 
 The controller disables IMDS, detaches the guest bootstrap role, deletes the
 bootstrap parameter and verifies the disk settings before it arms the claim gate.
