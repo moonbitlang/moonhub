@@ -86,10 +86,29 @@ async fn validate_options(
       "Windows VM mode requires a prepared Server 2025 x64 guest.",
     )
   }
+  guard (!assignment.job.runs_on.contains("macos-vm") || options.macos_vm) &&
+    (
+      !options.macos_vm ||
+      (
+        !options.unsafe_local &&
+        !options.linux_ci &&
+        !options.windows_vm &&
+        @platform.macos() &&
+        @platform.architecture() == "arm64" &&
+        !assignment.job.runs_on.contains("x64") &&
+        !assignment.job.runs_on.contains("macos-14")
+      )
+    ) else {
+    raise InvalidConfiguration(
+      "macOS VM mode requires a prepared macOS 15 ARM64 guest.",
+    )
+  }
   guard monotonic_ms() >= 0L &&
     prepare_agent(
       if options.windows_vm {
         3
+      } else if options.macos_vm {
+        4
       } else if options.linux_ci {
         2
       } else if options.unsafe_local {
@@ -102,6 +121,8 @@ async fn validate_options(
     raise InvalidConfiguration(
       if options.windows_vm {
         "Windows VM executor requires an isolated guest and an elevated local job account."
+      } else if options.macos_vm {
+        "macOS VM executor requires a virtualized macOS guest and its dedicated administrator account."
       } else {
         "runner requires an isolated non-administrator container; --unsafe-local is for trusted tests only"
       },

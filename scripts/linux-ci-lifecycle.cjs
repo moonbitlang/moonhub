@@ -8,7 +8,11 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const binary = path.resolve('_build/native/debug/build/cmd/moonhub-runner/moonhub-runner.exe');
-async function scenario(failed, vanished = false, windows = false) {
+async function scenario(failed, vanished = false, profile = 'linux-ci', macosTimeout = false) {
+  const windows = profile === 'windows-vm';
+  const macos = profile === 'macos-vm';
+  const instanceType = macos ? 'mac2.metal' : 'm6a.large';
+  const runnerImage = macos ? 'local:moonhub-macos-15' : 'ci:startup';
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-ci-lifecycle-'));
   const stateFile = path.join(root, 'aws.json');
   fs.writeFileSync(stateFile, JSON.stringify({calls: [], disabled: false, terminated: false, booted: false}));
@@ -22,6 +26,8 @@ async function scenario(failed, vanished = false, windows = false) {
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const file=${JSON.stringify(stateFile)},args=process.argv.slice(2),s=JSON.parse(fs.readFileSync(file));s.calls.push(args.slice(0,2));
 const windows=${windows};
+const macos=${macos},instanceType=${JSON.stringify(instanceType)},runnerImage=${JSON.stringify(runnerImage)};
+const macosTimeout=${macosTimeout};
 const save = () => {
  const temporary=file+'.'+process.pid;
  const handle=fs.openSync(temporary,'w');
@@ -33,12 +39,13 @@ const save = () => {
 let result=null;
 if(args[0]==='sts')result={Account:'123456789012'};
 else if(args[0]==='ec2'){
- if(args[1]==='describe-instance-types')result=[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
+ if(args[1]==='describe-instance-types')result=macos?[{cpus:8,memory_mib:16384,architectures:['arm64_mac']}]:[{cpus:2,memory_mib:8192,architectures:['x86_64']}];
  else if(args[1]==='describe-launch-template-versions'){
    assert.ok(args.at(args.indexOf('--query')+1).includes('disks:'));
-   result=[{image:'ami-ci',tokens:'required',hop:1,disks:[{Encrypted:true,DeleteOnTermination:true}]}];
+   result=[{image:'ami-ci',tokens:'required',hop:1,disks:[{Encrypted:true,DeleteOnTermination:true}],
+     ...(macos?{disk_devices:['/dev/sda1'],instance_type:instanceType,placement:{Tenancy:'host',HostResourceGroupArn:'arn:aws:resource-groups:us-west-2:123456789012:group/macos'},market:null}:{})}];
  }
- else if(args[1]==='describe-images')result=[{architecture:'x86_64',platform:windows?'windows':null}];
+ else if(args[1]==='describe-images')result=[{architecture:macos?'arm64_mac':'x86_64',platform:windows?'windows':null,root_device:'/dev/sda1'}];
  else if(args[1]==='modify-instance-metadata-options'){assert.ok(s.booted,'disabled IMDS before bootstrap download');s.disabled=true;}
  else if(args[1]==='describe-iam-instance-profile-associations')result=s.disassociated?[]:[{state:'associated',id:'iip-assoc-fixture'}];
  else if(args[1]==='disassociate-iam-instance-profile'){assert.ok(s.disabled);s.disassociated=true;}
@@ -52,14 +59,25 @@ else if(args[0]==='ec2'){
  else if(args[1]==='describe-volumes'){assert.ok(s.terminated);result=s.diskChecked?[]:['vol-ci'];s.diskChecked=true;}
  else throw Error('unexpected EC2 '+args[1]);
 }else if(args[0]==='autoscaling'){
- if(args[1]==='describe-auto-scaling-groups')result=[{name:'ci',min:0,max:1,desired:s.terminated?0:1,instances:s.terminated?[]:[{id:'i-ci',lifecycle:'InService',scale_in_protected:true,instance_type:'m6a.large',template_version:'1'}]}];
- else if(args[1]==='terminate-instance-in-auto-scaling-group'){s.terminated=true;assert.ok(s.disabled);}
+ if(args[1]==='describe-auto-scaling-groups')result=[{name:'ci',min:0,max:1,desired:s.terminated?0:1,instances:s.terminated?[]:[{id:'i-ci',lifecycle:'InService',scale_in_protected:true,instance_type:instanceType,template_version:'1'}]}];
+ else if(args[1]==='terminate-instance-in-auto-scaling-group'){
+   assert.ok(s.disabled);
+   if(macosTimeout){
+     assert.ok(Date.now()-Number(fs.readFileSync(${JSON.stringify(root)}+'/controller/i-ci.mac-cleanup','utf8'))>=60000);
+   }
+   s.terminated=true;
+ }
+ else if(args[1]==='update-auto-scaling-group'&&macos){
+   const request=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));
+   assert.deepEqual(request.LaunchTemplate,{LaunchTemplateId:'lt-ci',Version:'1'});
+   assert.equal(request.MixedInstancesPolicy,undefined);
+ }
  else if(args[1]!=='update-auto-scaling-group')throw Error('unexpected ASG '+args[1]);
 }else if(args[0]==='ssm'){
  if(args[1]==='describe-instance-information')result=['i-ci'];
- else if(args[1]==='put-parameter'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));const p=JSON.parse(b.Value);assert.equal(p.linux_ci,!windows);if(windows){assert.equal(p.windows_vm,true);assert.equal(p.runner_os,'windows');}else assert.equal(p.runner_image,'ci:configured');s.workerToken=p.token;}
+ else if(args[1]==='put-parameter'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));const p=JSON.parse(b.Value);assert.equal(p.linux_ci,!windows&&!macos);if(windows){assert.equal(p.windows_vm,true);assert.equal(p.runner_os,'windows');}else if(macos){assert.equal(p.macos_vm,true);assert.equal(p.runner_os,'macos');assert.equal(p.runner_image,runnerImage);}else assert.equal(p.runner_image,'ci:configured');s.workerToken=p.token;}
  else if(args[1]==='add-tags-to-resource'){assert.ok(args.includes('Key=MoonHubInstanceArn,Value=arn:aws:ec2:us-west-2:123456789012:instance/i-ci'));}
- else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.ok(b.Parameters.commands[0].includes(windows?'ci-host.ps1':'moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
+ else if(args[1]==='send-command'){const b=JSON.parse(fs.readFileSync(args[args.indexOf('--cli-input-json')+1].slice(7)));assert.equal(b.DocumentName,windows?'AWS-RunPowerShellScript':'AWS-RunShellScript');assert.ok(b.Parameters.commands[0].includes(windows?'ci-host.ps1':macos?'moonhub-macos-asg-host':'moonhub-ci-host'));assert.ok(!b.Parameters.commands[0].includes(s.workerToken));s.booted=true;result={Command:{CommandId:'command-ci'}};}
  else if(args[1]==='get-command-invocation')result={Status:'Success'};
  else if(args[1]==='delete-parameter'){
    if(!s.deleteFailed){s.deleteFailed=true;save();process.exit(1);}
@@ -80,8 +98,8 @@ save();if(result!==null)console.log(JSON.stringify(result));
         queued_jobs: armed ? 0 : 1, workers: worker ? [worker] : []});
       if (route === '/providers/register') {
         assert.equal(req.headers.authorization, 'Bearer ' + 'a'.repeat(64)); providerToken = body.provider_token;
-        schema = body.schema; config = windows ? body.defaults : {...body.defaults, runner_image: 'ci:configured'};
-        assert.equal(config.execution_mode, windows ? 'windows-vm' : 'linux-ci'); result = snapshot();
+        schema = body.schema; config = windows || macos ? body.defaults : {...body.defaults, runner_image: 'ci:configured'};
+        assert.equal(config.execution_mode, profile); result = snapshot();
       } else {
         assert.equal(req.headers.authorization, 'Bearer ' + providerToken);
         if (route === '/providers/sync') {status = body.status; result = snapshot();}
@@ -99,9 +117,9 @@ save();if(result!==null)console.log(JSON.stringify(result));
             const current = state(); current.terminated = true;
             saveState(current);
           }
-          // A compromised guest can keep heartbeating and never acknowledge
-          // cleanup. Server-fenced consumption still permits outside retirement.
-          worker = {...worker, state: failed ? 'failed' : 'busy', draining: !vanished, active_attempts: 0, last_seen_ms: String(Date.now())};
+          // Mac workers may complete guest deletion before host retirement.
+          // Linux/Windows do not need a cleanup acknowledgement from the guest.
+          worker = {...worker, state: failed ? 'failed' : macos && !macosTimeout ? 'drained' : 'busy', draining: !vanished, active_attempts: 0, last_seen_ms: String(Date.now())};
           result = {version: 1};
         } else throw Error('unexpected route ' + route);
       }
@@ -110,16 +128,23 @@ save();if(result!==null)console.log(JSON.stringify(result));
   });
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    child = spawn(binary, ['run', windows ? '--windows-vm' : '--linux-ci', '--server', 'http://127.0.0.1:' + server.address().port, '--allow-http',
+    child = spawn(binary, ['run', '--' + profile, '--server', 'http://127.0.0.1:' + server.address().port, '--allow-http',
       '--name', 'ci', '--mode', 'asg', '--registration-token-file', registration, '--state-dir', path.join(root, 'controller'),
       '--workspace-root', path.join(root, 'workspace'), '--aws', adapter, '--asg', 'ci', '--launch-template', 'lt-ci',
-      '--instance-types', 'm6a.large', '--runner-image', 'ci:startup'], {stdio: ['ignore', 'pipe', 'pipe']});
+      '--instance-types', instanceType, '--runner-image', runnerImage], {stdio: ['ignore', 'pipe', 'pipe']});
     child.stdout.on('data', x => {output += x;}); child.stderr.on('data', x => {output += x;});
     child.once('exit', () => {exited = true;});
     const deadline = Date.now() + (vanished ? 25000 : 90000);
+    const cleanupDeadline = path.join(root, 'controller/i-ci.mac-cleanup');
+    let advancedCleanupClock = false;
     while (!state().deleted || fs.existsSync(path.join(root, 'controller/i-ci.ci-retire'))) {
       if (error) throw error;
-      if (exited || Date.now() > deadline) throw Error('CI lifecycle failed: ' + status + ' ' + output);
+      if (exited || Date.now() > deadline) throw Error('CI lifecycle failed: ' + status + ' ' + JSON.stringify(state().calls) + ' ' + output);
+      if (macosTimeout && !advancedCleanupClock && fs.existsSync(cleanupDeadline) && fs.readFileSync(cleanupDeadline, 'utf8')) {
+        assert.ok(!state().terminated, 'terminated before the cleanup window');
+        fs.writeFileSync(cleanupDeadline, String(Date.now() - 61000));
+        advancedCleanupClock = true;
+      }
       await delay(100);
     }
     assert.ok(armed); assert.ok(state().terminated);
@@ -129,8 +154,10 @@ save();if(result!==null)console.log(JSON.stringify(result));
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.token')));
     assert.ok(!output.includes(providerToken)); assert.ok(!output.includes(state().workerToken));
     assert.ok(state().diskChecked, 'disk deletion was not checked');
+    if (macosTimeout) assert.equal(advancedCleanupClock, true);
+    assert.ok(!fs.existsSync(cleanupDeadline));
     assert.ok(!fs.existsSync(path.join(root, 'controller/i-ci.ci-volumes')));
-    console.log((windows ? 'WINDOWS_VM' : 'LINUX_CI') + '_EXTERNAL_RETIREMENT_' + (vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
+    console.log(profile.toUpperCase().replace('-', '_') + '_EXTERNAL_RETIREMENT_' + (macosTimeout ? 'CLEANUP_TIMEOUT' : vanished ? 'UNEXPECTED_TERMINATION' : failed ? 'FAILURE' : 'COMPLETION') + '_OK');
   } finally {
     if (child && !exited) {child.kill('SIGTERM'); await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(10000)]); if (!exited) child.kill('SIGKILL');}
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root, {recursive: true, force: true});
@@ -138,6 +165,11 @@ save();if(result!==null)console.log(JSON.stringify(result));
 }
 (async () => {
   if (process.argv.includes('--unexpected-termination')) { await scenario(false, true); return; }
-  if (process.argv.includes('--windows-vm')) { await scenario(false, false, true); return; }
+  if (process.argv.includes('--windows-vm')) { await scenario(false, false, 'windows-vm'); return; }
+  if (process.argv.includes('--macos-vm')) {
+    await scenario(false, false, 'macos-vm');
+    await scenario(false, false, 'macos-vm', true);
+    return;
+  }
   await scenario(false); await scenario(true); await scenario(false, true);
 })().catch(e => {console.error(e); process.exitCode = 1;});
