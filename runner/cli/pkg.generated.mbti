@@ -1,8 +1,16 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "hackwaly/moonhub/runner/cli"
 
+import {
+  "moonbitlang/core/argparse",
+}
+
 // Values
+pub fn command() -> @argparse.Command
+
 pub async fn execute(ArrayView[String]) -> Int32
+
+pub async fn execute_matches(@argparse.Matches) -> Int32
 
 // Errors
 

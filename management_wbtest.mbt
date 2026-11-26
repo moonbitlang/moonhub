@@ -1,8 +1,19 @@
 ///|
+// Parse through the executable's command tree, then run without exit-code
+// mapping so tests observe raised errors.
+async fn run_management_args(args : Array[String]) -> Int32 {
+  guard moonhub_command().parse(argv=args, env=@env.get_env_vars()).subcommand
+    is Some((name, options)) else {
+    fail("missing administrative command")
+  }
+  run_management(name, options)
+}
+
+///|
 test "provider CLI scope defaults are conservative and ensure can preserve scope" {
   for command in ["pipeline-provider-create", "pipeline-provider-ensure"] {
     let args = [command, "--name", "dind", "--token-file", "/token"]
-    let (_, options) = management_command().parse(argv=args).subcommand.unwrap()
+    let (_, options) = moonhub_command().parse(argv=args).subcommand.unwrap()
     assert_eq(
       single_value(options, "scope"),
       if command == "pipeline-provider-create" {
@@ -12,9 +23,7 @@ test "provider CLI scope defaults are conservative and ensure can preserve scope
       },
     )
     for scope in ["selected", "all"] {
-      let (_, options) = management_command().parse(
-        argv=args + ["--scope", scope],
-      ).subcommand.unwrap()
+      let (_, options) = moonhub_command().parse(argv=args + ["--scope", scope]).subcommand.unwrap()
       assert_eq(single_value(options, "scope"), Some(scope))
     }
   }
@@ -45,23 +54,23 @@ async test "provider management CLI forwards explicit scope and preserves omitte
       let options = [
         "--db", db, "--name", "cli", "--token-file", token, "--admin", "admin",
       ]
-      assert_eq(run_management_cli(["pipeline-provider-create"] + options), 0)
+      assert_eq(run_management_args(["pipeline-provider-create"] + options), 0)
       assert_eq(coordinator.list_providers(actor)[0].scope.value(), "selected")
       assert_true(coordinator.list_providers(actor)[0].repositories.is_empty())
       let ensure = ["pipeline-provider-ensure"] + options
-      assert_eq(run_management_cli(ensure + ["--scope", "all"]), 0)
+      assert_eq(run_management_args(ensure + ["--scope", "all"]), 0)
       assert_eq(coordinator.list_providers(actor)[0].scope.value(), "all")
-      assert_eq(run_management_cli(ensure), 0)
+      assert_eq(run_management_args(ensure), 0)
       assert_eq(coordinator.list_providers(actor)[0].scope.value(), "all")
       assert_eq(
-        run_management_cli(
+        run_management_args(
           ensure + ["--preserve-existing", "--scope", "selected"],
         ),
         0,
       )
       assert_eq(coordinator.list_providers(actor)[0].scope.value(), "all")
       assert_eq(
-        run_management_cli(
+        run_management_args(
           ensure + ["--scope", "selected", "--repositories", "admin/demo"],
         ),
         0,
@@ -75,7 +84,7 @@ async test "provider management CLI forwards explicit scope and preserves omitte
           ["--scope", "invalid"],
           ["--scope", "all", "--repositories", "admin/demo"],
         ] {
-        try run_management_cli(ensure + invalid) catch {
+        try run_management_args(ensure + invalid) catch {
           @domain.BadRequest(_) => ()
           err => raise err
         } noraise {
@@ -91,7 +100,7 @@ async test "provider management CLI forwards explicit scope and preserves omitte
       }
       @fs.write_file(token, "b".repeat(64), permission=0o600)
       assert_eq(
-        run_management_cli([
+        run_management_args([
           "pipeline-provider-create", "--db", db, "--name", "shared", "--token-file",
           token, "--admin", "admin", "--scope", "all",
         ]),

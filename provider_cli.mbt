@@ -7,9 +7,8 @@ fn provider_cli_int(options : @argparse.Matches, name : String) -> Int32 raise {
 }
 
 ///|
-async fn run_provider_cli(args : ArrayView[String]) -> Int32 {
-  @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
-  let command = @argparse.Command(
+fn provider_command() -> @argparse.Command {
+  @argparse.Command(
     "provider",
     options=[
       OptionArg("server", long="server", env="MOONHUB_SERVER", default_values=[
@@ -76,7 +75,11 @@ async fn run_provider_cli(args : ArrayView[String]) -> Int32 {
     flags=[FlagArg("allow-http", long="allow-http", env="MOONHUB_ALLOW_HTTP")],
     about="Claim and execute one-job pipeline assignments in disposable Docker containers.",
   )
-  let options = command.parse(argv=args, env=@env.get_env_vars())
+}
+
+///|
+async fn run_provider(options : @argparse.Matches) -> Int32 {
+  @signal.set_global_cancellation_signals([SIGINT, SIGTERM])
   let token_path = cli_value(options, "token-file")
   guard @fs.kind(token_path, follow_symlink=false) is Regular &&
     @fs.file_size(token_path) <= 256L else {

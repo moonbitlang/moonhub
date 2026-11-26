@@ -168,9 +168,14 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     Failed(err) => raise Invalid(contextual_help(err.to_string()))
   }
   guard matches.subcommand is Some((group, group_options)) else { return 2 }
-  let (action, options) = group_options.subcommand.unwrap_or(
-    ("list", group_options),
-  )
+  run_group(group, group_options)
+}
+
+///|
+/// Run a parsed client command group. `matches` belongs to the group and holds
+/// the client-wide options wherever they appeared on the command line.
+async fn run_group(group : String, matches : @argparse.Matches) -> Int32 {
+  let (action, options) = matches.subcommand.unwrap_or(("list", matches))
   let allow_http = matches.flags.get("allow-http").unwrap_or(false)
   if group == "auth" && action == "setup" {
     let server = if option(matches, "server") is Some(value) {

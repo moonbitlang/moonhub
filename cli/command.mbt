@@ -1,5 +1,5 @@
 ///|
-const CLI_VERSION : String = "0.1.1"
+pub const CLI_VERSION : String = "0.1.1"
 
 ///|
 fn command_groups() -> Array[(String, Array[String])] {
@@ -152,6 +152,118 @@ fn required_action_options(group : String, action : String) -> Array[String] {
 }
 
 ///|
+/// Whether `name` starts a remote client command, for executables that embed
+/// the client groups in a larger command tree.
+pub fn is_client_command(name : String) -> Bool {
+  name == "help" || command_groups().iter().any(entry => entry.0 == name)
+}
+
+///|
+// Client-wide options and flags are global wherever they are declared, so they
+// may follow the group or the action. Child definitions override visibility.
+fn client_options(
+  visible : Array[String],
+  group~ : String = "",
+) -> Array[@argparse.OptionArg] {
+  command_option_names().map(name => {
+    client_option(name, hidden=!visible.contains(name), group~)
+  })
+}
+
+///|
+fn client_flags() -> Array[@argparse.FlagArg] {
+  [
+    @argparse.FlagArg(
+      "allow-http",
+      about="Allow HTTP only for a trusted local test server.",
+      global=true,
+    ),
+    @argparse.FlagArg(
+      "json",
+      about="Print complete API JSON; IDs and versions are decimal strings.",
+      global=true,
+    ),
+    @argparse.FlagArg(
+      "draft",
+      about="Create the merge request as a draft.",
+      global=true,
+      hidden=true,
+    ),
+  ]
+}
+
+///|
+/// The client's command groups, each carrying the client-wide options so a
+/// containing command tree needs no root options of its own.
+pub fn client_group_commands() -> Array[@argparse.Command] {
+  command_groups().map(entry => {
+    let (group, actions) = entry
+    @argparse.Command(
+      group,
+      about=command_description(group, ""),
+      arg_required_else_help=group != "inbox",
+      subcommand_required=group != "inbox",
+      options=client_options(
+        ["server", "token-file", "repo"] +
+        (if group == "inbox" { action_options(group, "list") } else { [] }),
+        group~,
+      ),
+      flags=client_flags(),
+      subcommands=actions.map(action => {
+        let positional = match (group, action) {
+          ("secret" | "variable", "set" | "delete") =>
+            Some(
+              ("name", "Repository secret/variable name, for example REGION."),
+            )
+          ("mr" | "issue" | "ci", "list" | "create" | "run") => None
+          ("mr" | "issue" | "ci", _) =>
+            Some(
+              (
+                "number", "Resource number from list/view output (positive decimal).",
+              ),
+            )
+          ("webhook", "list" | "create") => None
+          ("webhook", _) =>
+            Some(("number", "Webhook ID from webhook list --json."))
+          ("inbox", "read") =>
+            Some(("number", "Notification ID from inbox --json."))
+          _ => None
+        }
+        @argparse.Command(
+          action,
+          about=command_description(group, action),
+          options=action_options(group, action).map(name => {
+            client_option(name, group~, action~)
+          }),
+          flags=if group == "mr" && action == "create" {
+            [
+              @argparse.FlagArg(
+                "draft",
+                about="Create as a draft; use mr ready to request review.",
+                global=true,
+              ),
+            ]
+          } else {
+            []
+          },
+          positionals=match positional {
+            Some((name, about)) =>
+              [
+                @argparse.PositionArg(
+                  name,
+                  about~,
+                  num_args=@argparse.ValueRange::single(),
+                ),
+              ]
+            None => []
+          },
+        )
+      }),
+    )
+  })
+}
+
+///|
 fn command() -> @argparse.Command {
   @argparse.Command(
     "moonhub",
@@ -167,93 +279,9 @@ fn command() -> @argparse.Command {
     version=CLI_VERSION,
     arg_required_else_help=true,
     subcommand_required=true,
-    options=command_option_names().map(name => {
-      client_option(
-        name,
-        hidden=!["server", "token-file", "repo"].contains(name),
-      )
-    }),
-    flags=[
-      @argparse.FlagArg(
-        "allow-http",
-        about="Allow HTTP only for a trusted local test server.",
-        global=true,
-      ),
-      @argparse.FlagArg(
-        "json",
-        about="Print complete API JSON; IDs and versions are decimal strings.",
-        global=true,
-      ),
-      @argparse.FlagArg(
-        "draft",
-        about="Create the merge request as a draft.",
-        global=true,
-        hidden=true,
-      ),
-    ],
-    subcommands=command_groups().map(entry => {
-      let (group, actions) = entry
-      @argparse.Command(
-        group,
-        about=command_description(group, ""),
-        arg_required_else_help=group != "inbox",
-        subcommand_required=group != "inbox",
-        options=if group == "inbox" {
-          action_options(group, "list").map(name => client_option(name))
-        } else {
-          []
-        },
-        subcommands=actions.map(action => {
-          let positional = match (group, action) {
-            ("secret" | "variable", "set" | "delete") =>
-              Some(
-                ("name", "Repository secret/variable name, for example REGION."),
-              )
-            ("mr" | "issue" | "ci", "list" | "create" | "run") => None
-            ("mr" | "issue" | "ci", _) =>
-              Some(
-                (
-                  "number", "Resource number from list/view output (positive decimal).",
-                ),
-              )
-            ("webhook", "list" | "create") => None
-            ("webhook", _) =>
-              Some(("number", "Webhook ID from webhook list --json."))
-            ("inbox", "read") =>
-              Some(("number", "Notification ID from inbox --json."))
-            _ => None
-          }
-          @argparse.Command(
-            action,
-            about=command_description(group, action),
-            options=action_options(group, action).map(name => {
-              client_option(name, group~, action~)
-            }),
-            flags=if group == "mr" && action == "create" {
-              [
-                @argparse.FlagArg(
-                  "draft",
-                  about="Create as a draft; use mr ready to request review.",
-                  global=true,
-                ),
-              ]
-            } else {
-              []
-            },
-            positionals=match positional {
-              Some((name, about)) =>
-                [
-                  @argparse.PositionArg(
-                    name,
-                    about~,
-                    num_args=@argparse.ValueRange::single(),
-                  ),
-                ]
-              None => []
-            },
-          )
-        }),
-      )
-    }),
+    // The standalone client also accepts client options before the group.
+    options=client_options(["server", "token-file", "repo"]),
+    flags=client_flags(),
+    subcommands=client_group_commands(),
   )
 }
