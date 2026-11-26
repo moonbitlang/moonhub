@@ -67,8 +67,10 @@ fn advance_run_jobs(tx : @database.DbTransaction, run_id : Int64) -> Unit raise 
         continue
       }
       let allowed = if run.definition_version >= 4 {
+        // A reusable call exposes its aggregate result to the caller. Its
+        // internal barrier edges do not become caller-visible dependencies.
         let ancestors = tx.query_all(
-          "WITH RECURSIVE ancestors(job_key) AS (SELECT needs_job_key FROM pipeline_job_need WHERE run_id=? AND job_key=? UNION SELECT n.needs_job_key FROM pipeline_job_need n JOIN ancestors a ON a.job_key=n.job_key WHERE n.run_id=?) SELECT j.conclusion FROM ancestors a JOIN pipeline_job j ON j.run_id=? AND j.job_key=a.job_key WHERE substr(j.job_key,1,length(?))=?",
+          "WITH RECURSIVE ancestors(job_key) AS (SELECT needs_job_key FROM pipeline_job_need WHERE run_id=? AND job_key=? UNION SELECT n.needs_job_key FROM pipeline_job_need n JOIN ancestors a ON a.job_key=n.job_key WHERE n.run_id=? AND substr(n.needs_job_key,1,length(n.job_key)+1) <> n.job_key || '/') SELECT j.conclusion FROM ancestors a JOIN pipeline_job j ON j.run_id=? AND j.job_key=a.job_key WHERE substr(j.job_key,1,length(?))=?",
           params=[
             run_id,
             job_key,

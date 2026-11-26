@@ -711,7 +711,7 @@ async test "reusable children validate secrets only after their job condition pa
     #|on:
     #|  workflow_call:
     #|    inputs:
-    #|      version: {type: string, required: true}
+    #|      version: {type: string}
     #|jobs:
     #|  build:
     #|    runs-on: self-hosted
@@ -737,7 +737,9 @@ async test "reusable children validate secrets only after their job condition pa
           }),
           msg="a conditional child must not prevent expansion",
         )
-        let (build, token) = claim_dag_attempt(c, provider_secret)
+        let build = c.runtime.claim(provider_secret, claim_request())
+        guard build is Some(build) else { fail("build was not queued") }
+        let token = attempt_secret
         assert_eq(build.job.id, "build")
         ignore(complete_output_job(c, build, token, Map([])))
         let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
@@ -754,12 +756,24 @@ async test "reusable children validate secrets only after their job condition pa
           assert_true(publish.conclusion is Some(Failure))
           assert_true(publish.scheduling_error.contains("Secret TOKEN"))
           assert_true(aggregate.conclusion is Some(Failure))
-          assert_true(c.runtime.claim(provider_secret, claim_request()) is None)
+          assert_true(
+            c.runtime.claim(
+              provider_secret,
+              claim_request(id="2", secret="c".repeat(64)),
+            )
+            is None,
+          )
         } else {
           assert_true(publish.conclusion is Some(Skipped))
           assert_eq(publish.scheduling_error, "")
           assert_true(aggregate.conclusion is Some(Success))
-          let (after, _) = claim_dag_attempt(c, provider_secret)
+          let after = c.runtime.claim(
+            provider_secret,
+            claim_request(id="2", secret="c".repeat(64)),
+          )
+          guard after is Some(after) else {
+            fail("downstream job was not queued")
+          }
           assert_eq(after.job.id, "after")
         }
       },
@@ -767,4 +781,59 @@ async test "reusable children validate secrets only after their job condition pa
       callee~,
     )
   }
+}
+
+///|
+async test "reusable call barriers keep status checks in their workflow scope" {
+  let caller =
+    #|on: workflow_dispatch
+    #|jobs:
+    #|  before:
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo before}]
+    #|  call:
+    #|    needs: before
+    #|    if: always()
+    #|    uses: ./.github/workflows/callee.yml
+    #|  after:
+    #|    needs: call
+    #|    if: failure()
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo after}]
+  let callee =
+    #|on: workflow_call
+    #|jobs:
+    #|  omit:
+    #|    if: false
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo omit}]
+    #|  blocked:
+    #|    needs: omit
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo blocked}]
+    #|  execute:
+    #|    runs-on: self-hosted
+    #|    steps: [{run: echo execute}]
+  with_reusable_fixture(
+    (c, pool, _, run, _) => {
+      let actor = @identity.active_user_by_name(pool, "alice")
+      let (before, token) = claim_dag_attempt(c, provider_secret)
+      assert_eq(before.job.id, "before")
+      ignore(
+        complete_output_job(c, before, token, Map([]), conclusion="failure"),
+      )
+      let (execute, token) = claim_dag_attempt(c, provider_secret)
+      assert_eq(execute.job.id, "execute")
+      ignore(complete_output_job(c, execute, token, Map([])))
+      let jobs = @runtime.list_jobs(pool, actor, protocol_repo, run.number)
+      for key in ["call/omit", "call/blocked"] {
+        let job = jobs.iter().find_first(job => job.job_key == key).unwrap()
+        assert_true(job.conclusion is Some(Skipped))
+      }
+      let (after, _) = claim_dag_attempt(c, provider_secret)
+      assert_eq(after.job.id, "after")
+    },
+    caller~,
+    callee~,
+  )
 }
