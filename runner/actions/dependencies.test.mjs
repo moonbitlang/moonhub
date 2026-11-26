@@ -86,6 +86,36 @@ test('checkout validates primary identity and a separate secondary path before e
   await assert.rejects(runtime.javascript({ repository: 'actions/checkout' }, {}, { ...secondary, path: 'alias/dependency' }, {}, runtime.context(), {}, 'main'), /without symbolic links/);
 });
 
+test('primary checkout retains captured branches and keeps non-branch events pinned', async t => {
+  const { config } = await fixture(t);
+  const action = { repository: 'actions/checkout', directory: config.temp };
+  const metadata = { runs: { using: 'node24', main: 'checkout.cjs' } };
+  await fs.writeFile(path.join(config.temp, 'checkout.cjs'), '');
+  for (const [event, input, expectedRef, fetchDepth] of [
+    ['refs/heads/main', '', '', '1'],
+    ['refs/heads/main', 'main', '', '0'],
+    ['refs/heads/main', config.sha, config.sha, '1'],
+    ['refs/pull/42/merge', '', config.sha, '0'],
+    ['refs/tags/v1.0.0', '', config.sha, '1'],
+    ['', '', config.sha, '1'],
+  ]) {
+    const runtime = new ActionRuntime({ ...config, context: { ref: event } });
+    const requests = [];
+    runtime.dependency = { source: async (...args) => {
+      requests.push(args.slice(0, 3));
+      return { repository: config.repository, sha: config.sha, git: path.join(config.temp, 'source.git') };
+    } };
+    runtime.process = async (_, __, env) => {
+      assert.equal(env.INPUT_REF, expectedRef);
+      assert.equal(env.GITHUB_REF, event || config.sha);
+      assert.equal(env.GITHUB_SHA, config.sha);
+      return 0;
+    };
+    assert.equal((await runtime.javascript(action, metadata, { ref: input, 'fetch-depth': fetchDepth }, {}, runtime.context(), {}, 'main')).code, 0);
+    assert.deepEqual(requests, fetchDepth === '0' ? [[config.repository, config.sha, true]] : []);
+  }
+});
+
 test('Git push credentials are URL scoped and invocation files disappear after success and failure', async t => {
   const { config } = await fixture(t);
   const runtime = new ActionRuntime({ ...config, api_permissions: 3 });

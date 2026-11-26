@@ -259,10 +259,13 @@ export class ActionRuntime {
     if (checkout) {
       inputs = { ...inputs, 'persist-credentials': 'false' };
       const repository = inputs.repository || this.config.repository;
-      if (repository === this.config.repository) {
+      const primary = repository === this.config.repository;
+      if (primary) {
         const original = this.config.context?.ref || '';
         if (inputs.ref && ![this.config.sha, original, original.replace(/^refs\/heads\//, ''), original.replace(/^refs\/tags\//, '')].includes(inputs.ref)) throw new Error('Primary checkout must retain the run commit');
-        inputs.ref = this.config.sha;
+        // An empty ref lets upstream checkout use both the captured branch and
+        // GITHUB_SHA. A SHA-only input deliberately checks out a detached HEAD.
+        inputs.ref = original.startsWith('refs/heads/') && inputs.ref !== this.config.sha ? '' : this.config.sha;
       } else {
         inputs.path = inputs.path?.trim();
         if (!inputs.ref || !validRelative(inputs.path)) throw new Error('Secondary checkout requires an explicit granted ref and separate path');
@@ -278,9 +281,9 @@ export class ActionRuntime {
           if (info.isSymbolicLink()) throw new Error('Secondary checkout requires a path without symbolic links');
         }
       }
-      if (phase === 'main' && (repository !== this.config.repository || inputs['fetch-depth'] === '0')) {
-        source = await this.dependency.source(repository, inputs.ref, inputs['fetch-depth'] === '0', this.baseEnv);
-        inputs.ref = source.sha;
+      if (phase === 'main' && (!primary || inputs['fetch-depth'] === '0')) {
+        source = await this.dependency.source(repository, primary ? this.config.sha : inputs.ref, inputs['fetch-depth'] === '0', this.baseEnv);
+        if (!primary) inputs.ref = source.sha;
       }
     }
     const result = { outputs: {}, state: {}, failed: false };
