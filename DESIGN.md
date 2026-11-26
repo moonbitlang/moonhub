@@ -1,22 +1,28 @@
 ---
 name: Moonhub
-description: Restrained GitLab-inspired workspace for code collaboration.
+description: Restrained code-collaboration workspace using GitHub Primer visual styling.
 colors:
-  primary: "#1769d2"
-  primary-hover: "#1055b0"
-  primary-soft: "#edf4ff"
+  primary: "#1f883d"
+  primary-hover: "#1c8139"
+  accent: "#0969da"
+  accent-hover: "#0550ae"
+  accent-soft: "#ddf4ff"
   canvas: "#fff"
-  surface-subtle: "#f7f8fa"
-  text: "#20252c"
-  muted: "#5d6877"
-  border: "#e1e5eb"
-  border-muted: "#edf0f3"
+  surface-subtle: "#f6f8fa"
+  surface-hover: "#eff2f5"
+  text: "#1f2328"
+  muted: "#59636e"
+  subtle: "#818b98"
+  border: "#d1d9e0"
+  border-muted: "#dfe4e9"
+  folder: "#54aeff"
+  tab-underline: "#fd8c73"
   success: "#1a7f37"
-  success-soft: "#edf8f0"
-  warning: "#986400"
-  warning-soft: "#fff7e5"
-  danger: "#c12d39"
-  danger-soft: "#fff1f2"
+  success-soft: "#dafbe1"
+  warning: "#9a6700"
+  warning-soft: "#fff8c5"
+  danger: "#d1242f"
+  danger-soft: "#ffebe9"
 typography:
   headline:
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -66,26 +72,26 @@ components:
     textColor: "{colors.canvas}"
     typography: "{typography.label}"
     rounded: "{rounded.control}"
-    padding: "7px 12px"
+    padding: "5px 16px"
   button-primary-hover:
     backgroundColor: "{colors.primary-hover}"
   button-secondary:
-    backgroundColor: "{colors.canvas}"
+    backgroundColor: "{colors.surface-subtle}"
     textColor: "{colors.text}"
     typography: "{typography.label}"
     rounded: "{rounded.control}"
-    padding: "7px 12px"
+    padding: "5px 16px"
   button-danger:
     backgroundColor: "{colors.danger}"
     textColor: "{colors.canvas}"
     typography: "{typography.label}"
     rounded: "{rounded.control}"
-    padding: "7px 12px"
+    padding: "5px 16px"
   field:
     backgroundColor: "{colors.canvas}"
     textColor: "{colors.text}"
     rounded: "{rounded.control}"
-    padding: "8px 10px"
+    padding: "5px 12px"
   page-navigation:
     textColor: "{colors.muted}"
     padding: "10px 2px"
@@ -100,13 +106,16 @@ components:
 
 ## Overview
 
-**Creative North Star: "Restrained GitLab-inspired workspace"**
+**Creative North Star: "Restrained workspace with GitHub's visual language"**
 
 Moonhub is an Operate interface: the user reads current state, finds the next
 permitted action and works with code. The established left context navigation
-and right workspace remain the organizing structure. White surfaces, cool
-neutrals, compact system typography and one blue interaction accent keep the
-interface quiet and task-focused.
+and right workspace remain the organizing structure for account, team and
+section pages. Repository pages follow GitHub's arrangement: a grey header band
+holding the `owner / repo` context and underlined repository tabs, then a
+centred content column. Colors, controls and type use GitHub's Primer light
+palette: white surfaces, grey bands, compact system typography, blue links and
+green primary actions.
 
 Hierarchy comes from position, type weight, separators and selective disclosure.
 Collaboration screens place resource identity and current state near each other,
@@ -122,8 +131,9 @@ visual system.
 
 ## Colors
 
-Primary blue marks links, selected views, focus and the dominant action within a
-task region. Hover and soft variants support interaction and selection. White is
+Accent blue marks links and focus; green marks the dominant action within a task
+region; selected views use a coral underline (tabs) or a short blue bar (side
+navigation) with a neutral hover surface. Folder icons use light blue. White is
 the canvas and content surface; cool subtle surfaces distinguish the sidebar and
 code. Dark text, muted metadata and two separator strengths provide hierarchy.
 
@@ -197,8 +207,8 @@ feedback does not announce every log line or move focus during polling.
 ## Shapes
 
 Controls and code containers have modest rounded corners; status labels are
-slightly tighter and context navigation subtly rounded. Buttons have a (36px)
-desktop minimum height; shared text fields begin at (38px). Borders remain thin
+slightly tighter and context navigation subtly rounded. Buttons and shared text
+fields have a (32px) desktop minimum height. Borders remain thin
 and neutral. Lucide icons are consistently (18px), with accessible names on
 icon-only controls. Account avatars retain their circular shape.
 
@@ -210,8 +220,8 @@ named navigation and native disclosure semantics.
 
 ### Buttons and fields
 
-Blue is primary, white with neutral outline is secondary, and red is destructive
-(filled or outlined). Hover strengthens the same role; disabled controls use
+Green is primary, grey with a neutral outline is secondary, and red is
+destructive (filled or outlined). Hover strengthens the same role; disabled controls use
 muted neutrals. Failed forms preserve input. Enhanced busy forms retain values
 and reject duplicate submission. Native selects and protected POST forms are
 the baseline.
@@ -225,7 +235,7 @@ current file or directory. Ancestors link to existing scope pages, and file
 path links preserve the selected revision. Settings trails name their active
 section. Touch targets reach (44px) at (900px) and below.
 
-Page links have muted text, a stronger selected label, blue underline and
+Page links have muted text, a stronger selected label, coral underline and
 aria-current. They retain ordinary link keyboard behavior, not a tab-widget
 model. Separator rows place identity/state together and metadata beneath. Empty
 and filtered-no-result states explain their actual situation.
