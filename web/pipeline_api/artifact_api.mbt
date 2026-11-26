@@ -74,7 +74,7 @@ async fn artifact_request_bytes(
       guard bytes.length() + chunk.length() <= limit else {
         raise PayloadTooLarge
       }
-      bytes.write_bytes(chunk)
+      bytes.write_bytesview(chunk)
     }
   })
   bytes.to_bytes()
