@@ -97,7 +97,7 @@ async fn normalize_config(config : @web.Config) -> @web.Config {
 ///|
 async fn report_startup_error(message : String) -> Unit {
   @stdio.stderr.write("moonhub: \{message}\n")
-  @sys.exit(1)
+  @env.exit(1)
 }
 
 ///|
@@ -148,7 +148,7 @@ async fn main {
       | "help"
       | "--version"
       | "-V",
-    ) => @sys.exit(@cli.execute(args[1:]))
+    ) => @env.exit(@cli.execute(args[1:]))
     Some("storage-check") => {
       let code = try {
         guard args.length() == 3 else {
@@ -173,7 +173,7 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
+      @env.exit(code)
     }
     Some("oidc-check") => {
       let code = try {
@@ -191,7 +191,7 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
+      @env.exit(code)
     }
     Some("runner") => {
       let code = run_runner_cli(args[2:]) catch {
@@ -204,7 +204,7 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
+      @env.exit(code)
     }
     Some("provider") => {
       let code = run_provider_cli(args[2:]) catch {
@@ -217,7 +217,7 @@ async fn main {
           2
         }
       }
-      @sys.exit(code)
+      @env.exit(code)
     }
     Some(
       "ssh-authorized-key"
@@ -258,7 +258,7 @@ async fn main {
           1
         }
       }
-      @sys.exit(if code < 0 { 128 - code } else { code })
+      @env.exit(if code < 0 { 128 - code } else { code })
     }
     _ => {
       @config.load_dotenv(".env")

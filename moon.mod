@@ -17,7 +17,7 @@ description = "MoonHub collaboration CLI for merge requests, issues and CI"
 
 import {
   "moonbitlang/async@0.22.9",
-  "moonbitlang/x@0.5.7",
+  "moonbitlang/x@0.5.9",
   "moonbitstack/moondb@0.2.8",
   "moonbitstack/moonsqlite@0.3.7",
   "moonbitlang/moonback@0.8.10",
