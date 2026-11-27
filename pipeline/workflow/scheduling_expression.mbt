@@ -365,7 +365,7 @@ fn ScheduleExpr::evaluate(
           @utf8.encode(text).length() <= max_source_bytes else {
           raise InvalidWorkflow("fromJSON requires a bounded string")
         }
-        let value = @json.parse(text, max_nesting_depth=32) catch {
+        let value = @json.parse(text) catch {
           _ => raise InvalidWorkflow("invalid fromJSON input")
         }
         validate_expression_json(value, 0, [0])

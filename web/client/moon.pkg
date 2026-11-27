@@ -9,8 +9,10 @@ import {
 
 supported_targets = "js"
 
+pkgtype(kind: "foreign_library")
+
 warnings = "-alert_experimental"
 
 options(
-  link: { "js": { "exports": [ "start" ], "format": "esm" } },
+  link: { "js": { "format": "esm" } },
 )

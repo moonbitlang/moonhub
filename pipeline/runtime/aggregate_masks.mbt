@@ -74,7 +74,7 @@ fn filter_aggregate_outputs(
       return Map([])
     }
     let group = masks.get(units).unwrap_or(Set([]))
-    group.add(row.get_name("digest"))
+    group.insert(row.get_name("digest"))
     masks[units] = group
   }
   let result : Map[String, String] = Map([])
