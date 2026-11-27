@@ -220,7 +220,12 @@ export class ActionRuntime {
       if (this.dispatchContext) await fs.writeFile(this.eventPath, this.eventSource, { flag: 'wx', mode: 0o600 });
       const code = await execute();
       const changes = parseFileCommands(await readBounded(files.ENV));
-      for (const key of Object.keys(changes)) if (!validEnvName(key)) throw new Error(`Reserved or unsafe action environment variable: ${key}`);
+      for (const [key, value] of Object.entries(changes)) {
+        // Gradle's setup action exports this flag even when dependency graph
+        // submission is disabled. It is independent of runner-owned context.
+        if (key === 'GITHUB_DEPENDENCY_GRAPH_ENABLED' && value === 'false') continue;
+        if (!validEnvName(key)) throw new Error(`Reserved or unsafe action environment variable: ${key}`);
+      }
       this.state.env = environment(this.state.env, changes);
       const paths = (await readBounded(files.PATH)).replaceAll('\r\n', '\n').split('\n').filter(Boolean);
       if (paths.some(item => !path.isAbsolute(item) || (windows ? /[\x00-\x1f\x7f;]/ : /[\x00-\x1f\x7f:]/).test(item))) throw new Error('Invalid GITHUB_PATH entry');

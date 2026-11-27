@@ -64,6 +64,10 @@ async function scenario(cancel, containerMode = '') {
   const script = [
     'test "$(id -u)" = 10001',
     'test "$(sudo -n id -u)" = 0',
+    'libraries="$(ldconfig -p)"',
+    'for library in libnspr4.so libnss3.so libnssutil3.so libsmime3.so libasound.so.2; do',
+    '  grep -Fq "$library " <<< "$libraries" || { echo "Missing shared library: $library" >&2; exit 1; }',
+    'done',
     'core_pattern="$(cat /proc/sys/kernel/core_pattern)"; sudo sysctl -w "kernel.core_pattern=$core_pattern" >/dev/null',
     'test ! -e /run/moonhub-runner/bootstrap.json',
     'sudo mkdir -p /usr/local/share/moonhub-probe',

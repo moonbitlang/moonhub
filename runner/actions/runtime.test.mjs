@@ -879,6 +879,20 @@ test('OIDC credentials reach scripts, composites and pre/main/post while reserve
   }
 });
 
+test('environment commands persist the disabled Gradle graph flag and protect GitHub context', async t => {
+  const {config} = await fixture(t);
+  const runtime = new ActionRuntime(config);
+  const uses = await action(config, 'gradle-graph-flag', 'runs: {using: node24, main: main.cjs}', {
+    'main.cjs': `require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'GITHUB_DEPENDENCY_GRAPH_ENABLED=false\\n');`,
+  });
+  assert.equal((await runtime.action(uses)).code, 0);
+  const later = new ActionRuntime(config, runtime.state);
+  assert.equal(later.environment().GITHUB_DEPENDENCY_GRAPH_ENABLED, 'false');
+  for (const command of ['GITHUB_DEPENDENCY_GRAPH_ENABLED=true', 'GITHUB_TOKEN=spoof', 'GITHUB_WORKSPACE=spoof']) {
+    await assert.rejects(later.script(`echo '${command}' >> "$GITHUB_ENV"`, 'bash'), /Reserved or unsafe/);
+  }
+});
+
 test('job API credential is host-bound, masked, scoped to one invocation and usable as github.token', async t => {
   const {config}=await fixture(t);
   const old=process.env.MOONHUB_ACTION_API_TOKEN;

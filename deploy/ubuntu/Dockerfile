@@ -78,8 +78,10 @@ ENTRYPOINT ["node", "scripts/openseek-tools-sdk-smoke.mjs"]
 # from that worker is mounted here; this daemon owns only this job's containers.
 FROM runner AS ci-runner
 USER root
+# Supply browser runtime libraries expected by desktop CI jobs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo docker.io iptables iproute2 gosu kmod \
+    libnspr4 libnss3 libasound2-dev \
     && rm -rf /var/lib/apt/lists/* \
     && printf 'runner ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/moonhub-ci \
     && chmod 440 /etc/sudoers.d/moonhub-ci
