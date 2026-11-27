@@ -1,0 +1,76 @@
+name: Development CI validation
+
+on:
+  pull_request:
+    branches: [codex/development-ci-validation-base]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-ci-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Development checks (${{ matrix.coverage }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      MOONHUB_RELEASE_GH: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        coverage: [core, expanded]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install and verify pinned MoonBit
+        run: |
+          pin=$(sed -n 's/^ARG MOONBIT_VERSION=//p' deploy/base.Dockerfile)
+          [[ -n "$pin" && "$pin" != *$'\n'* ]]
+          sh deploy/install-moonbit.sh "$pin"
+          actual=$("$HOME/.moon/bin/moonc" -v | awk '{print $1}')
+          test "$actual" = "v$pin"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Resolve MoonBit dependencies
+        run: |
+          moon update
+          node scripts/resolve-dependencies.cjs
+      - name: Check MoonBit, formatting, interfaces and package boundaries
+        run: |
+          sh .githooks/pre-commit
+          node scripts/check-package-boundaries.cjs
+      - name: Test Wasm CLI
+        run: |
+          moon build --target wasm --strip -j 1 --deny-warn cmd/moonhub
+          moon test --target wasm --strip -j 1 --deny-warn cli domain
+          node scripts/cli-wasm-smoke.cjs
+      - name: Build browser assets and check TypeScript
+        run: |
+          npm ci --prefix js --no-audit --no-fund
+          npm run build --prefix js
+          npm run check --prefix js
+      - name: Test core Linux packages
+        run: |
+          moon test --target native --strip -j 1 --deny-warn \
+            cli domain filelock repository pipeline/protocol pipeline/workflow \
+            runner/platform web/context web/views/auth
+      - name: Test CI and tooling scripts
+        run: |
+          node --test scripts/self-check-test.cjs scripts/pre-commit-hook-test.cjs \
+            scripts/resolve-dependencies-test.cjs scripts/github-ci-test.cjs \
+            scripts/linux-ci-smoke-test.cjs scripts/macos-guest-test.mjs scripts/ssh-entrypoint-test.cjs
+      - name: Test pipeline scheduling
+        if: matrix.coverage == 'expanded'
+        run: moon test --target native --strip -j 1 --deny-warn pipeline
+      - name: Test repository and pipeline Web routes
+        if: matrix.coverage == 'expanded'
+        run: moon test --target native --strip -j 1 --deny-warn web/views/repositories web/views/pipelines
+      - name: Test merge request Web routes
+        if: matrix.coverage == 'expanded'
+        run: moon test --target native --strip -j 1 --deny-warn web/views/merge_requests
