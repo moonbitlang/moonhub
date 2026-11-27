@@ -215,7 +215,7 @@ async function main() {
   assert.ok(requests.every(request => request.authorized));
   await cli(['auth', 'logout']);
   assert.ok(!fs.existsSync(credentials));
-  console.log('Wasm CLI smoke passed: help, auth, private credentials, UTF-8 requests, Git discovery and errors.');
+  console.log('Wasm CLI smoke passed: auth, repository provisioning, account SSH keys, Git discovery and errors.');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
