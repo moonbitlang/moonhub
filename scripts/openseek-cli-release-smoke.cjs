@@ -18,7 +18,7 @@ const sha = 'dbe424220ddf20a9a78312850a7d6d801c7b9831';
 const workflow = '.github/workflows/cli-release.yml';
 const repo = 'root/openseek';
 const api = '/-/api/v1/repos/' + repo;
-const job = 'build[1]';
+const jobKey = 'build[1]';
 const platform = 'linux-x64';
 const labels = ['self-hosted', 'linux', 'x64', 'ubuntu-22.04'];
 
@@ -134,7 +134,7 @@ async function main(source, image) {
     assert.ok(execute, 'missing disposable execute token');
     const otherUbuntu = register('ubuntu-2404-x64', ['self-hosted', 'linux', 'x64', 'ubuntu-24.04']);
     const run = await (await request(api + '/runs', {
-      token: execute, body: { branch: 'main', workflow, jobs: [job] },
+      token: execute, body: { branch: 'main', workflow, jobs: [jobKey] },
     })).json();
     assert.equal(run.commit_sha, sha);
     const db = new DatabaseSync(database, { readOnly: true });
@@ -142,7 +142,7 @@ async function main(source, image) {
       const snapshot = db.prepare('SELECT workflow_source, definition_json FROM pipeline_run').get();
       assert.equal(snapshot.workflow_source, original);
       const jobs = JSON.parse(snapshot.definition_json).jobs;
-      assert.deepEqual(jobs.map(row => [row.id, row.matrix.platform]), [[job, platform]]);
+      assert.deepEqual(jobs.map(row => [row.id, row.matrix.platform]), [[jobKey, platform]]);
       const updates = await (await request(`/${repo}/pipelines/${run.number}/updates`)).json();
       assert.equal(updates.jobs.length, 1);
       assert.equal(updates.jobs[0].reason,
@@ -152,7 +152,8 @@ async function main(source, image) {
       const ubuntu = register('ubuntu-2204-x64', labels);
       const { assignment, token } = await claim(ubuntu);
       assert.ok(assignment, 'Ubuntu 22.04 x64 provider did not get the selected job');
-      assert.equal(assignment.job.id, job);
+      assert.equal(assignment.job_id, updates.jobs[0].id);
+      assert.equal(assignment.job.id, 'build');
       assert.equal(assignment.job.matrix.platform, platform);
       assert.equal(assignment.commit_sha, sha);
       assert.deepEqual(assignment.job.runs_on, labels);
