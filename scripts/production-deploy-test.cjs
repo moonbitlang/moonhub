@@ -182,7 +182,13 @@ else if(a[0]==='buildx' && a[1]==='bake'){
   fs.writeFileSync(path.join(root,'bin/df'),`#!/bin/sh
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted\nfixture 90000000 0 90000000 0%% /\n'
 `,{mode:0o755});
-  const runBuild = fail => spawnSync('bash',['deploy/production.sh','build'],{cwd:fixture,encoding:'utf8',env:{...process.env,PATH:path.join(root,'bin')+':'+process.env.PATH,TEST_LOG:log,TEST_BUILT:marker,TEST_REVISION:revision,TEST_BUILD_FAIL:fail?'1':'0',MOONHUB_PRODUCTION_LOCK_DIR:path.join(root,'lock')}});
+  const productionLock = path.join(root, 'lock');
+  const buildOptions = {cwd:fixture,encoding:'utf8',env:{...process.env,PATH:path.join(root,'bin')+':'+process.env.PATH,TEST_LOG:log,TEST_BUILT:marker,TEST_REVISION:revision,MOONHUB_PRODUCTION_LOCK_DIR:productionLock}};
+  const lockedBuild = spawnSync('flock', [productionLock, 'bash', 'deploy/production.sh', 'build'], buildOptions);
+  assert.notEqual(lockedBuild.status, 0);
+  assert.match(lockedBuild.stderr, /Another production operation is running/);
+  assert.equal(fs.existsSync(log), false, 'locked build invoked Docker');
+  const runBuild = fail => spawnSync('bash', ['deploy/production.sh', 'build'], {...buildOptions, env:{...buildOptions.env,TEST_BUILD_FAIL:fail?'1':'0'}});
   let built=runBuild(true);assert.notEqual(built.status,0,built.stdout);
   let calls=fs.readFileSync(log,'utf8').trim().split(String.fromCharCode(10)).map(JSON.parse);
   assert.ok(calls.some(a=>a[0]==='stop'),'failed build left builder running');

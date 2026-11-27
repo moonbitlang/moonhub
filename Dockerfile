@@ -16,8 +16,10 @@ RUN --network=none npm run build
 FROM base AS build
 COPY . .
 COPY --from=assets /src/assets/ /src/assets/
+# Use Clang for large MoonBit-generated C translation units in release builds.
 RUN --network=none mkdir -p /out && cc -std=c11 -O2 -Wall -Wextra -Werror runner/step-launcher.c -o /out/moonhub-runner-step \
-    && moon build --target native --release --deny-warn -j 1
+    && MOON_CC=clang moon build --target native --release --deny-warn -j 1 \
+       . cmd/moonhub-runner cmd/moonhub-diff-worker
 
 # Offline Linux runtime checks use the same dependency base as the runner.
 FROM base AS action-runtime-check
