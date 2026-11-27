@@ -5,7 +5,6 @@ import {
   "hackwaly/moonhub/runner/cli" @runner_cli,
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
-  "moonbitlang/async",
   "moonbitlang/async/signal",
   "moonbitlang/async/stdio",
   "moonbitlang/x/sys",

@@ -8,7 +8,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 assert.equal(process.platform, 'win32');
 const image = process.argv[2] || 'moonhub:runner-windows';
 const version = fs.readFileSync('deploy/base.Dockerfile', 'utf8')
-  .match(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)$/m)?.[1];
+  .match(/^ARG MOONBIT_VERSION=(\d+\.\d+\.\d+(?:-[a-zA-Z0-9]+(?:[.-][a-zA-Z0-9]+)*)?\+[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)$/m)?.[1];
 assert.ok(version, 'Missing production MoonBit pin');
 const name = 'moonhub-moonbit-runtime-' + crypto.randomBytes(6).toString('hex');
 const docker = ['--host', 'npipe:////./pipe/docker_engine'];

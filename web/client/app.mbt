@@ -25,6 +25,7 @@ fn page_subscription(emit : @rabbita.Emit[(@spa.Page, Int32)]) -> @sub.Sub {
 }
 
 ///|
+#export_name("start")
 pub fn start(json : String) -> Unit raise {
   let initial : @spa.Page = @json.from_json(@json.parse(json))
   let app = @rabbita.new(() => {

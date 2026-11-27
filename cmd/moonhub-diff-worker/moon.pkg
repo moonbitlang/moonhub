@@ -1,7 +1,6 @@
 import {
   "hackwaly/moonhub/diff/protocol",
   "hackwaly/moonhub/diff/compute",
-  "moonbitlang/async",
   "moonbitlang/async/stdio",
   "moonbitlang/core/json",
   "moonbitlang/core/encoding/utf8",
