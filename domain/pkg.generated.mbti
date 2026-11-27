@@ -12,6 +12,8 @@ pub let merge_error_message : String
 
 pub fn normalize_email(String) -> String
 
+pub fn parse_repo_name(StringView) -> RepoId raise
+
 pub fn parse_transport_repo(String) -> RepoId raise
 
 pub fn public_merge_block_reason(String) -> String

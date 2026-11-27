@@ -135,10 +135,7 @@ test "repository inference matches only the configured server and terminal outpu
     ),
     Some("compiler/docs.git"),
   )
-  assert_eq(
-    parse_cli_repo("compiler/docs.git", literal=true).path(),
-    "compiler/docs.git",
-  )
+  assert_eq(parse_cli_repo("compiler/docs.git").path(), "compiler/docs.git")
   assert_eq(terminal_text("before\u{001b}[31m\nafter"), "before [31m after")
 }
 

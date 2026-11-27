@@ -16,6 +16,8 @@ pub fn active_user_by_name(@database.Database, String) -> @domain.CurrentUser ra
 
 pub fn authenticate_access_token(@database.Database, String, String) -> @domain.CurrentUser raise
 
+pub fn authenticate_access_token_tx(@database.DbTransaction, String, String) -> @domain.CurrentUser raise
+
 pub fn authenticate_user(@database.Database, String, String) -> LoginResult? raise
 
 pub fn can_manage_team(@database.Database, @domain.CurrentUser, Int64) -> Bool raise

@@ -112,6 +112,7 @@ pub async fn enqueue_repository(
   visibility : String,
   source_url : String,
   addresses~ : SshAddressConfig = no_ssh_address_config,
+  write_token? : String,
 ) -> @domain.RepoId {
   require_repository_manager(pool, actor, team)
   let repo = @domain.parse_transport_repo("\{team.name_key}/\{name}")
@@ -132,33 +133,46 @@ pub async fn enqueue_repository(
     raise @domain.BadRequest(message="repository directory already exists")
   }
   pool.with_client(client => {
-    client.with_transaction(tx => {
-      let row = tx.query_opt(
-        (
-          #|INSERT INTO repository (team_id, name, visibility, ready)
-          #|VALUES (?, ?, ?, 0) ON CONFLICT (team_id, name) DO NOTHING RETURNING id
-        ),
-        params=[team.id, repo.name, visibility],
-      )
-      guard row is Some(row) else {
-        raise @domain.BadRequest(message="repository name is already taken")
-      }
-      let id : Int64 = row.get_name("id")
-      match source {
-        Some({ local_id: Some(source_id), .. }) => {
-          let _ = tx.execute(
-            "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind, source_repository_id) VALUES (?, ?, ?, 'local', ?)",
-            params=[id, actor.id, source_url, source_id],
+    client.with_transaction(
+      tx => {
+        // Serialize this final check with token revocation and the job insert.
+        if write_token is Some(token) {
+          let current = @identity.authenticate_access_token_tx(
+            tx, token, "write",
           )
+          guard current.id == actor.id else {
+            raise @domain.Forbidden(message="repository requester has changed")
+          }
+          require_repository_manager(pool, current, team)
         }
-        _ => {
-          let _ = tx.execute(
-            "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind) VALUES (?, ?, ?, 'external')",
-            params=[id, actor.id, source_url],
-          )
+        let row = tx.query_opt(
+          (
+            #|INSERT INTO repository (team_id, name, visibility, ready)
+            #|VALUES (?, ?, ?, 0) ON CONFLICT (team_id, name) DO NOTHING RETURNING id
+          ),
+          params=[team.id, repo.name, visibility],
+        )
+        guard row is Some(row) else {
+          raise @domain.BadRequest(message="repository name is already taken")
         }
-      }
-    })
+        let id : Int64 = row.get_name("id")
+        match source {
+          Some({ local_id: Some(source_id), .. }) => {
+            let _ = tx.execute(
+              "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind, source_repository_id) VALUES (?, ?, ?, 'local', ?)",
+              params=[id, actor.id, source_url, source_id],
+            )
+          }
+          _ => {
+            let _ = tx.execute(
+              "INSERT INTO repository_job (repository_id, requested_by_user_id, source_url, source_kind) VALUES (?, ?, ?, 'external')",
+              params=[id, actor.id, source_url],
+            )
+          }
+        }
+      },
+      immediate=write_token is Some(_),
+    )
   })
   repo
 }

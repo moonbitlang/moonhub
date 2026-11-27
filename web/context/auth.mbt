@@ -1,4 +1,16 @@
 ///|
+pub fn bearer_access_token(req : @moonback.Request) -> String raise {
+  let values = req.headers.get_all("authorization")
+  guard values.length() == 1 &&
+    values[0].length() <= 80 &&
+    values[0].split_once(" ") is Some((scheme, token)) &&
+    scheme.to_lower() == "bearer" else {
+    raise @domain.Unauthorized(message="bearer access token required")
+  }
+  token.to_owned()
+}
+
+///|
 pub let session_cookie_name : String = "moonhub_session"
 
 ///|

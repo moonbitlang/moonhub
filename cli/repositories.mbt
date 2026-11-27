@@ -20,7 +20,7 @@ async fn run_repository(
     raise Invalid("repo create requires OWNER/NAME or --repo OWNER/NAME")
   }
   let repo = match explicit {
-    Some(name) => parse_cli_repo(name, literal=true)
+    Some(name) => parse_cli_repo(name, label="repository")
     None => discover_repo(server)
   }
   let path = "/repos/" + repo.path()

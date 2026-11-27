@@ -490,6 +490,7 @@ async fn invoke_tool(
   actor : @domain.CurrentUser,
   name : String,
   args : Map[String, Json],
+  token~ : String,
 ) -> Json {
   match name {
     "moonhub_get_user" =>
@@ -523,6 +524,7 @@ async fn invoke_tool(
           tool_repo(args),
           string_arg(args, "visibility", fallback="private"),
           addresses,
+          write_token=token,
         ),
       )
     "moonhub_list_inbox" => {

@@ -271,7 +271,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         @ssh.record_ref_transaction(
           pool,
           @ssh.SshCredential::parse(cli_value(options, "id")),
-          @domain.parse_transport_repo(cli_value(options, "repository")),
+          @domain.parse_repo_name(cli_value(options, "repository")),
           cli_value(options, "push-id"),
           cli_value(options, "phase"),
         )
@@ -279,7 +279,7 @@ async fn run_management_cli(args : ArrayView[String]) -> Int32 {
         @ssh.check_received_refs(
           pool,
           @ssh.SshCredential::parse(cli_value(options, "id")),
-          @domain.parse_transport_repo(cli_value(options, "repository")),
+          @domain.parse_repo_name(cli_value(options, "repository")),
         )
       "ssh-key-add" => {
         let user = @identity.active_user_by_name(

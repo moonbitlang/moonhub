@@ -25,7 +25,7 @@ pub async fn job_git_hook(
     data.push_iter(chunk.iter())
   }
   let updates = @utf8.decode(Bytes::from_array(data))
-  let repo = @domain.parse_transport_repo(repository)
+  let repo = @domain.parse_repo_name(repository)
   let actor = @runtime.Coordinator::new(pool).authenticate_job_api(
     token, repo, "git:write",
   )

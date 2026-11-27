@@ -65,7 +65,10 @@ const server = http.createServer(async (request, response) => {
   } else if (request.url === '/-/api/v1/user/ssh-keys/12/revoke' && request.method === 'POST') {
     revokedAt = '2026-11-27 00:00:00';
     response.end(JSON.stringify({ id: '12', revoked: true }));
-  } else if (request.url === '/-/api/v1/repos/fixture/demo/issues' && request.method === 'POST') {
+  } else if (request.method === 'POST' && [
+    '/-/api/v1/repos/fixture/demo/issues',
+    '/-/api/v1/repos/fixture/docs.git/issues',
+  ].includes(request.url)) {
     response.end(JSON.stringify({ number: '1' }));
   } else if (request.url.startsWith('/-/api/v1/repos/fixture/demo/issues?')) {
     response.end(JSON.stringify({ items: [{ number: '1', title: 'Wasm CLI', status: 'open' }] }));
@@ -166,6 +169,10 @@ async function main() {
   const created = requests.at(-1);
   assert.equal(created.method, 'POST');
   assert.equal(JSON.parse(created.body).description, fs.readFileSync(bodyFile, 'utf8'));
+  await cli(['issue', 'create', '--repo', 'fixture/docs.git', '--title', 'Literal path', ...connection]);
+  assert.equal(requests.at(-1).url, '/-/api/v1/repos/fixture/docs.git/issues');
+  await cli(['issue', 'create', '--title', 'Literal environment path', ...connection], 0, { MOONHUB_REPOSITORY: 'fixture/docs.git' });
+  assert.equal(requests.at(-1).url, '/-/api/v1/repos/fixture/docs.git/issues');
   execFileSync('git', ['init', '-q', temp]);
   execFileSync('git', ['-C', temp, 'remote', 'add', 'origin', base + '/fixture/demo.git']);
   const beforeCreate = requests.length;
