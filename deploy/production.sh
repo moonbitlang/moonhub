@@ -48,11 +48,13 @@ cleanup() {
     result=1
   fi
   if [ "$RESTART_CONTROLLER" = 1 ]; then systemctl start "$SERVICE" || result=1; fi
-  rmdir "$LOCK" 2>/dev/null || true
   return "$result"
 }
-LOCK=${MOONHUB_PRODUCTION_LOCK_DIR:-/tmp/$PROJECT-production.lock}
-mkdir "$LOCK" 2>/dev/null || { printf 'Another production operation is running: %s\n' "$LOCK" >&2; exit 1; }
+LOCK=${MOONHUB_PRODUCTION_LOCK_DIR:-/run/lock/$PROJECT-production.lock}
+# Preserve the lock inode so all processes arbitrate on the same file. The
+# kernel releases the lock even when a timed-out operation cannot run traps.
+exec 8>>"$LOCK"
+flock -n 8 || { printf 'Another production operation is running: %s\n' "$LOCK" >&2; exit 1; }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
