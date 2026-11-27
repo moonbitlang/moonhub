@@ -1,4 +1,4 @@
 ///|
 async fn main {
-  @sys.exit(@cli.execute(@env.args()[1:]))
+  @env.exit(@cli.execute(@env.args()[1:]))
 }

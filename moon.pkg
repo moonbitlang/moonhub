@@ -19,7 +19,6 @@ import {
   "hackwaly/moonhub/ssh",
   "moonbitlang/async/stdio",
   "moonbitlang/core/string",
-  "moonbitlang/x/sys",
   "hackwaly/moonhub/web",
   "hackwaly/moonhub/runner",
   "hackwaly/moonhub/runner/cli" @runner_cli,
