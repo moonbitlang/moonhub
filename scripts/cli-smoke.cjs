@@ -18,7 +18,10 @@ const password = randomBytes(24).toString('hex');
 const env = {
   ...process.env,
   DB_PATH: database,
+  MOONHUB_REPO_ROOT: path.join(temp, 'repos'),
   MAIL_OUTBOX_DIR: path.join(temp, 'mail'),
+  MOONHUB_DIFF_WORKER: process.env.MOONHUB_DIFF_WORKER ||
+    path.join(root, '_build/native/debug/build/cmd/moonhub-diff-worker/moonhub-diff-worker.exe'),
   MOONHUB_SSH_PUBLIC_URL: 'ssh://git@127.0.0.1:2222',
 };
 let server, browser;
@@ -156,8 +159,9 @@ async function main() {
     ...env,
     GIT_SSH: transport,
     GIT_SSH_VARIANT: 'ssh',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
     MOONHUB_BIN: binary,
-    MOONHUB_REPO_ROOT: path.join(temp, 'repos'),
     MOONHUB_HOOKS_PATH: hooks,
     MOONHUB_TEST_KEY_ID: added.id,
   };
