@@ -106,89 +106,10 @@ async function main() {
   assert.equal(fs.statSync(path.join(temp, 'home/.config/moonhub/auth.json')).mode & 0o777, 0o600);
   const saved = execFileSync(binary, ['auth', 'status', '--allow-http', '--json'], { cwd: temp, env: cliEnv, encoding: 'utf8' });
   assert.equal(JSON.parse(saved).username, 'root');
-  // Exercise account keys, repository provisioning, Git push and MR creation.
-  function accountCli(args, token = write, expected = 0) {
-    const result = spawnSync(binary, [
-      ...args, '--server', base, '--allow-http', '--token-file', token,
-    ], { cwd: temp, env: cliEnv, encoding: 'utf8', timeout: 65000 });
-    assert.ifError(result.error);
-    const secret = fs.readFileSync(token, 'utf8');
-    assert.ok(!result.stdout.includes(secret) && !result.stderr.includes(secret), 'CLI exposed a token');
-    assert.equal(result.status, expected, result.stdout + result.stderr);
-    return result.stdout;
+  if (process.argv.includes('--repository-only')) {
+    await repositoryAcceptance(base, cliEnv, write, tokenFile);
+    return;
   }
-  const reader = await tokenFile('read', 'reader');
-  const sshToken = await tokenFile('ssh', 'ssh');
-  const keyFile = path.join(temp, 'cli-key');
-  execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyFile]);
-  accountCli(['ssh-key', 'add', '--title', 'CLI smoke', '--key-file', keyFile], sshToken, 2);
-  accountCli(['ssh-key', 'list', '--json'], write, 1);
-  const added = JSON.parse(accountCli([
-    'ssh-key', 'add', '--title', 'CLI smoke', '--key-file', keyFile + '.pub', '--json',
-  ], sshToken));
-  const listed = JSON.parse(accountCli(['ssh-key', 'list', '--json'], sshToken));
-  assert.ok(listed.items.some(key => key.id === added.id && key.revoked_at === null));
-  accountCli(['repo', 'create', 'root/cli-created'], reader, 1);
-  const createdJson = JSON.parse(accountCli([
-    'repo', 'create', 'root/cli-created', '--visibility', 'public', '--json',
-  ]));
-  assert.equal(createdJson.full_name, 'root/cli-created');
-  assert.equal(createdJson.visibility, 'public');
-  assert.equal(createdJson.state, 'ready');
-  assert.equal(createdJson.default_branch, 'main');
-  assert.equal(createdJson.clone_url, 'ssh://git@127.0.0.1:2222/root/cli-created.git');
-  assert.ok(fs.existsSync(path.join(temp, 'repos/root/cli-created.git/HEAD')));
-  assert.match(accountCli(['repo', 'view', '--repo', 'root/cli-created']), /^root\/cli-created\tpublic\tready$/m);
-  accountCli(['repo', 'create', '--repo', 'root/cli-created'], write, 1);
-
-  // Route Git's SSH command to the local server entry point and production hooks.
-  const transport = path.join(temp, 'ssh');
-  const hooks = path.join(temp, 'hooks');
-  fs.mkdirSync(hooks);
-  for (const name of ['pre-receive', 'reference-transaction']) {
-    const target = path.join(hooks, name);
-    fs.copyFileSync(path.join(root, 'deploy/hooks', name), target);
-    fs.chmodSync(target, 0o755);
-  }
-  fs.writeFileSync(transport,
-    '#!/bin/sh\nfor arg do SSH_ORIGINAL_COMMAND=$arg; done\nexport SSH_ORIGINAL_COMMAND\nexec "$MOONHUB_BIN" ssh-serve "$MOONHUB_TEST_KEY_ID"\n',
-    { mode: 0o700 });
-  const repoCheckout = path.join(temp, 'source');
-  fs.mkdirSync(repoCheckout);
-  const pushEnv = {
-    ...env,
-    GIT_SSH: transport,
-    GIT_SSH_VARIANT: 'ssh',
-    GIT_CONFIG_GLOBAL: '/dev/null',
-    GIT_CONFIG_NOSYSTEM: '1',
-    MOONHUB_BIN: binary,
-    MOONHUB_HOOKS_PATH: hooks,
-    MOONHUB_TEST_KEY_ID: added.id,
-  };
-  delete pushEnv.GIT_SSH_COMMAND;
-  const gitInNewRepo = args => execFileSync('git', [
-    '-c', 'user.name=CLI smoke', '-c', 'user.email=cli@example.invalid', ...args,
-  ], { cwd: repoCheckout, env: pushEnv, stdio: 'pipe', timeout: 30000 });
-  gitInNewRepo(['init', '-q', '-b', 'main']);
-  gitInNewRepo(['commit', '-qm', 'Base', '--allow-empty']);
-  gitInNewRepo(['switch', '-qc', 'feature']);
-  fs.writeFileSync(path.join(repoCheckout, 'README.md'), 'First feature\n');
-  gitInNewRepo(['add', 'README.md']);
-  gitInNewRepo(['commit', '-qm', 'Feature']);
-  gitInNewRepo(['push', '-q', createdJson.clone_url, 'main', 'feature']);
-  const createdMr = JSON.parse(accountCli([
-    'mr', 'create', '--repo', createdJson.full_name, '--source', 'feature', '--target', 'main',
-    '--title', 'First feature', '--json',
-  ]));
-  assert.equal(createdMr.number, '1');
-  assert.equal(createdMr.target, 'main');
-  assert.equal(JSON.parse(accountCli(['ssh-key', 'delete', added.id, '--json'], sshToken)).revoked, true);
-  const revokedKey = spawnSync('git', ['ls-remote', createdJson.clone_url],
-    { cwd: repoCheckout, env: pushEnv, stdio: 'pipe', timeout: 30000 });
-  assert.ifError(revokedKey.error);
-  assert.notEqual(revokedKey.status, 0, 'a revoked key still authenticates');
-  console.log('CLI repository and SSH key acceptance passed.');
-  if (process.argv.includes('--repository-only')) return;
   const body = path.join(temp, 'body.md');
   fs.writeFileSync(body, 'Review this CLI workflow.\nSecond line.');
   const issue = cli(['issue', 'create', '--title', 'Track CLI', '--body-file', body, '--assignee', '1']);
@@ -740,6 +661,91 @@ async function main() {
   fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({ status: 'passed', cases: ['token UI create/revoke and form preservation', 'login replacement corrupt-state recovery empty-XDG fallback and private storage', 'MR create/view/partial edit/clear/stale rejection/request/review/merge', 'MR target edit serialization, stale rejection, history and no-op', 'MR discussion CLI reply/resolve/reopen/filter/stale state and delete compatibility', 'browser replies, separate drafts, resolve/reopen, deletion, mobile layout and no-script forms', 'Issue partial edit explicit field clearing comment/close', 'Inbox read', 'CI run/view/cancel/rerun', 'real HTTP deadline and transport exit code', 'desktop/mobile token settings', 'bounded multibyte discussion previews and complete detail', 'old-thread notification links and page-two delete/restore anchors', 'per-commit MR CLI diff, in-context navigation, selection, history, historical versions, desktop/mobile and no-script forms', 'nullable string commit SHA, annotated tag rejection, bounded large commit metadata and small diff access', 'inline CLI anchors, gutter and range editors, fixed draft anchors across cancel/reload/collapse, complete in-diff reply/resolve/reopen, desktop/mobile layout and no-script ranges'], secretsPrinted: false }, null, 2));
   console.log('Collaboration CLI acceptance passed.');
 }
+async function repositoryAcceptance(base, cliEnv, write, tokenFile) {
+  // Exercise account keys, repository provisioning, Git push and MR creation.
+  function accountCli(args, token = write, expected = 0) {
+    const result = spawnSync(binary, [
+      ...args, '--server', base, '--allow-http', '--token-file', token,
+    ], { cwd: temp, env: cliEnv, encoding: 'utf8', timeout: 65000 });
+    assert.ifError(result.error);
+    const secret = fs.readFileSync(token, 'utf8');
+    assert.ok(!result.stdout.includes(secret) && !result.stderr.includes(secret), 'CLI exposed a token');
+    assert.equal(result.status, expected, result.stdout + result.stderr);
+    return result.stdout;
+  }
+  const reader = await tokenFile('read', 'reader');
+  const sshToken = await tokenFile('ssh', 'ssh');
+  const keyFile = path.join(temp, 'cli-key');
+  execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyFile]);
+  accountCli(['ssh-key', 'add', '--title', 'CLI smoke', '--key-file', keyFile], sshToken, 2);
+  accountCli(['ssh-key', 'list', '--json'], write, 1);
+  const added = JSON.parse(accountCli([
+    'ssh-key', 'add', '--title', 'CLI smoke', '--key-file', keyFile + '.pub', '--json',
+  ], sshToken));
+  const listed = JSON.parse(accountCli(['ssh-key', 'list', '--json'], sshToken));
+  assert.ok(listed.items.some(key => key.id === added.id && key.revoked_at === null));
+  accountCli(['repo', 'create', 'root/cli-created'], reader, 1);
+  const createdJson = JSON.parse(accountCli([
+    'repo', 'create', 'root/cli-created', '--visibility', 'public', '--json',
+  ]));
+  assert.equal(createdJson.full_name, 'root/cli-created');
+  assert.equal(createdJson.visibility, 'public');
+  assert.equal(createdJson.state, 'ready');
+  assert.equal(createdJson.default_branch, 'main');
+  assert.equal(createdJson.clone_url, 'ssh://git@127.0.0.1:2222/root/cli-created.git');
+  assert.ok(fs.existsSync(path.join(temp, 'repos/root/cli-created.git/HEAD')));
+  assert.match(accountCli(['repo', 'view', '--repo', 'root/cli-created']), /^root\/cli-created\tpublic\tready$/m);
+  accountCli(['repo', 'create', '--repo', 'root/cli-created'], write, 1);
+
+  // Route Git's SSH command to the local server entry point and production hooks.
+  const transport = path.join(temp, 'ssh');
+  const hooks = path.join(temp, 'hooks');
+  fs.mkdirSync(hooks);
+  for (const name of ['pre-receive', 'reference-transaction']) {
+    const target = path.join(hooks, name);
+    fs.copyFileSync(path.join(root, 'deploy/hooks', name), target);
+    fs.chmodSync(target, 0o755);
+  }
+  fs.writeFileSync(transport,
+    '#!/bin/sh\nfor arg do SSH_ORIGINAL_COMMAND=$arg; done\nexport SSH_ORIGINAL_COMMAND\nexec "$MOONHUB_BIN" ssh-serve "$MOONHUB_TEST_KEY_ID"\n',
+    { mode: 0o700 });
+  const repoCheckout = path.join(temp, 'source');
+  fs.mkdirSync(repoCheckout);
+  const pushEnv = {
+    ...env,
+    GIT_SSH: transport,
+    GIT_SSH_VARIANT: 'ssh',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    MOONHUB_BIN: binary,
+    MOONHUB_HOOKS_PATH: hooks,
+    MOONHUB_TEST_KEY_ID: added.id,
+  };
+  delete pushEnv.GIT_SSH_COMMAND;
+  const gitInNewRepo = args => execFileSync('git', [
+    '-c', 'user.name=CLI smoke', '-c', 'user.email=cli@example.invalid', ...args,
+  ], { cwd: repoCheckout, env: pushEnv, stdio: 'pipe', timeout: 30000 });
+  gitInNewRepo(['init', '-q', '-b', 'main']);
+  gitInNewRepo(['commit', '-qm', 'Base', '--allow-empty']);
+  gitInNewRepo(['switch', '-qc', 'feature']);
+  fs.writeFileSync(path.join(repoCheckout, 'README.md'), 'First feature\n');
+  gitInNewRepo(['add', 'README.md']);
+  gitInNewRepo(['commit', '-qm', 'Feature']);
+  gitInNewRepo(['push', '-q', createdJson.clone_url, 'main', 'feature']);
+  const createdMr = JSON.parse(accountCli([
+    'mr', 'create', '--repo', createdJson.full_name, '--source', 'feature', '--target', 'main',
+    '--title', 'First feature', '--json',
+  ]));
+  assert.equal(createdMr.number, '1');
+  assert.equal(createdMr.target, 'main');
+  assert.equal(JSON.parse(accountCli(['ssh-key', 'delete', added.id, '--json'], sshToken)).revoked, true);
+  const revokedKey = spawnSync('git', ['ls-remote', createdJson.clone_url],
+    { cwd: repoCheckout, env: pushEnv, stdio: 'pipe', timeout: 30000 });
+  assert.ifError(revokedKey.error);
+  assert.notEqual(revokedKey.status, 0, 'a revoked key still authenticates');
+  console.log('CLI repository and SSH key acceptance passed.');
+}
+
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close();
   if (server && server.exitCode === null) {
