@@ -1,0 +1,50 @@
+name: Production deployment
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify release CI
+    if: github.repository == 'moonbitlang/moonhub' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require a commit from development
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...development" --jq .status)
+          test "$status" = ahead || test "$status" = identical
+      - name: Require successful release CI for this SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          runs=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$GITHUB_SHA" -f event=push -f status=success -F per_page=100 \
+            --jq '.workflow_runs[] | select(.head_branch | startswith("codex/release/")) | .id')
+          for run in $runs; do
+            checks=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" \
+              --jq '.jobs[] | select(.name == "CI required" and .conclusion == "success") | .name')
+            if [ "$checks" = "CI required" ]; then
+              exit 0
+            fi
+          done
+          echo "::error::No successful release CI found for $GITHUB_SHA"
+          exit 1
+
+  deploy:
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml

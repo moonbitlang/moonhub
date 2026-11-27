@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
@@ -8,6 +9,8 @@ const { test } = require('node:test');
 const root = path.resolve(__dirname, '..');
 const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
 const deploy = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+const development = fs.readFileSync(path.join(root, '.github/workflows/development.yml'), 'utf8');
+const production = fs.readFileSync(path.join(root, '.github/workflows/production-deploy.yml'), 'utf8');
 const results = ['success', 'failure', 'cancelled', 'skipped'];
 
 test('the actual aggregate gate rejects every non-success combination', () => {
@@ -44,30 +47,63 @@ test('additional checks run alongside the standard jobs on the calling commit', 
   assert.doesNotMatch(workflow, /secrets: inherit|id-token: write/);
 });
 
-test('deployment conditions restrict event, repository, branch and completed CI', () => {
-  // These expressions use the same boolean operators and string equality in
-  // GitHub and JavaScript. Execute the conditions from the workflows themselves.
-  const caller = ci.match(/  deploy:\n[\s\S]*?if: >-\n\s+\$\{\{ ([\s\S]*?) \}\}/)?.[1];
-  const callee = deploy.match(/if: >-\n\s+\$\{\{ ([\s\S]*?) \}\}/)?.[1];
-  assert.ok(caller); assert.ok(callee);
-  for (const event of ['pull_request', 'pull_request_target', 'push', 'workflow_dispatch', 'workflow_run']) {
-    for (const ref of ['refs/heads/master', 'refs/heads/topic', 'refs/pull/1/merge', 'refs/tags/master']) {
+test('only production pushes or manual retries can deploy after release verification', () => {
+  const eligibility = deploy.match(/if: >-\n\s+\${\{ ([\s\S]*?) \}\}/)?.[1];
+  assert.ok(eligibility);
+  for (const event of ['pull_request', 'push', 'workflow_dispatch', 'workflow_run']) {
+    for (const ref of ['refs/heads/master', 'refs/heads/development', 'refs/heads/production', 'refs/tags/production']) {
       for (const repository of ['moonbitlang/moonhub', 'other/moonhub']) {
-        for (const requested of [false, true]) for (const result of results) {
-          const context = { github: { event_name: event, ref, repository }, inputs: { deploy: requested }, needs: { required: { result } } };
-          const eligible = repository === 'moonbitlang/moonhub' && ref === 'refs/heads/master' &&
-            (event === 'push' || (event === 'workflow_dispatch' && requested));
-          assert.equal(vm.runInNewContext(caller, context), eligible && result === 'success');
-          assert.equal(vm.runInNewContext(callee, context), eligible);
-        }
+        const eligible = repository === 'moonbitlang/moonhub' && ref === 'refs/heads/production' &&
+          (event === 'push' || event === 'workflow_dispatch');
+        assert.equal(vm.runInNewContext(eligibility, { github: { event_name: event, ref, repository } }), eligible);
       }
     }
   }
-  assert.match(ci, /    needs: required/);
-  assert.match(ci, /    uses: \.\/\.github\/workflows\/deploy.yml/);
+  assert.match(production, /on:\n  push:\n    branches: \[production\]\n  workflow_dispatch:/);
+  assert.match(production, /  deploy:\n    needs: verify/);
+  assert.match(production, /    uses: \.\/\.github\/workflows\/deploy.yml/);
+  assert.match(ci, /on:\n  push:\n    branches: \['codex\/release\/\*\*'\]/);
+  assert.match(ci, /Require a commit from development[\s\S]*compare\/\$GITHUB_SHA\.\.\.development/);
+  assert.doesNotMatch(ci, /id-token: write|uses: .*deploy\.yml/);
   assert.match(deploy, /on:\n  workflow_call:/);
   assert.doesNotMatch(deploy, /^  (push|pull_request|workflow_dispatch):/m);
-  assert.doesNotMatch(deploy, /^\s+ref:/m, 'deployment must check out the calling CI commit');
+  assert.doesNotMatch(deploy, /^\s+ref:/m, 'deployment must check out the production push commit');
+});
+
+test('production verifies the exact SHA through successful CI runs and a successful gate job', () => {
+  const script = production.match(/      - name: Require successful release CI for this SHA[\s\S]*?        run: \|\n((?:          .+\n)+)/)?.[1];
+  assert.ok(script);
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'moonhub-release-ci-'));
+  try {
+    fs.writeFileSync(path.join(fixture, 'gh'), `#!/bin/sh
+case "$*" in
+  *actions/workflows/ci.yml/runs*)
+    case "$*" in
+      *"head_sha=$GITHUB_SHA"*"event=push"*"status=success"*'startswith("codex/release/")'*)
+        [ "$PROBE" != api-error ] || exit 1
+        [ "$PROBE" = empty ] || echo 123
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  *actions/runs/123/jobs*'name == "CI required" and .conclusion == "success"'*)
+    [ "$PROBE" != success ] || echo "CI required"
+    ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
+    for (const probe of ['success', 'empty', 'failed-job', 'api-error']) {
+      const { status } = spawnSync('bash', ['-c', script], {
+        env: {
+          ...process.env, PATH: fixture + ':' + process.env.PATH, PROBE: probe,
+          GITHUB_REPOSITORY: 'moonbitlang/moonhub', GITHUB_SHA: 'a'.repeat(40),
+        },
+      });
+      assert.equal(status === 0, probe === 'success', probe);
+    }
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
 });
 
 test('CI pin readers accept archived prereleases and reject unpinned versions', () => {
@@ -125,9 +161,12 @@ test('compiler verification rejects a successful install of the wrong version', 
   }
 });
 
-test('PR cancellation and production serialization have independent scopes', () => {
-  assert.match(ci, /group: ci-\$\{\{ github.event.pull_request.number \|\| github.run_id \}\}/);
-  assert.match(ci, /cancel-in-progress: \$\{\{ github.event_name == 'pull_request' \}\}/);
+test('development PR cancellation and production serialization have independent scopes', () => {
+  assert.match(development, /pull_request:\n    branches: \[development\]/);
+  assert.match(development, /name: Development required/);
+  assert.match(development, /group: development-ci-\$\{\{ github.event.pull_request.number \}\}\n  cancel-in-progress: true/);
+  assert.doesNotMatch(development, /^    paths/mi, 'required development check must always run');
+  assert.doesNotMatch(development, /id-token: write|uses: .*deploy\.yml/);
   assert.match(deploy, /group: moonhub-production\n      cancel-in-progress: false/);
   assert.match(deploy, /environment: production/);
 });

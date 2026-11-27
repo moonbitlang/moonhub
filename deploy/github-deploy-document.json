@@ -1,10 +1,10 @@
 {
   "schemaVersion": "2.2",
-  "description": "Deploy a mirrored MoonHub master commit from GitHub",
+  "description": "Deploy a checked MoonHub production commit from GitHub",
   "parameters": {
     "Revision": {
       "type": "String",
-      "description": "Full commit SHA mirrored to GitHub",
+      "description": "Full commit SHA on the GitHub production branch",
       "allowedPattern": "^[0-9a-f]{40}$",
       "interpolationType": "ENV_VAR"
     }

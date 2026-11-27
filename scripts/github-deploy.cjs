@@ -10,7 +10,7 @@ async function deploy({ env = process.env, aws = callAws, sleep = ms => new Prom
   if (document !== 'MoonHub-Deploy') throw new Error('Unexpected deployment document');
   const sent = aws(['ssm', 'send-command', '--instance-ids', instance, '--document-name', document,
     '--document-version', '1', '--parameters', JSON.stringify({ Revision: [revision] }),
-    '--timeout-seconds', '600', '--comment', `GitHub master ${revision}`]);
+    '--timeout-seconds', '600', '--comment', `GitHub production ${revision}`]);
   const commandId = sent.Command.CommandId;
   log(`SSM command ${commandId}; commit ${revision}`);
   // SSM's default CLI waiter stops after a few minutes. Builds can take longer.

@@ -95,11 +95,25 @@ test('production wrapper deploys only clean, current fast-forward commits and ve
     assert.notEqual(check(first).status, 0);
     fs.unlinkSync(path.join(source, 'dirty'));
     assert.equal(check('invalid').status, 2);
+    run('git', ['--git-dir', remote, 'branch', 'production', first]);
+    fs.writeFileSync(path.join(source, 'next'), 'production change');
+    git('add', '.'); git('commit', '-qm', 'production change');
+    const next = git('rev-parse', 'HEAD');
+    git('push', remote, 'HEAD:refs/heads/production');
+    run('git', ['--git-dir', remote, 'symbolic-ref', 'HEAD', 'refs/heads/production']);
+    run('git', ['--git-dir', remote, 'branch', '-D', 'master']);
+    git('reset', '--hard', first);
+    result = check(next);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, new RegExp(`MOONHUB_DEPLOY_OK:${next}`));
+    assert.equal(git('branch', '--show-current'), 'production');
+    assert.equal(git('rev-parse', 'HEAD'), next);
+    fs.writeFileSync(calls, '');
     result = check('b'.repeat(40));
     assert.equal(result.status, 0); assert.match(result.stdout, /MOONHUB_DEPLOY_SKIPPED:/);
     fs.writeFileSync(path.join(source, 'ahead'), 'local commit');
     git('add', '.'); git('commit', '-qm', 'unpublished');
-    result = check(first);
+    result = check(next);
     assert.notEqual(result.status, 0); assert.match(result.stdout, /non-fast-forward/);
     assert.equal(fs.readFileSync(calls, 'utf8'), '');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

@@ -1,24 +1,11 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [master]
   push:
-    branches: [master]
-  workflow_dispatch:
-    inputs:
-      deploy:
-        description: Deploy production after full CI (master only)
-        type: boolean
-        default: false
+    branches: ['codex/release/**']
 
 permissions:
   contents: read
-
-# Only superseded PR runs are canceled. Never cancel a production upgrade.
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   self-check:
@@ -267,17 +254,10 @@ jobs:
           test "$FRONTEND_RESULT" = success
           test "$BUILD_DEPLOY_RESULT" = success
 
-  deploy:
-    needs: required
-    if: >-
-      ${{ needs.required.result == 'success' &&
-          github.repository == 'moonbitlang/moonhub' &&
-          github.ref == 'refs/heads/master' &&
-          (github.event_name == 'push' ||
-           (github.event_name == 'workflow_dispatch' && inputs.deploy)) }}
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/deploy.yml
-    with:
-      deploy: ${{ inputs.deploy || false }}
+      - name: Require a commit from development
+        if: github.event.repository.default_branch != 'master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...development" --jq .status)
+          test "$status" = ahead || test "$status" = identical

@@ -14,20 +14,24 @@ to the repository administrators for the subsequent cutover. Keep these items
 pending until their live state is verified. Production acceptance follows the
 protected merge.
 
-## Checks and deployment
+## Development PRs
 
-`.github/workflows/ci.yml` replaces `moonhub.yml` and `docker.yml`. It runs on
-PRs targeting `master`, pushes to `master`, and manual dispatch. There are no
-path filters. `Self-check` and `Docker SSH` run in parallel on GitHub-hosted
-Ubuntu 24.04. Self-check selects Node 24, reads the exact MoonBit pin from
-`deploy/base.Dockerfile`, installs it with the official Unix installer, and
-verifies `moonc -v` before running `node scripts/self-check.cjs`.
+`development` is the default branch. PRs run `Development required` on GitHub-hosted
+Ubuntu 24.04 with the production MoonBit pin from `deploy/base.Dockerfile`. It checks
+MoonBit warnings, formatting, generated interfaces, package boundaries, the Wasm CLI,
+browser asset compilation, TypeScript and CI scripts. It also runs selected native
+tests for repositories, the pipeline protocol, parsing and scheduling, runner
+platform logic, authentication and key Web routes. Web tests use built browser assets
+and the repository and merge request route tests use the native diff worker. A new
+run for the same PR cancels its earlier run.
 
-The script preserves the index/dependency initialization, check/fmt/info order,
-input/interface guard, package boundaries, script tests, frontend build, native
-tests and build with `--strip -j 1`, then the managed Docker/ASG lifecycle
-acceptance with local adapters (including cleanup failure and stale-worker drain).
-Docker SSH keeps `bash scripts/docker-smoke.sh`.
+## Full release CI
+
+`.github/workflows/ci.yml` runs on pushes to `codex/release/**` using the candidate SHA.
+`Self-check` selects Node 24, installs the exact MoonBit pin and runs
+`node scripts/self-check.cjs`. The script runs the checks, native tests and build
+with `--strip -j 1`, followed by storage, Docker and runner lifecycle integration
+tests. `Docker SSH` runs the separate HTTP, Git SSH and runner image smokes.
 
 `Windows runner` uses a Server 2022 / Server 2025 matrix. Both instances build
 the Windows worker and legacy task image and verify shells, Actions, process
@@ -74,19 +78,41 @@ runners; the original Self-check still runs its existing checks in order.
 Legacy standalone browser smoke scripts and the full Docker pipeline/recovery
 end-to-end scripts remain opt-in; these jobs do not invoke them.
 
-`CI required` always evaluates all six job/workflow results and accepts only
-successes. Failure, cancellation or skipping any job cannot pass the gate.
-Updated PR runs cancel the older run for that PR. Non-PR runs use separate concurrency
-groups, leaving active production deployments running.
+## Promote an exact SHA
 
-Only a successful `master` push calls the reusable `deploy.yml` automatically.
-Manual `CI` dispatch defaults `deploy` to false; selecting true deploys only
-from `master`, after the same complete CI. The callee has no independent push or
-dispatch trigger. Both workflows use the calling commit; no artifact download
-or branch re-resolution substitutes unchecked source. OIDC, the `production`
-environment, the shared non-canceling deployment lock and the 80-minute timeout
-remain in place. Production builds, ECR publication, task draining, backup and
-health verification continue on EC2. See [deployment operations](../deploy/github-cd.md).
+Both long-lived branches require an up-to-date PR, source-specific checks from
+GitHub Actions, linear history and no force pushes, deletions or administrator
+bypass. `Development required` protects `development`. `CI required` protects
+`production` and accepts only success from all six jobs and a SHA reachable from
+`development`.
+
+1. Pin the current `development` commit on a new release branch. Replace the
+   example name with a unique release name.
+
+   ```sh
+   git fetch origin development production
+   release=codex/release/example
+   candidate=$(git rev-parse origin/development)
+   git merge-base --is-ancestor origin/production "$candidate"
+   git push origin "$candidate:refs/heads/$release"
+   ```
+
+2. Open a PR from that branch to `production`. Wait for the release branch's full
+   CI run for the pinned SHA. If development moves forward while the run is active,
+   keep the candidate pinned.
+3. Confirm the PR is open, its head is the tested SHA, and the current production
+   tip is an ancestor. Push the tested SHA through the PR as a normal fast-forward.
+
+   ```sh
+   git fetch origin production
+   git merge-base --is-ancestor origin/production "$candidate"
+   git push origin "$candidate:refs/heads/production"
+   ```
+
+4. Verify GitHub marked the PR as merged with that SHA. The `Production deployment`
+   workflow finds successful release CI for that exact SHA and invokes SSM.
+   Confirm `MOONHUB_DEPLOY_OK:SHA` and matching Web/SSH health and revision labels.
+   See [deployment operations](../deploy/github-cd.md).
 
 ## Runtime cutover checklist
 
@@ -108,15 +134,15 @@ PR. Do not disable other repositories' pipeline services.
    new old-repository CI runs appear and another repository's CI still works.
    The MoonHub CLI must be authenticated before any CLI operations; an existing
    browser session does not authenticate it. Do not create broader credentials.
-4. Configure GitHub `master` protection: require PRs with zero approvals, require
+4. The original cutover configured GitHub `master` protection: require PRs with zero approvals, require
    the up-to-date `CI required` check from **GitHub Actions**, enforce for admins,
    and disallow force pushes and deletion. Choose the GitHub Actions app as the
    expected source of the check. Inspect existing repository and organization
    rules before adding a conflicting rule. Confirm direct pushes and bypasses
    are blocked.
-5. Merge through the protected PR path. Confirm `master → CI → SSM` succeeds for
-   the same SHA, reports `MOONHUB_DEPLOY_OK:SHA`, and verifies Web/SSH health and
-   revision labels. Production image builds must still occur on EC2.
+5. The original cutover verified that the protected merge reached SSM for
+   the checked SHA. The release procedure above now verifies that path on
+   `production`. Production image builds occur on EC2.
 
 For local clones, verify `git remote -v` and use GitHub for both fetch and push;
 remove obsolete MoonHub push URLs. Existing feature branches can be reused.
@@ -128,8 +154,8 @@ Run `actionlint .github/workflows/*.yml`, then the
 repository's `moon check --deny-warn`, `moon fmt`, `moon info` sequence.
 `node --test scripts/github-ci-test.cjs` executes the aggregate shell gate for
 all 4,096 combinations of success/failure/cancelled/skipped results, checks deployment
-conditions across events/refs/repositories/results/manual choices, checks version
-verification and concurrency configuration. The existing self-check and deploy
+conditions across events, refs and repositories, checks exact-SHA release
+verification, version verification and concurrency configuration. The existing self-check and deploy
 regressions remain applicable. These local checks do not replace real GitHub
 Actions, branch-protection or production acceptance evidence.
 

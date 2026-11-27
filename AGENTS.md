@@ -113,10 +113,10 @@ bypass an authentication failure. HTTPS is required outside trusted local tests.
 Creating a PR does not itself authorize approval, merge or production deployment.
 
 Use a `codex/` branch, reusing a suitable active branch when available. For new
-work, fetch GitHub `master` and preserve existing uncommitted work:
+work, fetch GitHub `development` and preserve existing uncommitted work:
 
 ```sh
-git fetch --no-tags origin master
+git fetch --no-tags origin development
 git switch -c codex/<short-topic> FETCH_HEAD
 ```
 
@@ -127,26 +127,23 @@ push URLs from local clones. Do not use a remote with multiple push destinations
 Build browser assets before Web tests, run the checks above, relevant tests with
 `--strip -j 1`, and the package-boundary check when imports change. Review and
 stage only intended changes. Write PR descriptions to a UTF-8 temporary file and
-use `gh pr create --base master --body-file /absolute/path/to/description.md`.
+use `gh pr create --base development --body-file /absolute/path/to/description.md`.
 Verify the created PR and report its URL. Attach the PR to the chat when a
 pull-request artifact tool is available.
 
-GitHub `master` requires a PR, an up-to-date branch and the GitHub Actions check
-`CI required`. No review approvals are required. Force pushes, deletion and
-administrator bypass are forbidden. `Self-check`, `Docker SSH`, `Frontend checks`
-and `Build and deployment regressions` run in parallel on GitHub-hosted Ubuntu
-24.04 runners. A separate `Windows runner` job uses a Windows Server 2022 / 2025 matrix.
-`macOS runner` builds/tests the ARM64 guest and slot lifecycle on macOS.
-Only success from all six checks passes the aggregate gate.
-See `docs/github-ci.md` for configuration and cutover status.
+GitHub `development` is the default branch and requires an up-to-date PR and
+`Development required` from GitHub Actions. GitHub `production` requires an
+up-to-date release PR and `CI required` from GitHub Actions. Both branches
+enforce linear history and forbid force pushes, deletion and administrator
+bypass. See `docs/github-ci.md` for the release commands and CI coverage.
 
 ## Continuous Deployment
 
-`.github/workflows/ci.yml` calls the reusable `deploy.yml` only after `CI required`
-passes on a `master` push. Manual runs default to CI only; deployment requires
-selecting `master` and setting `deploy` to true, and still runs full CI. PRs never
-deploy. Updated PR runs cancel obsolete PR CI; active production deployments are
-not canceled by newer runs.
+Full CI runs for commits pushed to `codex/release/**` and verifies that the exact
+candidate came from `development`. Fast-forward the protected `production`
+branch through its release PR after all six checks pass. The production push
+verifies that the same SHA passed release CI before it calls the deployment
+workflow. Manual deployment retries use the same verification. PRs never deploy.
 
 Production images continue to build and publish on EC2. Keep the existing
 OIDC/SSM path, environment restrictions, deployment locks, task draining, backups

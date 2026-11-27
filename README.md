@@ -97,11 +97,10 @@ before importing private repositories.
 ## Continuous deployment
 
 Development, PRs, merge checks and CI for this repository use
-[GitHub](https://github.com/moonbitlang/moonhub). `Self-check` and `Docker SSH`
-run on GitHub-hosted Ubuntu 24.04 runners; both must pass `CI required` before
-merging. See [CI and migration operations](docs/github-ci.md). Checked `master`
-updates deploy through OIDC/SSM, with production images built and published on
-EC2. See [CD setup and operations](deploy/github-cd.md).
+[GitHub](https://github.com/moonbitlang/moonhub). Daily PRs target `development`
+and require the Linux `Development required` check. Full CI runs for release
+candidates. A protected fast-forward to `production` deploys the verified SHA
+through SSM. See [CI and release operations](docs/github-ci.md).
 
 ## MoonBit toolchain
 

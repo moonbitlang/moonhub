@@ -18,18 +18,30 @@ cd /srv/moonhub/source
 [ "$(git remote get-url origin)" = git@github.com:moonbitlang/moonhub.git ] || { printf 'Unexpected production origin.\n' >&2; exit 1; }
 export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND='ssh -F /dev/null -i /etc/moonhub/github_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/moonhub/github_known_hosts'
-git fetch --no-tags origin refs/heads/master:refs/remotes/origin/master
-if [ "$(git rev-parse refs/remotes/origin/master)" != "$revision" ]; then
-  printf 'MOONHUB_DEPLOY_SKIPPED:%s (master has advanced)\n' "$revision"
+branch=production
+if git ls-remote --exit-code origin refs/heads/production >/dev/null; then
+  :
+else
+  status=$?
+  [ "$status" = 2 ] || exit "$status"
+  branch=master
+fi
+git fetch --no-tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
+if [ "$(git rev-parse "refs/remotes/origin/$branch")" != "$revision" ]; then
+  printf 'MOONHUB_DEPLOY_SKIPPED:%s (%s has advanced)\n' "$revision" "$branch"
   exit 0
 fi
 git merge-base --is-ancestor HEAD "$revision" || { printf 'Refusing a non-fast-forward production update.\n' >&2; exit 1; }
-git switch master
+if git show-ref --verify --quiet "refs/heads/$branch"; then
+  git switch "$branch"
+else
+  git switch -c "$branch"
+fi
 git merge --ff-only "$revision"
 set -a
 . deploy/production.env
 set +a
-# Build while MoonHub's post-merge CI runs, then let active tasks finish before
+# Build the checked revision, then let active tasks finish before
 # the switch. The production script still checks atomically when pausing claims.
 ./deploy/production.sh build
 deadline=$((SECONDS + 1200))

@@ -3,24 +3,16 @@
 GitHub is this repository's development entry point for code, PRs, Issues,
 merges and CI. See [CI configuration and cutover](../docs/github-ci.md).
 
-`.github/workflows/ci.yml` runs `Self-check` and `Docker SSH` on GitHub-hosted
-Ubuntu 24.04 runners. After both succeed, `CI required` passes and a `master`
-push calls `.github/workflows/deploy.yml`. The latter accepts only
-`workflow_call`; it has no independent push or manual trigger. The local
-reusable-workflow reference and default checkout use the same commit as CI.
-PRs cannot deploy. A manual `CI` run defaults to no deployment; select `master`
-and set `deploy` to true to deploy after running the complete checks again.
-Do not add an independent deployment dispatch or `workflow_run` bypass.
+A protected fast-forward to `production` triggers `Production deployment`. It
+requires a successful full CI run and `CI required` job for the exact push SHA
+from a `codex/release/**` branch before calling the reusable deployment workflow.
+Manual dispatch on `production` retries deployment and uses the same SHA check.
+PRs do not deploy.
 
-Updated PR runs cancel their obsolete CI. Each non-PR run has its own workflow
-concurrency group, while deployment jobs retain the shared `moonhub-production`
-group with `cancel-in-progress: false`. New CI cannot cancel an active upgrade.
-The production environment remains restricted to `master`, with OIDC permission
-only on the deployment job. Self-check and Docker SSH receive read-only tokens.
-
-Production images continue to be built on EC2, published to ECR and deployed
-by the existing host script. GitHub runners only run checks and invoke SSM;
-there is no production image build or publication job on GitHub.
+Deployment retains the shared `moonhub-production` concurrency group with
+`cancel-in-progress: false`. The GitHub environment allows only `production`
+and OIDC permission is scoped to the deployment job. Production images are built
+on EC2 and published to ECR. GitHub invokes SSM with the checked SHA.
 
 ## Retired outbound mirror
 
@@ -39,7 +31,7 @@ require separate verification; editing this documentation does not perform them.
 - Web instance `i-0deb710f732cea73c` (`moonhub-web`).
 - IAM role `moonhub-github-deploy`, trusting only the GitHub repository's
   `production` environment through the existing GitHub OIDC provider.
-- GitHub environment `production`, allowing deployment from `master` only.
+- GitHub environment `production`, allowing deployment from `production` only.
 - Environment variables `AWS_REGION`, `AWS_DEPLOY_INSTANCE_ID` and
   `AWS_DEPLOY_ROLE_ARN`; no stored AWS access keys.
 - SSM command document `MoonHub-Deploy`, pinned to version `1` in Actions.
@@ -53,7 +45,8 @@ require separate verification; editing this documentation does not perform them.
   `/etc/moonhub/github_known_hosts`.
 
 The host wrapper takes a lock, refuses a dirty checkout or unexpected origin,
-fetches `master`, and checks the requested full SHA against its current tip.
+fetches `production`, and checks the requested full SHA against its current tip.
+The transition wrapper can also fetch `master` before the branch is renamed.
 Superseded commits are skipped. It only fast-forwards the production
 checkout and invokes `deploy/production.sh upgrade`, preserving the existing
 Compose volumes, secrets, backup process and provider/controller safeguards.
@@ -68,8 +61,8 @@ another attempt started in the meantime. It then pauses every provider,
 including any Docker/DinD provider, waits for cleanup, and restores each original
 pause state on success or failure. Ready workers in unchanged secondary providers
 can remain paused through the Web update; they do not have to be destroyed.
-On a timeout or refusal, let tasks finish and rerun CI on `master` with deployment
-selected. If `master` advanced, its newer workflow handles deployment.
+On a timeout or refusal, let tasks finish and retry `Production deployment` on `production`. If
+the branch advanced, its newer workflow handles deployment.
 
 An installed standalone DinD controller participates in that switch as well.
 Deployment loads the matching image into its dedicated daemon and updates its
@@ -109,11 +102,12 @@ for command completion; if Actions is interrupted, inspect the original SSM
 command before retrying. Host locking serializes deployments even if the
 workflow is canceled. GitHub workflow cancellation does not undo a deployment.
 
-To retry, dispatch `CI` on `master` with `deploy: true`; the complete checks run
-before deployment. To stop future deployments, disable `CI` in GitHub Actions.
+To retry, dispatch `Production deployment` on `production`. If the full release CI
+needs to be rerun, rerun it from the exact candidate in Actions. To stop future
+deployments, disable `Production deployment` in GitHub Actions.
 Inspect the active SSM command before changing a running upgrade. For rollback, use
 the matching Web/controller backups described in [production.md](production.md).
-Automatic CD refuses non-fast-forward updates, including a rewritten master.
+Automatic CD refuses non-fast-forward updates, including a rewritten production branch.
 
 Local clones use GitHub as their development remote. The production checkout
 fetches GitHub with its host-only read key. Retiring the outbound mirror must
@@ -121,5 +115,5 @@ not revoke this production key. Neither SSH key is an AWS credential.
 
 Validate changes with `node --test scripts/github-deploy-test.cjs` and
 `node --test scripts/production-deploy-test.cjs scripts/production-dind-test.cjs`.
-These deployment regressions also run in `Self-check`. A real `master` push must also produce
+These deployment regressions also run in `Self-check`. A real `production` push must also produce
 `MOONHUB_DEPLOY_OK:SHA` and matching healthy production image revisions.

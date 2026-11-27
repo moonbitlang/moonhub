@@ -12,7 +12,7 @@ or Run Command with the existing instance role.
 
 Source stays in `/srv/moonhub/source`, with `origin` pointing to
 `git@github.com:moonbitlang/moonhub.git`. GitHub owns this repository's code,
-PRs, merge gate and CI. After full CI passes on `master`, GitHub Actions invokes
+PRs, merge gate and CI. After a fully checked SHA advances `production`, GitHub Actions invokes
 the restricted SSM deployment document using OIDC. Production images still build
 on the Web EC2 host and publish to ECR through the existing upgrade path. A host-only read-only deploy
 key fetches the source; see [GitHub continuous deployment](github-cd.md).
@@ -41,7 +41,7 @@ From an SSM session (or the same commands in `AWS-RunShellScript`):
 
 ```sh
 cd /srv/moonhub/source
-./deploy/production.sh checkout master
+./deploy/production.sh checkout production
 ./deploy/production.sh build
 ./deploy/production.sh publish
 ```
@@ -184,7 +184,7 @@ does not enlarge a loop filesystem. An operator can grow the backing file and
 its associated loop device, then grow the mounted ext4 filesystem to the documented
 12 GiB, after verifying their association and leaving at least 20 GiB of root
 headroom. Preserve existing contents; never rerun `mkfs` on that backing file.
-Afterward dispatch CI on `master` with deployment selected. The successful upgrade
+Afterward dispatch `Production deployment` on `production`. The successful upgrade
 initializes retention from the saved running image and prunes older releases.
 
 Upgrade and `status` check the installed binary, unit image, DinD image revision,
