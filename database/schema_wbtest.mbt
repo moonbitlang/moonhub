@@ -48,6 +48,42 @@ async test "empty database initializes the complete baseline and repeats safely"
 }
 
 ///|
+async test "SSH token migration preserves legacy tokens and their ID sequence" {
+  let baseline = @fs.read_file("db/base.sql").text()
+  @async.with_task_group(group => {
+    let pool = new_db_pool({ path: ":memory:", }, group)
+    defer pool.close()
+    pool.with_client(client => {
+      client.batch_execute(baseline)
+      client.batch_execute(
+        (
+          #|PRAGMA user_version=38;
+          #|INSERT INTO "user"(id,name_key,display_name,password_hash) VALUES (1,'alice','Alice','test');
+          #|INSERT INTO access_token(id,user_id,name,token_hash,permission,expires_at,revoked_at,last_used_at)
+          #|VALUES (7,1,'legacy','legacy-hash','merge','2030-01-01','2026-10-01','2026-09-01'),
+          #|  (40,1,'removed','removed-hash','read','2030-01-01',NULL,NULL);
+          #|DELETE FROM access_token WHERE id=40;
+        ),
+      )
+    })
+    initialize_db(pool)
+    pool.with_client(client => {
+      let legacy = client.query_one("SELECT * FROM access_token WHERE id=7")
+      assert_eq((legacy.get_name("token_hash") : String), "legacy-hash")
+      assert_eq((legacy.get_name("permission") : String), "merge")
+      assert_eq((legacy.get_name("expires_at") : String), "2030-01-01")
+      assert_eq((legacy.get_name("revoked_at") : String), "2026-10-01")
+      assert_eq((legacy.get_name("last_used_at") : String), "2026-09-01")
+      let new = client.query_one(
+        "INSERT INTO access_token(user_id,name,token_hash,permission,expires_at) VALUES (1,'ssh','ssh-hash','ssh','2030-01-01') RETURNING id",
+      )
+      assert_eq((new.get_name("id") : Int64), 41L)
+      assert_true(client.query_all("PRAGMA foreign_key_check").is_empty())
+    })
+  })
+}
+
+///|
 async test "schema 38 upgrades atomically and preserves existing data" {
   let baseline = @fs.read_file("db/base.sql").text()
   let migration = @fs.read_file("db/migrations/039_blob_storage.sql").text()

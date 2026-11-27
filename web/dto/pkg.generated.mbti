@@ -3,6 +3,7 @@ package "hackwaly/moonhub/web/dto"
 
 import {
   "hackwaly/moonhub/collaboration",
+  "hackwaly/moonhub/domain",
   "hackwaly/moonhub/pipeline/runtime",
   "moonbitlang/core/json",
 }
@@ -19,6 +20,8 @@ pub fn discussion_json(@collaboration.MergeDiscussion, preview? : Bool) -> @json
 pub fn issue_json(@collaboration.Issue) -> @json.Json
 
 pub fn mr_json(@collaboration.MergeRequest) -> @json.Json
+
+pub fn repository_json(@domain.RepositoryDetails) -> @json.Json
 
 pub fn run_json(@runtime.Run) -> @json.Json
 

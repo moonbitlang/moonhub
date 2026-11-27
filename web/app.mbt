@@ -91,6 +91,7 @@ let user_api_module : @moonback.Module = Module(ctx => {
   ctx.use_(@user_api.webhooks_api_module)
   ctx.use_(@user_api.releases_api_module)
   ctx.use_(@user_api.repositories_api_module)
+  ctx.use_(@user_api.ssh_keys_api_module)
 })
 
 ///|

@@ -1,4 +1,13 @@
 ///|
+pub(all) struct RepositoryDetails {
+  repo : RepoId
+  visibility : String
+  state : String
+  default_branch : String?
+  clone_url : String?
+}
+
+///|
 pub fn valid_repo_path(path : String) -> Bool {
   guard !path.is_empty() && !path.contains("\\") else { return false }
   for segment in path.split("/") {

@@ -28,7 +28,9 @@ fn option_description(name : String, group~ : String = "") -> String {
     "status" => "open or closed; MR lists also accept merged."
     "filter" =>
       "Inbox: unread/all/reviews/assigned. MR discussions: all/unresolved/resolved."
+    "title" if group == "ssh-key" => "Label for the new SSH key."
     "title" => "Issue or merge request title."
+    "key-file" => "Path to a single OpenSSH Ed25519 public key file."
     "body-file" =>
       "UTF-8 description/comment file, or JSON for webhooks. MR Closes #123 closes issues after merge."
     "file" => "Regular file to upload, up to 25 MiB (images up to 5 MiB)."
@@ -90,9 +92,16 @@ fn command_description(group : String, action : String) -> String {
     ("repo", "") =>
       "Create a repository in a namespace you manage, or show its state and SSH clone URL."
     ("repo", "create") =>
-      "Create --repo OWNER/NAME (empty); waits briefly for provisioning; write token and namespace owner/admin required."
+      "Create an empty OWNER/NAME repository and wait briefly for provisioning. Requires a write token and namespace management access."
     ("repo", "view") =>
-      "Show visibility, provisioning state (ready, pending, running or failed) and the SSH clone URL."
+      "Show visibility, provisioning state, default branch and SSH clone URL."
+    ("ssh-key", "") =>
+      "Manage your account's SSH keys with a token that has ssh permission."
+    ("ssh-key", "add") =>
+      "Register an OpenSSH Ed25519 public key on your account."
+    ("ssh-key", "list") =>
+      "List your account's SSH key IDs, fingerprints and revocation status."
+    ("ssh-key", "delete") => "Revoke an SSH key on your account by ID."
     ("mr", "") =>
       "Manage merge requests and reviews; Closes #123 closes issues after merge."
     ("issue", "") => "List, create, edit and discuss repository issues."
@@ -202,9 +211,15 @@ fn command_examples(group : String, action : String) -> String {
     ("auth", "logout") =>
       "moonhub auth logout\nServer-side revocation: open YOUR_SERVER/-/settings/tokens."
     ("repo", "" | "create") =>
-      "moonhub repo create --repo OWNER/NAME --visibility private\ngit remote add origin CLONE_URL\ngit push -u origin main\nmoonhub mr create --repo OWNER/NAME --source feature --target main --title 'Add feature'\nThe repository is empty; push your first branch over SSH with a key added in account settings."
+      "moonhub repo create OWNER/NAME --visibility private\ngit remote add origin CLONE_URL\ngit push -u origin main feature\nmoonhub mr create --repo OWNER/NAME --source feature --target main --title 'Add feature'\nPush your local main and feature branches over SSH after provisioning reports ready."
     ("repo", "view") =>
-      "moonhub repo view --repo OWNER/NAME --json\nstate is ready, pending, running or failed; clone_url is null until the server's SSH address is configured."
+      "moonhub repo view OWNER/NAME --json\nstate is ready, pending, running or failed. clone_url is null until the server's SSH address is configured."
+    ("ssh-key", "" | "add") =>
+      "moonhub ssh-key add --title 'Laptop' --key-file ~/.ssh/id_ed25519.pub --server https://moonhub.example --token-file /path/to/ssh.token"
+    ("ssh-key", "list") =>
+      "moonhub ssh-key list --server https://moonhub.example --token-file /path/to/ssh.token --json"
+    ("ssh-key", "delete") =>
+      "moonhub ssh-key delete 12 --server https://moonhub.example --token-file /path/to/ssh.token\nUse the key ID from ssh-key list."
     ("mr", "") =>
       "moonhub mr list --repo OWNER/NAME\nmoonhub mr view 12 --json\nmoonhub mr diff 12 --version 3\nmoonhub mr review 12 --version 3 --decision approved\nInspect the current version and edit_version with view --json before mutations."
     ("mr", "list") | ("issue", "" | "list") =>

@@ -441,6 +441,7 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
   let diff_executor = ctx.require(@web_context.diff_executor_key)
   let pool = ctx.require(@web_context.config_db_pool)
   let root = ctx.require(@web_context.config_root)
+  let addresses = ctx.require(@web_context.config_ssh_addresses)
   let coordinator = ctx.require(@web_context.pipeline_coordinator_key)
   let origins = ctx.require(allowed_origins_key)
   let limit : RateLimit = { buckets: Map([]), }
@@ -626,7 +627,8 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                 let actor = request_actor(pool, req, tool.permission)
                 try {
                   let data = invoke_tool(
-                    pool, root, coordinator, diff_executor, actor, name, args,
+                    pool, root, coordinator, diff_executor, addresses, actor, name,
+                    args,
                   )
                   complete_result({
                     "content": [{ "type": "text", "text": data.stringify() }],

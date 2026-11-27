@@ -6,6 +6,7 @@ fn command_groups() -> Array[(String, Array[String])] {
   [
     ("auth", ["setup", "login", "status", "logout"]),
     ("repo", ["create", "view"]),
+    ("ssh-key", ["add", "list", "delete"]),
     (
       "mr",
       [
@@ -46,7 +47,7 @@ fn command_option_names() -> Array[String] {
     "reviewer", "comment", "format", "file-id", "mode", "ignore-comments", "ignore-tests",
     "document-id", "hunk-id", "diff-page", "commit", "path", "side", "start-line",
     "end-line", "discussion", "state-version", "assignee", "workflow", "inputs-file",
-    "jobs", "runner-group", "branch", "attempt", "after", "visibility",
+    "jobs", "runner-group", "branch", "attempt", "after", "visibility", "key-file",
   ]
 }
 
@@ -89,6 +90,7 @@ fn action_options(group : String, action : String) -> Array[String] {
   match (group, action) {
     ("mr" | "issue", "list") => ["status", "page"]
     ("repo", "create") => ["visibility"]
+    ("ssh-key", "add") => ["title", "key-file"]
     ("mr", "create") => ["title", "source", "target", "body-file"]
     ("mr", "diff") =>
       [
@@ -135,6 +137,7 @@ fn action_options(group : String, action : String) -> Array[String] {
 ///|
 fn required_action_options(group : String, action : String) -> Array[String] {
   match (group, action) {
+    ("ssh-key", "add") => ["title", "key-file"]
     ("mr", "create") => ["title", "source", "target"]
     ("mr", "diff" | "merge" | "approve-checks") => ["version"]
     ("mr", "comment") => ["version", "body-file"]
@@ -216,6 +219,14 @@ fn command() -> @argparse.Command {
         },
         subcommands=actions.map(action => {
           let positional = match (group, action) {
+            ("ssh-key", "delete") =>
+              Some(("key-id", "SSH key ID from ssh-key list."))
+            ("repo", _) =>
+              Some(
+                (
+                  "repository", "Repository as OWNER/NAME; also accepted via --repo.",
+                ),
+              )
             ("secret" | "variable", "set" | "delete") =>
               Some(
                 ("name", "Repository secret/variable name, for example REGION."),
@@ -264,7 +275,11 @@ fn command() -> @argparse.Command {
                   @argparse.PositionArg(
                     name,
                     about~,
-                    num_args=@argparse.ValueRange::single(),
+                    num_args=if group == "repo" {
+                      @argparse.ValueRange(lower=0, upper=1)
+                    } else {
+                      @argparse.ValueRange::single()
+                    },
                   ),
                 ]
               None => []

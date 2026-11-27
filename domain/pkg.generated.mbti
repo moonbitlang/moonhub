@@ -64,6 +64,14 @@ pub(all) struct RepoId {
 pub fn RepoId::git_dir(Self, String) -> String
 pub fn RepoId::path(Self) -> String
 
+pub(all) struct RepositoryDetails {
+  repo : RepoId
+  visibility : String
+  state : String
+  default_branch : String?
+  clone_url : String?
+}
+
 // Type aliases
 
 // Traits

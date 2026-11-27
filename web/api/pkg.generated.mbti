@@ -14,6 +14,8 @@ pub let releases_api_module : @moonback.Module
 
 pub let repositories_api_module : @moonback.Module
 
+pub let ssh_keys_api_module : @moonback.Module
+
 pub let webhooks_api_module : @moonback.Module
 
 // Errors

@@ -98,7 +98,7 @@ fn setup_instructions(server : String) -> String {
   "Setup:\n" +
   "  1. Sign in to \{server} in your browser.\n" +
   "     Open \{server}/-/settings/tokens (Account > Access tokens).\n" +
-  "     Create a token: read for browsing, write for comments/edits, execute for CI, merge for merging.\n" +
+  "     Create a token: read for browsing, write for comments/edits, execute for CI, merge for merging, ssh for SSH keys.\n" +
   "     Execute and merge permissions are independent; repository roles still apply.\n" +
   "  2. Copy the token (shown once) to a private file; on Unix: chmod 600 /path/to/moonhub.token.\n" +
   "  3. Sign in:\n" +
@@ -278,59 +278,21 @@ pub async fn run(args : ArrayView[String]) -> Int32 {
     }
     return 0
   }
+  if group == "repo" {
+    return run_repository(action, matches, options, server, token, allow_http~)
+  }
+  if group == "ssh-key" {
+    return run_ssh_key(action, matches, options, server, token, allow_http~)
+  }
   let repo = if group == "inbox" {
     ""
   } else {
-    let name = discover_repo(server, option(matches, "repo"))
-    @domain.parse_transport_repo(name).path() catch {
-      _ =>
-        raise Invalid(
-          "--repo must be OWNER/NAME, for example compiler/moonhub; copy it from the repository URL",
-        )
+    match option(matches, "repo") {
+      Some(name) => parse_cli_repo(name).path()
+      None => discover_repo(server).path()
     }
   }
   let base = "/repos/" + repo
-  if group == "repo" {
-    let mut result = if action == "create" {
-      let visibility = required(matches, "visibility")
-      guard visibility == "private" || visibility == "public" else {
-        raise Invalid("--visibility must be private or public")
-      }
-      guard repo.split_once("/") is Some((owner, name)) else {
-        raise Invalid("--repo must be OWNER/NAME")
-      }
-      request(
-        server,
-        token,
-        "/repos",
-        Some({
-          "owner": owner.to_owned(),
-          "name": name.to_owned(),
-          "visibility": visibility,
-        }),
-        allow_http~,
-      )
-    } else {
-      request(server, token, base, None, allow_http~)
-    }
-    // Creation is provisioned in the background; wait briefly so the printed
-    // clone URL can be pushed to immediately.
-    if action == "create" {
-      for _ in 0..<30 {
-        guard result is { "state": String("pending" | "running"), .. } else {
-          break
-        }
-        @async.sleep(1000)
-        result = request(server, token, base, None, allow_http~)
-      }
-    }
-    if matches.flags.get("json").unwrap_or(false) {
-      println(result.stringify())
-    } else {
-      render_repository(result, server, created=action == "create")
-    }
-    return 0
-  }
   if group == "attachment" && action == "upload" {
     let path = required(matches, "file")
     guard @fs.kind(path, follow_symlink=false) is Regular &&
@@ -730,61 +692,20 @@ fn render(json : Json) -> Unit {
 }
 
 ///|
-fn render_repository(
-  json : Json,
-  server : String,
-  created~ : Bool,
-) -> Unit raise CliError {
-  guard json
-    is {
-      "owner": String(owner),
-      "name": String(name),
-      "full_name": String(full_name),
-      "visibility": String(visibility),
-      "state": String(state),
-      ..
-    } else {
-    raise InvalidResponse
-  }
-  let full_name = terminal_text(full_name)
-  let clone_url = if json is { "clone_url": String(url), .. } {
-    Some(terminal_text(url))
-  } else {
-    None
-  }
-  if created {
-    println("Created \{full_name} (\{terminal_text(visibility)}).")
-  } else {
-    println(
-      "\{full_name}\t\{terminal_text(visibility)}\t\{terminal_text(state)}",
-    )
-  }
-  match clone_url {
-    Some(url) => println("Clone URL: \{url}")
-    None =>
-      println(
-        "Clone URL unavailable: a site administrator must configure the SSH address.",
-      )
-  }
-  match state {
-    "ready" if created && clone_url is Some(url) =>
-      println(
-        "Next:\n  git remote add origin \{url}\n  git push -u origin main",
-      )
-    "ready" => ()
-    "failed" =>
-      println(
-        "Creation failed; retry or discard it at \{server}/\{terminal_text(owner)}/-/repositories/\{terminal_text(name)}/status",
-      )
-    _ =>
-      println(
-        "Still provisioning (\{terminal_text(state)}); check again with: moonhub repo view --repo \{full_name}",
-      )
+fn parse_cli_repo(
+  name : String,
+  literal~ : Bool = false,
+) -> @domain.RepoId raise CliError {
+  @domain.parse_transport_repo(if literal { name + ".git" } else { name }) catch {
+    _ => {
+      let label = if literal { "repository" } else { "--repo" }
+      raise Invalid("\{label} must be OWNER/NAME, for example compiler/moonhub")
+    }
   }
 }
 
 ///|
-fn remote_repo(remote : String, server : String) -> String? {
+fn remote_repo(remote : String, server : String) -> @domain.RepoId? {
   let authority = server.split("://").nth(1).unwrap_or("")
   let host = authority.split(":").next().unwrap_or(authority)
   let mut path = ""
@@ -813,17 +734,11 @@ fn remote_repo(remote : String, server : String) -> String? {
   } else {
     return None
   }
-  if path.has_suffix(".git") {
-    path = path[:path.length() - 4].to_owned()
-  }
-  Some(@domain.parse_transport_repo(path).path() catch { _ => return None })
+  Some(@domain.parse_transport_repo(path) catch { _ => return None })
 }
 
 ///|
-async fn discover_repo(server : String, explicit : String?) -> String {
-  if explicit is Some(repo) {
-    return repo
-  }
+async fn discover_repo(server : String) -> @domain.RepoId {
   for key in ["remote.origin.pushurl", "remote.origin.url"] {
     let (code, stdout, _) = @async.with_timeout(5000, () => {
       @process.collect_output("git", ["config", "--get-all", key], extra_env={

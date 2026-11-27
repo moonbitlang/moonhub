@@ -234,7 +234,7 @@ async test "MCP 2 discovery and tools work without initialization or connection 
     guard first is { "result": { "tools": Array(tools), .. }, .. } else {
       abort("missing tools")
     }
-    assert_eq(tools.length(), 33)
+    assert_eq(tools.length(), 35)
     assert_true(
       tools
       .iter()
@@ -1248,6 +1248,9 @@ async test "MCP explicit origin policy and rate limits are isolated per applicat
       ctx.provide(@web_context.diff_executor_key, @gitops.DiffExecutor::new())
       ctx.provide(@web_context.config_db_pool, pool)
       ctx.provide(@web_context.config_root, root)
+      ctx.provide(
+        @web_context.config_ssh_addresses, @repository.no_ssh_address_config,
+      )
       ctx.provide(
         @web_context.pipeline_coordinator_key,
         @runtime.Coordinator::new(pool),

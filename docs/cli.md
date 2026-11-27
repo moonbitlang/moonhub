@@ -1,8 +1,8 @@
 # Collaboration CLI
 
 The native `moonhub` executable also acts as a remote collaboration client.
-`auth`, `repo`, `mr`, `issue`, `ci`, `secret` and `inbox` connect to the Web service through
-`/-/api/v1`. They do not open the server database. Existing Web startup,
+`auth`, `repo`, `ssh-key`, `mr`, `issue`, `ci`, `secret` and `inbox` connect to the Web
+service through `/-/api/v1`. They do not open the server database. Existing Web startup,
 Runner/provider and administration commands retain their entry points.
 
 These commands document the MoonHub product. Development and CI for this source
@@ -69,6 +69,7 @@ its existing sessions. Other accounts' tokens remain valid.
 | `write` | Read plus collaboration mutations, reviews and marking notifications read |
 | `execute` | Write plus starting/rerunning/cancelling CI and approving MR check execution |
 | `merge` | Write plus submitting an MR merge |
+| `ssh` | Read plus registering, listing and revoking your account's SSH keys |
 
 Execution and merge permissions are independent. Tokens do not grant repository
 roles: a contributor with a merge token still cannot merge without existing
@@ -142,29 +143,51 @@ created. Reruns keep the saved group.
 ## Repositories
 
 `repo create` makes an empty repository in a namespace you own or administer,
-the same operation as **New repository** in the Web UI. It needs a `write` token;
-the namespace role is still required, so a token never creates repositories in
-another user's or team's namespace. Visibility defaults to `private`.
-Provisioning runs in the background: the client waits up to about 30 seconds
-and then prints the state and SSH clone URL. `repo view` reports `state` as
-`ready`, `pending`, `running` or `failed`; pending and failed repositories are
-visible only to namespace managers. `clone_url` is `null` until a site
-administrator configures the SSH address.
+using the same provisioner as the Web form. It requires a `write` token and an
+`OWNER/NAME` argument or `--repo OWNER/NAME`. Visibility defaults to `private`.
+The client polls for up to 30 seconds after the server accepts the request. If
+provisioning is still pending or running, use `repo view` to check again before
+pushing. A failed provisioning job makes `repo create` exit with status 1.
 
-From a fresh account to a merge request, using only the terminal after the token
-and SSH key are created in account settings:
+`repo view --json` reports `state` as `ready`, `pending`, `running` or `failed`.
+Only namespace managers can see unprovisioned repositories. The response also
+includes `default_branch`, which is `null` during provisioning or when Git HEAD
+is detached, and `clone_url`, which is `null` until a site
+administrator configures the public SSH address.
+
+Create a `write` token and an `ssh` token in account settings. With a local
+`main` and `feature` branch ready to push, the rest of the flow runs in the terminal.
 
 ```sh
 moonhub auth login --server https://moonhub.example --token-file /path/to/moonhub.token
-moonhub repo create --repo OWNER/NAME --visibility private
-git remote add origin ssh://git@moonhub.example:22/OWNER/NAME.git
+moonhub ssh-key add --title Laptop --key-file ~/.ssh/id_ed25519.pub --server https://moonhub.example --token-file /path/to/ssh.token
+moonhub repo create OWNER/NAME --visibility private
+git remote add origin 'CLONE_URL'
 git push -u origin main feature
 moonhub mr create --repo OWNER/NAME --source feature --target main --title 'Add feature'
 ```
 
-The REST endpoints are `POST /-/api/v1/repos` with `owner`, `name` and optional
-`visibility`, and `GET /-/api/v1/repos/OWNER/NAME`. SSH imports remain a Web-only
-operation.
+Use the `CLONE_URL` printed by `repo create`. The REST endpoints are
+`POST /-/api/v1/repos` with `owner`, `name` and optional `visibility`, and
+`GET /-/api/v1/repos/OWNER/NAME`.
+
+## Account SSH keys
+
+The `ssh-key` commands require a token with `ssh` permission and manage keys
+for that account. `add` reads one OpenSSH Ed25519 public key file. `list` shows
+key IDs, fingerprints and revocation status. `delete` revokes the selected key
+by ID.
+
+```sh
+moonhub ssh-key list --server https://moonhub.example --token-file /path/to/ssh.token --json
+moonhub ssh-key delete 12 --server https://moonhub.example --token-file /path/to/ssh.token
+```
+
+Revoke any keys enrolled by a compromised SSH token separately from the token.
+The REST endpoints are `GET /-/api/v1/user/ssh-keys`,
+`POST /-/api/v1/user/ssh-keys` with `title` and `public_key`, and
+`POST /-/api/v1/user/ssh-keys/ID/revoke` with an empty JSON object. Key IDs are
+decimal strings.
 
 ## Commands
 
@@ -423,6 +446,10 @@ mutations, review/merge permissions, CI controls and Inbox, and captures desktop
 and mobile token settings. It requires Node with `node:sqlite` and Playwright on
 its module search path. Evidence remains under `_build/cli-smoke`; it never uses
 production accounts or runs submitted workflow scripts.
+
+Run `node scripts/cli-smoke.cjs --repository-only` to verify SSH key enrollment
+and revocation, repository provisioning, Git push and MR creation without
+launching a browser.
 
 ## Repository variables
 

@@ -28,7 +28,7 @@ pub async fn execute(args : ArrayView[String]) -> Int32 {
           )
         403 =>
           @stdio.stderr.write(
-            "Check the token's read/write/execute/merge permission and your repository role; auth setup explains permissions.\n",
+            "Check the token's read/write/execute/merge/ssh permission and your repository role. Run auth setup for details.\n",
           )
         404 =>
           @stdio.stderr.write(
