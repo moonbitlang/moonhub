@@ -242,5 +242,5 @@ async fn main {
       2
     }
   }
-  @sys.exit(code)
+  @env.exit(code)
 }
