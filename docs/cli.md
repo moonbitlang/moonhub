@@ -42,8 +42,10 @@ to inspect the issues that a merge will close. `moonhub --version` (or `-V`)
 prints the client release; subcommands use `--version VALUE` for resource revisions.
 The client uses the same credentials, environment variables, commands and exit
 codes as the native `moonhub` executable used in the examples below. Git must be
-installed when inferring `--repo` from the current repository; pass `--repo` to
-select a repository explicitly. The published entry point is a remote client;
+installed when inferring `--repo` from the current repository. For `--repo` and
+`MOONHUB_REPOSITORY`, use the exact `OWNER/NAME`, such as the `full_name` from
+`repo view --json`. When copying a path from a Git clone URL, remove its final
+transport `.git` suffix. The published entry point is a remote client;
 server, runner and administration commands use the native executable.
 
 To build and check the client from source:

@@ -118,41 +118,49 @@ pub fn authenticate_access_token(
   token : String,
   required : String,
 ) -> @domain.CurrentUser raise {
+  pool.with_client(client => {
+    client.with_transaction(tx => {
+      authenticate_access_token_tx(tx, token, required)
+    })
+  })
+}
+
+///|
+/// Check the token as part of the transaction that uses its authority.
+pub fn authenticate_access_token_tx(
+  tx : @database.DbTransaction,
+  token : String,
+  required : String,
+) -> @domain.CurrentUser raise {
   guard valid_access_token(token) else {
     raise @domain.Unauthorized(message="valid access token required")
   }
-  pool.with_client(client => {
-    client.with_transaction(tx => {
-      let row = tx.query_opt(
-        "SELECT u.id, u.name_key, u.display_name, u.is_site_admin, a.id AS token_id, a.permission FROM access_token a JOIN \"user\" u ON u.id = a.user_id WHERE a.token_hash = ? AND a.revoked_at IS NULL AND a.expires_at > datetime('now') AND u.status = 'active'",
-        params=[hash_token(token)],
-      )
-      guard row is Some(row) else {
-        raise @domain.Unauthorized(
-          message="access token expired, revoked or invalid",
-        )
-      }
-      let permission : String = row.get_name("permission")
-      guard required == "read" ||
-        permission == required ||
-        (required == "write" && ["execute", "merge"].contains(permission)) else {
-        raise @domain.Forbidden(
-          message="access token lacks \{required} permission",
-        )
-      }
-      ignore(
-        tx.execute(
-          "UPDATE access_token SET last_used_at = datetime('now') WHERE id = ?",
-          params=[(row.get_name("token_id") : Int64)],
-        ),
-      )
-      {
-        id: row.get_name("id"),
-        name_key: row.get_name("name_key"),
-        display_name: row.get_name("display_name"),
-        is_site_admin: row.get_name("is_site_admin"),
-        time_zone: None,
-      }
-    })
-  })
+  let row = tx.query_opt(
+    "SELECT u.id, u.name_key, u.display_name, u.is_site_admin, a.id AS token_id, a.permission FROM access_token a JOIN \"user\" u ON u.id = a.user_id WHERE a.token_hash = ? AND a.revoked_at IS NULL AND a.expires_at > datetime('now') AND u.status = 'active'",
+    params=[hash_token(token)],
+  )
+  guard row is Some(row) else {
+    raise @domain.Unauthorized(
+      message="access token expired, revoked or invalid",
+    )
+  }
+  let permission : String = row.get_name("permission")
+  guard required == "read" ||
+    permission == required ||
+    (required == "write" && ["execute", "merge"].contains(permission)) else {
+    raise @domain.Forbidden(message="access token lacks \{required} permission")
+  }
+  ignore(
+    tx.execute(
+      "UPDATE access_token SET last_used_at = datetime('now') WHERE id = ?",
+      params=[(row.get_name("token_id") : Int64)],
+    ),
+  )
+  {
+    id: row.get_name("id"),
+    name_key: row.get_name("name_key"),
+    display_name: row.get_name("display_name"),
+    is_site_admin: row.get_name("is_site_admin"),
+    time_zone: None,
+  }
 }

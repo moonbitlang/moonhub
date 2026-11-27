@@ -29,6 +29,8 @@ pub fn auth_middleware(@database.Database) -> @moonback.Middleware
 
 pub fn authorize_image_form(@moonback.Request) -> Unit raise
 
+pub fn bearer_access_token(@moonback.Request) -> String raise
+
 pub let browser_access_key : @moonback.TypedKey[BrowserAccess]
 
 pub fn commit_param(@moonback.Request) -> String raise @domain.AppError

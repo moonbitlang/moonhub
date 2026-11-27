@@ -6,7 +6,10 @@ pub let repositories_api_module : @moonback.Module = Module(ctx => {
   ctx.post(
     "/repos",
     api_handler(req => {
-      let actor = api_actor(pool, req, "write")
+      let write_token = api_bearer_token(req)
+      let actor = @identity.authenticate_access_token(
+        pool, write_token, "write",
+      )
       let body = api_body(req, ["owner", "name", "visibility"])
       let repo : @domain.RepoId = {
         owner: field(body, "owner"),
@@ -20,6 +23,7 @@ pub let repositories_api_module : @moonback.Module = Module(ctx => {
           repo,
           field(body, "visibility", fallback="private"),
           addresses,
+          write_token~,
         ),
       )
     }),

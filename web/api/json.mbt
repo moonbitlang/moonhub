@@ -18,17 +18,15 @@ fn api_actor(
   req : @moonback.Request,
   permission : String,
 ) -> @domain.CurrentUser raise {
+  @identity.authenticate_access_token(pool, api_bearer_token(req), permission)
+}
+
+///|
+fn api_bearer_token(req : @moonback.Request) -> String raise {
   guard req.headers.get("Sec-Fetch-Site") != Some("cross-site") else {
     raise @domain.Forbidden(message="cross-site request rejected")
   }
-  let headers = req.headers.get_all("authorization")
-  guard headers.length() == 1 &&
-    headers[0].length() <= 80 &&
-    headers[0].split_once(" ") is Some((scheme, token)) &&
-    scheme.to_lower() == "bearer" else {
-    raise @domain.Unauthorized(message="bearer access token required")
-  }
-  @identity.authenticate_access_token(pool, token.to_owned(), permission)
+  @web_context.bearer_access_token(req)
 }
 
 ///|

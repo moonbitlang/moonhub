@@ -25,7 +25,7 @@ pub async fn cleanup_deleted_repositories(@database.Database, String) -> Unit
 
 pub async fn confirm_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, String) -> Unit
 
-pub async fn create_empty_repository(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, SshAddressConfig) -> @domain.RepositoryDetails
+pub async fn create_empty_repository(@database.Database, String, @domain.CurrentUser, @domain.RepoId, String, SshAddressConfig, write_token~ : String) -> @domain.RepositoryDetails
 
 pub async fn create_managed_repository(@database.Database, String, @domain.RepoId, String, Bool) -> Unit
 
@@ -37,7 +37,7 @@ pub async fn discard_repository_job(@database.Database, String, @domain.CurrentU
 
 pub fn effective_ssh_endpoint(@database.Database, SshAddressConfig) -> SshEndpoint? raise
 
-pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String, String, String, addresses? : SshAddressConfig) -> @domain.RepoId
+pub async fn enqueue_repository(@database.Database, String, @domain.CurrentUser, @identity.TeamSummary, String, String, String, addresses? : SshAddressConfig, write_token? : String) -> @domain.RepoId
 
 pub async fn initialize_mirror_host(@database.Database, String, @domain.CurrentUser, @domain.RepoId, Int64, Int64, MirrorConfig) -> Unit
 

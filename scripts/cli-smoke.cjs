@@ -684,18 +684,19 @@ async function repositoryAcceptance(base, cliEnv, write, tokenFile) {
   ], sshToken));
   const listed = JSON.parse(accountCli(['ssh-key', 'list', '--json'], sshToken));
   assert.ok(listed.items.some(key => key.id === added.id && key.revoked_at === null));
-  accountCli(['repo', 'create', 'root/cli-created'], reader, 1);
+  const repoName = 'root/cli-created.git';
+  accountCli(['repo', 'create', repoName], reader, 1);
   const createdJson = JSON.parse(accountCli([
-    'repo', 'create', 'root/cli-created', '--visibility', 'public', '--json',
+    'repo', 'create', repoName, '--visibility', 'public', '--json',
   ]));
-  assert.equal(createdJson.full_name, 'root/cli-created');
+  assert.equal(createdJson.full_name, repoName);
   assert.equal(createdJson.visibility, 'public');
   assert.equal(createdJson.state, 'ready');
   assert.equal(createdJson.default_branch, 'main');
-  assert.equal(createdJson.clone_url, 'ssh://git@127.0.0.1:2222/root/cli-created.git');
-  assert.ok(fs.existsSync(path.join(temp, 'repos/root/cli-created.git/HEAD')));
-  assert.match(accountCli(['repo', 'view', '--repo', 'root/cli-created']), /^root\/cli-created\tpublic\tready$/m);
-  accountCli(['repo', 'create', '--repo', 'root/cli-created'], write, 1);
+  assert.equal(createdJson.clone_url, 'ssh://git@127.0.0.1:2222/root/cli-created.git.git');
+  assert.ok(fs.existsSync(path.join(temp, 'repos', repoName + '.git', 'HEAD')));
+  assert.match(accountCli(['repo', 'view', '--repo', repoName]), /^root\/cli-created\.git\tpublic\tready$/m);
+  accountCli(['repo', 'create', '--repo', repoName], write, 1);
 
   // Route Git's SSH command to the local server entry point and production hooks.
   const transport = path.join(temp, 'ssh');

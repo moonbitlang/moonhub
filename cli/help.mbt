@@ -22,7 +22,7 @@ fn option_description(name : String, group~ : String = "") -> String {
     "token-file" =>
       "Private file containing an mh_ token; overrides MOONHUB_TOKEN and saved login."
     "repo" =>
-      "OWNER/NAME; otherwise infer from origin matching the server (requires Git)."
+      "Exact repository name as OWNER/NAME. Otherwise infer from origin matching the server."
     "page" =>
       "Page number starting at 1; request the next page when has_more is true."
     "status" => "open or closed; MR lists also accept merged."

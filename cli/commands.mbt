@@ -694,13 +694,11 @@ fn render(json : Json) -> Unit {
 ///|
 fn parse_cli_repo(
   name : String,
-  literal~ : Bool = false,
+  label~ : String = "--repo",
 ) -> @domain.RepoId raise CliError {
-  @domain.parse_transport_repo(if literal { name + ".git" } else { name }) catch {
-    _ => {
-      let label = if literal { "repository" } else { "--repo" }
+  @domain.parse_repo_name(name) catch {
+    _ =>
       raise Invalid("\{label} must be OWNER/NAME, for example compiler/moonhub")
-    }
   }
 }
 

@@ -330,22 +330,6 @@ fn complete_result(fields : Map[String, Json]) -> Json {
 }
 
 ///|
-fn request_actor(
-  pool : @database.Database,
-  req : @moonback.Request,
-  permission : String,
-) -> @domain.CurrentUser raise {
-  let values = req.headers.get_all("authorization")
-  guard values.length() == 1 &&
-    values[0].length() <= 80 &&
-    values[0].split_once(" ") is Some((scheme, token)) &&
-    scheme.to_lower() == "bearer" else {
-    raise @domain.Unauthorized(message="bearer access token required")
-  }
-  @identity.authenticate_access_token(pool, token.to_owned(), permission)
-}
-
-///|
 fn validate_origin(
   req : @moonback.Request,
   allowed : Array[String],
@@ -461,7 +445,8 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
               headers.set("Allow", "POST")
               raise ProtocolError(405, -32600, "MCP accepts POST only", None)
             }
-            let actor = request_actor(pool, req, "read")
+            let token = @web_context.bearer_access_token(req)
+            let actor = @identity.authenticate_access_token(pool, token, "read")
             guard limit.admit(actor.id, @async.now()) else {
               headers.set("Retry-After", "60")
               raise ProtocolError(
@@ -624,11 +609,22 @@ pub let mcp_module : @moonback.Module = Module(ctx => {
                 }
                 tool.validate(args)
                 // Authentication/scope is deliberately outside the tool-error catch.
-                let actor = request_actor(pool, req, tool.permission)
+                let actor = @identity.authenticate_access_token(
+                  pool,
+                  token,
+                  tool.permission,
+                )
                 try {
                   let data = invoke_tool(
-                    pool, root, coordinator, diff_executor, addresses, actor, name,
+                    pool,
+                    root,
+                    coordinator,
+                    diff_executor,
+                    addresses,
+                    actor,
+                    name,
                     args,
+                    token~,
                   )
                   complete_result({
                     "content": [{ "type": "text", "text": data.stringify() }],

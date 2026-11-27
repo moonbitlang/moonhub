@@ -18,13 +18,19 @@ pub fn valid_repo_path(path : String) -> Bool {
 
 ///|
 pub fn parse_transport_repo(path : String) -> RepoId raise {
-  let path = path.strip_prefix("/").unwrap_or(path[:])
+  parse_repo_name(path.strip_suffix(".git").unwrap_or(path[:]))
+}
+
+///|
+/// Parse an owner/name identity used by APIs and internal commands.
+pub fn parse_repo_name(path : StringView) -> RepoId raise {
+  let path = path.strip_prefix("/").unwrap_or(path)
   let parts = path.split("/").collect()
   guard parts.length() == 2 else {
-    raise BadRequest(message="expected owner/repository.git")
+    raise BadRequest(message="expected owner/repository")
   }
   let owner = parts[0].to_owned()
-  let name = parts[1].strip_suffix(".git").unwrap_or(parts[1]).to_owned()
+  let name = parts[1].to_owned()
   guard valid_name_key(owner) && !name.is_empty() && name.length() <= 100 else {
     raise BadRequest(message="invalid repository name")
   }

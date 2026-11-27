@@ -221,3 +221,36 @@ async test "repository metadata resolves literal names and reads the Git default
     assert_true(json is { "default_branch": String("release/stable"), .. })
   })
 }
+
+///|
+async test "repository creation requires a write token at the job insert" {
+  let started = @async.Semaphore(1, initial_value=0)
+  @web_testkit.with_repository_test_app(
+    (port, pool, _, _, _) => {
+      let alice = @identity.active_user_by_name(pool, "alice")
+      let token = @identity.create_access_token(
+        pool, alice, "write", "write", 1,
+      )
+      let id = @identity.access_tokens(pool, alice)[0].id
+      let payload : Json = { "owner": "alice", "name": "queued-repo" }
+      let (response, _) = @web_testkit.partial_body_request(
+        port,
+        "/-/api/v1/repos",
+        payload.stringify(),
+        {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+        },
+        started,
+        () => @identity.revoke_access_token(pool, alice, id),
+      )
+      assert_eq(response.code, 401)
+      let read = @identity.create_access_token(pool, alice, "read", "read", 1)
+      assert_eq(
+        api_test_request(port, "/repos/alice/queued-repo", read, None).0,
+        404,
+      )
+    },
+    body_read_started=started,
+  )
+}

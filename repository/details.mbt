@@ -6,6 +6,7 @@ pub async fn create_empty_repository(
   repo : @domain.RepoId,
   visibility : String,
   addresses : SshAddressConfig,
+  write_token~ : String,
 ) -> @domain.RepositoryDetails {
   guard @domain.valid_repo_owner(repo.owner) &&
     @identity.get_team_by_name_key(pool, repo.owner) is Some(team) else {
@@ -22,6 +23,7 @@ pub async fn create_empty_repository(
     visibility,
     "",
     addresses~,
+    write_token~,
   )
   {
     repo,
