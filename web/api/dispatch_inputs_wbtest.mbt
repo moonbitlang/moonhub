@@ -62,6 +62,51 @@ async test "run API selects original PR workflow jobs with execute permission an
 }
 
 ///|
+async test "run API requires explicit jobs and a repository grant for a manual runner group" {
+  @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
+    let actor = @identity.active_user_by_name(pool, "alice")
+    let admin = @identity.active_user_by_name(pool, "admin")
+    let execute = @identity.create_access_token(
+      pool, actor, "runner-group", "execute", 1,
+    )
+    let write = @identity.create_access_token(
+      pool, actor, "no-execution", "write", 1,
+    )
+    let repo : @domain.RepoId = { owner: "alice", name: "demo", }
+    let source = @test_support.single_job_workflow
+    let sha = @test_support.workflow_commit(repo.git_dir(root), source)
+    let c = @runtime.Coordinator::new(pool)
+    c.save_runner_group(admin, "trusted", 0L, [], [])
+    let path = "/repos/alice/demo/runs"
+    let body : Map[String, Json] = {
+      "branch": "pipeline",
+      "workflow": ".github/workflows/build.yml",
+      "runner_group": "trusted",
+    }
+    assert_eq(api_test_request(port, path, execute, Some(Json(body))).0, 400)
+    body["jobs"] = Json(["build"])
+    assert_eq(api_test_request(port, path, write, Some(Json(body))).0, 403)
+    assert_eq(api_test_request(port, path, execute, Some(Json(body))).0, 400)
+    c.save_runner_group(admin, "trusted", 1L, [], [repo])
+    for invalid in [Json::null(), Json(1), Json("")] {
+      body["runner_group"] = invalid
+      assert_eq(api_test_request(port, path, execute, Some(Json(body))).0, 400)
+    }
+    body["runner_group"] = Json("trusted")
+    for (number, prefix) in [(1L, "/-/api/v1"), (2L, "/api/v3")] {
+      assert_eq(
+        api_test_request(port, path, execute, Some(Json(body)), prefix~).0,
+        200,
+      )
+      let run = @runtime.get_run(pool, actor, repo, number)
+      assert_eq(run.commit_sha, sha)
+      assert_eq(run.workflow_source, source)
+      assert_eq(run.definition.jobs[0].runner_group, "trusted")
+    }
+  })
+}
+
+///|
 async test "run API accepts typed dispatch inputs and rejects invalid input objects" {
   @web_testkit.with_repository_test_app((port, pool, root, _, _) => {
     let actor = @identity.active_user_by_name(pool, "alice")

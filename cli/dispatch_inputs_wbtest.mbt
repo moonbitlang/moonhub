@@ -1,11 +1,13 @@
 ///|
-test "CI run accepts an inputs JSON file" {
+test "CI run accepts an inputs JSON file and runner group" {
   let parsed = command().parse(argv=[
     "ci", "run", "--branch", "master", "--workflow", ".github/workflows/release.yml",
-    "--inputs-file", "/tmp/inputs.json", "--json", "--jobs", "build[1],test",
+    "--inputs-file", "/tmp/inputs.json", "--json", "--jobs", "build[1],test", "--runner-group",
+    "trusted-linux",
   ])
   assert_eq(option(parsed, "inputs-file"), Some("/tmp/inputs.json"))
   assert_eq(option(parsed, "jobs"), Some("build[1],test"))
+  assert_eq(option(parsed, "runner-group"), Some("trusted-linux"))
   assert_eq(option(parsed, "workflow"), Some(".github/workflows/release.yml"))
 }
 

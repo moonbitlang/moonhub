@@ -51,6 +51,7 @@ pub async fn create_run(
   workflow_path : String,
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
+  runner_group~ : String? = None,
 ) -> @runtime.Run {
   create_run_event(
     pool,
@@ -61,6 +62,7 @@ pub async fn create_run(
     workflow_path,
     inputs~,
     jobs~,
+    runner_group~,
   )
 }
 
@@ -74,12 +76,26 @@ async fn create_run_event(
   workflow_path : String,
   inputs~ : Map[String, Json] = Map([]),
   jobs~ : Array[String] = [],
+  runner_group~ : String? = None,
   scheduled_minute~ : Int64 = -1L,
 ) -> @runtime.Run {
   let repo = scope.repo
   @runtime.validate_workflow_path(workflow_path)
   @repository.with_repository_write(pool, root, actor, scope, (scope, git_dir) => {
     ignore(@runtime.require_run_author(pool, actor, repo))
+    let runner_group = runner_group.map(name => {
+      guard !jobs.is_empty() else {
+        raise @domain.BadRequest(
+          message="runner_group requires an explicit job selection",
+        )
+      }
+      guard !name.is_empty() && name.length() <= 64 else {
+        raise @domain.BadRequest(
+          message="runner_group must contain 1 to 64 characters",
+        )
+      }
+      name.to_lower()
+    })
     if scheduled_minute >= 0L {
       let previous = pool.with_client(c => {
         let config = c.query_opt(
@@ -164,7 +180,13 @@ async fn create_run_event(
       release_tag: None,
       event: None,
     }
-    let definition = @workflow.resolve_context(definition, context) catch {
+    let definition = try {
+      let definition = match runner_group {
+        Some(group) => @workflow.restrict_runner_group(definition, group)
+        None => definition
+      }
+      @workflow.resolve_context(definition, context)
+    } catch {
       @workflow.InvalidWorkflow(message) => raise @domain.BadRequest(message~)
     }
     // Git subprocesses yield. Recheck permissions after the final await and
@@ -184,6 +206,17 @@ async fn create_run_event(
             )
             is Some(_) else {
             raise @domain.Forbidden(message="schedule changed before snapshot")
+          }
+        }
+        if runner_group is Some(group) {
+          guard tx.query_opt(
+              "SELECT g.id FROM pipeline_runner_group g JOIN pipeline_runner_group_repository r ON r.group_id=g.id WHERE g.name=? AND r.repository_id=?",
+              params=[group, scope.id],
+            )
+            is Some(_) else {
+            raise @domain.BadRequest(
+              message="runner group is unavailable to this repository",
+            )
           }
         }
         let run = insert_run_snapshot(

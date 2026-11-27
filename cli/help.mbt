@@ -72,6 +72,8 @@ fn option_description(name : String, group~ : String = "") -> String {
       "UTF-8 JSON object of up to 25 string/boolean/number workflow inputs."
     "jobs" =>
       "Comma-separated logical job IDs or exact static matrix keys, e.g. 'build[1],test'. Dependencies are included."
+    "runner-group" =>
+      "Limit explicitly selected jobs and their dependencies to a repository-granted runner group."
     "branch" => "Existing branch to run CI on, or to scope a repository secret."
     "attempt" =>
       "Run attempt ID from ci view NUMBER --json (not the attempt ordinal)."
@@ -150,7 +152,7 @@ fn command_description(group : String, action : String) -> String {
     ("issue", "edit") =>
       "Edit title, body or assignee at --edit-version; omitted fields are preserved."
     ("ci", "run") =>
-      "Start --workflow on --branch; optional --jobs and --inputs-file; execute token required."
+      "Start --workflow on --branch; optional --jobs, --runner-group and --inputs-file; execute token required."
     ("ci", "view") => "Show run status and attempt IDs for ci logs."
     ("ci", "logs") =>
       "Read logs for --attempt; paginate with the returned next_cursor and --after."
