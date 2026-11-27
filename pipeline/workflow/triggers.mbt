@@ -348,7 +348,7 @@ fn activity_types(
         v.length() <= 100 &&
         !seen.contains(v) &&
         (allowed.is_empty() || allowed.contains(v))
-      seen.add(v)
+      seen.insert(v)
       valid
     }) else {
     raise InvalidWorkflow(

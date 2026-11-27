@@ -70,6 +70,45 @@ test('deployment conditions restrict event, repository, branch and completed CI'
   assert.doesNotMatch(deploy, /^\s+ref:/m, 'deployment must check out the calling CI commit');
 });
 
+test('CI pin readers accept archived prereleases and reject unpinned versions', () => {
+  const workflows = [ci, fs.readFileSync(path.join(root, '.github/workflows/frontend-checks.yml'), 'utf8')];
+  const readers = workflows.map(workflow => {
+    const read = workflow.match(/      - name: Read production MoonBit version[\s\S]*?node <<'NODE'\n([\s\S]*?)          NODE/)?.[1];
+    assert.ok(read);
+    return read;
+  });
+  const windows = fs.readFileSync(path.join(root, 'scripts/windows-moonbit-runtime-smoke.cjs'), 'utf8');
+  const windowsRead = windows.match(/const version = [\s\S]*?(?=const name =)/)?.[0];
+  assert.ok(windowsRead);
+  for (const pin of ['0.10.21+06da1ed44', '0.10.21+06da1ed44-nightly', '1.0.0-rc1+3c0520448', '1.0.0-rc.1+testpin']) {
+    const dockerfile = `ARG MOONBIT_VERSION=${pin}\n`;
+    for (const read of readers) {
+      let written;
+      vm.runInNewContext(read, {
+        process: { env: { GITHUB_ENV: 'env-file' } },
+        require: name => name === 'node:fs' ? {
+          readFileSync: () => dockerfile,
+          appendFileSync: (file, value) => { assert.equal(file, 'env-file'); written = value; },
+        } : require(name),
+      });
+      assert.equal(written, `MOONBIT_VERSION=${pin}\n`);
+    }
+    assert.equal(vm.runInNewContext(windowsRead + '\nversion', {
+      fs: { readFileSync: () => dockerfile }, assert,
+    }), pin);
+  }
+  for (const pin of ['latest', 'nightly', '1.0.0-rc1', '1.0.0-rc1+']) {
+    for (const read of readers) {
+      assert.throws(() => vm.runInNewContext(read, {
+        require: name => name === 'node:fs' ? { readFileSync: () => `ARG MOONBIT_VERSION=${pin}\n` } : require(name),
+      }), /Expected one exact production MoonBit pin/);
+    }
+    assert.throws(() => vm.runInNewContext(windowsRead, {
+      fs: { readFileSync: () => `ARG MOONBIT_VERSION=${pin}\n` }, assert,
+    }), /Missing production MoonBit pin/);
+  }
+});
+
 test('compiler verification rejects a successful install of the wrong version', () => {
   const pin = fs.readFileSync(path.join(root, 'deploy/base.Dockerfile'), 'utf8').match(/^ARG MOONBIT_VERSION=(.+)$/m)[1];
   for (const workflow of [ci, fs.readFileSync(path.join(root, '.github/workflows/frontend-checks.yml'), 'utf8')]) {

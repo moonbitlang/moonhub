@@ -70,7 +70,7 @@ fn reuse_successful_jobs(
   }
   let affected : Set[String] = Set([])
   for row in failed {
-    affected.add(row.get_name("job_key"))
+    affected.insert(row.get_name("job_key"))
   }
   let edges = tx.query_all(
     "SELECT job_key,needs_job_key FROM pipeline_job_need WHERE run_id=?",
@@ -80,7 +80,7 @@ fn reuse_successful_jobs(
     let before = affected.length()
     for edge in edges {
       if affected.contains(edge.get_name("needs_job_key")) {
-        affected.add(edge.get_name("job_key"))
+        affected.insert(edge.get_name("job_key"))
       }
     }
     if affected.length() == before {
