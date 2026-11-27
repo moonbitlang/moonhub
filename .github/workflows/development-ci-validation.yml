@@ -68,6 +68,9 @@ jobs:
       - name: Test pipeline scheduling
         if: matrix.coverage == 'expanded'
         run: moon test --target native --strip -j 1 --deny-warn pipeline
+      - name: Build diff worker for Web test fixtures
+        if: matrix.coverage == 'expanded'
+        run: moon build --target native --strip -j 1 --deny-warn cmd/moonhub-diff-worker
       - name: Test repository and pipeline Web routes
         if: matrix.coverage == 'expanded'
         run: moon test --target native --strip -j 1 --deny-warn web/views/repositories web/views/pipelines
