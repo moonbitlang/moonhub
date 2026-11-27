@@ -1,3 +1,5 @@
+ARG UBUNTU_VERSION=24.04
+
 FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS node20
 FROM docker:27.5.1-dind@sha256:aa3df78ecf320f5fafdce71c659f1629e96e9de0968305fe1de670e0ca9176ce AS dind
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS action-dependencies
@@ -6,13 +8,19 @@ WORKDIR /opt/moonhub-actions
 COPY runner/actions/package.json runner/actions/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
-# An Ubuntu selector requires actual Ubuntu userspace, never a relabeled Debian
-# runner. Build with --platform linux/amd64 for the ubuntu-24.04 x64 capability.
-FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b AS environment
+# Each supported version uses the corresponding Ubuntu userspace.
+FROM ubuntu:22.04@sha256:b000e69a50ff940390233025e7a337fb8469b509e2334fa4d018ac30f3e18cdb AS ubuntu-22.04
+FROM ubuntu:24.04@sha256:c4a8d5503dfb2a3eb8ab5f807da5bc69a85730fb49b5cfca2330194ebcc41c7b AS ubuntu-24.04
+FROM ubuntu-${UBUNTU_VERSION} AS environment
+ARG UBUNTU_VERSION
 # The minimal Ubuntu base has no CA bundle. Borrow one from the pinned Node
 # image until Ubuntu installs its own; the Ubuntu archive keyring stays in use.
 RUN --mount=type=bind,from=action-dependencies,source=/tmp/moonhub-apt-ca.pem,target=/run/moonhub-apt-ca.pem,ro \
-    sed -i '/^URIs:/s|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources \
+    if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+        sed -i '/^URIs:/s|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    else \
+        sed -i '/^deb /s|http://|https://|g' /etc/apt/sources.list; \
+    fi \
     && printf '%s\n' 'Acquire::https::Timeout "30";' 'Acquire::Retries "3";' \
         'APT::Update::Error-Mode "any";' > /etc/apt/apt.conf.d/99moonhub-network \
     && apt-get -o Acquire::https::CaInfo=/run/moonhub-apt-ca.pem update \
@@ -34,7 +42,7 @@ COPY --from=node20 /usr/local/bin/node /opt/actions/node20/bin/node
 COPY --from=action-dependencies /opt/moonhub-actions/node_modules /usr/local/lib/moonhub/actions/node_modules
 COPY --chmod=0644 runner/actions/*.mjs /usr/local/lib/moonhub/actions/
 ENV PATH=/opt/moon/bin:/usr/local/bin:/usr/bin:/bin
-LABEL io.moonhub.runner.environment="ubuntu-24.04"
+LABEL io.moonhub.runner.environment="ubuntu-${UBUNTU_VERSION}"
 
 # Compile only the standalone runner and its non-Web dependencies.
 FROM environment AS native-build

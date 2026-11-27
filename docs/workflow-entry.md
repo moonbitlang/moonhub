@@ -54,8 +54,9 @@ GitHub changes its hosted-image mapping. This does not claim the entire GitHub
 hosted software inventory. Windows Server 2022 retains its existing provider
 checks. Other hosted selectors still fail validation.
 
-`deploy/ubuntu/Dockerfile` supplies real Ubuntu 24.04 userspace, fixed Node
-runtimes with npm/npx and a native runner built for the same architecture:
+`deploy/ubuntu/Dockerfile` supplies Ubuntu 24.04 userspace by default, along
+with fixed Node runtimes with npm/npx and a native runner built for the same
+architecture.
 
 ```sh
 docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
@@ -66,7 +67,18 @@ docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
 Configure that image and the labels `self-hosted,linux,x64,ubuntu-24.04` together.
 Existing Debian providers should not acquire the Ubuntu capability label.
 
-Both Linux runner images include the following baseline tools:
+The `ubuntu-22.04` selector uses a separate Ubuntu 22.04 x64 image.
+
+```sh
+docker build --platform linux/amd64 -f deploy/ubuntu/Dockerfile \
+  --build-arg UBUNTU_VERSION=22.04 --target runner \
+  -t moonhub-runner:ubuntu-22.04 .
+```
+
+Configure the image together with `self-hosted,linux,x64,ubuntu-22.04`, or
+with an Ubuntu 22.04 x64 [provider environment](provider-environments.md).
+
+The Debian and Ubuntu runner images include these baseline tools.
 
 | Purpose | Included tools |
 | --- | --- |
@@ -80,11 +92,13 @@ Both Linux runner images include the following baseline tools:
 Compiler and Python packages follow each distribution's repositories. Workflows
 that require a particular version or another language SDK must install it
 explicitly. Changes apply after rebuilding the image and updating the provider's
-saved runner image. GitHub CI builds the Ubuntu environment and exercises both
-Linux toolsets as UID 10001 with a read-only root filesystem and no network:
+saved runner image. GitHub CI verifies the Ubuntu 22.04 runner binary and tests
+the Ubuntu 22.04, Ubuntu 24.04 and Debian 12 tools as UID 10001 with a
+read-only root filesystem and no network.
 
 ```sh
-bash scripts/linux-runner-tools-smoke.sh moonhub-runner:ubuntu-24.04 moonhub-runner:debian
+bash scripts/linux-runner-tools-smoke.sh \
+  moonhub-runner:ubuntu-24.04 moonhub-runner:ubuntu-22.04 moonhub-runner:debian
 ```
 
 ## Branch and path filters
@@ -166,3 +180,28 @@ steps successful on Ubuntu 24.04 x64. Upstream checkout v5 resolved to
 `fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09`; the unmodified install step selected
 MoonBit `0.10.18+1fd8467c3-nightly`. Native and wasm suites each passed 46 tests,
 format and package succeeded, and checkout post removed its temporary extraheader.
+
+### OpenSeek CLI release build
+
+Build the Ubuntu 22.04 x64 runner image from the same checkout. The opt-in smoke
+uses Docker with `linux/amd64` support, Node with `node:sqlite`, Git, `tar`,
+`unzip`, and network access for the pinned workflow's actions and dependencies.
+
+```sh
+git init --bare /tmp/openseek-cli-source.git
+git --git-dir /tmp/openseek-cli-source.git fetch --depth=1 --no-tags \
+  https://github.com/moonbitlang/openseek.git \
+  dbe424220ddf20a9a78312850a7d6d801c7b9831
+npm ci --prefix js
+npm run build --prefix js
+moon build --strip -j 1 . cmd/moonhub-diff-worker
+node scripts/openseek-cli-release-smoke.cjs /tmp/openseek-cli-source.git \
+  moonhub-runner:ubuntu-22.04
+```
+
+The smoke dispatches `build[1]`, the Linux x64 row of the original
+`cli-release.yml`, on a disposable MoonHub server. It checks the queue
+diagnostic and refused claim for an Ubuntu 24.04 provider. An Ubuntu 22.04
+provider then runs the job in Docker. The smoke verifies the skipped Windows
+steps, the uploaded archive checksum, and the x86-64 ELF headers of both
+packaged executables.
