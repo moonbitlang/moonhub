@@ -103,8 +103,8 @@ repository access. Tool names have the prefix `moonhub_`:
 
 | Permission | Tool suffixes |
 | --- | --- |
-| `read` | `get_user`, `list_repositories`, `list_merge_requests`, `get_merge_request`, `get_merge_request_diff`, `get_merge_request_checks`, `list_merge_discussions`, `list_issues`, `get_issue`, `list_runs`, `get_run`, `get_run_logs`, `list_inbox` |
-| `write` | `mark_notification_read`, `create_issue`, `comment_issue`, `edit_issue`, `close_issue`, `reopen_issue`, `create_merge_request`, `comment_merge_request`, `edit_merge_request`, `reply_merge_discussion`, `resolve_merge_discussion`, `reopen_merge_discussion` |
+| `read` | `get_user`, `list_repositories`, `get_repository`, `list_merge_requests`, `get_merge_request`, `get_merge_request_diff`, `get_merge_request_checks`, `list_merge_discussions`, `list_issues`, `get_issue`, `list_runs`, `get_run`, `get_run_logs`, `list_inbox` |
+| `write` | `create_repository`, `mark_notification_read`, `create_issue`, `comment_issue`, `edit_issue`, `close_issue`, `reopen_issue`, `create_merge_request`, `comment_merge_request`, `edit_merge_request`, `reply_merge_discussion`, `resolve_merge_discussion`, `reopen_merge_discussion` |
 | `execute` | `create_run`, `rerun_run`, `cancel_run`, `approve_merge_checks` |
 | `merge` | `merge_merge_request` |
 
@@ -113,6 +113,13 @@ never create repository roles. MR creation does not approve CI. Merging needs
 manager access, an explicitly observed MR version and passing branch checks.
 Edits use `edit_version`; discussion resolution uses `state_version`.
 Reload current state after stale-version errors.
+
+`moonhub_create_repository` queues an empty repository with a `repository`
+argument in `owner/name` form. It requires namespace management access.
+Optional `visibility` accepts `public` or `private` and defaults to `private`.
+Use `moonhub_get_repository` with the same path to wait for `state: "ready"`
+before pushing to `clone_url`. The response includes the Git `default_branch`
+when available. Namespace managers can inspect pending, running or failed jobs.
 
 For issue-fixing work, put `Closes #123`, `Fixes #123` or `Resolves #123` in the
 `description` of `moonhub_create_merge_request` / `moonhub_edit_merge_request`.

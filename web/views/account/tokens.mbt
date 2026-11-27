@@ -42,6 +42,7 @@ fn token_page(
           ("write", "Read and collaboration writes"),
           ("execute", "Collaboration writes and CI execution"),
           ("merge", "Collaboration writes and merge submission"),
+          ("ssh", "Repository read and account SSH key management"),
         ] {
         b <+ "<option value=\"\{value}\""
         if submitted.get("permission").unwrap_or("read") == value {

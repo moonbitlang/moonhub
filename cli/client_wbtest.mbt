@@ -107,17 +107,37 @@ test "discussion commands retain independent discussion and state IDs" {
 test "repository inference matches only the configured server and terminal output strips controls" {
   let server = "https://moonhub.example"
   assert_eq(
-    remote_repo("ssh://git@moonhub.example:12222/compiler/moonhub.git", server),
+    remote_repo("ssh://git@moonhub.example:12222/compiler/moonhub.git", server).map(repo => {
+        repo.path()
+      },
+    ),
     Some("compiler/moonhub"),
   )
   assert_eq(
-    remote_repo("git@moonhub.example:compiler/moonhub.git", server),
+    remote_repo("git@moonhub.example:compiler/moonhub.git", server).map(repo => {
+      repo.path()
+    }),
     Some("compiler/moonhub"),
   )
-  assert_eq(remote_repo("git@github.com:compiler/moonhub.git", server), None)
+  assert_true(
+    remote_repo("git@github.com:compiler/moonhub.git", server) is None,
+  )
   assert_eq(
-    remote_repo("https://moonhub.example/compiler/moonhub.git", server),
+    remote_repo("https://moonhub.example/compiler/moonhub.git", server).map(repo => {
+      repo.path()
+    }),
     Some("compiler/moonhub"),
+  )
+  assert_eq(
+    remote_repo("ssh://git@moonhub.example:12222/compiler/docs.git.git", server).map(repo => {
+        repo.path()
+      },
+    ),
+    Some("compiler/docs.git"),
+  )
+  assert_eq(
+    parse_cli_repo("compiler/docs.git", literal=true).path(),
+    "compiler/docs.git",
   )
   assert_eq(terminal_text("before\u{001b}[31m\nafter"), "before [31m after")
 }

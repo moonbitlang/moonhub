@@ -24,6 +24,19 @@ const env = {
 const published = process.env.MOONHUB_CLI_PACKAGE;
 const executable = published || path.join(root, '_build/wasm/debug/build/cmd/moonhub/moonhub.wasm');
 const requests = [];
+let repositoryReads = 0;
+let revokedAt = null;
+const publicKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB';
+const sshKey = { id: '12', title: 'Fixture', fingerprint: 'SHA256:fixture' };
+const repository = (name, state) => ({
+  owner: 'fixture',
+  name,
+  full_name: 'fixture/' + name,
+  visibility: 'private',
+  state,
+  default_branch: state === 'ready' ? 'main' : null,
+  clone_url: 'ssh://git@[::1]:2222/fixture/' + name + '.git',
+});
 const server = http.createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -38,6 +51,20 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(401).end(JSON.stringify({ error: { message: 'unauthorized' } }));
   } else if (request.url === '/-/api/v1/user') {
     response.end(JSON.stringify({ id: '1', username: 'fixture' }));
+  } else if (request.url === '/-/api/v1/repos' && request.method === 'POST') {
+    const { name } = JSON.parse(requests.at(-1).body);
+    response.end(JSON.stringify(repository(name, 'pending')));
+  } else if (request.url === '/-/api/v1/repos/fixture/demo') {
+    response.end(JSON.stringify(repository('demo', repositoryReads++ === 0 ? 'running' : 'ready')));
+  } else if (request.url === '/-/api/v1/repos/fixture/failed') {
+    response.end(JSON.stringify(repository('failed', 'failed')));
+  } else if (request.url === '/-/api/v1/user/ssh-keys' && request.method === 'POST') {
+    response.end(JSON.stringify(sshKey));
+  } else if (request.url === '/-/api/v1/user/ssh-keys') {
+    response.end(JSON.stringify({ items: [{ ...sshKey, revoked_at: revokedAt }] }));
+  } else if (request.url === '/-/api/v1/user/ssh-keys/12/revoke' && request.method === 'POST') {
+    revokedAt = '2026-11-27 00:00:00';
+    response.end(JSON.stringify({ id: '12', revoked: true }));
   } else if (request.url === '/-/api/v1/repos/fixture/demo/issues' && request.method === 'POST') {
     response.end(JSON.stringify({ number: '1' }));
   } else if (request.url.startsWith('/-/api/v1/repos/fixture/demo/issues?')) {
@@ -100,7 +127,7 @@ async function main() {
   assert.match((await cli(['mr', 'merge', '1'], 2)).stderr, /--version/);
   await cli(['issue', 'view'], 2);
   assert.match((await cli(['issue', 'comment', '1'], 2)).stderr, /--body-file/);
-  for (const command of ['auth', 'mr', 'issue', 'ci', 'inbox', 'attachment', 'webhook', 'secret', 'variable']) {
+  for (const command of ['auth', 'repo', 'ssh-key', 'mr', 'issue', 'ci', 'inbox', 'attachment', 'webhook', 'secret', 'variable']) {
     assert.ok(help.stdout.includes(command), command + ' missing from help');
   }
   assert.match((await cli(['unknown-command'], 2)).stderr, /unknown|unrecognized/i);
@@ -141,6 +168,40 @@ async function main() {
   assert.equal(JSON.parse(created.body).description, fs.readFileSync(bodyFile, 'utf8'));
   execFileSync('git', ['init', '-q', temp]);
   execFileSync('git', ['-C', temp, 'remote', 'add', 'origin', base + '/fixture/demo.git']);
+  const beforeCreate = requests.length;
+  const missingRepository = await cli(['repo', 'create', ...connection], 2);
+  assert.match(missingRepository.stderr, /repo create requires OWNER\/NAME/);
+  await cli(['repo', 'create', 'fixture/demo', '--repo', 'fixture/other', ...connection], 2);
+  assert.equal(requests.length, beforeCreate);
+  const createdRepo = await cli(['repo', 'create', 'fixture/demo', ...connection], 0, { MOONHUB_REPOSITORY: 'fixture/other' });
+  assert.deepEqual(JSON.parse(createdRepo.stdout), repository('demo', 'ready'));
+  assert.deepEqual(requests.slice(beforeCreate).map(request => [request.method, request.url]), [
+    ['POST', '/-/api/v1/repos'],
+    ['GET', '/-/api/v1/repos/fixture/demo'],
+    ['GET', '/-/api/v1/repos/fixture/demo'],
+  ]);
+  assert.deepEqual(JSON.parse(requests[beforeCreate].body), { owner: 'fixture', name: 'demo', visibility: 'private' });
+  const failedRepo = await cli(['repo', 'create', '--repo', 'fixture/failed', ...connection], 1);
+  assert.equal(JSON.parse(failedRepo.stdout).state, 'failed');
+  const failedText = await cli(['repo', 'create', 'fixture/failed', ...connection.slice(0, -1)], 1);
+  assert.match(failedText.stdout, /Creation failed/);
+  assert.doesNotMatch(failedText.stdout, /Created|git push/);
+  const viewed = await cli(['repo', 'view', ...connection]);
+  assert.deepEqual(JSON.parse(viewed.stdout), repository('demo', 'ready'));
+  const keyFile = path.join(temp, 'key.pub');
+  fs.writeFileSync(keyFile, '-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n');
+  const beforeKey = requests.length;
+  const addKey = ['ssh-key', 'add', '--title', 'Fixture', '--key-file', keyFile, ...connection];
+  assert.match((await cli(addKey, 2)).stderr, /Ed25519 public key/);
+  assert.equal(requests.length, beforeKey);
+  fs.writeFileSync(keyFile, publicKey + ' local-comment\n');
+  assert.deepEqual(JSON.parse((await cli(addKey)).stdout), sshKey);
+  assert.deepEqual(JSON.parse(requests.at(-1).body), { title: 'Fixture', public_key: publicKey });
+  const listedKeys = await cli(['ssh-key', 'list', ...connection.slice(0, -1)]);
+  assert.match(listedKeys.stdout, /^12\tFixture\tSHA256:fixture\tactive$/m);
+  const deleted = await cli(['ssh-key', 'delete', '12', ...connection]);
+  assert.deepEqual(JSON.parse(deleted.stdout), { id: '12', revoked: true });
+  assert.equal(requests.at(-1).body, '{}');
   const list = JSON.parse((await cli(['issue', 'list', ...connection])).stdout);
   assert.equal(list.items[0].number, '1');
   const denied = await cli(['issue', 'view', '99', '--repo', 'fixture/demo', ...connection], 1);

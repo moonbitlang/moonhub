@@ -26,7 +26,7 @@ pub fn create_access_token(
   guard !name.trim().is_empty() &&
     name.length() <= 100 &&
     name.iter().all(ch => ch.to_int() >= 32 && ch.to_int() != 127) &&
-    ["read", "write", "execute", "merge"].contains(permission) &&
+    ["read", "write", "execute", "merge", "ssh"].contains(permission) &&
     days >= 1 &&
     days <= 365 else {
     raise @domain.BadRequest(message="invalid token name, permission or expiry")
@@ -111,7 +111,8 @@ pub fn revoke_access_token(
 ///|
 // Tokens grant a subset of current user permissions; they never create a role.
 // write = collaboration mutations, execute = write + CI execution, merge =
-// write + merge submission. Execution and merging are intentionally independent.
+// write + merge submission. The ssh permission adds SSH key management to
+// read access. Execution, merging and SSH key management are independent.
 pub fn authenticate_access_token(
   pool : @database.Database,
   token : String,

@@ -11,6 +11,11 @@ test "repo commands parse the repository and default to private" {
   assert_eq(option(public, "visibility"), Some("public"))
   let viewed = command().parse(argv=["repo", "view", "--repo", "alice/demo"])
   assert_eq(option(viewed, "repo"), Some("alice/demo"))
+  let positional = command().parse(argv=["repo", "create", "alice/demo"])
+  assert_eq(
+    option(positional.subcommand.unwrap().1.subcommand.unwrap().1, "repository"),
+    Some("alice/demo"),
+  )
   guard command().parse_outcome(argv=["repo", "create", "--help"]) is Help(help) else {
     fail("repo create help failed")
   }

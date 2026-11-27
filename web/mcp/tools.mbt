@@ -33,6 +33,13 @@ fn Tool::definition(self : Tool) -> Json {
       "description": "Repository path, owner/name",
     }
   }
+  if self.name == "moonhub_create_repository" {
+    properties["visibility"] = {
+      "type": "string",
+      "enum": ["private", "public"],
+      "default": "private",
+    }
+  }
   if ["moonhub_create_merge_request", "moonhub_edit_merge_request"].contains(
       self.name,
     ) {
@@ -65,12 +72,18 @@ fn Tool::definition(self : Tool) -> Json {
       "description": "Observed MR metadata version as a canonical decimal string. Required when closing_issue_numbers is nonempty, to confirm the issue closures inspected with moonhub_get_merge_request. Stale metadata is rejected.",
     }
   }
+  let access = if self.name == "moonhub_create_repository" {
+    " and namespace management access."
+  } else {
+    " and existing repository access."
+  }
   {
     "name": self.name,
     "description": self.description +
     " Requires " +
     self.permission +
-    " token permission and existing repository access.",
+    " token permission" +
+    access,
     "inputSchema": {
       "type": "object",
       "properties": Json(properties),
@@ -158,6 +171,20 @@ fn tool_catalog() -> Array[Tool] {
       permission: "read",
       required: [],
       optional: [],
+    },
+    {
+      name: "moonhub_get_repository",
+      description: "Read a repository's visibility, provisioning state, default branch and SSH clone URL. Namespace managers can also inspect pending and failed repositories.",
+      permission: "read",
+      required: ["repository"],
+      optional: [],
+    },
+    {
+      name: "moonhub_create_repository",
+      description: "Queue an empty repository in a personal or organization namespace. Visibility defaults to private. Poll moonhub_get_repository until state is ready before pushing.",
+      permission: "write",
+      required: ["repository"],
+      optional: ["visibility"],
     },
     {
       name: "moonhub_list_merge_requests",
@@ -459,6 +486,7 @@ async fn invoke_tool(
   root : String,
   coordinator : @runtime.Coordinator,
   diff_executor : @gitops.DiffExecutor,
+  addresses : @repository.SshAddressConfig,
   actor : @domain.CurrentUser,
   name : String,
   args : Map[String, Json],
@@ -476,6 +504,27 @@ async fn invoke_tool(
           repo.path()
         }),
       }
+    "moonhub_get_repository" =>
+      return @dto.repository_json(
+        @repository.repository_details(
+          pool,
+          root,
+          actor,
+          tool_repo(args),
+          addresses,
+        ),
+      )
+    "moonhub_create_repository" =>
+      return @dto.repository_json(
+        @repository.create_empty_repository(
+          pool,
+          root,
+          actor,
+          tool_repo(args),
+          string_arg(args, "visibility", fallback="private"),
+          addresses,
+        ),
+      )
     "moonhub_list_inbox" => {
       let rows = @collaboration.inbox_items(
         pool,
